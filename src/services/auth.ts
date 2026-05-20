@@ -306,6 +306,7 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.register, {
     method: "POST",
     authMode: "omit",
+    csrf: true,
     body: JSON.stringify(buildRegisterPayload(input)),
   });
 
@@ -352,6 +353,7 @@ export async function refreshAccessToken(): Promise<string> {
     method: "POST",
     authMode: "omit",
     skipAuthRefresh: true,
+    csrf: true,
   });
 
   const accessToken = extractAccessToken(payload);
@@ -370,6 +372,7 @@ export async function requestPasswordReset(
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.forgotPassword, {
     method: "POST",
     authMode: "omit",
+    csrf: true,
     body: JSON.stringify(input),
   });
 
@@ -386,6 +389,7 @@ export async function verifyResetCode(
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.verifyCode, {
     method: "POST",
     authMode: "omit",
+    csrf: true,
     body: JSON.stringify(input),
   });
 
@@ -402,6 +406,7 @@ export async function resetPassword(
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resetPassword, {
     method: "POST",
     authMode: "omit",
+    csrf: true,
     body: JSON.stringify(input),
   });
 
