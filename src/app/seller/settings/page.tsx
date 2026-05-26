@@ -221,7 +221,7 @@ export default function SellerSettingsPage() {
                 Active Payout Method
               </p>
               <p className="mt-1 text-sm font-bold text-zinc-900">MTN Mobile Money</p>
-              <p className="text-xs font-medium text-zinc-500">Zamoyo Store • ******1111</p>
+              <p className="text-xs font-medium text-zinc-500">Zogular Store • ******1111</p>
             </div>
 
             <Link href="/seller/payouts">
@@ -247,12 +247,12 @@ export default function SellerSettingsPage() {
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store Name</label>
-                      <Input value={settings.profile.name} onChange={(e) => updateSetting("profile", "name", e.target.value)} placeholder="e.g. Zamoyo Electronics" className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
+                      <Input value={settings.profile.name} onChange={(e) => updateSetting("profile", "name", e.target.value)} placeholder="e.g. Zogular Electronics" className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store URL Slug</label>
                       <div className="relative flex items-center">
-                        <span className="absolute left-3 text-sm font-medium text-zinc-400">zamoyo.com/</span>
+                        <span className="absolute left-3 text-sm font-medium text-zinc-400">zogular.com/</span>
                         <Input value={settings.profile.slug} onChange={(e) => updateSetting("profile", "slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="h-11 rounded-xl bg-zinc-50 pl-26 text-sm font-bold text-zinc-900 shadow-inner focus-visible:ring-[#009E49]" />
                       </div>
                     </div>
@@ -412,7 +412,7 @@ export default function SellerSettingsPage() {
                   <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
                     <div>
                       <p className="text-sm font-bold text-zinc-900">Offer Local Delivery</p>
-                      <p className="text-xs text-zinc-500">Allow buyers to request shipping via Zamoyo Logistics.</p>
+                      <p className="text-xs text-zinc-500">Allow buyers to request shipping via Zogular Logistics.</p>
                     </div>
                     <ToggleSwitch active={settings.fulfillment.deliveryEnabled} onClick={() => updateSetting("fulfillment", "deliveryEnabled", !settings.fulfillment.deliveryEnabled)} />
                   </div>

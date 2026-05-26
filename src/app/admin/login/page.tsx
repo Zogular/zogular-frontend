@@ -2,9 +2,10 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Lock, Mail, ArrowRight, ShieldCheck } from "lucide-react";
+import { Lock, Mail, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { toast } from "sonner";
 import { loginAdmin } from "@/services/admin/auth";
 
@@ -47,10 +48,8 @@ export default function AdminLoginPage() {
           <div className="absolute inset-x-0 top-0 h-1 bg-linear-to-r from-emerald-400 via-amber-300 to-indigo-400" />
 
           <div className="mb-8 text-center">
-            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl border border-emerald-300/30 bg-emerald-400/10 text-emerald-200 shadow-lg shadow-emerald-950/30">
-              <ShieldCheck className="h-8 w-8" />
-            </div>
-            <h1 className="text-2xl font-black tracking-tight text-white">Zamoyo <span className="text-emerald-300">Admin</span></h1>
+            <BrandLogo variant="dark" className="mb-5 justify-center" imageClassName="h-12 w-auto drop-shadow-md" priority />
+            <h1 className="text-2xl font-black tracking-tight text-white">Zogular <span className="text-emerald-300">Admin</span></h1>
             <p className="mt-2 text-sm font-medium text-zinc-400">Secure entry for authorized personnel only.</p>
           </div>
 
@@ -58,7 +57,7 @@ export default function AdminLoginPage() {
             {signInState === "error" ? "Sign-in error: the admin gateway could not establish a trusted session." : null}
             {signInState === "verifying" ? "Verifying admin identity with the backend auth boundary..." : null}
             {signInState === "mfa_ready" ? "Privileged session established. Redirecting to dashboard..." : null}
-            {signInState === "idle" ? "Use your authorized Zamoyo admin credentials." : null}
+            {signInState === "idle" ? "Use your authorized Zogular admin credentials." : null}
           </div>
 
           <form onSubmit={handleLogin} className="space-y-4">
@@ -66,7 +65,7 @@ export default function AdminLoginPage() {
               <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 ml-1">Corporate Email</label>
               <div className="relative">
                 <Mail className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
-                <Input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@zamoyo.com" className="h-14 rounded-2xl border-white/10 bg-white/10 pl-11 text-sm font-bold text-white shadow-inner placeholder:text-zinc-500 focus-visible:ring-emerald-300" />
+                <Input type="email" autoComplete="username" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="admin@zogular.com" className="h-14 rounded-2xl border-white/10 bg-white/10 pl-11 text-sm font-bold text-white shadow-inner placeholder:text-zinc-500 focus-visible:ring-emerald-300" />
               </div>
             </div>
 

@@ -1,4 +1,4 @@
-import { calculatePayoutQuote, DEFAULT_MARKETPLACE_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/marketplace-finance";
+import { calculatePayoutQuote, DEFAULT_PLATFORM_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/platform-finance";
 import { PaymentProviderService, type ProviderReference } from "@/services/payment-provider";
 
 export type PayoutStatus = "pending" | "successful" | "failed" | "cancelled";
@@ -45,8 +45,8 @@ const WALLET: SellerWalletBalances = {
 };
 
 const METHODS: PayoutMethod[] = [
-  { id: "pm-1", type: "mobile_money", provider: "MTN Mobile Money", accountName: "Zamoyo Store", maskedAccount: "******1111", accountNumber: "+260971111111", isDefault: true },
-  { id: "pm-2", type: "mobile_money", provider: "Airtel Money", accountName: "Zamoyo Store", maskedAccount: "******2222", accountNumber: "+260972222222", isDefault: false },
+  { id: "pm-1", type: "mobile_money", provider: "MTN Mobile Money", accountName: "Zogular Store", maskedAccount: "******1111", accountNumber: "+260971111111", isDefault: true },
+  { id: "pm-2", type: "mobile_money", provider: "Airtel Money", accountName: "Zogular Store", maskedAccount: "******2222", accountNumber: "+260972222222", isDefault: false },
 ];
 
 const HISTORY: PayoutTransaction[] = [
@@ -68,8 +68,8 @@ export const sellerWalletApi = {
   async requestPayout(amount: number, method: PayoutMethod): Promise<PayoutTransaction> {
     await delay(500);
 
-    if (amount < DEFAULT_MARKETPLACE_FINANCE_CONFIG.payoutFee.minimumWithdrawal) {
-      throw new Error(`Minimum withdrawal is K${DEFAULT_MARKETPLACE_FINANCE_CONFIG.payoutFee.minimumWithdrawal.toLocaleString()}.`);
+    if (amount < DEFAULT_PLATFORM_FINANCE_CONFIG.payoutFee.minimumWithdrawal) {
+      throw new Error(`Minimum withdrawal is K${DEFAULT_PLATFORM_FINANCE_CONFIG.payoutFee.minimumWithdrawal.toLocaleString()}.`);
     }
     if (amount > WALLET.availableBalance) {
       throw new Error("Amount exceeds available balance.");
@@ -158,7 +158,7 @@ function buildPayout(
     requestedAt,
     paidAt,
     provider: {
-      providerName: DEFAULT_MARKETPLACE_FINANCE_CONFIG.paymentProvider.activeProvider,
+      providerName: DEFAULT_PLATFORM_FINANCE_CONFIG.paymentProvider.activeProvider,
       providerTransactionId: `payout-${id}`,
       providerReference: `REF-${id}`,
       providerStatus: status === "successful" ? "successful" : status === "failed" ? "failed" : "pending",

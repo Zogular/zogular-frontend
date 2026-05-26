@@ -1,11 +1,16 @@
 import type { AuthSession, AuthUser } from "@/types/auth";
+import { readLocalStorageValue } from "@/lib/persisted-storage";
 
-const ACCESS_TOKEN_KEY = "zamoyo_access_token";
-const REFRESH_TOKEN_KEY = "zamoyo_refresh_token";
-const AUTH_USER_KEY = "zamoyo_auth_user";
-const LAST_AUTH_EMAIL_KEY = "zamoyo_auth_last_email";
-const LEGACY_SELLER_TOKEN_KEY = "zamoyo_seller_token";
-export const AUTH_SESSION_CHANGED_EVENT = "zamoyo:auth-session-changed";
+const ACCESS_TOKEN_KEY = "zogular_access_token";
+const REFRESH_TOKEN_KEY = "zogular_refresh_token";
+const AUTH_USER_KEY = "zogular_auth_user";
+const LAST_AUTH_EMAIL_KEY = "zogular_auth_last_email";
+const LEGACY_SELLER_TOKEN_KEY = "zogular_seller_token";
+const LEGACY_ACCESS_TOKEN_KEYS = ["zamoyo_access_token", "zamoyo_seller_token"];
+const LEGACY_REFRESH_TOKEN_KEYS = ["zamoyo_refresh_token"];
+const LEGACY_AUTH_USER_KEYS = ["zamoyo_auth_user"];
+const LEGACY_LAST_AUTH_EMAIL_KEYS = ["zamoyo_auth_last_email"];
+export const AUTH_SESSION_CHANGED_EVENT = "zogular:auth-session-changed";
 
 function getStorage(): Storage | null {
   if (typeof window === "undefined") return null;
@@ -13,10 +18,18 @@ function getStorage(): Storage | null {
 }
 
 function readString(key: string): string | null {
-  const storage = getStorage();
-  if (!storage) return null;
-
-  const value = storage.getItem(key);
+  const value = readLocalStorageValue(
+    key,
+    key === ACCESS_TOKEN_KEY
+      ? LEGACY_ACCESS_TOKEN_KEYS
+      : key === REFRESH_TOKEN_KEY
+        ? LEGACY_REFRESH_TOKEN_KEYS
+        : key === AUTH_USER_KEY
+          ? LEGACY_AUTH_USER_KEYS
+          : key === LAST_AUTH_EMAIL_KEY
+            ? LEGACY_LAST_AUTH_EMAIL_KEYS
+            : [],
+  );
   return value && value.trim().length > 0 ? value : null;
 }
 
@@ -114,5 +127,8 @@ export function clearStoredAuthSession(): void {
   storage.removeItem(REFRESH_TOKEN_KEY);
   storage.removeItem(AUTH_USER_KEY);
   storage.removeItem(LEGACY_SELLER_TOKEN_KEY);
+  [...LEGACY_ACCESS_TOKEN_KEYS, ...LEGACY_REFRESH_TOKEN_KEYS, ...LEGACY_AUTH_USER_KEYS, ...LEGACY_LAST_AUTH_EMAIL_KEYS].forEach((key) => {
+    storage.removeItem(key);
+  });
   notifyAuthSessionChanged();
 }

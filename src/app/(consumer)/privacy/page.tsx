@@ -1,12 +1,12 @@
-import { MarketplaceInfoPage } from "@/components/consumer/MarketplaceInfoPage";
+import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
 export default function PrivacyPage() {
   return (
-    <MarketplaceInfoPage
+    <ZogularInfoPage
       title="Privacy Policy"
       eyebrow="Data and trust"
       tone="policy"
-      description="Zamoyo handles customer and seller data to operate the marketplace safely, process transactions, and improve platform reliability."
+      description="Zogular handles customer and seller data to operate the platform safely, process transactions, and improve platform reliability."
       highlights={["Purposeful data use", "Order and delivery support", "Fraud prevention", "Account update control"]}
       stats={[
         { value: "Less", label: "Noise" },
@@ -16,7 +16,7 @@ export default function PrivacyPage() {
       sections={[
         {
           title: "What We Collect",
-          body: "We collect account details, order history, and fulfillment data needed to provide marketplace services, delivery support, and customer communication.",
+          body: "We collect account details, order history, and fulfillment data needed to provide platform services, delivery support, and customer communication.",
         },
         {
           title: "How We Use Data",
@@ -30,7 +30,7 @@ export default function PrivacyPage() {
       steps={[
         {
           title: "Collect what is needed",
-          body: "Core account, order, and delivery information supports the marketplace experience.",
+          body: "Core account, order, and delivery information supports the platform experience.",
         },
         {
           title: "Use it with purpose",
@@ -43,8 +43,8 @@ export default function PrivacyPage() {
       ]}
       faqs={[
         {
-          question: "Does Zamoyo process payments directly?",
-          answer: "Sensitive payment handling follows provider-level controls; Zamoyo uses payment data only to support marketplace operations.",
+          question: "Does Zogular process payments directly?",
+          answer: "Sensitive payment handling follows provider-level controls; Zogular uses payment data only to support platform operations.",
         },
         {
           question: "Can account details be updated?",

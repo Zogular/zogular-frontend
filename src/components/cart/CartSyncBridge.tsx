@@ -9,7 +9,7 @@ import {
 
 function subscribeToAuthSession(onStoreChange: () => void) {
   const handleStorage = (event: StorageEvent) => {
-    if (!event.key || event.key.startsWith("zamoyo_")) {
+    if (!event.key || event.key.startsWith("zogular_") || event.key.startsWith("zamoyo_")) {
       onStoreChange();
     }
   };

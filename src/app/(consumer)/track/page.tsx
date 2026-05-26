@@ -69,7 +69,7 @@ export default function TrackOrderPage() {
                 Track Your Order
               </h1>
               <p className="mt-5 max-w-2xl text-sm font-medium leading-7 text-zinc-600 md:text-base">
-                Enter your Zamoyo order ID and email address to see the current delivery status and support next steps.
+                Enter your Zogular order ID and email address to see the current delivery status and support next steps.
               </p>
             </div>
 
@@ -129,7 +129,7 @@ export default function TrackOrderPage() {
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Carrier</p>
                 <p className="mt-1 flex items-center gap-1.5 text-sm font-bold text-zinc-900">
                   <Truck className="h-4 w-4 text-[#FF6B00]" />
-                  Zamoyo Express
+                  Zogular Express
                 </p>
               </div>
             </div>

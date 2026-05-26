@@ -170,7 +170,7 @@ export default function SellerSupportPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage inquiries, resolve issues, and communicate with the Zamoyo team.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Manage inquiries, resolve issues, and communicate with the Zogular team.</p>
         </div>
         <Button onClick={() => setIsCreateModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
           Create New Ticket

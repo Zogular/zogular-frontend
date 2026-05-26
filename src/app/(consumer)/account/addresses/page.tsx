@@ -178,7 +178,7 @@ export default function AddressesPage() {
             Saved Addresses
           </h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Manage where your Zamoyo orders are delivered.
+            Manage where your Zogular orders are delivered.
           </p>
         </div>
 
@@ -305,7 +305,7 @@ export default function AddressesPage() {
                 {editingAddressId ? "Edit Address" : "Add Address"}
               </DialogTitle>
               <DialogDescription>
-                Save delivery details for faster Zamoyo checkout.
+                Save delivery details for faster Zogular checkout.
               </DialogDescription>
             </DialogHeader>
 

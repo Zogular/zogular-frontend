@@ -196,7 +196,7 @@ export default function AdminReportsPage() {
       const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download = `zamoyo-report-${new Date().toISOString().slice(0, 10)}.csv`;
+      anchor.download = `zogular-report-${new Date().toISOString().slice(0, 10)}.csv`;
       anchor.click();
       URL.revokeObjectURL(url);
       toast.success("CSV export downloaded.");

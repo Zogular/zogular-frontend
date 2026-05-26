@@ -1,12 +1,12 @@
-import { MarketplaceInfoPage } from "@/components/consumer/MarketplaceInfoPage";
+import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
 export default function AboutPage() {
   return (
-    <MarketplaceInfoPage
-      title="About Zamoyo"
-      eyebrow="Zambian marketplace"
+    <ZogularInfoPage
+      title="About Zogular"
+      eyebrow="Zambian platform"
       tone="company"
-      description="Zamoyo is a Zambian-first marketplace built to connect trusted local sellers with shoppers who want fast delivery, transparent pricing, and a smoother buying experience."
+      description="Zogular is a Zambian-first platform built to connect trusted local sellers with shoppers who want fast delivery, transparent pricing, and a smoother buying experience."
       highlights={["Local seller visibility", "Mobile-first shopping", "Clearer delivery expectations", "Practical support"]}
       stats={[
         { value: "ZM", label: "Built for" },
@@ -16,7 +16,7 @@ export default function AboutPage() {
       sections={[
         {
           title: "Our Mission",
-          body: "We are building a marketplace that reflects how people in Zambia and across Africa actually shop: mobile-first, practical, and relationship-driven. Zamoyo focuses on real seller visibility and reliable order fulfillment.",
+          body: "We are building a commerce platform that reflects how people in Zambia and across Africa actually shop: mobile-first, practical, and relationship-driven. Zogular focuses on real seller visibility and reliable order fulfillment.",
         },
         {
           title: "What We Prioritize",
@@ -24,7 +24,7 @@ export default function AboutPage() {
         },
         {
           title: "Seller Growth",
-          body: "From first listing to payout readiness, Zamoyo gives small and growing businesses better storefront tools and operational visibility so they can scale confidently.",
+          body: "From first listing to payout readiness, Zogular gives small and growing businesses better storefront tools and operational visibility so they can scale confidently.",
         },
       ]}
       steps={[
@@ -43,7 +43,7 @@ export default function AboutPage() {
       ]}
       faqs={[
         {
-          question: "Is Zamoyo only for Lusaka?",
+          question: "Is Zogular only for Lusaka?",
           answer: "The experience currently emphasizes Lusaka delivery clarity while the platform is structured to grow into more Zambian locations.",
         },
         {
@@ -53,7 +53,7 @@ export default function AboutPage() {
       ]}
       ctaLabel="Browse Categories"
       ctaHref="/categories"
-      secondaryCtaLabel="Sell on Zamoyo"
+      secondaryCtaLabel="Sell on Zogular"
       secondaryCtaHref="/sell"
     />
   );

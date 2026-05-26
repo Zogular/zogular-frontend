@@ -1,4 +1,4 @@
-import { getActiveMarketplaceFinanceConfig } from "@/services/marketplace-finance";
+import { getActivePlatformFinanceConfig } from "@/services/platform-finance";
 
 export type PaymentProviderName = "flutterwave" | "pawapay";
 export type ProviderPaymentStatus = "pending" | "successful" | "failed" | "cancelled";
@@ -158,7 +158,7 @@ const processedWebhookKeys = new Set<string>();
 
 export const PaymentProviderService = {
   getActiveProvider(): PaymentProviderAdapter {
-    return providerAdapters[getActiveMarketplaceFinanceConfig().paymentProvider.activeProvider];
+    return providerAdapters[getActivePlatformFinanceConfig().paymentProvider.activeProvider];
   },
   initializePayment(input: InitializePaymentInput) {
     return this.getActiveProvider().initializePayment(input);

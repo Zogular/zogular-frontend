@@ -89,7 +89,7 @@ function SuccessContent() {
             Order Confirmed
           </h1>
           <p className="relative z-10 mx-auto mb-8 max-w-md text-sm font-medium text-zinc-500 md:text-base">
-            Thanks for shopping with Zamoyo. We received your order and are getting it ready for dispatch.
+            Thanks for shopping with Zogular. We received your order and are getting it ready for dispatch.
           </p>
 
           <Separator className="mb-8 bg-zinc-100" />

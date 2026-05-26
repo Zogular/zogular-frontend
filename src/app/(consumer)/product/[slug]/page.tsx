@@ -11,10 +11,10 @@ export async function generateMetadata({ params }: ProductDetailsPageProps): Pro
   const product = await getProductDetailBySlug(slug);
 
   return {
-    title: `${product.title} | Zamoyo`,
+    title: `${product.title} | Zogular`,
     description: product.description,
     openGraph: {
-      title: `${product.title} | Zamoyo`,
+      title: `${product.title} | Zogular`,
       description: product.description,
       images: product.images.slice(0, 1),
     },

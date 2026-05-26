@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import type { Product } from "@/types/product";
+import { migrateLocalStorageValue } from "@/lib/persisted-storage";
 
 export type WishlistItem = Product;
 
@@ -22,6 +23,10 @@ function buildWishlistState(items: WishlistItem[]) {
     itemCount: items.length,
   };
 }
+
+const WISHLIST_STORAGE_KEY = "zogular-wishlist-storage";
+
+migrateLocalStorageValue(WISHLIST_STORAGE_KEY, ["zamoyo-wishlist-storage"]);
 
 export const useWishlist = create<WishlistStore>()(
   persist(
@@ -58,7 +63,7 @@ export const useWishlist = create<WishlistStore>()(
       clearWishlist: () => set(buildWishlistState([])),
     }),
     {
-      name: "zamoyo-wishlist-storage",
+      name: WISHLIST_STORAGE_KEY,
       partialize: (state) => ({ items: state.items }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;

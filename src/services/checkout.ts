@@ -1,4 +1,6 @@
 import type { CartItem } from "@/types/cart";
+import { readLocalStorageValue } from "@/lib/persisted-storage";
+import { apiClient } from "@/services/api";
 
 export const CHECKOUT_DELIVERY_FEE = 50;
 
@@ -49,24 +51,13 @@ interface CreateCheckoutOrderInput {
   paymentMethod: CheckoutPaymentMethod;
 }
 
-const latestOrderKey = "zamoyo-checkout-latest-order";
-const ordersKey = "zamoyo-checkout-orders";
+const latestOrderKey = "zogular-checkout-latest-order";
+const ordersKey = "zogular-checkout-orders";
+const legacyLatestOrderKeys = ["zamoyo-checkout-latest-order"];
 
 function getStorage() {
   if (typeof window === "undefined") return null;
   return window.localStorage;
-}
-
-function normalizeCartItems(items: CartItem[]): CheckoutOrderItem[] {
-  return items.map((item) => ({
-    id: item.id,
-    slug: item.slug,
-    name: item.name,
-    image: item.image,
-    price: item.price,
-    quantity: item.quantity,
-    variant: item.variant ?? null,
-  }));
 }
 
 function readOrders(): Record<string, CheckoutOrder> {
@@ -74,7 +65,7 @@ function readOrders(): Record<string, CheckoutOrder> {
   if (!storage) return {};
 
   try {
-    const stored = storage.getItem(ordersKey);
+    const stored = localStorage.getItem(ordersKey);
     return stored ? (JSON.parse(stored) as Record<string, CheckoutOrder>) : {};
   } catch {
     return {};
@@ -91,11 +82,6 @@ function writeOrder(order: CheckoutOrder) {
   storage.setItem(latestOrderKey, order.id);
 }
 
-function buildOrderId(): string {
-  const suffix = Date.now().toString().slice(-7);
-  return `ZM-${suffix}`;
-}
-
 function buildEstimatedDeliveryDate(): string {
   const date = new Date();
   date.setDate(date.getDate() + 2);
@@ -106,33 +92,125 @@ function buildEstimatedDeliveryDate(): string {
   });
 }
 
-export function createCheckoutOrder(input: CreateCheckoutOrderInput): CheckoutOrder {
-  const items = normalizeCartItems(input.items);
-  const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-  const deliveryFee = items.length ? CHECKOUT_DELIVERY_FEE : 0;
-  const order: CheckoutOrder = {
-    id: buildOrderId(),
-    createdAt: new Date().toISOString(),
+function resolveProductImage(images: unknown): string {
+  if (Array.isArray(images) && typeof images[0] === "string") {
+    return images[0];
+  }
+
+  if (typeof images === "string") {
+    try {
+      const parsed = JSON.parse(images) as unknown;
+      if (Array.isArray(parsed) && typeof parsed[0] === "string") {
+        return parsed[0];
+      }
+    } catch {
+      return images;
+    }
+  }
+
+  if (images && typeof images === "object" && "0" in images) {
+    const firstImage = (images as Record<string, unknown>)["0"];
+    if (typeof firstImage === "string") {
+      return firstImage;
+    }
+  }
+
+  return "/brand/zogular-icon-rounded-dark.png";
+}
+
+export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Promise<CheckoutOrder> {
+  const orderItems = input.items.map((item) => ({
+    productId: String(item.id),
+    quantity: item.quantity,
+  }));
+
+  const shippingAddress = {
+    fullName: `${input.contact.firstName} ${input.contact.lastName}`.trim(),
+    phone: input.contact.phone.trim(),
+    addressLine: input.delivery.street.trim(),
+    city: "Lusaka",
+    district: input.delivery.area.trim(),
+    country: "Zambia",
+  };
+
+  const payload = {
+    items: orderItems,
+    shippingAddress,
+    deliveryMethod: "standard",
+    notes: input.delivery.instructions?.trim() || undefined,
+  };
+
+  const response = await apiClient<{
+    status: string;
+    message: string;
+    data: {
+      order: {
+        id: string;
+        orderNumber: string;
+        createdAt: string;
+        totalAmount: number;
+        estimatedDelivery?: string;
+        items: Array<{
+          productId: string;
+          price: number;
+          quantity: number;
+          product: {
+            title: string;
+            slug: string;
+            images: unknown;
+          };
+        }>;
+      };
+    };
+  }>("/orders", {
+    method: "POST",
+    csrf: true,
+    body: JSON.stringify(payload),
+  });
+
+  const backendOrder = response.data.order;
+
+  const normalizedItems = backendOrder.items.map((item) => ({
+      id: item.productId,
+      slug: item.product.slug,
+      name: item.product.title,
+      image: resolveProductImage(item.product.images),
+      price: item.price,
+      quantity: item.quantity,
+      variant: null,
+    }));
+
+  const estimatedDeliveryDate = backendOrder.estimatedDelivery
+    ? new Date(backendOrder.estimatedDelivery).toLocaleDateString("en-ZM", {
+        weekday: "short",
+        month: "short",
+        day: "numeric",
+      })
+    : buildEstimatedDeliveryDate();
+
+  const checkoutOrder: CheckoutOrder = {
+    id: backendOrder.orderNumber,
+    createdAt: backendOrder.createdAt,
     status: "processing",
     contact: input.contact,
     delivery: input.delivery,
     paymentMethod: input.paymentMethod,
-    items,
-    subtotal,
-    deliveryFee,
-    total: subtotal + deliveryFee,
-    estimatedDelivery: buildEstimatedDeliveryDate(),
+    items: normalizedItems,
+    subtotal: backendOrder.totalAmount,
+    deliveryFee: CHECKOUT_DELIVERY_FEE,
+    total: backendOrder.totalAmount + CHECKOUT_DELIVERY_FEE,
+    estimatedDelivery: estimatedDeliveryDate,
   };
 
-  writeOrder(order);
-  return order;
+  writeOrder(checkoutOrder);
+  return checkoutOrder;
 }
 
 export function getStoredCheckoutOrder(orderId?: string | null): CheckoutOrder | null {
   const storage = getStorage();
   if (!storage) return null;
 
-  const resolvedOrderId = orderId || storage.getItem(latestOrderKey);
+  const resolvedOrderId = orderId || readLocalStorageValue(latestOrderKey, legacyLatestOrderKeys);
   if (!resolvedOrderId) return null;
 
   return readOrders()[resolvedOrderId] ?? null;

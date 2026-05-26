@@ -7,7 +7,7 @@ export default async function DealsPage() {
   return (
     <ProductCollectionPage
       title="Hot Deals"
-      description="Limited-time marketplace discounts across electronics, fashion, and everyday essentials."
+      description="Limited-time platform discounts across electronics, fashion, and everyday essentials."
       products={products}
       emptyTitle="No active deals right now"
       emptyDescription="Check back shortly for new campaign discounts."

@@ -1,4 +1,4 @@
-import { calculateSellerOrderEarnings, type SellerOrderEarnings } from "@/services/marketplace-finance";
+import { calculateSellerOrderEarnings, type SellerOrderEarnings } from "@/services/platform-finance";
 
 export type SellerOrderStatus = "new" | "processing" | "shipped" | "delivered" | "cancelled" | "refund";
 export type SellerPaymentStatus = "paid" | "cod" | "refunded" | "failed";

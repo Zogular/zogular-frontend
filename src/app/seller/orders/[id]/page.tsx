@@ -305,7 +305,7 @@ export default function OrderDetailsPage({
                 <span>{formatCurrency(order.totals.shipping)}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
-                <span>Zamoyo Commission</span>
+                <span>Zogular Commission</span>
                 <span>-{formatCurrency(order.earnings.commission)}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">

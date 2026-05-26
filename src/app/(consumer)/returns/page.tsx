@@ -1,12 +1,12 @@
-import { MarketplaceInfoPage } from "@/components/consumer/MarketplaceInfoPage";
+import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
 export default function ReturnsPage() {
   return (
-    <MarketplaceInfoPage
+    <ZogularInfoPage
       title="Returns Policy"
       eyebrow="After-purchase support"
       tone="support"
-      description="Zamoyo supports fair returns so shoppers can buy with confidence while keeping expectations clear for sellers."
+      description="Zogular supports fair returns so shoppers can buy with confidence while keeping expectations clear for sellers."
       highlights={["7-day eligible return window", "Original condition checks", "Clear review process", "Support-led resolution"]}
       stats={[
         { value: "7d", label: "Window" },

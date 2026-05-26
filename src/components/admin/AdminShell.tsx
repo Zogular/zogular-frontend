@@ -8,6 +8,7 @@ import {
   Wallet, LifeBuoy, Megaphone, Settings, ShieldAlert, LogOut, Menu, X, Sparkles, BarChart3,
 } from "lucide-react";
 import { toast } from "sonner";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { cn } from "@/lib/utils";
 import type { AdminIdentity } from "@/services/admin/session";
 import type { Permission } from "@/services/rbac";
@@ -82,7 +83,7 @@ export default function AdminShell({
         {/* Branding & Environment Badge */}
         <div className="flex h-18 shrink-0 items-center justify-between border-b border-white/10 px-6">
           <div className="flex items-center gap-2">
-            <span className="text-xl font-black tracking-tighter text-white">Zamoyo.</span>
+            <BrandLogo variant="dark" imageClassName="h-8 w-auto" />
             <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">Admin</span>
           </div>
           <button aria-label="Close admin menu" className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-white lg:hidden" onClick={() => setIsMobileMenuOpen(false)}><X className="h-5 w-5" /></button>

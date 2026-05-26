@@ -189,7 +189,7 @@ export default function AdminDashboardPage() {
       {/* 1. HEADER */}
       <div>
         <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Platform Overview</h1>
-        <p className="mt-1 text-sm font-medium text-zinc-500">Real-time marketplace performance and system health.</p>
+        <p className="mt-1 text-sm font-medium text-zinc-500">Real-time platform performance and system health.</p>
       </div>
       <div className="flex flex-col gap-3 rounded-3xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:flex-row md:items-center md:justify-between">
         <div>
@@ -297,18 +297,18 @@ export default function AdminDashboardPage() {
       </div>
 
       <div className="grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <MarketplaceSignal label="AOV" value={`K${data.marketplace.averageOrderValue.toLocaleString()}`} note="Average order value" tone="emerald" />
-        <MarketplaceSignal label="Take rate" value={`${data.marketplace.takeRate}%`} note="Commission capture" tone="indigo" />
-        <MarketplaceSignal label="Conversion" value={`${data.marketplace.conversionRate}%`} note="Visit to order" tone="amber" />
-        <MarketplaceSignal label="Repeat rate" value={`${data.marketplace.repeatPurchaseRate}%`} note="Buyer retention" tone="sky" />
-        <MarketplaceSignal label="Delivery SLA" value={`${data.marketplace.deliverySla}%`} note="On-time fulfilment" tone="emerald" />
-        <MarketplaceSignal label="Refund rate" value={`${data.marketplace.refundRate}%`} note="Trust pressure" tone="rose" />
+        <PlatformSignal label="AOV" value={`K${data.marketplace.averageOrderValue.toLocaleString()}`} note="Average order value" tone="emerald" />
+        <PlatformSignal label="Take rate" value={`${data.marketplace.takeRate}%`} note="Commission capture" tone="indigo" />
+        <PlatformSignal label="Conversion" value={`${data.marketplace.conversionRate}%`} note="Visit to order" tone="amber" />
+        <PlatformSignal label="Repeat rate" value={`${data.marketplace.repeatPurchaseRate}%`} note="Buyer retention" tone="sky" />
+        <PlatformSignal label="Delivery SLA" value={`${data.marketplace.deliverySla}%`} note="On-time fulfilment" tone="emerald" />
+        <PlatformSignal label="Refund rate" value={`${data.marketplace.refundRate}%`} note="Trust pressure" tone="rose" />
       </div>
 
       <div className="rounded-3xl border border-white/70 bg-white/75 p-5 shadow-md shadow-zinc-900/5 backdrop-blur-xl">
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
-            <h2 className="text-base font-black text-zinc-900">Marketplace mix</h2>
+            <h2 className="text-base font-black text-zinc-900">Platform mix</h2>
             <p className="mt-1 text-xs font-bold text-zinc-500">Top categories for {dateRangeLabel.toLowerCase()}, capped to avoid endless dashboard growth.</p>
           </div>
           <Button asChild variant="outline" className="rounded-xl font-black"><Link href="/admin/reports">Open full category report</Link></Button>
@@ -344,7 +344,7 @@ export default function AdminDashboardPage() {
   );
 }
 
-function MarketplaceSignal({
+function PlatformSignal({
   label,
   value,
   note,

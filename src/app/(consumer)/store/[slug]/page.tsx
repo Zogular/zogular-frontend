@@ -37,7 +37,7 @@ export default async function StorePage({
   return (
     <ProductCollectionPage
       title={`${storeName} Storefront`}
-      description="Shop verified listings from this seller storefront with Zamoyo checkout and delivery support."
+      description="Shop verified listings from this seller storefront with Zogular checkout and delivery support."
       products={visibleProducts}
       emptyTitle="No products in this storefront yet"
       emptyDescription="The seller has not published items here yet. Please check another category."

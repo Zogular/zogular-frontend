@@ -67,7 +67,7 @@ export default function AdminOrdersPage() {
       const data = await adminOrdersApi.fetchOrders();
       setOrders(data);
     } catch {
-      toast.error("Failed to load marketplace orders.");
+      toast.error("Failed to load platform orders.");
     } finally {
       setLoading(false);
     }
@@ -181,7 +181,7 @@ export default function AdminOrdersPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Logistics & Orders</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Monitor all marketplace fulfillment and resolve stuck deliveries.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Monitor all platform fulfillment and resolve stuck deliveries.</p>
         </div>
       </div>
 

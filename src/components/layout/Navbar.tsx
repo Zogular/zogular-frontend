@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import { useCart } from "@/hooks/use-cart";
 import { CartDrawer } from "@/components/cart/CartDrawer";
 import { NavbarSearch } from "@/components/layout/NavbarSearch";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
 import { getStoredAuthSession, logout } from "@/services/auth";
 import { AUTH_SESSION_CHANGED_EVENT, getAuthSessionSnapshot } from "@/services/auth-session";
@@ -67,7 +68,7 @@ type UtilityMobileLink = NavLink & {
 };
 
 const MOBILE_UTILITY_LINKS: UtilityMobileLink[] = [
-  { label: "Sell on Zamoyo", href: "/sell", icon: Store },
+  { label: "Sell on Zogular", href: "/sell", icon: Store },
   { label: "Track Order", href: "/track-order", icon: Package },
   { label: "Help Center", href: "/help", icon: HelpCircle },
   { label: "About Us", href: "/about", icon: Info },
@@ -136,7 +137,7 @@ function useAuthState() {
   useSyncExternalStore(
     (onStoreChange) => {
       const handleStorage = (event: StorageEvent) => {
-        if (!event.key || event.key.startsWith("zamoyo_")) {
+        if (!event.key || event.key.startsWith("zogular_") || event.key.startsWith("zamoyo_")) {
           onStoreChange();
         }
       };
@@ -221,7 +222,7 @@ function TopBar() {
           href="/sell"
           className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[#009E49] transition-colors hover:text-[#00c95d]"
         >
-          <Store className="h-3.5 w-3.5" /> Sell on Zamoyo
+          <Store className="h-3.5 w-3.5" /> Sell on Zogular
         </Link>
         <Link href="/track" className="flex cursor-pointer items-center gap-1.5 rounded-sm transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950">
           <MapPin className="h-3.5 w-3.5" /> Deliver to Lusaka
@@ -663,11 +664,9 @@ function MobileDrawer({
       >
         <div className="flex h-18 items-center justify-between border-b border-white/45 bg-white/30 px-4 backdrop-blur-xl">
           <Link href="/" className="flex items-center gap-2" onClick={onClose}>
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#009E49] text-lg font-extrabold text-white shadow-md">
-              Z
-            </div>
+            <BrandLogo mode="icon" imageClassName="h-8 w-8 rounded-xl shadow-md" />
             <div>
-              <span className="text-xl font-black tracking-tighter text-zinc-900">Zamoyo</span>
+              <span className="text-xl font-black tracking-tighter text-zinc-900">Zogular</span>
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Shop Menu</p>
             </div>
           </Link>
@@ -903,12 +902,7 @@ export default function Navbar() {
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              <Link href="/" className="flex shrink-0 items-center gap-2">
-                <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#009E49] text-lg font-extrabold text-white shadow-[0_12px_24px_rgba(0,158,73,0.22)] md:h-10 md:w-10 md:text-xl">
-                  Z
-                </div>
-                <span className="text-xl font-black tracking-tighter text-zinc-900 md:text-2xl">Zamoyo</span>
-              </Link>
+              <BrandLogo href="/" imageClassName="h-9 w-auto md:h-11" priority />
             </div>
 
             <div className="hidden max-w-2xl flex-1 md:flex">

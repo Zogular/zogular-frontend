@@ -7,7 +7,7 @@ export default async function TrendingPage() {
   return (
     <ProductCollectionPage
       title="Trending Near You"
-      description="Products currently getting the most shopper attention across Zamoyo."
+      description="Products currently getting the most shopper attention across Zogular."
       products={products}
       emptyTitle="No trending products yet"
       emptyDescription="Fresh product activity will show here as listings gain momentum."

@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { migrateLocalStorageValue } from "@/lib/persisted-storage";
 import {
   addBackendCartItem,
   canSyncCartItem,
@@ -118,6 +119,10 @@ function runBackendMutation(
       });
     });
 }
+
+const CART_STORAGE_KEY = "zogular-cart-storage";
+
+migrateLocalStorageValue(CART_STORAGE_KEY, ["zamoyo-cart-storage"]);
 
 export const useCart = create<CartStore>()(
   persist(
@@ -296,7 +301,7 @@ export const useCart = create<CartStore>()(
       },
     }),
     {
-      name: "zamoyo-cart-storage",
+      name: CART_STORAGE_KEY,
       partialize: (state) => ({ items: state.items }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;

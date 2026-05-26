@@ -9,7 +9,7 @@ export interface AdminOrderRecord {
   itemsCount: number;
   placedAt: string;
   deliveryAddress: string;
-  logisticsPartner: "Zamoyo Delivery" | "Seller Arranged" | "Pickup";
+  logisticsPartner: "Zogular Delivery" | "Seller Arranged" | "Pickup";
   escalationReason?: string;
 }
 

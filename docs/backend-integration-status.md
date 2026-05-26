@@ -1,4 +1,4 @@
-# Zamoyo Backend Integration Status
+# Zogular Backend Integration Status
 
 Last updated: 2026-05-17
 
@@ -39,7 +39,7 @@ Last updated: 2026-05-17
 
 ## Backend gaps still affecting frontend fidelity
 
-- Backend product categories are narrower than the frontend marketplace taxonomy.
+- Backend product categories are narrower than the frontend platform taxonomy.
 - Product responses do not yet include discount/original price, stock quantity, subcategory, rating aggregate, or per-star review breakdown.
 - Cart API does not support variants.
 - Cart mutation responses are thinner than `GET /cart`; the frontend currently reconciles by pulling the cart after mutations.

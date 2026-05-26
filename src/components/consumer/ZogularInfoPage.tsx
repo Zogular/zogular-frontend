@@ -32,7 +32,7 @@ type InfoStat = {
 
 type InfoPageTone = "marketplace" | "support" | "policy" | "company";
 
-type MarketplaceInfoPageProps = {
+type ZogularInfoPageProps = {
   title: string;
   description: string;
   sections: InfoSection[];
@@ -62,11 +62,11 @@ const toneAccent: Record<InfoPageTone, string> = {
   company: "text-[#FF6B00] bg-[#FF6B00]/10",
 };
 
-export function MarketplaceInfoPage({
+export function ZogularInfoPage({
   title,
   description,
   sections,
-  eyebrow = "Zamoyo guide",
+  eyebrow = "Zogular guide",
   tone = "marketplace",
   highlights = [],
   stats = [],
@@ -76,7 +76,7 @@ export function MarketplaceInfoPage({
   ctaHref,
   secondaryCtaLabel,
   secondaryCtaHref,
-}: MarketplaceInfoPageProps) {
+}: ZogularInfoPageProps) {
   const featureList = highlights.length > 0 ? highlights : sections.map((section) => section.title);
 
   return (
@@ -129,7 +129,7 @@ export function MarketplaceInfoPage({
                 </div>
                 <p className="mt-4 text-lg font-black leading-tight">Built for trust, speed, and local context.</p>
                 <p className="mt-2 text-sm leading-6 text-zinc-300">
-                  Clear policies, practical support, and a marketplace experience shaped around Zambian shoppers and sellers.
+                  Clear policies, practical support, and a platform experience shaped around Zambian shoppers and sellers.
                 </p>
                 <div className="mt-5 grid grid-cols-3 gap-2">
                   {["Trust", "Speed", "Local"].map((item) => (
@@ -233,7 +233,7 @@ export function MarketplaceInfoPage({
               <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                 <div>
                   <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#009E49]">Need a hand?</p>
-                  <p className="mt-2 text-xl font-black text-zinc-950">Zamoyo support keeps the next step clear.</p>
+                  <p className="mt-2 text-xl font-black text-zinc-950">Zogular support keeps the next step clear.</p>
                 </div>
                 <Link
                   href="/help"

@@ -1,12 +1,12 @@
-import { MarketplaceInfoPage } from "@/components/consumer/MarketplaceInfoPage";
+import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
 export default function HelpPage() {
   return (
-    <MarketplaceInfoPage
+    <ZogularInfoPage
       title="Help Center"
       eyebrow="Customer support"
       tone="support"
-      description="Need support with an order, payment, delivery, or seller issue? Zamoyo support is designed to keep resolution fast and straightforward."
+      description="Need support with an order, payment, delivery, or seller issue? Zogular support is designed to keep resolution fast and straightforward."
       highlights={["Order tracking help", "Returns guidance", "Account access support", "Seller issue escalation"]}
       stats={[
         { value: "Fast", label: "Triage" },

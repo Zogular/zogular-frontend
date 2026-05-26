@@ -4,6 +4,7 @@ import { Toaster } from "sonner";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { QueryProvider } from "@/components/query-provider";
+import { BRAND, BRAND_SITE_URL, BRAND_TITLE } from "@/config/brand";
 
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
@@ -21,8 +22,27 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zamoyo | Zambia's Marketplace",
-  description: "Connecting buyers and sellers across Zambia",
+  metadataBase: new URL(BRAND_SITE_URL),
+  title: BRAND_TITLE,
+  description: BRAND.description,
+  applicationName: BRAND.name,
+  icons: {
+    icon: "/icon.png",
+    apple: "/apple-icon.png",
+  },
+  openGraph: {
+    title: BRAND_TITLE,
+    description: BRAND.description,
+    siteName: BRAND.name,
+    images: [
+      {
+        url: BRAND.assets.wordmarkLight,
+        width: 1341,
+        height: 754,
+        alt: BRAND.name,
+      },
+    ],
+  },
 };
 
 export default function RootLayout({

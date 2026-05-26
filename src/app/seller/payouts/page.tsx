@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
-import { calculatePayoutQuote, DEFAULT_MARKETPLACE_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/marketplace-finance";
+import { calculatePayoutQuote, DEFAULT_PLATFORM_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/platform-finance";
 import {
   sellerWalletApi,
   type PayoutMethod,
@@ -98,7 +98,7 @@ export default function SellerPayoutsPage() {
     accountNumber: "",
   });
 
-  const payoutConfig = DEFAULT_MARKETPLACE_FINANCE_CONFIG.payoutFee;
+  const payoutConfig = DEFAULT_PLATFORM_FINANCE_CONFIG.payoutFee;
   const MIN_WITHDRAWAL = payoutConfig.minimumWithdrawal;
   const withdrawalQuote = useMemo(
     () => calculatePayoutQuote(Number(withdrawAmount) || 0, payoutConfig),
@@ -304,7 +304,7 @@ export default function SellerPayoutsPage() {
                 <span>{formatCurrency(balances.totalSales)}</span>
               </div>
               <div className="flex justify-between font-medium text-zinc-500">
-                <span>Zamoyo Commission</span>
+                <span>Zogular Commission</span>
                 <span className="text-red-500">-{formatCurrency(balances.totalCommissionPaid)}</span>
               </div>
               <div className="flex justify-between font-medium text-zinc-500">

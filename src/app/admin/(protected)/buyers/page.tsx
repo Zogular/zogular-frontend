@@ -163,7 +163,7 @@ export default function AdminBuyersPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `zamoyo-buyers-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `zogular-buyers-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
     setLastExportedAt(new Date().toISOString());

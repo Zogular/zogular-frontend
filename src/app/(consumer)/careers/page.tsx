@@ -1,13 +1,13 @@
-import { MarketplaceInfoPage } from "@/components/consumer/MarketplaceInfoPage";
+import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
 export default function CareersPage() {
   return (
-    <MarketplaceInfoPage
-      title="Careers at Zamoyo"
+    <ZogularInfoPage
+      title="Careers at Zogular"
       eyebrow="Build with us"
       tone="company"
-      description="We are growing a marketplace platform that serves real shoppers and sellers in Zambia. If you care about quality product execution and local impact, we would love to hear from you."
-      highlights={["Customer-first execution", "Marketplace operations", "Product quality", "Local impact"]}
+      description="We are growing a commerce platform that serves real shoppers and sellers in Zambia. If you care about quality product execution and local impact, we would love to hear from you."
+      highlights={["Customer-first execution", "Platform operations", "Product quality", "Local impact"]}
       stats={[
         { value: "1", label: "Mission" },
         { value: "Fast", label: "Teams" },
@@ -20,11 +20,11 @@ export default function CareersPage() {
         },
         {
           title: "Who We Need",
-          body: "We are actively interested in product engineers, marketplace operations specialists, seller success managers, and logistics-focused customer support professionals.",
+          body: "We are actively interested in product engineers, platform operations specialists, seller success managers, and logistics-focused customer support professionals.",
         },
         {
           title: "How to Apply",
-          body: "Send your profile and role interest to careers@zamoyo.com with examples of impactful work. We prioritize candidates who are practical, customer-centric, and execution focused.",
+          body: "Send your profile and role interest to careers@zogular.com with examples of impactful work. We prioritize candidates who are practical, customer-centric, and execution focused.",
         },
       ]}
       steps={[
@@ -44,14 +44,14 @@ export default function CareersPage() {
       faqs={[
         {
           question: "Are roles remote or local?",
-          answer: "Role format depends on the team, but marketplace operations and support roles may require strong local context.",
+          answer: "Role format depends on the team, but platform operations and support roles may require strong local context.",
         },
         {
           question: "What should applicants include?",
-          answer: "Include the role you want, examples of work, and the kind of marketplace problem you are excited to solve.",
+          answer: "Include the role you want, examples of work, and the kind of commerce problem you are excited to solve.",
         },
       ]}
-      ctaLabel="View Marketplace"
+      ctaLabel="Shop Zogular"
       ctaHref="/"
       secondaryCtaLabel="Seller Hub"
       secondaryCtaHref="/sell"

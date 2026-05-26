@@ -200,7 +200,7 @@ export default function AdminContentPage() {
         <AdminMetricCard title="Banners" value={workspace.banners.length} note="Homepage and promo placements" icon={<ImagePlus className="h-5 w-5" />} tone="indigo" />
         <AdminMetricCard title="Live banners" value={metrics.liveBanners} note="Currently published" icon={<Sparkles className="h-5 w-5" />} tone="emerald" />
         <AdminMetricCard title="Scheduled" value={metrics.scheduledItems} note="Queued campaigns and notices" icon={<Send className="h-5 w-5" />} tone="sky" />
-        <AdminMetricCard title="Archived" value={metrics.archivedItems} note="Hidden from marketplace surfaces" icon={<Archive className="h-5 w-5" />} tone="rose" />
+        <AdminMetricCard title="Archived" value={metrics.archivedItems} note="Hidden from storefront surfaces" icon={<Archive className="h-5 w-5" />} tone="rose" />
       </div>
 
       {loading ? (
@@ -268,12 +268,12 @@ export default function AdminContentPage() {
           <div className="space-y-6">
             <section className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
               <h2 className="text-lg font-black text-zinc-950">Announcement composer</h2>
-              <p className="text-sm font-bold text-zinc-500">Schedule marketplace, admin, or seller-facing notices.</p>
+              <p className="text-sm font-bold text-zinc-500">Schedule storefront, admin, or seller-facing notices.</p>
               <div className="mt-4 space-y-3">
                 <Input value={announcementTitle} onChange={(event) => setAnnouncementTitle(event.target.value)} placeholder="Announcement title" className="h-11 rounded-xl border-zinc-200 bg-white" />
                 <Textarea value={announcementBody} onChange={(event) => setAnnouncementBody(event.target.value)} placeholder="Announcement body" className="min-h-28 rounded-2xl border-zinc-200 bg-white" />
                 <select value={announcementChannel} onChange={(event) => setAnnouncementChannel(event.target.value as Announcement["channel"])} className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
-                  <option value="marketplace">Marketplace</option>
+                  <option value="marketplace">Storefront</option>
                   <option value="seller_portal">Seller portal</option>
                   <option value="admin">Admin</option>
                 </select>

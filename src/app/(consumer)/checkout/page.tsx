@@ -82,7 +82,7 @@ export default function CheckoutPage() {
     setSubmitting(true);
     try {
       await syncWithBackend();
-      const order = createCheckoutOrder({
+      const order = await createCheckoutOrder({
         items,
         contact: {
           firstName: contact.firstName.trim(),
@@ -101,7 +101,7 @@ export default function CheckoutPage() {
       clearCart();
       router.push(`/success?orderId=${encodeURIComponent(order.id)}`);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Could not sync your cart before checkout.");
+      setSubmitError(error instanceof Error ? error.message : "Could not place your order.");
       setSubmitting(false);
     }
   };
@@ -328,7 +328,7 @@ export default function CheckoutPage() {
                   <ShieldCheck className="h-4 w-4" /> 256-bit Secure Encryption
                 </div>
                 <p className="max-w-62.5 text-center text-[10px] font-medium leading-relaxed text-zinc-400">
-                  By placing your order, you agree to Zamoyo&apos;s Terms of Service and Privacy Policy.
+                  By placing your order, you agree to Zogular&apos;s Terms of Service and Privacy Policy.
                 </p>
               </div>
             </div>

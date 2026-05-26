@@ -32,7 +32,7 @@ export default function NotFound() {
       </h1>
 
       <p className="mb-8 max-w-md text-sm font-medium leading-relaxed text-zinc-500 md:text-base">
-        Looks like this page or product is still being built, or the link you followed is broken. Let&apos;s get you back to the marketplace.
+        Looks like this page or product is still being built, or the link you followed is broken. Let&apos;s get you back to Zogular.
       </p>
 
       <div className="flex w-full max-w-sm flex-col gap-3 sm:flex-row">

@@ -12,7 +12,7 @@ import { Input } from "@/components/ui/input";
 import { submitSellerApplication } from "@/services/auth";
 import { toast } from "sonner";
 
-export default function SellOnZamoyoLanding() {
+export default function SellOnZogularLanding() {
   const router = useRouter();
   const [step, setStep] = useState(1);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -76,7 +76,7 @@ export default function SellOnZamoyoLanding() {
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-[#009E49] text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.5)]">
                   Z
                 </div>
-                <span className="text-2xl font-black tracking-tight text-white drop-shadow-md">Zamoyo Seller</span>
+                <span className="text-2xl font-black tracking-tight text-white drop-shadow-md">Zogular Seller</span>
               </div>
               <div>
                 <h1 className="mb-2 text-3xl font-extrabold tracking-tighter text-white drop-shadow-sm md:text-4xl">
@@ -215,7 +215,7 @@ export default function SellOnZamoyoLanding() {
         <div className="pointer-events-none absolute left-1/2 top-0 h-100 w-full max-w-3xl -translate-x-1/2 rounded-full bg-[#009E49]/10 blur-[120px]"></div>
         <div className="relative z-10 mx-auto max-w-7xl">
           <div className="mb-16 text-center">
-            <h2 className="mb-4 text-3xl font-black tracking-tight text-white md:text-5xl">Why sell on Zamoyo?</h2>
+            <h2 className="mb-4 text-3xl font-black tracking-tight text-white md:text-5xl">Why sell on Zogular?</h2>
             <p className="mx-auto max-w-2xl text-lg font-medium text-zinc-400">We built this platform specifically for Zambian businesses to scale without the technical headaches.</p>
           </div>
 
@@ -268,7 +268,7 @@ export default function SellOnZamoyoLanding() {
               </div>
               <div className="w-[calc(100%-4rem)] rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-colors group-hover:border-[#009E49]/50 md:w-[calc(50%-3rem)]">
                 <h3 className="mb-2 text-xl font-bold text-white">Get Verified</h3>
-                <p className="text-sm text-zinc-400">Our team reviews your ID and shop details within 24 hours to ensure a safe marketplace.</p>
+                <p className="text-sm text-zinc-400">Our team reviews your ID and shop details within 24 hours to ensure a safe platform.</p>
               </div>
             </div>
 
@@ -290,7 +290,7 @@ export default function SellOnZamoyoLanding() {
           <div className="pointer-events-none absolute left-1/2 top-0 h-32 w-full -translate-x-1/2 rounded-full bg-[#009E49]/20 blur-[60px]"></div>
           <Mail className="relative z-10 mx-auto mb-6 h-10 w-10 text-[#009E49]" />
           <h2 className="relative z-10 mb-4 text-3xl font-black tracking-tight text-white">Not ready to sell yet?</h2>
-          <p className="relative z-10 mb-8 font-medium text-zinc-400">Subscribe to our seller newsletter. Get tips on scaling your physical shop, local e-commerce trends, and updates on Zamoyo.</p>
+          <p className="relative z-10 mb-8 font-medium text-zinc-400">Subscribe to our seller newsletter. Get tips on scaling your physical shop, local e-commerce trends, and updates on Zogular.</p>
           <div className="relative z-10 mx-auto flex max-w-md flex-col gap-3 sm:flex-row">
             <Input type="email" placeholder="Enter your email" className="h-12 rounded-xl border-white/10 bg-black/50 text-white placeholder:text-white/40 transition-all focus-visible:ring-[#009E49]" />
             <Button className="h-12 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white transition-all hover:bg-[#00d663] sm:w-auto">
