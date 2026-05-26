@@ -3,6 +3,7 @@ import {
   clearStoredAuthSession,
   getLastAuthEmail,
   getStoredAuthUser,
+  storeAccessToken,
   storeAuthSession,
   storeAuthUser,
   storeLastAuthEmail,
@@ -283,17 +284,24 @@ export async function login(input: LoginInput): Promise<AuthSession> {
     );
   }
 
+  const accessToken = extractAccessToken(payload);
+  if (accessToken) storeAccessToken(accessToken);
+
   let user: AuthUser;
   try {
-    user = await getCurrentUser();
+    user = normalizeUser(payload, input.email);
   } catch (error) {
-    clearStoredAuthSession();
-    throw error;
+    try {
+      user = await getCurrentUser();
+    } catch {
+      clearStoredAuthSession();
+      throw error;
+    }
   }
 
   const session: AuthSession = {
     user,
-    accessToken: extractAccessToken(payload),
+    accessToken,
   };
 
   storeAuthSession(session);

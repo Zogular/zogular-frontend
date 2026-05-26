@@ -114,6 +114,8 @@ export function getAuthSessionSnapshot(): string {
 export function storeAuthSession(session: AuthSession): void {
   removeStoredAccessToken();
   removeStoredRefreshToken();
+  if (session.accessToken) storeAccessToken(session.accessToken);
+  if (session.refreshToken) storeRefreshToken(session.refreshToken);
   storeAuthUser(session.user);
   storeLastAuthEmail(session.user.email);
   notifyAuthSessionChanged();

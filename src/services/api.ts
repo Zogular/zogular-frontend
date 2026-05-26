@@ -15,8 +15,12 @@ export class ApiError extends Error {
   }
 }
 
-const BASE_URL =
+const REMOTE_BASE_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+const BROWSER_BASE_URL = process.env.NEXT_PUBLIC_API_PROXY_URL || "/api/backend";
+
+const BASE_URL =
+  typeof window === "undefined" ? REMOTE_BASE_URL : BROWSER_BASE_URL;
 
 type CsrfMode = "body" | "query" | "header";
 
@@ -67,6 +71,17 @@ function getCsrfMode(csrf: FetchOptions["csrf"]): CsrfMode {
 }
 
 function extractMessage(payload: unknown, fallback: string): string {
+  if (payload && typeof payload === "object" && "errors" in payload) {
+    const errors = (payload as { errors?: unknown }).errors;
+    if (Array.isArray(errors)) {
+      const firstError = errors.find((error) => error && typeof error === "object");
+      if (firstError && "message" in firstError) {
+        const message = (firstError as { message?: unknown }).message;
+        if (typeof message === "string" && message.trim()) return message;
+      }
+    }
+  }
+
   if (payload && typeof payload === "object" && "message" in payload) {
     const message = (payload as { message?: unknown }).message;
     if (typeof message === "string" && message.trim()) return message;
