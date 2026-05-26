@@ -60,7 +60,7 @@ export default function CategoriesDirectoryPage() {
               All Categories
             </h1>
             <p className="mt-3 text-sm font-medium text-zinc-500 md:text-base">
-              Browse the entire Zamoyo marketplace. Find electronics, fashion, groceries, and everything in between from trusted Lusaka sellers.
+              Browse the entire Zogular platform. Find electronics, fashion, groceries, and everything in between from trusted Lusaka sellers.
             </p>
             <Link href="/products" className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-900 px-5 text-sm font-black text-white shadow-md transition-colors hover:bg-zinc-800">
               Shop All Products

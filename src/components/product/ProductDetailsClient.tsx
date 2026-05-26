@@ -236,7 +236,7 @@ export function ProductDetailsClient({
     productData.variants.find((variant) => variant.id === selectedVariantId) ??
     productData.variants[0];
   const stockMeta = getStockMeta(productData.stock);
-  const brandLabel = productData.brand === "Zamoyo" ? "Verified listing" : `Brand: ${productData.brand}`;
+  const brandLabel = productData.brand === "Zogular" ? "Verified listing" : `Brand: ${productData.brand}`;
   const hasDiscount = productData.originalPrice > productData.price;
   const ratingBreakdownRows = [5, 4, 3, 2, 1].map((stars) => ({ stars, pct: 0, count: 0 }));
 
@@ -330,7 +330,7 @@ export function ProductDetailsClient({
 
             <div className="hidden flex-col gap-2 pt-1 md:flex">
               <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-                <ShieldCheck className="h-4 w-4 text-[#009E49]" /> Safe & Secure Payments via Zamoyo
+                <ShieldCheck className="h-4 w-4 text-[#009E49]" /> Safe & Secure Payments via Zogular
               </div>
             </div>
 

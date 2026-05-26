@@ -338,7 +338,7 @@ export default function AdminAccessPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-zinc-950 text-emerald-300 border border-zinc-800 shadow-lg shadow-zinc-900/20"><Key className="h-5 w-5" /></div>
               <div>
                 <h2 className="text-xl font-black text-zinc-900 leading-tight">Invite Team Member</h2>
-                <p className="text-xs font-medium text-zinc-500">Grant secure access to the Zamoyo Admin Hub.</p>
+                <p className="text-xs font-medium text-zinc-500">Grant secure access to the Zogular Admin Hub.</p>
               </div>
             </div>
 
@@ -363,7 +363,7 @@ export default function AdminAccessPage() {
                     type="email"
                     value={newAdminEmail} 
                     onChange={(e) => setNewAdminEmail(e.target.value)}
-                    placeholder="name@zamoyo.com" 
+                    placeholder="name@zogular.com"
                     className="h-11 rounded-xl bg-zinc-50 pl-9 text-sm font-medium shadow-inner focus-visible:ring-zinc-900"
                     disabled={isInviting}
                   />

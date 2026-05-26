@@ -20,7 +20,7 @@ export interface PaymentProviderConfig {
   processingFeeBearer: FeeBearer;
 }
 
-export interface MarketplaceFinanceConfig {
+export interface PlatformFinanceConfig {
   defaultCommissionPercentage: number;
   categoryCommissionRules: CommissionRule[];
   payoutFee: PayoutFeeRule;
@@ -57,7 +57,7 @@ export interface PayoutQuote {
   sellerReceives: number;
 }
 
-export const DEFAULT_MARKETPLACE_FINANCE_CONFIG: MarketplaceFinanceConfig = {
+export const DEFAULT_PLATFORM_FINANCE_CONFIG: PlatformFinanceConfig = {
   defaultCommissionPercentage: 10,
   categoryCommissionRules: [],
   payoutFee: {
@@ -73,26 +73,26 @@ export const DEFAULT_MARKETPLACE_FINANCE_CONFIG: MarketplaceFinanceConfig = {
   },
 };
 
-let activeMarketplaceFinanceConfig: MarketplaceFinanceConfig = DEFAULT_MARKETPLACE_FINANCE_CONFIG;
+let activePlatformFinanceConfig: PlatformFinanceConfig = DEFAULT_PLATFORM_FINANCE_CONFIG;
 
-export async function getMarketplaceFinanceConfig(): Promise<MarketplaceFinanceConfig> {
-  return structuredClone(activeMarketplaceFinanceConfig);
+export async function getPlatformFinanceConfig(): Promise<PlatformFinanceConfig> {
+  return structuredClone(activePlatformFinanceConfig);
 }
 
-export function getActiveMarketplaceFinanceConfig(): MarketplaceFinanceConfig {
-  return activeMarketplaceFinanceConfig;
+export function getActivePlatformFinanceConfig(): PlatformFinanceConfig {
+  return activePlatformFinanceConfig;
 }
 
-export async function updateMarketplaceFinanceConfig(
-  nextConfig: MarketplaceFinanceConfig,
-): Promise<MarketplaceFinanceConfig> {
-  activeMarketplaceFinanceConfig = structuredClone(nextConfig);
-  return getMarketplaceFinanceConfig();
+export async function updatePlatformFinanceConfig(
+  nextConfig: PlatformFinanceConfig,
+): Promise<PlatformFinanceConfig> {
+  activePlatformFinanceConfig = structuredClone(nextConfig);
+  return getPlatformFinanceConfig();
 }
 
 export function getCommissionPercentage(
   categorySlug: string | undefined,
-  config: MarketplaceFinanceConfig = DEFAULT_MARKETPLACE_FINANCE_CONFIG,
+  config: PlatformFinanceConfig = DEFAULT_PLATFORM_FINANCE_CONFIG,
 ): number {
   const categoryRule = config.categoryCommissionRules.find(
     (rule) => rule.scope === "category" && rule.categorySlug === categorySlug,
@@ -104,7 +104,7 @@ export function getCommissionPercentage(
 export function calculateCommission(
   productSubtotal: number,
   categorySlug?: string,
-  config: MarketplaceFinanceConfig = DEFAULT_MARKETPLACE_FINANCE_CONFIG,
+  config: PlatformFinanceConfig = DEFAULT_PLATFORM_FINANCE_CONFIG,
 ): number {
   const percentage = getCommissionPercentage(categorySlug, config);
   return roundMoney(productSubtotal * (percentage / 100));
@@ -112,7 +112,7 @@ export function calculateCommission(
 
 export function calculateSellerOrderEarnings(
   input: SellerOrderEarningsInput,
-  config: MarketplaceFinanceConfig = DEFAULT_MARKETPLACE_FINANCE_CONFIG,
+  config: PlatformFinanceConfig = DEFAULT_PLATFORM_FINANCE_CONFIG,
 ): SellerOrderEarnings {
   const commission = calculateCommission(input.productSubtotal, input.categorySlug, config);
   const sellerBorneAdjustments = Math.max(0, input.sellerBorneAdjustments ?? 0);
@@ -127,7 +127,7 @@ export function calculateSellerOrderEarnings(
 
 export function calculatePayoutQuote(
   amount: number,
-  rule: PayoutFeeRule = DEFAULT_MARKETPLACE_FINANCE_CONFIG.payoutFee,
+  rule: PayoutFeeRule = DEFAULT_PLATFORM_FINANCE_CONFIG.payoutFee,
 ): PayoutQuote {
   const requestedAmount = Math.max(0, amount);
   const percentageFee = requestedAmount * (rule.percentage / 100);

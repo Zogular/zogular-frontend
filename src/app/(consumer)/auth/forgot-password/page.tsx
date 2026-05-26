@@ -6,6 +6,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { requestPasswordReset } from "@/services/auth";
 
 export default function ForgotPasswordPage() {
@@ -43,11 +44,8 @@ export default function ForgotPasswordPage() {
 
         <div className="mx-auto w-full max-w-90">
           <div className="mb-8 space-y-4 text-center lg:text-left">
-            <div className="flex items-center justify-center gap-2 lg:justify-start">
-              <div className="flex h-7 w-7 items-center justify-center rounded-md border border-white/20 bg-[#009E49] text-sm font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.5)]">
-                Z
-              </div>
-              <span className="text-xl font-black tracking-tight text-white drop-shadow-md">Zamoyo</span>
+            <div className="flex items-center justify-center lg:justify-start">
+              <BrandLogo variant="dark" imageClassName="h-9 w-auto drop-shadow-md" priority />
             </div>
 
             <div className="space-y-2">
@@ -104,7 +102,7 @@ export default function ForgotPasswordPage() {
 
         <div className="max-w-lg rounded-3xl border border-white/10 bg-black/30 p-8 shadow-2xl backdrop-blur-md">
           <h2 className="mb-4 text-4xl font-extrabold leading-tight tracking-tighter text-white drop-shadow-lg xl:text-5xl">
-            Empowering Zambia&apos;s Marketplace.
+            Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
             Join thousands of sellers and buyers connecting every day on the fastest growing e-commerce platform in Lusaka.

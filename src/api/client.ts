@@ -1,13 +1,14 @@
 import axios from "axios";
+import { readLocalStorageValue } from "@/lib/persisted-storage";
 
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
 
-const SELLER_TOKEN_KEY = "zamoyo_seller_token";
+const SELLER_TOKEN_KEY = "zogular_seller_token";
 
 function getSellerToken(): string | null {
   if (typeof window === "undefined") return null;
-  return window.localStorage.getItem(SELLER_TOKEN_KEY);
+  return readLocalStorageValue(SELLER_TOKEN_KEY, ["zamoyo_seller_token"]);
 }
 
 export const apiClient = axios.create({

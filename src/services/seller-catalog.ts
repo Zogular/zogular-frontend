@@ -1,4 +1,5 @@
 import type { Product, ProductDetail, ProductSpec, ProductVariant } from "@/types/product";
+import { readLocalStorageValue } from "@/lib/persisted-storage";
 import {
   type ProductModerationState,
   type ProductModerationStatus,
@@ -87,8 +88,9 @@ export interface SellerProductModerationInput extends ProductModerationState {
   status: SellerProductStatus;
 }
 
-const SELLER_PRODUCTS_STORAGE_KEY = "zamoyo-seller-products";
-const DEFAULT_SELLER = { name: "Zamoyo Store", slug: "zamoyo-official", verified: true };
+const SELLER_PRODUCTS_STORAGE_KEY = "zogular-seller-products";
+const LEGACY_SELLER_PRODUCTS_STORAGE_KEYS = ["zamoyo-seller-products"];
+const DEFAULT_SELLER = { name: "Zogular Store", slug: "zogular-official", verified: true };
 const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1200&q=80";
 
 export const SELLER_CATALOG_CATEGORIES: SellerCatalogCategory[] = [
@@ -388,7 +390,7 @@ export function sellerProductToProductDetail(product: SellerProductListing): Pro
     id: product.id,
     slug: product.slug,
     title: product.title,
-    brand: product.brand || "Zamoyo",
+    brand: product.brand || "Zogular",
     category: { name: product.categoryName, href: `/category/${product.categorySlug}` },
     subcategory: {
       name: product.subcategoryName,
@@ -412,7 +414,7 @@ export function sellerProductToProductDetail(product: SellerProductListing): Pro
     shippingText:
       product.deliveryType === "express"
         ? "Express delivery available in supported Zambia delivery zones."
-        : "Standard Zamoyo delivery or pickup is available after checkout.",
+        : "Standard Zogular delivery or pickup is available after checkout.",
     images,
     variants: product.variants.length ? product.variants.map(toProductVariant) : defaultVariants(product),
     description: product.description,
@@ -457,7 +459,7 @@ function readStoredSellerProducts(): SellerProductListing[] {
   if (!storage) return [];
 
   try {
-    const raw = storage.getItem(SELLER_PRODUCTS_STORAGE_KEY);
+    const raw = readLocalStorageValue(SELLER_PRODUCTS_STORAGE_KEY, LEGACY_SELLER_PRODUCTS_STORAGE_KEYS);
     return raw ? (JSON.parse(raw) as SellerProductListing[]) : [];
   } catch {
     return [];
@@ -499,7 +501,7 @@ function buildSeedProduct(input: {
     title: input.title,
     brand: input.brand,
     condition: "new",
-    description: `${input.title} from ${input.brand}, listed by a verified Zamoyo seller for Zambia shoppers.`,
+    description: `${input.title} from ${input.brand}, listed by a verified Zogular seller for Zambia shoppers.`,
     categoryName: category.name,
     categorySlug: category.slug,
     subcategoryName: subcategory.name,
@@ -519,8 +521,8 @@ function buildSeedProduct(input: {
       { name: "Condition", value: "Brand New" },
     ],
     seo: {
-      metaTitle: `${input.title} | Zamoyo`,
-      metaDescription: `Buy ${input.title} in Zambia through Zamoyo.`,
+      metaTitle: `${input.title} | Zogular`,
+      metaDescription: `Buy ${input.title} in Zambia through Zogular.`,
     },
     seller: DEFAULT_SELLER,
     moderation: normalizeModerationState(input.status, undefined, now),

@@ -241,8 +241,8 @@ export default function AddProductPage() {
       variants: buildVariants(hasVariants, variantOptions, finalSKU, Number(stock)),
       specifications: specs.filter((s) => s.name.trim() && s.value.trim()),
       seo: {
-        metaTitle: seo.title.trim() || `${productName.trim()} | Zamoyo`,
-        metaDescription: seo.description.trim() || `Buy ${productName.trim()} in Lusaka on Zamoyo. Best prices and fast delivery available.`,
+        metaTitle: seo.title.trim() || `${productName.trim()} | Zogular`,
+        metaDescription: seo.description.trim() || `Buy ${productName.trim()} in Lusaka on Zogular. Best prices and fast delivery available.`,
       },
     };
 

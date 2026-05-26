@@ -29,7 +29,7 @@ export interface AdminIdentity {
 export const CURRENT_ADMIN_IDENTITY: AdminIdentity = {
   id: CURRENT_ADMIN_FALLBACK.id,
   name: CURRENT_ADMIN_FALLBACK.name,
-  email: "danny@zamoyo.com",
+  email: "danny@zogular.com",
   claims: {
     role: CURRENT_ADMIN_FALLBACK.role,
     authStrength: "mfa_ready",

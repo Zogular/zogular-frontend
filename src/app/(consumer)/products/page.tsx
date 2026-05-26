@@ -66,13 +66,13 @@ export default async function AllProductsPage({
             <div>
               <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/10 px-3 py-1.5 text-xs font-black text-white backdrop-blur-md">
                 <Grid3X3 className="h-3.5 w-3.5 text-[#FF6B00]" />
-                Marketplace catalog
+                Zogular catalog
               </div>
               <h1 className="text-4xl font-black tracking-tighter text-white drop-shadow-md md:text-6xl">
                 Shop All Products
               </h1>
               <p className="mt-3 max-w-xl text-sm font-medium text-zinc-400 md:text-base">
-                Browse every Zamoyo product in one place, then narrow down by category, price, rating, or seller.
+                Browse every Zogular product in one place, then narrow down by category, price, rating, or seller.
               </p>
             </div>
 
@@ -107,7 +107,7 @@ export default async function AllProductsPage({
 
         <div className="mb-5 flex items-center justify-between gap-4">
           <p className="text-sm font-black text-zinc-900">
-            Showing marketplace products
+            Showing Zogular products
           </p>
           <Link href="/categories" className="text-xs font-black text-[#009E49] hover:underline">
             Browse categories

@@ -27,7 +27,7 @@ export default async function SearchPage({
               <p className="mt-1 text-sm font-medium text-zinc-500">
                 {query
                   ? `Showing results for "${query}".`
-                  : "Search products and categories from across Zamoyo."}
+                  : "Search products and categories from across Zogular."}
               </p>
             </div>
           </div>

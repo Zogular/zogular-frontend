@@ -6,11 +6,12 @@ import { useState } from "react";
 import { CircleHelp, CreditCard, Package, Send, ShieldCheck, Smartphone, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { toast } from "sonner";
 
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
-  { label: "About Zamoyo", href: "/about" },
+  { label: "About Zogular", href: "/about" },
   { label: "Careers", href: "/careers" },
   { label: "Become a Seller", href: "/sell" }, // Fixed route
   { label: "Terms & Conditions", href: "/terms" },
@@ -57,7 +58,7 @@ export function Footer() {
     setTimeout(() => {
       setIsSubmitting(false);
       setEmail("");
-      toast.success("Welcome to the Zamoyo Insider list!");
+      toast.success("Welcome to the Zogular Insider list!");
     }, 700);
   };
 
@@ -71,13 +72,9 @@ export function Footer() {
           
           {/* Brand & App Download */}
           <div className="space-y-4 lg:col-span-2">
-            <Link href="/" className="inline-block rounded-lg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900">
-              <span className="text-2xl md:text-3xl font-black tracking-tighter text-white">
-                ZAMOYO<span className="text-[#FF6B00]">.</span>
-              </span>
-            </Link>
+            <BrandLogo href="/" variant="dark" imageClassName="h-10 w-auto md:h-12" className="focus-visible:ring-offset-zinc-900" />
             <p className="text-xs md:text-sm text-zinc-400 max-w-sm leading-relaxed">
-              Zambia&apos;s premier shopping marketplace. Connecting trusted sellers with buyers across Lusaka.
+              Zambia&apos;s premier online shopping platform. Connecting trusted sellers with buyers across Lusaka.
             </p>
             
             <div className="flex flex-wrap gap-2 pt-1">
@@ -161,7 +158,7 @@ export function Footer() {
         {/* Bottom Bar: Copyright & Payments */}
         <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-zinc-900 gap-4">
           <p className="text-[10px] md:text-xs text-zinc-500">
-            &copy; {new Date().getFullYear()} Zamoyo. All rights reserved.
+            &copy; {new Date().getFullYear()} Zogular. All rights reserved.
           </p>
           
           <div className="flex items-center gap-4">

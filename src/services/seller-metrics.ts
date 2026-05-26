@@ -64,7 +64,7 @@ export interface SellerDashboardData {
     payoutAvailable: number;
     payoutPending: number;
     salesRevenue: number;
-    zamoyoCommission: number;
+    zogularCommission: number;
     withdrawalFees: number;
   };
 }
@@ -185,7 +185,7 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
       payoutAvailable: wallet.balances.availableBalance,
       payoutPending: wallet.balances.pendingBalance,
       salesRevenue: sumRevenue(revenueOrders),
-      zamoyoCommission: roundMoney(revenueOrders.reduce((sum, order) => sum + order.earnings.commission, 0)),
+      zogularCommission: roundMoney(revenueOrders.reduce((sum, order) => sum + order.earnings.commission, 0)),
       withdrawalFees: wallet.balances.totalPayoutFeesPaid,
     },
   };

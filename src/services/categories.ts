@@ -122,7 +122,7 @@ const HERO_BANNERS: HeroBanner[] = [
   {
     id: "banner_1",
     title: "Grand Opening Sale",
-    subtitle: "Welcome to Zamoyo. Shop across all categories with massive discounts.",
+    subtitle: "Welcome to Zogular. Shop across all categories with massive discounts.",
     image: "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=2070&q=80",
     ctaLabel: "Start Shopping",
     ctaHref: "/products",

@@ -8,7 +8,9 @@ import {
   Plus, Settings, ShoppingCart, Store, TrendingUp, Wallet, Boxes, PanelLeftClose, PanelLeftOpen, MoreHorizontal, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import { cn } from "@/lib/utils";
+import { readLocalStorageValue } from "@/lib/persisted-storage";
 
 // --- TYPES & NAV DATA ---
 type SellerNavItem = {
@@ -115,11 +117,11 @@ function MobileNavLink({ href, label, Icon, isActive }: NavLinkProps) {
 }
 
 // --- MAIN LAYOUT COMPONENT ---
-const SELLER_SIDEBAR_COLLAPSED_KEY = "zamoyo_seller_sidebar_collapsed";
+const SELLER_SIDEBAR_COLLAPSED_KEY = "zogular_seller_sidebar_collapsed";
 
 function getInitialSidebarCollapsed() {
   if (typeof window === "undefined") return false;
-  return window.localStorage.getItem(SELLER_SIDEBAR_COLLAPSED_KEY) === "true";
+  return readLocalStorageValue(SELLER_SIDEBAR_COLLAPSED_KEY, ["zamoyo_seller_sidebar_collapsed"]) === "true";
 }
 
 export default function SellerLayout({ children }: { children: ReactNode }) {
@@ -149,11 +151,9 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           ========================================= */}
       <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#143320] bg-[#0A1A10] p-4 text-white shadow-sm md:hidden">
         <div className="flex items-center gap-3 min-w-0">
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[#009E49] text-lg font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.4)]">
-            Z
-          </div>
+          <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-black tracking-tight text-white">Zamoyo Store</h1>
+            <h1 className="truncate text-sm font-black tracking-tight text-white">Zogular Store</h1>
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#009E49]">{pageTitle}</p>
           </div>
         </div>
@@ -185,15 +185,13 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         <div className={cn("flex h-18 items-center border-b border-[#143320] transition-all duration-300", sidebarCollapsed ? "justify-center px-3" : "px-5")}>
           <Link
             href="/seller"
-            aria-label="Zamoyo Seller Hub"
-            title={sidebarCollapsed ? "Zamoyo Seller Hub" : undefined}
+            aria-label="Zogular Seller Hub"
+            title={sidebarCollapsed ? "Zogular Seller Hub" : undefined}
             className={cn("flex min-w-0 items-center rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A1A10]", sidebarCollapsed ? "justify-center" : "gap-3")}
           >
-            <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-[#009E49] text-lg font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.5)]">
-              Z
-            </div>
+            <BrandLogo mode="icon" variant="dark" imageClassName="h-8 w-8 rounded-xl shadow-[0_0_15px_rgba(0,158,73,0.5)]" />
             <div className={cn("flex min-w-0 flex-col overflow-hidden transition-all duration-300", sidebarCollapsed ? "w-0 opacity-0" : "w-36 opacity-100")}>
-              <span className="leading-none text-lg font-black tracking-tight text-white">Zamoyo</span>
+              <span className="leading-none text-lg font-black tracking-tight text-white">Zogular</span>
               <span className="mt-0.5 text-[9px] font-bold uppercase tracking-[0.2em] text-[#009E49]">Seller Hub</span>
             </div>
           </Link>
@@ -289,7 +287,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
                 ZS
               </div>
               <div className="leading-none">
-                <p className="text-sm font-bold text-zinc-900">Zamoyo Store</p>
+                <p className="text-sm font-bold text-zinc-900">Zogular Store</p>
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mt-0.5">Admin</p>
               </div>
             </Link>

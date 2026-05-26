@@ -79,7 +79,7 @@ export async function POST(request: Request) {
   const identity = buildAdminIdentity(payload, email);
   if (!identity) {
     return NextResponse.json(
-      { message: "This account is not authorized for the Zamoyo admin panel." },
+      { message: "This account is not authorized for the Zogular admin panel." },
       { status: 403 },
     );
   }

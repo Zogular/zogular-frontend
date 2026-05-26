@@ -142,7 +142,7 @@ export default function AdminSellersPage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `zamoyo-sellers-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `zogular-sellers-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
     toast.success(`Exported ${filteredSellers.length} seller records.`);
@@ -413,7 +413,7 @@ export default function AdminSellersPage() {
               <section className="rounded-3xl border border-zinc-100 bg-white p-4">
                 <h3 className="text-sm font-black text-zinc-950">Seller timeline</h3>
                 <div className="mt-3 space-y-2 text-sm font-bold text-zinc-600">
-                  <p className="rounded-2xl bg-zinc-50 p-3">Joined Zamoyo on {formatDate(selectedSeller.joinedAt)}</p>
+                  <p className="rounded-2xl bg-zinc-50 p-3">Joined Zogular on {formatDate(selectedSeller.joinedAt)}</p>
                   <p className="rounded-2xl bg-zinc-50 p-3">Verification status: {VERIFICATION_UI[selectedSeller.verificationStatus].label}</p>
                   <p className="rounded-2xl bg-zinc-50 p-3">Operational status: {STATUS_UI[selectedSeller.status].label}</p>
                 </div>

@@ -141,7 +141,7 @@ export default function SellerDashboard() {
       {/* KPI HERO CARDS */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         
-        {/* Total Revenue (Zamoyo Gradient v4) */}
+        {/* Total Revenue (Zogular Gradient v4) */}
         <div className="relative overflow-hidden rounded-3xl border border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] p-4 text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)] md:p-5">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10 blur-xl" />
           <div className="mb-3 flex items-center justify-between">

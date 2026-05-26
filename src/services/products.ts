@@ -624,7 +624,7 @@ const CATEGORY_META: Record<string, CategoryPageData["meta"]> = {
   },
   "health-and-beauty": {
     title: "Health & Beauty",
-    description: "Discover skincare, wellness, grooming, and beauty essentials from trusted Zamoyo sellers.",
+    description: "Discover skincare, wellness, grooming, and beauty essentials from trusted Zogular sellers.",
     subcategories: [
       { id: "all", slug: "all", name: "All" },
       { id: "skincare", slug: "skincare", name: "Skincare" },
@@ -944,7 +944,7 @@ function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
     .map((part) => asString(part))
     .filter(Boolean)
     .join(" ");
-  const brand = asString(product.brand) ?? "Zamoyo";
+  const brand = asString(product.brand) ?? "Zogular";
 
   return {
     id: summary.id,
@@ -960,20 +960,20 @@ function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
     reviewCount: summary.reviews,
     badge: summary.badge ?? null,
     seller: {
-      name: sellerName || "Zamoyo Seller",
-      href: `/store/${normalizeToSlug(sellerName || "zamoyo-seller")}`,
+      name: sellerName || "Zogular Seller",
+      href: `/store/${normalizeToSlug(sellerName || "zogular-seller")}`,
       avatar: "https://github.com/shadcn.png",
       verified: false,
-      positiveRate: "Marketplace seller",
+      positiveRate: "Platform seller",
       followers: asString(product.location) ?? "Zambia",
     },
     stock: product.isSold ? 0 : 99,
     shippingText: "Delivery options and exact availability are confirmed at checkout.",
     images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
     variants: buildBackendProductVariants(product),
-    description: asString(product.description) ?? `${title} is available from a Zamoyo marketplace seller.`,
+    description: asString(product.description) ?? `${title} is available from a Zogular platform seller.`,
     specs: buildBackendProductSpecs(product),
-    boxItems: [title, "Seller provided packaging", "Zamoyo order receipt"],
+    boxItems: [title, "Seller provided packaging", "Zogular order receipt"],
   };
 }
 
@@ -1045,7 +1045,7 @@ function dedupeProducts(products: Product[]): Product[] {
   });
 }
 
-function buildMarketplaceCatalogProducts(): Product[] {
+function buildPlatformCatalogProducts(): Product[] {
   const baseProducts = dedupeProducts([
     ...TRENDING_PRODUCTS,
     ...FLASH_SALE_PRODUCTS,
@@ -1138,7 +1138,7 @@ export async function getCategoryPageData(
   } = {},
 ): Promise<CategoryPageData> {
   const backendCategory = getBackendCategoryForSlug(slug);
-  const categoryProducts = buildMarketplaceCatalogProducts().filter((product) => {
+  const categoryProducts = buildPlatformCatalogProducts().filter((product) => {
     const normalizedCategory =
       product.categoryName?.toLowerCase().replace(/ & /g, " and ").replace(/\s+/g, "-") ?? "";
     return normalizedCategory === slug;
@@ -1209,7 +1209,7 @@ function stableNumber(seed: string, min: number, max: number): number {
 }
 
 function getCatalogProducts(): Product[] {
-  return buildMarketplaceCatalogProducts();
+  return buildPlatformCatalogProducts();
 }
 
 function buildProductDetailFromProduct(product: Product, requestedSlug: string): ProductDetail {
@@ -1228,7 +1228,7 @@ function buildProductDetailFromProduct(product: Product, requestedSlug: string):
     Math.round(product.price * 1.15);
   const reviewCount = Math.max(1, product.reviews);
   const rating = Number((product.rating || 4.6).toFixed(1));
-  const brand = title.split(" ")[0] || "Zamoyo";
+  const brand = title.split(" ")[0] || "Zogular";
   const stock = stableNumber(requestedSlug, 3, 24);
 
   return {
@@ -1250,7 +1250,7 @@ function buildProductDetailFromProduct(product: Product, requestedSlug: string):
     badge: product.badge ?? (product.isNew ? "New" : null),
     seller: {
       ...PRODUCT_DETAIL_MOCK.seller,
-      name: `${brand} Marketplace`,
+      name: `${brand} Storefront`,
       href: `/store/${sellerSlug}`,
     },
     stock,
@@ -1260,8 +1260,8 @@ function buildProductDetailFromProduct(product: Product, requestedSlug: string):
         : "Ready for delivery between tomorrow and the next business day.",
     images: [mainImage, ...PRODUCT_DETAIL_MOCK.images.filter((image) => image !== mainImage)].slice(0, 4),
     description:
-      `${title} is part of Zamoyo's curated catalog for Zambia shoppers. ` +
-      "You get reliable local delivery, verified sellers, and marketplace support from checkout to arrival.",
+      `${title} is part of Zogular's curated catalog for Zambia shoppers. ` +
+      "You get reliable local delivery, verified sellers, and Zogular support from checkout to arrival.",
     specs: [
       { label: "Category", value: categoryName },
       { label: "Subcategory", value: subcategoryName },

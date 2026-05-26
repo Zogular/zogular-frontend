@@ -15,7 +15,7 @@ export type Permission =
   | "view_sellers" | "approve_sellers" | "suspend_sellers" | "edit_commission"
   // Buyers
   | "view_buyers" | "ban_buyers"
-  // Marketplace
+  // Platform
   | "view_products" | "moderate_products"
   | "view_orders" | "override_orders"
   | "manage_disputes"

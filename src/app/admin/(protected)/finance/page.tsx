@@ -137,7 +137,7 @@ export default function AdminFinancePage() {
     const url = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
     const anchor = document.createElement("a");
     anchor.href = url;
-    anchor.download = `zamoyo-finance-${activeTab}-${new Date().toISOString().slice(0, 10)}.csv`;
+    anchor.download = `zogular-finance-${activeTab}-${new Date().toISOString().slice(0, 10)}.csv`;
     anchor.click();
     URL.revokeObjectURL(url);
     toast.success(`${activeTab === "payouts" ? "Payout" : "Ledger"} CSV exported.`);
@@ -214,7 +214,7 @@ export default function AdminFinancePage() {
           <div className="absolute -right-4 -top-4 opacity-20"><TrendingUp className="h-24 w-24 text-white" /></div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-100">Net Platform Revenue</p>
           <h3 className="mt-2 text-3xl font-black text-white">{formatCurrency(metrics.netRevenue)}</h3>
-          <p className="mt-1 text-xs font-medium text-emerald-200">Zamoyo earned commission</p>
+          <p className="mt-1 text-xs font-medium text-emerald-200">Zogular earned commission</p>
         </div>
         
         <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-zinc-950 to-zinc-800 p-6 shadow-md shadow-zinc-900/20 transition-all hover:-translate-y-0.5 hover:shadow-lg">

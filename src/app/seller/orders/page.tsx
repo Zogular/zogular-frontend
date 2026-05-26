@@ -279,7 +279,7 @@ export default function SellerOrdersPage() {
     
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", `Zamoyo_Orders_${new Date().toISOString().split('T')[0]}.csv`);
+    link.setAttribute("download", `Zogular_Orders_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);

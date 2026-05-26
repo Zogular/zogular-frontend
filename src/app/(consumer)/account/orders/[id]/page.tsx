@@ -88,7 +88,7 @@ export default function InvoicePage({
       <div className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-sm sm:p-10 print:border-none print:shadow-none print:p-0">
         <div className="mb-8 flex flex-col justify-between gap-6 sm:flex-row">
           <div>
-            <h2 className="text-2xl font-black text-[#009E49]">Zamoyo</h2>
+            <h2 className="text-2xl font-black text-[#009E49]">Zogular</h2>
             <p className="mt-1 text-sm text-zinc-500">
               Plot 45, Cairo Road
               <br />

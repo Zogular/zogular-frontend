@@ -1,13 +1,13 @@
-import { MarketplaceInfoPage } from "@/components/consumer/MarketplaceInfoPage";
+import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
 export default function TermsPage() {
   return (
-    <MarketplaceInfoPage
+    <ZogularInfoPage
       title="Terms and Conditions"
-      eyebrow="Marketplace rules"
+      eyebrow="Platform rules"
       tone="policy"
-      description="These terms govern how buyers and sellers use Zamoyo. By using the platform, you agree to marketplace rules around account usage, transactions, and acceptable conduct."
-      highlights={["Account responsibility", "Transparent checkout", "Fair marketplace conduct", "Seller and buyer safeguards"]}
+      description="These terms govern how buyers and sellers use Zogular. By using the platform, you agree to platform rules around account usage, transactions, and acceptable conduct."
+      highlights={["Account responsibility", "Transparent checkout", "Fair platform conduct", "Seller and buyer safeguards"]}
       stats={[
         { value: "Fair", label: "Conduct" },
         { value: "Clear", label: "Orders" },
@@ -23,8 +23,8 @@ export default function TermsPage() {
           body: "Checkout totals, shipping fees, and payment status are shown before order confirmation. Completed orders are subject to each product's listed fulfillment and return conditions.",
         },
         {
-          title: "Marketplace Conduct",
-          body: "Fraud, counterfeit listings, abusive behavior, and attempts to bypass platform safeguards are prohibited and may lead to removal from Zamoyo.",
+          title: "Platform Conduct",
+          body: "Fraud, counterfeit listings, abusive behavior, and attempts to bypass platform safeguards are prohibited and may lead to removal from Zogular.",
         },
       ]}
       steps={[
@@ -43,12 +43,12 @@ export default function TermsPage() {
       ]}
       faqs={[
         {
-          question: "Can Zamoyo restrict an account?",
-          answer: "Yes. Accounts may be restricted when activity creates risk for shoppers, sellers, or the marketplace.",
+          question: "Can Zogular restrict an account?",
+          answer: "Yes. Accounts may be restricted when activity creates risk for shoppers, sellers, or the platform.",
         },
         {
           question: "Do seller policies still apply?",
-          answer: "Yes. Product, delivery, and return expectations remain tied to the relevant listing and marketplace rules.",
+          answer: "Yes. Product, delivery, and return expectations remain tied to the relevant listing and platform rules.",
         },
       ]}
       ctaLabel="Read Privacy Policy"
