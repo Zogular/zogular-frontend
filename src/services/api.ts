@@ -35,7 +35,11 @@ interface FetchOptions extends RequestInit {
 let csrfTokenPromise: Promise<string> | null = null;
 
 function buildUrl(endpoint: string, query?: FetchOptions["query"]): string {
-  const url = new URL(`${BASE_URL}${endpoint}`);
+  const base =
+    typeof window !== "undefined" && BASE_URL.startsWith("/")
+      ? window.location.origin
+      : undefined;
+  const url = new URL(`${BASE_URL}${endpoint}`, base);
 
   if (!query) return url.toString();
 
