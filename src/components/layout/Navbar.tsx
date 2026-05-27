@@ -134,7 +134,7 @@ function useScrolled(threshold = 40, resetAt = 16) {
 
 function useAuthState() {
   const [devUser, setDevUser] = useState<AuthUser | null>(null);
-  useSyncExternalStore(
+  const authSnapshot = useSyncExternalStore(
     (onStoreChange) => {
       const handleStorage = (event: StorageEvent) => {
         if (!event.key || event.key.startsWith("zogular_") || event.key.startsWith("zamoyo_")) {
@@ -156,6 +156,7 @@ function useAuthState() {
     () => "",
   );
 
+  void authSnapshot;
   const user = getStoredAuthSession()?.user ?? devUser;
 
   const signOut = async () => {
