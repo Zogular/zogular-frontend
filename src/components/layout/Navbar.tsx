@@ -842,7 +842,7 @@ export default function Navbar() {
   });
   const [mobileCategoryView, setMobileCategoryView] = useState<"root" | "category">("root");
 
-  const hiddenRoutes = useMemo(() => ["/auth", "/sell", "/seller"], []);
+  const hiddenRoutes = useMemo(() => ["/auth", "/verify-email", "/sell", "/seller"], []);
 
   useEffect(() => {
     let active = true;

@@ -31,6 +31,8 @@ const AUTH_ENDPOINTS = {
   me: "/user/me",
   refreshToken: "/auth/refresh-token",
   forgotPassword: "/auth/forgot-password",
+  verifyEmail: "/auth/verify-email",
+  resendVerification: "/auth/resend-verification",
   verifyCode: "/auth/verify-code",
   resetPassword: "/auth/reset-password",
   updateMe: "/user/update-me",
@@ -318,7 +320,11 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
     body: JSON.stringify(buildRegisterPayload(input)),
   });
 
-  return buildActionResult(payload, "Account created successfully.", "/auth/permissions");
+  return buildActionResult(
+    payload,
+    "Account created successfully. Please check your email to verify your account.",
+    `/auth/check-email?email=${encodeURIComponent(input.email.trim().toLowerCase())}`,
+  );
 }
 
 export async function logout(): Promise<AuthActionResult> {
@@ -389,6 +395,29 @@ export async function requestPasswordReset(
     "Verification code sent.",
     `/auth/verify-code?email=${encodeURIComponent(input.email)}`,
   );
+}
+
+export async function verifyEmailToken(token: string): Promise<AuthActionResult> {
+  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.verifyEmail, {
+    method: "GET",
+    authMode: "omit",
+    query: { token },
+  });
+
+  return buildActionResult(payload, "Email verified successfully.", "/auth/login");
+}
+
+export async function resendVerificationEmail(email: string): Promise<AuthActionResult> {
+  storeLastAuthEmail(email);
+
+  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resendVerification, {
+    method: "POST",
+    authMode: "omit",
+    csrf: true,
+    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+  });
+
+  return buildActionResult(payload, "Verification email sent.");
 }
 
 export async function verifyResetCode(

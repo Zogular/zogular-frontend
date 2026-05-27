@@ -11,6 +11,8 @@ import {
   CheckCircle2,
   Loader2,
   AlertCircle,
+  Eye,
+  EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -30,6 +32,10 @@ export default function SettingsPage() {
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
   const [password, setPassword] = React.useState({ current: "", next: "" });
+  const [visiblePasswords, setVisiblePasswords] = React.useState({
+    current: false,
+    next: false,
+  });
   const [isSavingProfile, setIsSavingProfile] = React.useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = React.useState(false);
   const [deletingPaymentId, setDeletingPaymentId] = React.useState<number | null>(null);
@@ -89,6 +95,10 @@ export default function SettingsPage() {
     } finally {
       setIsUpdatingPassword(false);
     }
+  };
+
+  const togglePasswordVisibility = (key: keyof typeof visiblePasswords) => {
+    setVisiblePasswords((current) => ({ ...current, [key]: !current[key] }));
   };
 
   const handleDeletePayment = async (id: number) => {
@@ -236,21 +246,41 @@ export default function SettingsPage() {
             <div className="space-y-4">
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Current Password</label>
-                <Input
-                  type="password"
-                  value={password.current}
-                  onChange={(event) => setPassword((prev) => ({ ...prev, current: event.target.value }))}
-                  className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-blue-500"
-                />
+                <div className="relative">
+                  <Input
+                    type={visiblePasswords.current ? "text" : "password"}
+                    value={password.current}
+                    onChange={(event) => setPassword((prev) => ({ ...prev, current: event.target.value }))}
+                    className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 pr-11 shadow-sm focus-visible:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    aria-label={visiblePasswords.current ? "Hide current password" : "Show current password"}
+                    onClick={() => togglePasswordVisibility("current")}
+                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                  >
+                    {visiblePasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
               <div className="space-y-1.5">
                 <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">New Password</label>
-                <Input
-                  type="password"
-                  value={password.next}
-                  onChange={(event) => setPassword((prev) => ({ ...prev, next: event.target.value }))}
-                  className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-blue-500"
-                />
+                <div className="relative">
+                  <Input
+                    type={visiblePasswords.next ? "text" : "password"}
+                    value={password.next}
+                    onChange={(event) => setPassword((prev) => ({ ...prev, next: event.target.value }))}
+                    className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 pr-11 shadow-sm focus-visible:ring-blue-500"
+                  />
+                  <button
+                    type="button"
+                    aria-label={visiblePasswords.next ? "Hide new password" : "Show new password"}
+                    onClick={() => togglePasswordVisibility("next")}
+                    className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                  >
+                    {visiblePasswords.next ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
               </div>
 
               <Button

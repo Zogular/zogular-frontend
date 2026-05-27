@@ -2,7 +2,7 @@
 
 import type { FormEvent } from "react";
 import { useState } from "react";
-import { Lock, Mail, ArrowRight } from "lucide-react";
+import { Lock, Mail, ArrowRight, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -12,6 +12,7 @@ import { loginAdmin } from "@/services/admin/auth";
 export default function AdminLoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [signInState, setSignInState] = useState<"idle" | "verifying" | "mfa_ready" | "error">("idle");
 
@@ -73,7 +74,15 @@ export default function AdminLoginPage() {
               <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-400 ml-1">Master Password</label>
               <div className="relative">
                 <Lock className="absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-zinc-400" />
-                <Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter admin password" className="h-14 rounded-2xl border-white/10 bg-white/10 pl-11 text-sm font-bold text-white shadow-inner placeholder:text-zinc-500 focus-visible:ring-emerald-300" />
+                <Input type={showPassword ? "text" : "password"} autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Enter admin password" className="h-14 rounded-2xl border-white/10 bg-white/10 pl-11 pr-12 text-sm font-bold text-white shadow-inner placeholder:text-zinc-500 focus-visible:ring-emerald-300" />
+                <button
+                  type="button"
+                  aria-label={showPassword ? "Hide admin password" : "Show admin password"}
+                  onClick={() => setShowPassword((current) => !current)}
+                  className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/20 text-zinc-200 transition-colors hover:bg-black/35 hover:text-white"
+                >
+                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </button>
               </div>
             </div>
 

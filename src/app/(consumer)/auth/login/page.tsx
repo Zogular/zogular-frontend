@@ -13,6 +13,8 @@ export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = searchParams.get("next");
+  const emailParam = searchParams.get("email");
+  const registered = searchParams.get("registered") === "1";
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -27,6 +29,13 @@ export default function LoginPage() {
     const redirectPath = getPostLoginRedirectPath(existingSession.user, nextPath);
     router.replace(redirectPath);
   }, [nextPath, router]);
+
+  useEffect(() => {
+    if (emailParam) setEmail(emailParam);
+    if (registered) {
+      setSuccess("Account created. Please verify your email before signing in.");
+    }
+  }, [emailParam, registered]);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -108,7 +117,7 @@ export default function LoginPage() {
                   type="button"
                   aria-label={showPassword ? "Hide password" : "Show password"}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-white/50 transition-colors hover:text-white"
+                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/20 text-zinc-200 transition-colors hover:bg-black/35 hover:text-white"
                 >
                   {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
