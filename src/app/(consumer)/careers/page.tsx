@@ -1,4 +1,5 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
+import { BRAND } from "@/config/brand";
 
 export default function CareersPage() {
   return (
@@ -24,7 +25,7 @@ export default function CareersPage() {
         },
         {
           title: "How to Apply",
-          body: "Send your profile and role interest to careers@zogular.com with examples of impactful work. We prioritize candidates who are practical, customer-centric, and execution focused.",
+          body: `Send your profile and role interest to ${BRAND.careersEmail} with examples of impactful work. We prioritize candidates who are practical, customer-centric, and execution focused.`,
         },
       ]}
       steps={[

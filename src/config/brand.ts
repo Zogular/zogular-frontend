@@ -4,10 +4,10 @@ export const BRAND = {
   slug: "zogular",
   tagline: "Zambia's Online Marketplace",
   description: "Connecting buyers and sellers across Zambia",
-  supportEmail: "support@zogular.com",
-  careersEmail: "careers@zogular.com",
-  adminEmail: "admin@zogular.com",
-  domain: "zogular.com",
+  supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "onboarding@resend.dev",
+  careersEmail: process.env.NEXT_PUBLIC_CAREERS_EMAIL ?? "onboarding@resend.dev",
+  adminEmail: process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "onboarding@resend.dev",
+  domain: process.env.NEXT_PUBLIC_PUBLIC_DOMAIN ?? "zogular-frontend.vercel.app",
   assets: {
     wordmarkLight: "/brand/zogular-wordmark-light.png",
     wordmarkDark: "/brand/zogular-wordmark-dark.png",
@@ -24,4 +24,4 @@ export const BRAND = {
 } as const;
 
 export const BRAND_TITLE = `${BRAND.name} | ${BRAND.tagline}`;
-export const BRAND_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://zogular.com";
+export const BRAND_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://zogular-frontend.vercel.app";

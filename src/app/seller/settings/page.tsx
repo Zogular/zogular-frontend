@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/config/brand";
 
 // Service Imports
 import { settingsApi, StoreSettings } from "@/services/settings";
@@ -252,7 +253,7 @@ export default function SellerSettingsPage() {
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store URL Slug</label>
                       <div className="relative flex items-center">
-                        <span className="absolute left-3 text-sm font-medium text-zinc-400">zogular.com/</span>
+                        <span className="absolute left-3 text-sm font-medium text-zinc-400">{BRAND.domain}/</span>
                         <Input value={settings.profile.slug} onChange={(e) => updateSetting("profile", "slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="h-11 rounded-xl bg-zinc-50 pl-26 text-sm font-bold text-zinc-900 shadow-inner focus-visible:ring-[#009E49]" />
                       </div>
                     </div>
