@@ -253,7 +253,7 @@ export default function SellerSettingsPage() {
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store URL Slug</label>
                       <div className="relative flex items-center">
-                        <span className="absolute left-3 text-sm font-medium text-zinc-400">{BRAND.domain}/</span>
+                        <span aria-hidden="true" className="absolute left-3 text-sm font-medium text-zinc-400">{BRAND.domain}/</span>
                         <Input value={settings.profile.slug} onChange={(e) => updateSetting("profile", "slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '-'))} className="h-11 rounded-xl bg-zinc-50 pl-26 text-sm font-bold text-zinc-900 shadow-inner focus-visible:ring-[#009E49]" />
                       </div>
                     </div>
@@ -364,11 +364,11 @@ export default function SellerSettingsPage() {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Owner Name</label>
-                    <Input value={settings.business.ownerName} onChange={(e) => updateSetting("business", "ownerName", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
+                    <Input placeholder="Full Name" value={settings.business.ownerName} onChange={(e) => updateSetting("business", "ownerName", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Support Email</label>
-                    <Input type="email" value={settings.business.supportEmail} onChange={(e) => updateSetting("business", "supportEmail", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
+                    <Input placeholder="support@store.com" type="email" value={settings.business.supportEmail} onChange={(e) => updateSetting("business", "supportEmail", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Business Phone</label>
@@ -376,7 +376,7 @@ export default function SellerSettingsPage() {
                   </div>
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Tax ID / TPIN (Optional)</label>
-                    <Input value={settings.business.taxNumber} onChange={(e) => updateSetting("business", "taxNumber", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
+                    <Input placeholder="TPIN Number" value={settings.business.taxNumber} onChange={(e) => updateSetting("business", "taxNumber", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
                   </div>
                 </div>
               </div>
@@ -386,16 +386,16 @@ export default function SellerSettingsPage() {
                 <div className="space-y-5">
                   <div className="space-y-1.5">
                     <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Street Address</label>
-                    <Input value={settings.business.address} onChange={(e) => updateSetting("business", "address", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
+                    <Input placeholder="Plot or Street Number" value={settings.business.address} onChange={(e) => updateSetting("business", "address", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
                   </div>
                   <div className="grid grid-cols-2 gap-5">
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">City</label>
-                      <Input value={settings.business.city} onChange={(e) => updateSetting("business", "city", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
+                      <Input placeholder="e.g. Lusaka" value={settings.business.city} onChange={(e) => updateSetting("business", "city", e.target.value)} className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Country</label>
-                      <Input value={settings.business.country} disabled className="h-11 rounded-xl bg-zinc-100 text-sm font-medium text-zinc-500 shadow-inner cursor-not-allowed" />
+                      <Input placeholder="Zambia" value={settings.business.country} disabled className="h-11 rounded-xl bg-zinc-100 text-sm font-medium text-zinc-500 shadow-inner cursor-not-allowed" />
                     </div>
                   </div>
                 </div>

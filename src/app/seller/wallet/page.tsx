@@ -157,7 +157,7 @@ export default function SellerWalletPage() {
       </div>
 
       {/* BALANCE HERO CARD */}
-      <div className="relative mb-8 overflow-hidden rounded-3xl border border-white/20 bg-gradient-to-br from-[#009E49] via-[#00B854] to-[#00D463] p-6 text-white shadow-[0_20px_60px_rgba(0,158,73,0.3)] md:p-8">
+      <div className="relative mb-8 overflow-hidden rounded-3xl border border-white/20 bg-linear-to-br from-[#009E49] via-[#00B854] to-[#00D463] p-6 text-white shadow-[0_20px_60px_rgba(0,158,73,0.3)] md:p-8">
         {/* Glassmorphism decorative orbs */}
         <div className="pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-white/10 blur-2xl" />
         <div className="pointer-events-none absolute -bottom-12 -left-12 h-40 w-40 rounded-full bg-white/5 blur-xl" />

@@ -2,10 +2,12 @@
 
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import {
   Box, Filter, Image as ImageIcon, MoreVertical, Package, Plus, Search, AlertCircle,
-  Layers, CheckCircle2, FileEdit, AlertTriangle, XCircle
+  Layers, CheckCircle2, FileEdit, AlertTriangle, XCircle, Eye, Pencil, Trash2,
+  Send, RotateCcw, PauseCircle, Copy,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -165,16 +167,31 @@ function CategoryDropdown({ value, onChange, categories }: { value: string; onCh
 
 function ProductActionMenu({
   product,
+  onEdit,
+  onView,
   onDuplicate,
   onSubmitForReview,
+  onWithdrawReview,
+  onUnpublish,
   onRemove,
 }: {
   product: SellerProductListing;
+  onEdit: (product: SellerProductListing) => void;
+  onView: (product: SellerProductListing) => void;
   onDuplicate: (product: SellerProductListing) => void;
   onSubmitForReview: (productId: string) => void;
+  onWithdrawReview: (productId: string) => void;
+  onUnpublish: (productId: string) => void;
   onRemove: (productId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const isRejectedFamily = product.status === "rejected" || product.status === "needs_changes";
+  const isPublishedFamily = product.status === "published" || product.status === "approved";
+
+  const closeAfter = (action: () => void) => {
+    action();
+    setOpen(false);
+  };
 
   return (
     <ActionMenu open={open} onOpenChange={setOpen}>
@@ -188,37 +205,93 @@ function ProductActionMenu({
           <MoreVertical className="h-4 w-4" />
         </Button>
       </ActionMenuTrigger>
-      <ActionMenuContent>
-        <ActionMenuItem
-          onClick={() => {
-            onDuplicate(product);
-            setOpen(false);
-          }}
-        >
-          Duplicate Listing
-        </ActionMenuItem>
-        {product.status === "draft" || product.status === "needs_changes" || product.status === "rejected" ? (
-          <ActionMenuItem
-            onClick={() => {
-              onSubmitForReview(product.id);
-              setOpen(false);
-            }}
-          >
-            {product.status === "draft" ? "Submit for Review" : "Resubmit for Review"}
-          </ActionMenuItem>
-        ) : (
-          <ActionMenuNote>Status controlled by moderation flow</ActionMenuNote>
-        )}
-        <ActionMenuSeparator />
-        <ActionMenuItem
-          onClick={() => {
-            onRemove(product.id);
-            setOpen(false);
-          }}
-          className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200"
-        >
-          Remove Listing
-        </ActionMenuItem>
+      <ActionMenuContent className="w-56">
+        {product.status === "draft" ? (
+          <>
+            <ActionMenuItem onClick={() => closeAfter(() => onEdit(product))}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </ActionMenuItem>
+            <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
+              <Eye className="h-3.5 w-3.5" />
+              Preview
+            </ActionMenuItem>
+            <ActionMenuItem onClick={() => closeAfter(() => onRemove(product.id))} className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200">
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete
+            </ActionMenuItem>
+            <ActionMenuSeparator />
+            <ActionMenuItem onClick={() => closeAfter(() => onSubmitForReview(product.id))} className="text-[#009E49] hover:bg-emerald-50">
+              <Send className="h-3.5 w-3.5" />
+              Submit for Review
+            </ActionMenuItem>
+          </>
+        ) : null}
+
+        {product.status === "pending_review" ? (
+          <>
+            <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
+              <Eye className="h-3.5 w-3.5" />
+              View
+            </ActionMenuItem>
+            <ActionMenuNote>Withdraw review before editing this product.</ActionMenuNote>
+            <ActionMenuSeparator />
+            <ActionMenuItem onClick={() => closeAfter(() => onWithdrawReview(product.id))} className="text-amber-700 hover:bg-amber-50">
+              <RotateCcw className="h-3.5 w-3.5" />
+              Withdraw Review
+            </ActionMenuItem>
+          </>
+        ) : null}
+
+        {isRejectedFamily ? (
+          <>
+            <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
+              <Eye className="h-3.5 w-3.5" />
+              View Reason / Preview
+            </ActionMenuItem>
+            <ActionMenuItem onClick={() => closeAfter(() => onEdit(product))}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </ActionMenuItem>
+            <ActionMenuSeparator />
+            <ActionMenuItem onClick={() => closeAfter(() => onSubmitForReview(product.id))} className="text-[#009E49] hover:bg-emerald-50">
+              <Send className="h-3.5 w-3.5" />
+              Resubmit
+            </ActionMenuItem>
+          </>
+        ) : null}
+
+        {isPublishedFamily ? (
+          <>
+            <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
+              <Eye className="h-3.5 w-3.5" />
+              View
+            </ActionMenuItem>
+            <ActionMenuItem onClick={() => closeAfter(() => onEdit(product))}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </ActionMenuItem>
+            <ActionMenuItem onClick={() => closeAfter(() => onUnpublish(product.id))} className="text-amber-700 hover:bg-amber-50">
+              <PauseCircle className="h-3.5 w-3.5" />
+              Pause/Unpublish
+            </ActionMenuItem>
+            <ActionMenuSeparator />
+            <ActionMenuItem onClick={() => closeAfter(() => onDuplicate(product))}>
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate
+            </ActionMenuItem>
+          </>
+        ) : null}
+
+        {product.status === "suspended" ? (
+          <>
+            <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
+              <Eye className="h-3.5 w-3.5" />
+              View
+            </ActionMenuItem>
+            <ActionMenuNote>This listing is controlled by moderation.</ActionMenuNote>
+          </>
+        ) : null}
       </ActionMenuContent>
     </ActionMenu>
   );
@@ -228,6 +301,7 @@ function ProductActionMenu({
 // 5. MAIN PAGE EXPORT
 // ============================================================================
 export default function SellerProductsPage() {
+  const router = useRouter();
   const [products, setProducts] = useState<SellerProductListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -246,6 +320,18 @@ export default function SellerProductsPage() {
     }
   }, []);
 
+  const editProduct = useCallback((product: SellerProductListing) => {
+    if (product.status === "pending_review") {
+      toast.warning("Withdraw review before editing this product.");
+      return;
+    }
+    router.push(`/seller/products/${product.id}/edit`);
+  }, [router]);
+
+  const viewProduct = useCallback((product: SellerProductListing) => {
+    router.push(`/seller/products/${product.id}`);
+  }, [router]);
+
   const submitProductForReview = useCallback(async (productId: string) => {
     try {
       const updated = await updateSellerProductStatus(productId, "pending_review");
@@ -253,6 +339,26 @@ export default function SellerProductsPage() {
       toast.success("Product submitted for review.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update product.");
+    }
+  }, []);
+
+  const withdrawProductReview = useCallback(async (productId: string) => {
+    try {
+      const updated = await updateSellerProductStatus(productId, "draft");
+      setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
+      toast.success("Review withdrawn. Product moved back to drafts.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to withdraw review.");
+    }
+  }, []);
+
+  const unpublishProduct = useCallback(async (productId: string) => {
+    try {
+      const updated = await updateSellerProductStatus(productId, "draft");
+      setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
+      toast.success("Product unpublished and moved to drafts.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to unpublish product.");
     }
   }, []);
 
@@ -496,8 +602,12 @@ export default function SellerProductsPage() {
                 <div className="hidden justify-end md:flex">
                   <ProductActionMenu
                     product={product}
+                    onEdit={editProduct}
+                    onView={viewProduct}
                     onDuplicate={duplicateProduct}
                     onSubmitForReview={submitProductForReview}
+                    onWithdrawReview={withdrawProductReview}
+                    onUnpublish={unpublishProduct}
                     onRemove={removeProduct}
                   />
                 </div>
@@ -510,8 +620,12 @@ export default function SellerProductsPage() {
                     <ListingStatusBadge status={product.status} />
                     <ProductActionMenu
                       product={product}
+                      onEdit={editProduct}
+                      onView={viewProduct}
                       onDuplicate={duplicateProduct}
                       onSubmitForReview={submitProductForReview}
+                      onWithdrawReview={withdrawProductReview}
+                      onUnpublish={unpublishProduct}
                       onRemove={removeProduct}
                     />
                   </div>

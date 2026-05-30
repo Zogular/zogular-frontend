@@ -23,6 +23,13 @@ export interface CategoryAttributeOption {
   sortOrder: number;
 }
 
+export type ProductAttributeInput = {
+  attributeId: string;
+  slug: string;
+  name: string;
+  value: string;
+};
+
 export interface CategoryNode {
   id: string;
   name: string;

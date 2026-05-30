@@ -1,5 +1,6 @@
 import type { Product, ProductDetail, ProductSpec, ProductVariant } from "@/types/product";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
+import { type ProductAttributeInput } from "@/services/categories-api";
 import {
   type ProductModerationState,
   type ProductModerationStatus,
@@ -21,6 +22,12 @@ export interface SellerProductImage {
   url: string;
   name: string;
   isPrimary: boolean;
+  originalWidth?: number;
+  originalHeight?: number;
+  processedWidth?: number;
+  processedHeight?: number;
+  wasAutoCropped?: boolean;
+  linkedVariantValue?: string;
 }
 
 export interface SellerProductVariant {
@@ -61,6 +68,7 @@ export interface SellerProductListing {
     dimensions: string;
   };
   variants: SellerProductVariant[];
+  attributes?: ProductAttributeInput[];
   specifications: SellerProductSpecification[];
   seo: {
     metaTitle: string;
@@ -82,6 +90,10 @@ export type CreateSellerProductInput = Omit<
 > & {
   seller?: Partial<SellerProductListing["seller"]>;
 };
+
+export type UpdateSellerProductInput = Partial<
+  Omit<SellerProductListing, "id" | "slug" | "createdAt" | "updatedAt" | "seller">
+>;
 
 export interface SellerProductModerationInput extends ProductModerationState {
   action?: ProductModerationAction;
@@ -298,6 +310,31 @@ export async function updateSellerProductStatus(
   status: SellerProductStatus,
 ): Promise<SellerProductListing> {
   return updateSellerProductModeration(productId, { status });
+}
+
+export async function updateSellerCatalogProduct(
+  productId: string,
+  input: UpdateSellerProductInput,
+): Promise<SellerProductListing> {
+  await delay(300);
+  const products = getSellerCatalogProducts();
+  const product = products.find((item) => item.id === productId);
+  if (!product) throw new Error("Product not found.");
+
+  const now = new Date().toISOString();
+  const nextStatus = input.status ?? product.status;
+  const updatedProduct: SellerProductListing = {
+    ...product,
+    ...input,
+    id: product.id,
+    slug: input.title && input.title !== product.title ? buildUniqueSlug(input.title, product.id) : product.slug,
+    seller: product.seller,
+    moderation: normalizeModerationState(nextStatus, input.moderation ?? product.moderation, now),
+    updatedAt: now,
+  };
+
+  writeStoredSellerProducts(products.map((item) => (item.id === productId ? updatedProduct : item)));
+  return updatedProduct;
 }
 
 export async function updateSellerProductModeration(
@@ -535,9 +572,38 @@ function normalizeSellerProductRecord(product: SellerProductListing): SellerProd
   const normalizedStatus = normalizeLegacyStatus(product.status);
   return {
     ...product,
+    images: normalizeSellerProductImages(product.images),
     status: normalizedStatus,
     moderation: normalizeModerationState(normalizedStatus, product.moderation, product.updatedAt),
   };
+}
+
+function normalizeSellerProductImages(images: SellerProductImage[]): SellerProductImage[] {
+  if (!images.length) {
+    return [{ id: "fallback-image-1", url: FALLBACK_IMAGE, name: "Fallback product image", isPrimary: true }];
+  }
+
+  const normalizedImages = images.map((image, index) => {
+    const nextUrl =
+      image.url.startsWith("http://") ||
+      image.url.startsWith("https://") ||
+      image.url.startsWith("data:image/")
+        ? image.url
+        : FALLBACK_IMAGE;
+
+    return {
+      ...image,
+      url: nextUrl,
+      isPrimary: index === 0 ? true : image.isPrimary,
+    };
+  });
+
+  if (normalizedImages.some((image) => image.isPrimary)) return normalizedImages;
+
+  return normalizedImages.map((image, index) => ({
+    ...image,
+    isPrimary: index === 0,
+  }));
 }
 
 function normalizeLegacyStatus(status: SellerProductStatus | "active" | "review"): SellerProductStatus {
