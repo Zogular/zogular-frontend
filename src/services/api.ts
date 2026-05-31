@@ -1,6 +1,7 @@
 import {
   clearStoredAuthSession,
   getStoredAccessToken,
+  storeAccessToken,
 } from "@/services/auth-session";
 
 export class ApiError extends Error {
@@ -174,6 +175,23 @@ async function refreshCookieSession(timeout: number): Promise<boolean> {
       return false;
     }
 
+    const contentType = response.headers.get("content-type");
+    const payload = isJsonResponse(contentType)
+      ? await response.json()
+      : await response.text();
+
+    const refreshedToken =
+      payload &&
+      typeof payload === "object" &&
+      "accessToken" in payload &&
+      typeof (payload as { accessToken?: unknown }).accessToken === "string"
+        ? (payload as { accessToken: string }).accessToken
+        : null;
+
+    if (refreshedToken) {
+      storeAccessToken(refreshedToken);
+    }
+
     return true;
   } catch {
     clearStoredAuthSession();
@@ -225,7 +243,11 @@ async function prepareRequest(
     resolvedHeaders.set("Accept", "application/json");
   }
 
-  if (authMode === "include" && !resolvedHeaders.has("Authorization")) {
+  if (
+    typeof window === "undefined" &&
+    authMode === "include" &&
+    !resolvedHeaders.has("Authorization")
+  ) {
     const legacyToken = getStoredAccessToken();
     if (legacyToken) {
       resolvedHeaders.set("Authorization", `Bearer ${legacyToken}`);
