@@ -27,6 +27,7 @@ const STATUS_UI: Record<ProductModerationStatus, { bg: string; text: string; bor
   rejected: { bg: "bg-rose-950", text: "text-rose-100", border: "border-rose-400/50" },
   needs_changes: { bg: "bg-orange-950", text: "text-orange-100", border: "border-orange-400/50" },
   published: { bg: "bg-[#014d2b]", text: "text-emerald-100", border: "border-[#00b358]/40" },
+  paused: { bg: "bg-amber-950", text: "text-amber-100", border: "border-amber-400/50" },
   suspended: { bg: "bg-red-950", text: "text-red-100", border: "border-red-400/50" },
 };
 

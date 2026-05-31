@@ -17,6 +17,7 @@ export function formatDate(value?: string | null) {
 
 export function statusTone(status: SellerProductStatus) {
   if (status === "published" || status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "paused") return "border-amber-200 bg-amber-50 text-amber-700";
   if (status === "pending_review") return "border-blue-200 bg-blue-50 text-blue-700";
   if (status === "rejected" || status === "needs_changes") return "border-red-200 bg-red-50 text-red-700";
   if (status === "suspended") return "border-red-200 bg-red-100 text-red-700";
@@ -64,6 +65,15 @@ export function SellerProductStatusBanner({ product }: { product: SellerProductL
       <div className="rounded-3xl border border-emerald-200 bg-emerald-50/90 p-4 text-emerald-900 shadow-sm">
         <p className="flex items-center gap-2 text-sm font-black"><CheckCircle2 className="h-4 w-4" /> Seller Listing Active</p>
         <p className="mt-1 text-xs font-semibold leading-6 text-emerald-800">You can edit this product, but major edits may require review again later.</p>
+      </div>
+    );
+  }
+
+  if (product.status === "paused") {
+    return (
+      <div className="rounded-3xl border border-amber-200 bg-amber-50/90 p-4 text-amber-900 shadow-sm">
+        <p className="flex items-center gap-2 text-sm font-black"><Info className="h-4 w-4" /> Listing Paused</p>
+        <p className="mt-1 text-xs font-semibold leading-6 text-amber-800">This listing is hidden from buyers but keeps its approval history.</p>
       </div>
     );
   }
@@ -217,6 +227,10 @@ export function SellerProductActionBar({
 
   if (product.status === "published" || product.status === "approved") {
     actions.push({ key: "unpublish", label: "Pause/Unpublish", onClick: onUnpublish, variant: "outline", tone: "warning" });
+    actions.push({ key: "duplicate", label: "Duplicate", onClick: onDuplicate, variant: "outline" });
+  }
+
+  if (product.status === "paused") {
     actions.push({ key: "duplicate", label: "Duplicate", onClick: onDuplicate, variant: "outline" });
   }
 

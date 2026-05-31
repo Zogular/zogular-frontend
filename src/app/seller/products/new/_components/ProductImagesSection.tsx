@@ -11,6 +11,7 @@ export function ProductImagesSection({
   images,
   onImageSelection,
   onRemoveImage,
+  onRetryImageUpload,
   onSetImageVariant,
   onSetPrimaryImage,
   variantValues,
@@ -21,6 +22,7 @@ export function ProductImagesSection({
   images: SellerProductImage[];
   onImageSelection: (files: FileList | null) => void;
   onRemoveImage: (imageId: string) => void;
+  onRetryImageUpload: (imageId: string) => Promise<void>;
   onSetImageVariant: (imageId: string, linkedVariantValue: string) => void;
   onSetPrimaryImage: (imageId: string) => void;
   variantValues: string[];
@@ -76,6 +78,23 @@ export function ProductImagesSection({
                   {image.isPrimary ? (
                     <span className="absolute left-2 top-2 rounded-lg bg-[#009E49] px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white">Primary</span>
                   ) : null}
+                  {image.uploadStatus ? (
+                    <span
+                      className={`absolute right-2 top-2 rounded-lg px-2 py-1 text-[9px] font-black uppercase tracking-wider text-white ${
+                        image.uploadStatus === "uploaded"
+                          ? "bg-[#009E49]"
+                          : image.uploadStatus === "failed"
+                            ? "bg-rose-500"
+                            : "bg-amber-500"
+                      }`}
+                    >
+                      {image.uploadStatus === "uploaded"
+                        ? "Uploaded"
+                        : image.uploadStatus === "failed"
+                          ? "Failed"
+                          : "Uploading"}
+                    </span>
+                  ) : null}
                   <div className="absolute inset-x-2 bottom-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button type="button" onClick={() => onSetPrimaryImage(image.id)} className="flex-1 rounded-lg bg-white/95 px-2 py-1 text-[10px] font-bold text-zinc-700 shadow-sm">Set</button>
                     <button type="button" onClick={() => onRemoveImage(image.id)} className="rounded-lg bg-rose-500 px-2 py-1 text-[10px] font-bold text-white shadow-sm">Remove</button>
@@ -93,6 +112,16 @@ export function ProductImagesSection({
                       <option key={value} value={value}>{value}</option>
                     ))}
                   </select>
+                  {image.uploadError ? <p className="text-[10px] font-semibold leading-snug text-rose-600">{image.uploadError}</p> : null}
+                  {image.uploadStatus === "failed" ? (
+                    <button
+                      type="button"
+                      onClick={() => void onRetryImageUpload(image.id)}
+                      className="w-full rounded-xl bg-zinc-900 px-3 py-2 text-[10px] font-black uppercase tracking-wide text-white"
+                    >
+                      Retry upload
+                    </button>
+                  ) : null}
                   {image.wasAutoCropped ? <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700">Square crop applied</p> : null}
                   {imageWarning ? <p className="text-[10px] font-semibold leading-snug text-amber-700">{imageWarning}</p> : null}
                 </div>

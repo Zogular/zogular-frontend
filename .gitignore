@@ -13,6 +13,7 @@
 # testing
 /coverage
 /.playwright-cli/
+/test-results/
 
 # next.js
 /.next/
@@ -25,6 +26,7 @@
 .DS_Store
 *.pem
 .vscode/
+cookies.txt
 
 # debug
 npm-debug.log*

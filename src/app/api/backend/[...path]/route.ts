@@ -8,6 +8,22 @@ const BACKEND_BASE_URL =
 const CSRF_ENDPOINT = "/auth/csrf-token";
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 
+// These routes must NEVER receive auth cookies — forwarding a stale
+// accessToken causes the backend jwt.verify() to throw "jwt expired"
+// even though the route has no protect() middleware.
+const PUBLIC_AUTH_PATHS = new Set([
+  "auth/register",
+  "auth/login",
+  "auth/forgot-password",
+  "auth/verify-email",
+  "auth/resend-verification",
+  "auth/verify-code",
+  "auth/reset-password",
+  "auth/csrf-token",
+]);
+
+const AUTH_COOKIE_NAMES = ["accessToken", "refreshToken"];
+
 type RouteContext = {
   params: Promise<{ path?: string[] }> | { path?: string[] };
 };
@@ -95,13 +111,32 @@ function buildResponseHeaders(backendResponse: Response): Headers {
   return headers;
 }
 
+function stripAuthCookies(cookieHeader: string): string {
+  return cookieHeader
+    .split(";")
+    .map((c) => c.trim())
+    .filter((c) => !AUTH_COOKIE_NAMES.some((name) => c.startsWith(`${name}=`)))
+    .join("; ")
+    .trim();
+}
+
 async function handler(request: Request, context: RouteContext) {
   const params = await context.params;
   const path = params.path ?? [];
   const requestUrl = new URL(request.url);
   const method = request.method.toUpperCase();
   const headers = copyRequestHeaders(request);
-  const requestCookie = request.headers.get("cookie");
+  const rawCookie = request.headers.get("cookie");
+
+  // Determine whether this is a public auth endpoint
+  const routePath = path.join("/");
+  const isPublicAuth = PUBLIC_AUTH_PATHS.has(routePath);
+
+  // Strip expired auth cookies for public routes to prevent
+  // "jwt expired" errors on routes that don't need authentication.
+  const requestCookie = rawCookie && isPublicAuth
+    ? stripAuthCookies(rawCookie) || null
+    : rawCookie;
 
   if (requestCookie) headers.set("Cookie", requestCookie);
 

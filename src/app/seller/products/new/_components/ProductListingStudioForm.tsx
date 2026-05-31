@@ -83,11 +83,13 @@ export function ProductListingStudioForm({
   const [condition, setCondition] = useState<ProductCondition>(initialProduct?.condition ?? "new");
   const [description, setDescription] = useState(initialProduct?.description ?? "");
   const {
+    ensureImagesUploaded,
     fileInputRef,
     handleImageSelection,
     imageWarnings,
     images,
     removeImage,
+    retryImageUpload,
     setImageVariant,
     setPrimaryImage,
   } = useProductImages(initialProduct?.images ?? []);
@@ -270,73 +272,83 @@ export function ProductListingStudioForm({
 
     setIsSubmitting(true);
 
-    const category = submittedCategory ?? buildSelectionFromLegacy("Computing", "Laptops");
-    const finalSKU = sku.trim() || buildSku(category.subcategoryName, productName || "Draft product");
-    const finalWeight = packageWeight ? Number(packageWeight) : getDefaultWeight(category.subcategoryName);
-    const normalizedStock = stock ? Number(stock) : 0;
-    const normalizedPrice = price ? Number(price) : 0;
-    const moderationFlags = category.isOther ? ["category_other_selected", `category_path:${category.path.join(" > ")}`] : [];
-    const payloadStatus: SellerProductStatus = isEditMode && initialProduct && status === "draft" ? initialProduct.status : status;
-
-    const categorySpecifications = categoryFieldValues
-      .filter((item) => item.value.trim())
-      .map((item) => ({ name: item.name, value: item.value.trim() }));
-    const categoryAttributePayload = categoryFieldValues
-      .filter((item) => item.value.trim())
-      .map((item) => ({
-        attributeId: item.attributeId,
-        slug: item.slug,
-        name: item.name,
-        value: item.value.trim(),
-      }));
-
-    const payload: CreateSellerProductInput = {
-      title: productName.trim() || "Untitled draft product",
-      brand: brand.trim(),
-      condition,
-      description: description.trim(),
-      categoryName: category.categoryName,
-      categorySlug: category.categorySlug,
-      subcategoryName: category.subcategoryName,
-      subcategorySlug: category.subcategorySlug,
-      status: payloadStatus,
-      price: normalizedPrice,
-      salePrice: hasDiscount ? Number(salePrice) : null,
-      stock: normalizedStock,
-      lowStockThreshold: Number(lowStockThreshold),
-      sku: finalSKU,
-      images,
-      deliveryType: deliveryType as "standard" | "express",
-      logistics: {
-        weightKG: finalWeight,
-        dimensions: showAdvanced && dimensions.l ? `${dimensions.l}x${dimensions.w}x${dimensions.h}` : "Standard Box",
-      },
-      variants: buildVariants(hasVariants, variantOptions, finalSKU, normalizedStock),
-      attributes: categoryAttributePayload,
-      specifications: [
-        ...categorySpecifications,
-        ...specs.filter((s) => s.name.trim() && s.value.trim()),
-      ],
-      seo: {
-        metaTitle: seo.title.trim() || `${productName.trim() || "Zogular product"} | Zogular`,
-        metaDescription: seo.description.trim() || `Buy ${productName.trim() || "this product"} in Zambia on Zogular.`,
-      },
-      moderation: moderationFlags.length
-        ? {
-            submittedAt: null,
-            reviewedAt: null,
-            reviewedBy: null,
-            moderationNotes: null,
-            moderationFlags,
-            riskScore: null,
-            duplicateWarnings: [],
-            categorySuggestions: [category.path.join(" > ")],
-            imageSafetyWarnings: [],
-          }
-        : undefined,
-    };
-
     try {
+      const uploadedImages = await ensureImagesUploaded();
+
+      const durableImages = uploadedImages.filter(
+        (image) => !image.url.startsWith("blob:"),
+      );
+
+      if (images.length > 0 && durableImages.length !== images.length) {
+        throw new Error("Only uploaded Cloudinary images can be saved to this product.");
+      }
+
+      const category = submittedCategory ?? buildSelectionFromLegacy("Computing", "Laptops");
+      const finalSKU = sku.trim() || buildSku(category.subcategoryName, productName || "Draft product");
+      const finalWeight = packageWeight ? Number(packageWeight) : getDefaultWeight(category.subcategoryName);
+      const normalizedStock = stock ? Number(stock) : 0;
+      const normalizedPrice = price ? Number(price) : 0;
+      const moderationFlags = category.isOther ? ["category_other_selected", `category_path:${category.path.join(" > ")}`] : [];
+      const payloadStatus: SellerProductStatus = isEditMode && initialProduct && status === "draft" ? initialProduct.status : status;
+
+      const categorySpecifications = categoryFieldValues
+        .filter((item) => item.value.trim())
+        .map((item) => ({ name: item.name, value: item.value.trim() }));
+      const categoryAttributePayload = categoryFieldValues
+        .filter((item) => item.value.trim())
+        .map((item) => ({
+          attributeId: item.attributeId,
+          slug: item.slug,
+          name: item.name,
+          value: item.value.trim(),
+        }));
+
+      const payload: CreateSellerProductInput = {
+        title: productName.trim() || "Untitled draft product",
+        brand: brand.trim(),
+        condition,
+        description: description.trim(),
+        categoryName: category.categoryName,
+        categorySlug: category.categorySlug,
+        subcategoryName: category.subcategoryName,
+        subcategorySlug: category.subcategorySlug,
+        status: payloadStatus,
+        price: normalizedPrice,
+        salePrice: hasDiscount ? Number(salePrice) : null,
+        stock: normalizedStock,
+        lowStockThreshold: Number(lowStockThreshold),
+        sku: finalSKU,
+        images: durableImages,
+        deliveryType: deliveryType as "standard" | "express",
+        logistics: {
+          weightKG: finalWeight,
+          dimensions: showAdvanced && dimensions.l ? `${dimensions.l}x${dimensions.w}x${dimensions.h}` : "Standard Box",
+        },
+        variants: buildVariants(hasVariants, variantOptions, finalSKU, normalizedStock),
+        attributes: categoryAttributePayload,
+        specifications: [
+          ...categorySpecifications,
+          ...specs.filter((s) => s.name.trim() && s.value.trim()),
+        ],
+        seo: {
+          metaTitle: seo.title.trim() || `${productName.trim() || "Zogular product"} | Zogular`,
+          metaDescription: seo.description.trim() || `Buy ${productName.trim() || "this product"} in Zambia on Zogular.`,
+        },
+        moderation: moderationFlags.length
+          ? {
+              submittedAt: null,
+              reviewedAt: null,
+              reviewedBy: null,
+              moderationNotes: null,
+              moderationFlags,
+              riskScore: null,
+              duplicateWarnings: [],
+              categorySuggestions: [category.path.join(" > ")],
+              imageSafetyWarnings: [],
+            }
+          : undefined,
+      };
+
       if (onPersist) {
         await onPersist(payload, status);
       } else {
@@ -418,6 +430,7 @@ export function ProductListingStudioForm({
               images={images}
               onImageSelection={handleImageSelection}
               onRemoveImage={removeImage}
+              onRetryImageUpload={retryImageUpload}
               onSetImageVariant={setImageVariant}
               onSetPrimaryImage={setPrimaryImage}
               variantValues={variantValues}
