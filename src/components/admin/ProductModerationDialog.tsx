@@ -26,6 +26,7 @@ const STATUS_STYLES: Record<AdminProductRecord["status"], string> = {
   rejected: "border-rose-200 bg-rose-50 text-rose-700",
   needs_changes: "border-orange-200 bg-orange-50 text-orange-700",
   published: "border-[#009E49]/20 bg-[#009E49]/10 text-[#009E49]",
+  paused: "border-amber-200 bg-amber-50 text-amber-700",
   suspended: "border-red-200 bg-red-50 text-red-700",
 };
 

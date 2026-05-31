@@ -132,5 +132,12 @@ export function clearStoredAuthSession(): void {
   [...LEGACY_ACCESS_TOKEN_KEYS, ...LEGACY_REFRESH_TOKEN_KEYS, ...LEGACY_AUTH_USER_KEYS, ...LEGACY_LAST_AUTH_EMAIL_KEYS].forEach((key) => {
     storage.removeItem(key);
   });
+
+  // Also wipe HttpOnly cookies (accessToken, refreshToken) which JS cannot
+  // directly touch. The server route sets Max-Age=0 to expire them immediately.
+  fetch("/api/auth/clear-session", { method: "GET" }).catch(() => {
+    // Best-effort — ignore network errors
+  });
+
   notifyAuthSessionChanged();
 }

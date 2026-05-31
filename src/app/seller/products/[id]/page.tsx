@@ -9,9 +9,10 @@ import { Button } from "@/components/ui/button";
 import {
   duplicateSellerProduct,
   fetchSellerCatalogProductById,
-  updateSellerProductStatus,
+  submitSellerProductForReview,
+  unpublishSellerProduct,
+  withdrawSellerProductReview,
   type SellerProductListing,
-  type SellerProductStatus,
 } from "@/services/seller-catalog";
 import { SellerProductPreview } from "./_components/SellerProductPreview";
 
@@ -37,10 +38,32 @@ export default function SellerProductPreviewPage() {
     };
   }, [productId]);
 
-  const updateStatus = useCallback(async (status: SellerProductStatus, message: string) => {
+  const handleSubmit = useCallback(async (message: string) => {
     if (!product) return;
     try {
-      const updated = await updateSellerProductStatus(product.id, status);
+      const updated = await submitSellerProductForReview(product.id);
+      setProduct(updated);
+      toast.success(message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update product.");
+    }
+  }, [product]);
+
+  const handleWithdraw = useCallback(async (message: string) => {
+    if (!product) return;
+    try {
+      const updated = await withdrawSellerProductReview(product.id);
+      setProduct(updated);
+      toast.success(message);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to update product.");
+    }
+  }, [product]);
+
+  const handleUnpublish = useCallback(async (message: string) => {
+    if (!product) return;
+    try {
+      const updated = await unpublishSellerProduct(product.id);
       setProduct(updated);
       toast.success(message);
     } catch (error) {
@@ -78,9 +101,9 @@ export default function SellerProductPreviewPage() {
       product={product}
       onDuplicate={duplicateProduct}
       onEdit={() => router.push(`/seller/products/${product.id}/edit`)}
-      onSubmit={() => updateStatus("pending_review", "Product submitted for review.")}
-      onUnpublish={() => updateStatus("draft", "Product unpublished and moved to drafts.")}
-      onWithdraw={() => updateStatus("draft", "Review withdrawn. Product moved back to drafts.")}
+      onSubmit={() => handleSubmit("Product submitted for review.")}
+      onUnpublish={() => handleUnpublish("Product unpublished and moved to paused.")}
+      onWithdraw={() => handleWithdraw("Review withdrawn. Product moved back to drafts.")}
     />
   );
 }

@@ -5,6 +5,7 @@ export type ProductModerationStatus =
   | "rejected"
   | "needs_changes"
   | "published"
+  | "paused"
   | "suspended";
 
 export type ProductModerationAction = "approve" | "reject" | "request_changes";
@@ -34,6 +35,7 @@ export function getProductModerationStatusLabel(status: ProductModerationStatus)
     rejected: "Rejected",
     needs_changes: "Needs Changes",
     published: "Published",
+    paused: "Paused",
     suspended: "Suspended",
   };
 

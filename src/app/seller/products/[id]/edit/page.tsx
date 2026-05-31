@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import {
   fetchSellerCatalogProductById,
   updateSellerCatalogProduct,
-  updateSellerProductStatus,
+  withdrawSellerProductReview,
   type CreateSellerProductInput,
   type SellerProductListing,
 } from "@/services/seller-catalog";
@@ -64,7 +64,7 @@ export default function EditSellerProductPage() {
           <Button
             type="button"
             onClick={async () => {
-              const updated = await updateSellerProductStatus(product.id, "draft");
+              const updated = await withdrawSellerProductReview(product.id);
               setProduct(updated);
               toast.success("Review withdrawn. You can edit now.");
             }}

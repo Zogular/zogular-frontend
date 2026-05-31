@@ -25,7 +25,9 @@ import {
   duplicateSellerProduct,
   fetchSellerCatalogProducts,
   removeSellerProduct,
-  updateSellerProductStatus,
+  submitSellerProductForReview as submitSellerProductForReviewRequest,
+  unpublishSellerProduct as unpublishSellerProductRequest,
+  withdrawSellerProductReview as withdrawSellerProductReviewRequest,
   type SellerProductListing,
   type SellerProductStatus,
 } from "@/services/seller-catalog";
@@ -42,6 +44,7 @@ type ProductTab =
   | "approved"
   | "needs_changes"
   | "rejected"
+  | "paused"
   | "suspended"
   | "low-stock"
   | "out-of-stock";
@@ -54,6 +57,7 @@ const PRODUCT_TABS: Array<{ id: ProductTab; label: string }> = [
   { id: "approved", label: "Approved" },
   { id: "needs_changes", label: "Needs Changes" },
   { id: "rejected", label: "Rejected" },
+  { id: "paused", label: "Paused" },
   { id: "suspended", label: "Suspended" },
   { id: "low-stock", label: "Low Stock" },
   { id: "out-of-stock", label: "Out of Stock" },
@@ -83,6 +87,7 @@ function ListingStatusBadge({ status }: { status: SellerProductStatus }) {
     approved: "bg-emerald-50 text-emerald-700 border-emerald-200",
     needs_changes: "bg-orange-50 text-orange-700 border-orange-200",
     rejected: "bg-red-50 text-red-600 border-red-200",
+    paused: "bg-amber-50 text-amber-700 border-amber-200",
     suspended: "bg-red-100 text-red-700 border-red-200",
   };
 
@@ -187,6 +192,7 @@ function ProductActionMenu({
   const [open, setOpen] = useState(false);
   const isRejectedFamily = product.status === "rejected" || product.status === "needs_changes";
   const isPublishedFamily = product.status === "published" || product.status === "approved";
+  const isPausedFamily = product.status === "paused";
 
   const closeAfter = (action: () => void) => {
     action();
@@ -283,6 +289,24 @@ function ProductActionMenu({
           </>
         ) : null}
 
+        {isPausedFamily ? (
+          <>
+            <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
+              <Eye className="h-3.5 w-3.5" />
+              View
+            </ActionMenuItem>
+            <ActionMenuItem onClick={() => closeAfter(() => onEdit(product))}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </ActionMenuItem>
+            <ActionMenuSeparator />
+            <ActionMenuItem onClick={() => closeAfter(() => onDuplicate(product))}>
+              <Copy className="h-3.5 w-3.5" />
+              Duplicate
+            </ActionMenuItem>
+          </>
+        ) : null}
+
         {product.status === "suspended" ? (
           <>
             <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
@@ -334,7 +358,7 @@ export default function SellerProductsPage() {
 
   const submitProductForReview = useCallback(async (productId: string) => {
     try {
-      const updated = await updateSellerProductStatus(productId, "pending_review");
+      const updated = await submitSellerProductForReviewRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
       toast.success("Product submitted for review.");
     } catch (error) {
@@ -344,7 +368,7 @@ export default function SellerProductsPage() {
 
   const withdrawProductReview = useCallback(async (productId: string) => {
     try {
-      const updated = await updateSellerProductStatus(productId, "draft");
+      const updated = await withdrawSellerProductReviewRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
       toast.success("Review withdrawn. Product moved back to drafts.");
     } catch (error) {
@@ -354,9 +378,9 @@ export default function SellerProductsPage() {
 
   const unpublishProduct = useCallback(async (productId: string) => {
     try {
-      const updated = await updateSellerProductStatus(productId, "draft");
+      const updated = await unpublishSellerProductRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
-      toast.success("Product unpublished and moved to drafts.");
+      toast.success("Product unpublished and moved to paused.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to unpublish product.");
     }
@@ -394,7 +418,7 @@ export default function SellerProductsPage() {
   const summary = useMemo(() => {
     return {
       total: products.length,
-      published: products.filter((p) => p.status === "published").length,
+      published: products.filter((p) => p.status === "published" || p.status === "approved").length,
       draft: products.filter((p) => p.status === "draft").length,
       pendingReview: products.filter((p) => p.status === "pending_review").length,
       lowStock: products.filter((p) => getStockState(p) === "low-stock").length,

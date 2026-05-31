@@ -1,11 +1,10 @@
 import type { Product, ProductDetail, ProductSpec, ProductVariant } from "@/types/product";
-import { readLocalStorageValue } from "@/lib/persisted-storage";
+import { apiClient } from "@/services/api";
 import { type ProductAttributeInput } from "@/services/categories-api";
 import {
+  type ProductModerationAction,
   type ProductModerationState,
   type ProductModerationStatus,
-  getModerationActionTargetStatus,
-  type ProductModerationAction,
 } from "@/services/product-moderation";
 
 export type SellerProductStatus = ProductModerationStatus;
@@ -22,12 +21,17 @@ export interface SellerProductImage {
   url: string;
   name: string;
   isPrimary: boolean;
+  publicId?: string;
+  sortOrder?: number;
   originalWidth?: number;
   originalHeight?: number;
   processedWidth?: number;
   processedHeight?: number;
   wasAutoCropped?: boolean;
   linkedVariantValue?: string;
+  uploadStatus?: "idle" | "uploading" | "uploaded" | "failed";
+  uploadError?: string;
+  localPreviewUrl?: string;
 }
 
 export interface SellerProductVariant {
@@ -100,10 +104,140 @@ export interface SellerProductModerationInput extends ProductModerationState {
   status: SellerProductStatus;
 }
 
-const SELLER_PRODUCTS_STORAGE_KEY = "zogular-seller-products";
-const LEGACY_SELLER_PRODUCTS_STORAGE_KEYS = ["zamoyo-seller-products"];
+type BackendProductStatus =
+  | "DRAFT"
+  | "PENDING_REVIEW"
+  | "NEEDS_CHANGES"
+  | "APPROVED"
+  | "PUBLISHED"
+  | "PAUSED"
+  | "SUSPENDED"
+  | "REJECTED";
+
+type BackendProductCondition = "NEW" | "USED";
+type BackendDeliveryType = "STANDARD" | "EXPRESS";
+type BackendLegacyCategory =
+  | "PHONES"
+  | "LAPTOPS"
+  | "ACCESSORIES"
+  | "FASHIONS"
+  | "ELECTRONICS"
+  | "OTHERS";
+
+type BackendProductImage = {
+  url: string;
+  publicId?: string | null;
+  alt?: string | null;
+  isPrimary?: boolean;
+  sortOrder?: number;
+  linkedVariantValue?: string | null;
+  width?: number | null;
+  height?: number | null;
+};
+
+type BackendCategoryRef = {
+  id: string;
+  name: string;
+  slug: string;
+  parentId: string | null;
+};
+
+type BackendAttributeValue = {
+  id?: string;
+  attributeId: string;
+  slug: string;
+  name: string;
+  value: string;
+};
+
+type BackendVendorProduct = {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  price: number;
+  salePrice: number | null;
+  images: BackendProductImage[] | string[];
+  condition: BackendProductCondition;
+  category: BackendLegacyCategory;
+  status: BackendProductStatus;
+  location?: string | null;
+  sku?: string | null;
+  stock?: number | null;
+  lowStockThreshold?: number | null;
+  categoryId?: string | null;
+  categorySlug?: string | null;
+  subcategorySlug?: string | null;
+  deliveryType?: BackendDeliveryType | null;
+  weightKG?: number | null;
+  dimensions?: string | null;
+  seoTitle?: string | null;
+  seoDescription?: string | null;
+  brand?: string | null;
+  model?: string | null;
+  ram?: string | null;
+  storage?: string | null;
+  batteryHealth?: string | null;
+  size?: string | null;
+  color?: string | null;
+  material?: string | null;
+  compatibility?: string | null;
+  isApproved: boolean;
+  approvedBy?: string | null;
+  approvedAt?: string | null;
+  rejectionReason?: string | null;
+  reviewNotes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  user?: {
+    id: string;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+  };
+  categoryRef?: BackendCategoryRef | null;
+  attributeValues?: BackendAttributeValue[];
+};
+
+type BackendListResponse = {
+  status: string;
+  results: number;
+  pagination?: {
+    total: number;
+    page: number;
+    limit: number;
+    pages: number;
+  };
+  data: {
+    products: BackendVendorProduct[];
+  };
+};
+
+type BackendDetailResponse = {
+  status: string;
+  data: {
+    product: BackendVendorProduct;
+  };
+};
+
+type SellerProductEnrichment = {
+  categoryName?: string;
+  subcategoryName?: string;
+  condition?: ProductCondition;
+  variants?: SellerProductVariant[];
+  specifications?: SellerProductSpecification[];
+  seo?: SellerProductListing["seo"];
+  moderation?: ProductModerationState;
+  seller?: SellerProductListing["seller"];
+};
+
+const SELLER_PRODUCT_ENRICHMENT_STORAGE_KEY = "zogular-seller-product-enrichments";
 const DEFAULT_SELLER = { name: "Zogular Store", slug: "zogular-official", verified: true };
-const FALLBACK_IMAGE = "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1200&q=80";
+const FALLBACK_IMAGE =
+  "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1200&q=80";
+const SELLER_PRODUCTS_QUERY_LIMIT = 100;
+
+let sellerCatalogSnapshot: SellerProductListing[] = [];
 
 export const SELLER_CATALOG_CATEGORIES: SellerCatalogCategory[] = [
   {
@@ -188,120 +322,46 @@ export const SELLER_CATEGORY_TREE = SELLER_CATALOG_CATEGORIES.reduce<Record<stri
   {},
 );
 
-const SELLER_SEED_PRODUCTS: SellerProductListing[] = [
-  buildSeedProduct({
-    id: "ZM-P-101",
-    title: "MacBook Air M2 - 256GB Midnight",
-    brand: "Apple",
-    categoryName: "Computing",
-    subcategoryName: "Laptops",
-    price: 18500,
-    salePrice: null,
-    stock: 12,
-    lowStockThreshold: 5,
-    status: "published",
-    sku: "MAC-AIR-M2-MID",
-    image: "https://images.unsplash.com/photo-1611186871348-b1ce696e52c9?auto=format&fit=crop&w=1200&q=80",
-  }),
-  buildSeedProduct({
-    id: "ZM-P-102",
-    title: "Samsung 45W Fast Charger Type-C",
-    brand: "Samsung",
-    categoryName: "Phones & Tablets",
-    subcategoryName: "Accessories",
-    price: 450,
-    salePrice: null,
-    stock: 0,
-    lowStockThreshold: 10,
-    status: "published",
-    sku: "SAM-45W-CHG",
-    image: "https://images.unsplash.com/photo-1583863788434-e58a36330cf0?auto=format&fit=crop&w=1200&q=80",
-  }),
-  buildSeedProduct({
-    id: "ZM-P-103",
-    title: "Apple AirPods Pro (2nd Generation)",
-    brand: "Apple",
-    categoryName: "Electronics",
-    subcategoryName: "Audio & Headphones",
-    price: 4200,
-    salePrice: null,
-    stock: 2,
-    lowStockThreshold: 5,
-    status: "published",
-    sku: "APP-AIRPODS-PRO2",
-    image: "https://images.unsplash.com/photo-1600294037681-c80b4cb5b434?auto=format&fit=crop&w=1200&q=80",
-  }),
-  buildSeedProduct({
-    id: "ZM-P-104",
-    title: "JBL Flip 6 Portable Bluetooth Speaker",
-    brand: "JBL",
-    categoryName: "Electronics",
-    subcategoryName: "Audio & Headphones",
-    price: 2100,
-    salePrice: null,
-    stock: 45,
-    lowStockThreshold: 5,
-    status: "pending_review",
-    sku: "JBL-FLIP-6",
-    image: "https://images.unsplash.com/photo-1545454675-3531b543be5d?auto=format&fit=crop&w=1200&q=80",
-  }),
-  buildSeedProduct({
-    id: "ZM-P-105",
-    title: "PlayStation 5 DualSense Controller",
-    brand: "Sony",
-    categoryName: "Electronics",
-    subcategoryName: "TVs & Entertainment",
-    price: 1450,
-    salePrice: null,
-    stock: 8,
-    lowStockThreshold: 4,
-    status: "draft",
-    sku: "SONY-DS5-WHT",
-    image: "https://images.unsplash.com/photo-1606813907291-d86efa9b94db?auto=format&fit=crop&w=1200&q=80",
-  }),
-  buildSeedProduct({
-    id: "ZM-P-106",
-    title: "Nike Air Max 270",
-    brand: "Nike",
-    categoryName: "Fashion",
-    subcategoryName: "Footwear",
-    price: 1850,
-    salePrice: null,
-    stock: 3,
-    lowStockThreshold: 6,
-    status: "needs_changes",
-    sku: "NKE-AM270-BLK",
-    image: "https://images.unsplash.com/photo-1542291026-7eec264c27ff?auto=format&fit=crop&w=1200&q=80",
-  }),
-];
-
 export async function fetchSellerCatalogProducts(): Promise<SellerProductListing[]> {
-  await delay(300);
-  return getSellerCatalogProducts();
+  const response = await apiClient<BackendListResponse>("/vendor/products", {
+    method: "GET",
+    query: { page: 1, limit: SELLER_PRODUCTS_QUERY_LIMIT },
+  });
+
+  const products = response.data.products.map(normalizeBackendSellerProduct);
+  setSellerCatalogSnapshot(products);
+  return products;
 }
 
-export async function fetchSellerCatalogProductById(productId: string): Promise<SellerProductListing> {
-  await delay(200);
-  const product = getSellerCatalogProducts().find((item) => item.id === productId);
-  if (!product) throw new Error("Product not found.");
+export async function fetchSellerCatalogProductById(
+  productId: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}`, {
+    method: "GET",
+  });
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
   return product;
 }
 
-export async function createSellerCatalogProduct(input: CreateSellerProductInput): Promise<SellerProductListing> {
-  await delay(500);
-  const now = new Date().toISOString();
-  const id = buildProductId(input.sku);
-  const product: SellerProductListing = {
-    ...input,
-    id,
-    slug: buildUniqueSlug(input.title, id),
-    seller: { ...DEFAULT_SELLER, ...input.seller },
-    moderation: normalizeModerationState(input.status, input.moderation, now),
-    createdAt: now,
-    updatedAt: now,
-  };
+export async function createSellerCatalogProduct(
+  input: CreateSellerProductInput,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>("/vendor/products", {
+    method: "POST",
+    body: JSON.stringify(buildBackendProductPayload(input, "create")),
+    csrf: true,
+  });
 
-  writeStoredSellerProducts([product, ...getSellerCatalogProducts()]);
+  persistSellerProductEnrichment(response.data.product.id, buildEnrichmentFromCreateInput(input));
+  let product = normalizeBackendSellerProduct(response.data.product);
+
+  if (input.status === "pending_review") {
+    product = await submitSellerProductForReview(product.id);
+  }
+
+  upsertSellerCatalogSnapshot(product);
   return product;
 }
 
@@ -309,96 +369,223 @@ export async function updateSellerProductStatus(
   productId: string,
   status: SellerProductStatus,
 ): Promise<SellerProductListing> {
-  return updateSellerProductModeration(productId, { status });
+  if (status === "pending_review") {
+    return submitSellerProductForReview(productId);
+  }
+
+  if (status === "paused") {
+    return pauseSellerProduct(productId);
+  }
+
+  if (status === "draft") {
+    const currentProduct = await fetchSellerCatalogProductById(productId);
+
+    if (currentProduct.status === "pending_review") {
+      return withdrawSellerProductReview(productId);
+    }
+
+    if (
+      currentProduct.status === "approved" ||
+      currentProduct.status === "published"
+    ) {
+      return unpublishSellerProduct(productId);
+    }
+
+    return updateSellerCatalogProduct(productId, { status: "draft" });
+  }
+
+  throw new Error(`Unsupported seller status transition: ${status}`);
 }
 
 export async function updateSellerCatalogProduct(
   productId: string,
   input: UpdateSellerProductInput,
 ): Promise<SellerProductListing> {
-  await delay(300);
-  const products = getSellerCatalogProducts();
-  const product = products.find((item) => item.id === productId);
-  if (!product) throw new Error("Product not found.");
+  const currentProduct = await fetchSellerCatalogProductById(productId);
+  const persistStatus = resolvePersistStatus(input.status ?? currentProduct.status);
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}`, {
+    method: "PATCH",
+    body: JSON.stringify(buildBackendProductPayload({ ...currentProduct, ...input, status: persistStatus }, "update")),
+    csrf: true,
+  });
 
-  const now = new Date().toISOString();
-  const nextStatus = input.status ?? product.status;
-  const updatedProduct: SellerProductListing = {
-    ...product,
-    ...input,
-    id: product.id,
-    slug: input.title && input.title !== product.title ? buildUniqueSlug(input.title, product.id) : product.slug,
-    seller: product.seller,
-    moderation: normalizeModerationState(nextStatus, input.moderation ?? product.moderation, now),
-    updatedAt: now,
-  };
+  persistSellerProductEnrichment(
+    productId,
+    mergeSellerProductEnrichment(
+      readSellerProductEnrichment(productId),
+      buildEnrichmentFromUpdateInput(currentProduct, input),
+    ),
+  );
 
-  writeStoredSellerProducts(products.map((item) => (item.id === productId ? updatedProduct : item)));
-  return updatedProduct;
+  let product = normalizeBackendSellerProduct(response.data.product);
+
+  if (input.status === "pending_review") {
+    product = await submitSellerProductForReview(product.id);
+  }
+
+  upsertSellerCatalogSnapshot(product);
+  return product;
 }
 
 export async function updateSellerProductModeration(
   productId: string,
   input: SellerProductModerationInput,
 ): Promise<SellerProductListing> {
-  await delay(250);
-  const products = getSellerCatalogProducts();
-  const product = products.find((item) => item.id === productId);
-  if (!product) throw new Error("Product not found.");
+  if (!input.action) {
+    return updateSellerProductStatus(productId, input.status);
+  }
 
-  const now = new Date().toISOString();
-  const nextStatus = input.action ? getModerationActionTargetStatus(input.action) : input.status;
-  const updatedProduct = {
-    ...product,
-    status: nextStatus,
-    moderation: normalizeModerationState(nextStatus, { ...product.moderation, ...input }, now),
-    updatedAt: now,
-  };
-  writeStoredSellerProducts(products.map((item) => (item.id === productId ? updatedProduct : item)));
-  return updatedProduct;
+  if (input.action === "approve") {
+    const response = await apiClient<BackendDetailResponse>(`/admin/products/${productId}/approve`, {
+      method: "PATCH",
+      body: JSON.stringify({}),
+      csrf: true,
+    });
+    const product = normalizeBackendSellerProduct(response.data.product);
+    upsertSellerCatalogSnapshot(product);
+    return product;
+  }
+
+  const response = await apiClient<BackendDetailResponse>(`/admin/products/${productId}/reject`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      reason: input.moderationNotes?.trim() || "Admin requested changes before approval.",
+    }),
+    csrf: true,
+  });
+
+  persistSellerProductEnrichment(
+    productId,
+    mergeSellerProductEnrichment(readSellerProductEnrichment(productId), {
+      moderation: {
+        ...input,
+        moderationNotes: input.moderationNotes?.trim() || "Admin requested changes before approval.",
+      },
+    }),
+  );
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
+  return product;
 }
 
-export async function duplicateSellerProduct(productId: string): Promise<SellerProductListing> {
-  await delay(250);
-  const products = getSellerCatalogProducts();
-  const product = products.find((item) => item.id === productId);
-  if (!product) throw new Error("Product not found.");
+export async function duplicateSellerProduct(
+  productId: string,
+): Promise<SellerProductListing> {
+  const sourceProduct = await fetchSellerCatalogProductById(productId);
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}/duplicate`, {
+    method: "POST",
+    body: JSON.stringify({}),
+    csrf: true,
+  });
 
-  const now = new Date().toISOString();
-  const duplicateId = `${product.id}-copy-${Date.now().toString().slice(-5)}`;
-  const duplicate = {
-    ...product,
-    id: duplicateId,
-    slug: buildUniqueSlug(`${product.title} Copy`, duplicateId),
-    title: `${product.title} Copy`,
-    status: "draft" as const,
-    moderation: {},
-    createdAt: now,
-    updatedAt: now,
-  };
+  const sourceEnrichment = readSellerProductEnrichment(sourceProduct.id);
+  persistSellerProductEnrichment(
+    response.data.product.id,
+    sourceEnrichment
+      ? {
+          ...sourceEnrichment,
+          moderation: undefined,
+        }
+      : {
+          categoryName: sourceProduct.categoryName,
+          subcategoryName: sourceProduct.subcategoryName,
+          condition: sourceProduct.condition,
+          variants: sourceProduct.variants,
+          specifications: sourceProduct.specifications,
+          seo: sourceProduct.seo,
+          seller: sourceProduct.seller,
+        },
+  );
 
-  writeStoredSellerProducts([duplicate, ...products]);
-  return duplicate;
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product, { prepend: true });
+  return product;
+}
+
+export async function submitSellerProductForReview(
+  productId: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}/submit-review`, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+    csrf: true,
+  });
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
+  return product;
+}
+
+export async function withdrawSellerProductReview(
+  productId: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}/withdraw-review`, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+    csrf: true,
+  });
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
+  return product;
+}
+
+export async function pauseSellerProduct(
+  productId: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}/pause`, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+    csrf: true,
+  });
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
+  return product;
+}
+
+export async function unpublishSellerProduct(
+  productId: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}/unpublish`, {
+    method: "PATCH",
+    body: JSON.stringify({}),
+    csrf: true,
+  });
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
+  return product;
 }
 
 export async function removeSellerProduct(productId: string): Promise<void> {
-  await delay(250);
-  writeStoredSellerProducts(getSellerCatalogProducts().filter((product) => product.id !== productId));
+  await apiClient(`/vendor/products/${productId}`, {
+    method: "DELETE",
+    body: JSON.stringify({}),
+    csrf: true,
+  });
+
+  deleteSellerProductEnrichment(productId);
+  sellerCatalogSnapshot = sellerCatalogSnapshot.filter((product) => product.id !== productId);
 }
 
 export function getSellerConsumerCatalogProducts(): Product[] {
-  return getSellerCatalogProducts().filter((product) => product.status === "published").map(
-    sellerProductToConsumerProduct,
-  );
+  return sellerCatalogSnapshot
+    .filter((product) => product.status === "published" || product.status === "approved")
+    .map(sellerProductToConsumerProduct);
 }
 
 export function getSellerConsumerProductDetailBySlug(slug: string): ProductDetail | null {
-  const product = getSellerCatalogProducts().find((item) => item.slug === slug);
+  const product = sellerCatalogSnapshot.find((item) => item.slug === slug);
   return product ? sellerProductToProductDetail(product) : null;
 }
 
 export function sellerProductToConsumerProduct(product: SellerProductListing): Product {
-  const image = product.images.find((item) => item.isPrimary)?.url ?? product.images[0]?.url ?? FALLBACK_IMAGE;
+  const image =
+    product.images.find((item) => item.isPrimary)?.url ??
+    product.images[0]?.url ??
+    FALLBACK_IMAGE;
   const displayPrice = product.salePrice ?? product.price;
 
   return {
@@ -411,8 +598,13 @@ export function sellerProductToConsumerProduct(product: SellerProductListing): P
     price: displayPrice,
     originalPrice: product.salePrice ? product.price : Math.round(product.price * 1.08),
     oldPrice: product.salePrice ? product.price : null,
-    discount: product.salePrice ? Math.round(((product.price - product.salePrice) / product.price) * 100) : null,
-    badge: product.status === "published" ? "Seller Pick" : null,
+    discount: product.salePrice
+      ? Math.round(((product.price - product.salePrice) / product.price) * 100)
+      : null,
+    badge:
+      product.status === "published" || product.status === "approved"
+        ? "Seller Pick"
+        : null,
     rating: 4.7,
     reviews: 42,
     image,
@@ -421,7 +613,9 @@ export function sellerProductToConsumerProduct(product: SellerProductListing): P
 
 export function sellerProductToProductDetail(product: SellerProductListing): ProductDetail {
   const consumerProduct = sellerProductToConsumerProduct(product);
-  const images = product.images.length ? product.images.map((image) => image.url) : [FALLBACK_IMAGE];
+  const images = product.images.length
+    ? product.images.map((image) => image.url)
+    : [FALLBACK_IMAGE];
 
   return {
     id: product.id,
@@ -453,10 +647,15 @@ export function sellerProductToProductDetail(product: SellerProductListing): Pro
         ? "Express delivery available in supported Zambia delivery zones."
         : "Standard Zogular delivery or pickup is available after checkout.",
     images,
-    variants: product.variants.length ? product.variants.map(toProductVariant) : defaultVariants(product),
+    variants: product.variants.length
+      ? product.variants.map(toProductVariant)
+      : defaultVariants(product),
     description: product.description,
     specs: [
-      ...product.specifications.map<ProductSpec>((spec) => ({ label: spec.name, value: spec.value })),
+      ...product.specifications.map<ProductSpec>((spec) => ({
+        label: spec.name,
+        value: spec.value,
+      })),
       { label: "Condition", value: formatCondition(product.condition) },
       { label: "Category", value: product.categoryName },
       { label: "SKU", value: product.sku },
@@ -466,7 +665,10 @@ export function sellerProductToProductDetail(product: SellerProductListing): Pro
 }
 
 export function getCategoryMetaByName(categoryName: string) {
-  return SELLER_CATALOG_CATEGORIES.find((category) => category.name === categoryName) ?? SELLER_CATALOG_CATEGORIES[0];
+  return (
+    SELLER_CATALOG_CATEGORIES.find((category) => category.name === categoryName) ??
+    SELLER_CATALOG_CATEGORIES[0]
+  );
 }
 
 export function getSubcategoryMeta(categoryName: string, subcategoryName: string) {
@@ -486,119 +688,118 @@ export function slugifySellerValue(value: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-function getSellerCatalogProducts(): SellerProductListing[] {
-  const stored = readStoredSellerProducts();
-  return (stored.length ? stored : SELLER_SEED_PRODUCTS).map(normalizeSellerProductRecord);
-}
-
-function readStoredSellerProducts(): SellerProductListing[] {
-  const storage = getStorage();
-  if (!storage) return [];
-
-  try {
-    const raw = readLocalStorageValue(SELLER_PRODUCTS_STORAGE_KEY, LEGACY_SELLER_PRODUCTS_STORAGE_KEYS);
-    return raw ? (JSON.parse(raw) as SellerProductListing[]) : [];
-  } catch {
-    return [];
-  }
-}
-
-function writeStoredSellerProducts(products: SellerProductListing[]) {
-  const storage = getStorage();
-  if (!storage) return;
-  storage.setItem(SELLER_PRODUCTS_STORAGE_KEY, JSON.stringify(products));
-}
-
-function getStorage() {
-  if (typeof window === "undefined") return null;
-  return window.localStorage;
-}
-
-function buildSeedProduct(input: {
-  id: string;
-  title: string;
-  brand: string;
-  categoryName: string;
-  subcategoryName: string;
-  price: number;
-  salePrice: number | null;
-  stock: number;
-  lowStockThreshold: number;
-  status: SellerProductStatus;
-  sku: string;
-  image: string;
-}): SellerProductListing {
-  const category = getCategoryMetaByName(input.categoryName);
-  const subcategory = getSubcategoryMeta(input.categoryName, input.subcategoryName);
-  const now = "2026-04-18T10:00:00Z";
+function normalizeBackendSellerProduct(product: BackendVendorProduct): SellerProductListing {
+  const enrichment = readSellerProductEnrichment(product.id);
+  const status = normalizeBackendStatus(product.status);
+  const seller = enrichment?.seller ?? buildSellerProfile(product.user);
+  const categoryName =
+    enrichment?.categoryName ??
+    product.categoryRef?.name ??
+    getStaticCategoryNameFromSlug(product.categorySlug) ??
+    humanizeLegacyCategory(product.category);
+  const subcategoryName =
+    enrichment?.subcategoryName ??
+    getStaticSubcategoryNameFromSlug(categoryName, product.subcategorySlug) ??
+    humanizeSlug(product.subcategorySlug || product.categorySlug || categoryName);
+  const attributes = (product.attributeValues ?? []).map((attribute) => ({
+    attributeId: attribute.attributeId,
+    slug: attribute.slug,
+    name: attribute.name,
+    value: attribute.value,
+  }));
+  const specifications =
+    enrichment?.specifications?.length
+      ? enrichment.specifications
+      : buildSpecificationFallback(product, categoryName);
+  const moderation = normalizeModerationStateFromBackend(product, status, enrichment?.moderation);
 
   return {
-    id: input.id,
-    slug: slugifySellerValue(input.title),
-    title: input.title,
-    brand: input.brand,
-    condition: "new",
-    description: `${input.title} from ${input.brand}, listed by a verified Zogular seller for Zambia shoppers.`,
-    categoryName: category.name,
-    categorySlug: category.slug,
-    subcategoryName: subcategory.name,
-    subcategorySlug: subcategory.slug,
-    status: input.status,
-    price: input.price,
-    salePrice: input.salePrice,
-    stock: input.stock,
-    lowStockThreshold: input.lowStockThreshold,
-    sku: input.sku,
-    images: [{ id: `${input.id}-image-1`, url: input.image, name: "Primary product image", isPrimary: true }],
-    deliveryType: "standard",
-    logistics: { weightKG: 1, dimensions: "Standard Box" },
-    variants: [{ id: `${input.id}-default`, label: "Option", value: "Default", sku: input.sku, stock: input.stock }],
-    specifications: [
-      { name: "Brand", value: input.brand },
-      { name: "Condition", value: "Brand New" },
-    ],
-    seo: {
-      metaTitle: `${input.title} | Zogular`,
-      metaDescription: `Buy ${input.title} in Zambia through Zogular.`,
+    id: product.id,
+    slug: product.slug,
+    title: product.title,
+    brand: product.brand?.trim() || extractSpecificationValue(specifications, "Brand") || "",
+    condition: enrichment?.condition ?? mapBackendCondition(product.condition),
+    description: product.description,
+    categoryName,
+    categorySlug: product.categorySlug || slugifySellerValue(categoryName),
+    subcategoryName,
+    subcategorySlug:
+      product.subcategorySlug || slugifySellerValue(subcategoryName),
+    status,
+    price: product.price,
+    salePrice: product.salePrice ?? null,
+    stock: product.stock ?? 0,
+    lowStockThreshold: product.lowStockThreshold ?? 0,
+    sku: product.sku ?? "",
+    images: normalizeBackendImages(product),
+    deliveryType: normalizeBackendDeliveryType(product.deliveryType),
+    logistics: {
+      weightKG: product.weightKG ?? 1,
+      dimensions: product.dimensions?.trim() || "Standard Box",
     },
-    seller: DEFAULT_SELLER,
-    moderation: normalizeModerationState(input.status, undefined, now),
-    createdAt: now,
-    updatedAt: now,
+    variants: enrichment?.variants ?? [],
+    attributes,
+    specifications,
+    seo: {
+      metaTitle:
+        enrichment?.seo?.metaTitle ||
+        product.seoTitle?.trim() ||
+        `${product.title} | Zogular`,
+      metaDescription:
+        enrichment?.seo?.metaDescription ||
+        product.seoDescription?.trim() ||
+        `Buy ${product.title} in Zambia on Zogular.`,
+    },
+    seller,
+    moderation,
+    createdAt: product.createdAt,
+    updatedAt: product.updatedAt,
   };
 }
 
-function normalizeSellerProductRecord(product: SellerProductListing): SellerProductListing {
-  const normalizedStatus = normalizeLegacyStatus(product.status);
-  return {
-    ...product,
-    images: normalizeSellerProductImages(product.images),
-    status: normalizedStatus,
-    moderation: normalizeModerationState(normalizedStatus, product.moderation, product.updatedAt),
-  };
-}
-
-function normalizeSellerProductImages(images: SellerProductImage[]): SellerProductImage[] {
-  if (!images.length) {
-    return [{ id: "fallback-image-1", url: FALLBACK_IMAGE, name: "Fallback product image", isPrimary: true }];
+function normalizeBackendImages(product: BackendVendorProduct): SellerProductImage[] {
+  if (!Array.isArray(product.images) || product.images.length === 0) {
+    return [
+      {
+        id: `${product.id}-fallback-image`,
+        url: FALLBACK_IMAGE,
+        name: "Fallback product image",
+        isPrimary: true,
+      },
+    ];
   }
 
-  const normalizedImages = images.map((image, index) => {
-    const nextUrl =
-      image.url.startsWith("http://") ||
-      image.url.startsWith("https://") ||
-      image.url.startsWith("data:image/")
-        ? image.url
-        : FALLBACK_IMAGE;
+  const normalizedImages = product.images.map((image, index) => {
+    if (typeof image === "string") {
+      return {
+        id: `${product.id}-image-${index + 1}`,
+        url: image,
+        name: `Product image ${index + 1}`,
+        isPrimary: index === 0,
+        sortOrder: index,
+        uploadStatus: "uploaded",
+      } satisfies SellerProductImage;
+    }
 
     return {
-      ...image,
-      url: nextUrl,
-      isPrimary: index === 0 ? true : image.isPrimary,
-    };
+      id: `${product.id}-image-${index + 1}`,
+      url: image.url,
+      name: image.alt?.trim() || `Product image ${index + 1}`,
+    publicId: image.publicId ?? undefined,
+    isPrimary: image.isPrimary === true || index === 0,
+    sortOrder: image.sortOrder ?? index,
+    originalWidth: image.width ?? undefined,
+    originalHeight: image.height ?? undefined,
+    processedWidth: image.width ?? undefined,
+      processedHeight: image.height ?? undefined,
+      linkedVariantValue: image.linkedVariantValue ?? undefined,
+      uploadStatus: "uploaded",
+    } satisfies SellerProductImage;
   });
 
-  if (normalizedImages.some((image) => image.isPrimary)) return normalizedImages;
+  if (normalizedImages.some((image) => image.isPrimary)) {
+    return normalizedImages;
+  }
 
   return normalizedImages.map((image, index) => ({
     ...image,
@@ -606,42 +807,343 @@ function normalizeSellerProductImages(images: SellerProductImage[]): SellerProdu
   }));
 }
 
-function normalizeLegacyStatus(status: SellerProductStatus | "active" | "review"): SellerProductStatus {
-  if (status === "active") return "published";
-  if (status === "review") return "pending_review";
-  return status;
+function normalizeBackendStatus(status: BackendProductStatus): SellerProductStatus {
+  if (status === "DRAFT") return "draft";
+  if (status === "PENDING_REVIEW") return "pending_review";
+  if (status === "NEEDS_CHANGES" || status === "REJECTED") return "needs_changes";
+  if (status === "APPROVED") return "approved";
+  if (status === "PUBLISHED") return "published";
+  if (status === "PAUSED") return "paused";
+  if (status === "SUSPENDED") return "suspended";
+  return "draft";
 }
 
-function normalizeModerationState(
+function normalizeBackendDeliveryType(
+  deliveryType?: BackendDeliveryType | null,
+): "standard" | "express" {
+  return deliveryType === "EXPRESS" ? "express" : "standard";
+}
+
+function mapBackendCondition(condition: BackendProductCondition): ProductCondition {
+  return condition === "USED" ? "used-good" : "new";
+}
+
+function buildSellerProfile(
+  user?: BackendVendorProduct["user"],
+): SellerProductListing["seller"] {
+  const firstName = user?.firstName?.trim() || "";
+  const lastName = user?.lastName?.trim() || "";
+  const displayName = `${firstName} ${lastName}`.trim();
+
+  if (!displayName) {
+    return DEFAULT_SELLER;
+  }
+
+  return {
+    name: displayName,
+    slug: slugifySellerValue(displayName),
+    verified: true,
+  };
+}
+
+function normalizeModerationStateFromBackend(
+  product: BackendVendorProduct,
   status: SellerProductStatus,
-  moderation: ProductModerationState | undefined,
-  timestamp: string,
+  enrichment: ProductModerationState | undefined,
 ): ProductModerationState {
+  const moderationNotes =
+    product.rejectionReason?.trim() ||
+    product.reviewNotes?.trim() ||
+    enrichment?.moderationNotes ||
+    null;
+
   const submittedAt =
     status === "draft"
       ? null
-      : moderation?.submittedAt ??
-        (status === "pending_review" || status === "approved" || status === "rejected" || status === "needs_changes" || status === "published" || status === "suspended"
-          ? timestamp
-          : null);
-  const reviewedAt =
-    status === "pending_review" || status === "draft"
-      ? null
-      : moderation?.reviewedAt ??
-        (status === "approved" || status === "rejected" || status === "needs_changes" || status === "published" || status === "suspended"
-          ? timestamp
-          : null);
+      : enrichment?.submittedAt || product.updatedAt || product.createdAt;
+
+  let reviewedAt: string | null = enrichment?.reviewedAt || null;
+  if (!reviewedAt) {
+    if (
+      status === "approved" ||
+      status === "published" ||
+      status === "paused"
+    ) {
+      reviewedAt = product.approvedAt || product.updatedAt;
+    } else if (status === "needs_changes" || status === "suspended") {
+      reviewedAt = product.updatedAt;
+    }
+  }
 
   return {
     submittedAt,
     reviewedAt,
-    reviewedBy: reviewedAt ? moderation?.reviewedBy ?? null : null,
-    moderationNotes: moderation?.moderationNotes ?? null,
-    moderationFlags: moderation?.moderationFlags ?? [],
-    riskScore: moderation?.riskScore ?? null,
-    duplicateWarnings: moderation?.duplicateWarnings ?? [],
-    categorySuggestions: moderation?.categorySuggestions ?? [],
-    imageSafetyWarnings: moderation?.imageSafetyWarnings ?? [],
+    reviewedBy: reviewedAt ? product.approvedBy || enrichment?.reviewedBy || null : null,
+    moderationNotes,
+    moderationFlags: enrichment?.moderationFlags ?? [],
+    riskScore: enrichment?.riskScore ?? null,
+    duplicateWarnings: enrichment?.duplicateWarnings ?? [],
+    categorySuggestions: enrichment?.categorySuggestions ?? [],
+    imageSafetyWarnings: enrichment?.imageSafetyWarnings ?? [],
+  };
+}
+
+function buildSpecificationFallback(
+  product: BackendVendorProduct,
+  categoryName: string,
+): SellerProductSpecification[] {
+  const specs: SellerProductSpecification[] = [];
+  pushSpec(specs, "Brand", product.brand);
+  pushSpec(specs, "Model", product.model);
+  pushSpec(specs, "RAM", product.ram);
+  pushSpec(specs, "Storage", product.storage);
+  pushSpec(specs, "Battery Health", product.batteryHealth);
+  pushSpec(specs, "Size", product.size);
+  pushSpec(specs, "Color", product.color);
+  pushSpec(specs, "Material", product.material);
+  pushSpec(specs, "Compatibility", product.compatibility);
+
+  if (specs.length > 0) {
+    return specs;
+  }
+
+  return [
+    { name: "Condition", value: product.condition === "USED" ? "Used" : "Brand New" },
+    { name: "Category", value: categoryName },
+  ];
+}
+
+function pushSpec(
+  specifications: SellerProductSpecification[],
+  name: string,
+  value?: string | null,
+) {
+  if (!value || !value.trim()) return;
+  specifications.push({ name, value: value.trim() });
+}
+
+function extractSpecificationValue(
+  specifications: SellerProductSpecification[],
+  name: string,
+) {
+  const match = specifications.find((specification) => specification.name === name);
+  return match?.value ?? "";
+}
+
+function buildBackendProductPayload(
+  input: CreateSellerProductInput | UpdateSellerProductInput,
+  mode: "create" | "update",
+) {
+  const condition = mapFrontendConditionToBackend(input.condition);
+  const normalizedCategoryName =
+    input.categoryName && input.categoryName.trim()
+      ? input.categoryName.trim()
+      : humanizeSlug(input.categorySlug || "others");
+  const normalizedCategorySlug =
+    input.categorySlug && input.categorySlug.trim()
+      ? input.categorySlug.trim()
+      : slugifySellerValue(normalizedCategoryName);
+  const normalizedSubcategorySlug =
+    input.subcategorySlug && input.subcategorySlug.trim()
+      ? input.subcategorySlug.trim()
+      : normalizedCategorySlug;
+  const normalizedAttributes = (input.attributes ?? []).map((attribute) => ({
+    attributeId: attribute.attributeId,
+    slug: attribute.slug,
+    name: attribute.name,
+    value: attribute.value,
+  }));
+  const derivedLegacyFields = deriveLegacyFields(input);
+
+  return removeUndefinedValues({
+    title: input.title,
+    description: input.description,
+    price: input.price,
+    salePrice: input.salePrice,
+    images: normalizePayloadImages(input.images),
+    condition,
+    category: mapLegacyCategory(normalizedCategoryName, normalizedCategorySlug, normalizedSubcategorySlug),
+    categorySlug: normalizedCategorySlug,
+    subcategorySlug: normalizedSubcategorySlug,
+    status: mode === "create" ? "DRAFT" : mapFrontendStatusToBackend(resolvePersistStatus(input.status)),
+    sku: input.sku,
+    stock: input.stock,
+    lowStockThreshold: input.lowStockThreshold,
+    deliveryType: mapFrontendDeliveryTypeToBackend(input.deliveryType),
+    weightKG: input.logistics?.weightKG,
+    dimensions: input.logistics?.dimensions,
+    seoTitle: input.seo?.metaTitle,
+    seoDescription: input.seo?.metaDescription,
+    reviewNotes: input.moderation?.moderationNotes,
+    attributes: normalizedAttributes,
+    brand: input.brand?.trim() || derivedLegacyFields.brand,
+    model: derivedLegacyFields.model,
+    ram: derivedLegacyFields.ram,
+    storage: derivedLegacyFields.storage,
+    batteryHealth: derivedLegacyFields.batteryHealth,
+    size: derivedLegacyFields.size,
+    color: derivedLegacyFields.color,
+    material: derivedLegacyFields.material,
+    compatibility: derivedLegacyFields.compatibility,
+  });
+}
+
+function normalizePayloadImages(images?: SellerProductImage[]) {
+  return (images ?? []).map((image, index) => ({
+    url: image.url,
+    publicId: image.publicId ?? null,
+    alt: image.name,
+    isPrimary: image.isPrimary || index === 0,
+    sortOrder: index,
+    linkedVariantValue: image.linkedVariantValue ?? null,
+    width: image.processedWidth ?? image.originalWidth ?? null,
+    height: image.processedHeight ?? image.originalHeight ?? null,
+  }));
+}
+
+function deriveLegacyFields(
+  input: CreateSellerProductInput | UpdateSellerProductInput,
+) {
+  const attributes = input.attributes ?? [];
+  const specifications = input.specifications ?? [];
+  return {
+    brand: findValue(attributes, specifications, ["brand"]),
+    model: findValue(attributes, specifications, ["model"]),
+    ram: findValue(attributes, specifications, ["ram", "memory"]),
+    storage: findValue(attributes, specifications, ["storage", "capacity"]),
+    batteryHealth: findValue(attributes, specifications, ["battery-health", "battery", "battery-capacity"]),
+    size: findValue(attributes, specifications, ["size", "shoe-size"]),
+    color: findValue(attributes, specifications, ["color", "colour"]),
+    material: findValue(attributes, specifications, ["material"]),
+    compatibility: findValue(attributes, specifications, ["compatibility"]),
+  };
+}
+
+function findValue(
+  attributes: ProductAttributeInput[],
+  specifications: SellerProductSpecification[],
+  aliases: string[],
+) {
+  const normalizedAliases = aliases.map((alias) => slugifySellerValue(alias));
+  const attributeMatch = attributes.find((attribute) =>
+    normalizedAliases.includes(slugifySellerValue(attribute.slug || attribute.name)),
+  );
+  if (attributeMatch?.value.trim()) return attributeMatch.value.trim();
+
+  const specificationMatch = specifications.find((specification) =>
+    normalizedAliases.includes(slugifySellerValue(specification.name)),
+  );
+  if (specificationMatch?.value.trim()) return specificationMatch.value.trim();
+
+  return undefined;
+}
+
+function mapFrontendConditionToBackend(
+  condition?: ProductCondition,
+): BackendProductCondition | undefined {
+  if (!condition) return undefined;
+  return condition === "new" ? "NEW" : "USED";
+}
+
+function mapFrontendDeliveryTypeToBackend(
+  deliveryType?: SellerProductListing["deliveryType"],
+): BackendDeliveryType | undefined {
+  if (!deliveryType) return undefined;
+  return deliveryType === "express" ? "EXPRESS" : "STANDARD";
+}
+
+function mapFrontendStatusToBackend(
+  status?: SellerProductStatus,
+): BackendProductStatus | undefined {
+  if (!status) return undefined;
+  if (status === "draft") return "DRAFT";
+  if (status === "pending_review") return "PENDING_REVIEW";
+  if (status === "needs_changes" || status === "rejected") return "NEEDS_CHANGES";
+  if (status === "approved") return "APPROVED";
+  if (status === "published") return "PUBLISHED";
+  if (status === "paused") return "PAUSED";
+  if (status === "suspended") return "SUSPENDED";
+  return undefined;
+}
+
+function resolvePersistStatus(status?: SellerProductStatus) {
+  if (status === "needs_changes" || status === "rejected") {
+    return "needs_changes" as const;
+  }
+
+  return "draft" as const;
+}
+
+function mapLegacyCategory(
+  categoryName: string,
+  categorySlug: string,
+  subcategorySlug: string,
+): BackendLegacyCategory {
+  const combinedValue = `${categoryName} ${categorySlug} ${subcategorySlug}`.toLowerCase();
+
+  if (combinedValue.includes("phone") || combinedValue.includes("tablet")) {
+    return "PHONES";
+  }
+  if (combinedValue.includes("laptop") || combinedValue.includes("comput")) {
+    return "LAPTOPS";
+  }
+  if (combinedValue.includes("accessor")) {
+    return "ACCESSORIES";
+  }
+  if (combinedValue.includes("fashion") || combinedValue.includes("footwear") || combinedValue.includes("shoe")) {
+    return "FASHIONS";
+  }
+  if (combinedValue.includes("electronic") || combinedValue.includes("audio") || combinedValue.includes("tv")) {
+    return "ELECTRONICS";
+  }
+
+  return "OTHERS";
+}
+
+function buildEnrichmentFromCreateInput(
+  input: CreateSellerProductInput,
+): SellerProductEnrichment {
+  return {
+    categoryName: input.categoryName,
+    subcategoryName: input.subcategoryName,
+    condition: input.condition,
+    variants: input.variants,
+    specifications: input.specifications,
+    seo: input.seo,
+    moderation: input.moderation,
+    seller: { ...DEFAULT_SELLER, ...input.seller },
+  };
+}
+
+function buildEnrichmentFromUpdateInput(
+  currentProduct: SellerProductListing,
+  input: UpdateSellerProductInput,
+): SellerProductEnrichment {
+  return {
+    categoryName: input.categoryName ?? currentProduct.categoryName,
+    subcategoryName: input.subcategoryName ?? currentProduct.subcategoryName,
+    condition: input.condition ?? currentProduct.condition,
+    variants: input.variants ?? currentProduct.variants,
+    specifications: input.specifications ?? currentProduct.specifications,
+    seo: input.seo ?? currentProduct.seo,
+    moderation: input.moderation ?? currentProduct.moderation,
+    seller: currentProduct.seller,
+  };
+}
+
+function mergeSellerProductEnrichment(
+  base: SellerProductEnrichment | undefined,
+  next: SellerProductEnrichment,
+) {
+  return {
+    categoryName: next.categoryName ?? base?.categoryName,
+    subcategoryName: next.subcategoryName ?? base?.subcategoryName,
+    condition: next.condition ?? base?.condition,
+    variants: next.variants ?? base?.variants,
+    specifications: next.specifications ?? base?.specifications,
+    seo: next.seo ?? base?.seo,
+    moderation: next.moderation ?? base?.moderation,
+    seller: next.seller ?? base?.seller,
   };
 }
 
@@ -655,27 +1157,124 @@ function toProductVariant(variant: SellerProductVariant): ProductVariant {
 }
 
 function defaultVariants(product: SellerProductListing): ProductVariant[] {
-  return [{ id: `${product.id}-default`, label: "Option", value: "Default", swatchClass: "bg-zinc-200 border-zinc-200" }];
-}
-
-function buildProductId(sku: string): string {
-  return `ZM-P-${slugifySellerValue(sku).slice(0, 12).toUpperCase()}-${Date.now().toString().slice(-4)}`;
-}
-
-function buildUniqueSlug(title: string, id: string): string {
-  return `${slugifySellerValue(title)}-${id.toLowerCase()}`;
+  return [
+    {
+      id: `${product.id}-default`,
+      label: "Option",
+      value: "Default",
+      swatchClass: "bg-zinc-200 border-zinc-200",
+    },
+  ];
 }
 
 function formatCondition(condition: ProductCondition): string {
-  const labels: Record<ProductCondition, string> = {
-    new: "Brand New",
-    "used-like-new": "Used - Like New",
-    "used-good": "Used - Good",
-    refurbished: "Refurbished",
-  };
-  return labels[condition];
+  if (condition === "new") return "Brand New";
+  if (condition === "used-like-new") return "Used - Like New";
+  if (condition === "used-good") return "Used - Good";
+  return "Refurbished";
 }
 
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
+function getStaticCategoryNameFromSlug(categorySlug?: string | null) {
+  if (!categorySlug) return null;
+  const category = SELLER_CATALOG_CATEGORIES.find((item) => item.slug === categorySlug);
+  return category?.name ?? null;
+}
+
+function getStaticSubcategoryNameFromSlug(categoryName: string, subcategorySlug?: string | null) {
+  if (!subcategorySlug) return null;
+  const category = getCategoryMetaByName(categoryName);
+  const subcategory = category.subcategories.find((item) => item.slug === subcategorySlug);
+  return subcategory?.name ?? null;
+}
+
+function humanizeLegacyCategory(category: BackendLegacyCategory) {
+  if (category === "PHONES") return "Phones & Tablets";
+  if (category === "LAPTOPS") return "Computing";
+  if (category === "ACCESSORIES") return "Accessories";
+  if (category === "FASHIONS") return "Fashion";
+  if (category === "ELECTRONICS") return "Electronics";
+  return "Other";
+}
+
+function humanizeSlug(value: string) {
+  return value
+    .replace(/[-_]+/g, " ")
+    .trim()
+    .replace(/\b\w/g, (character) => character.toUpperCase());
+}
+
+function setSellerCatalogSnapshot(products: SellerProductListing[]) {
+  sellerCatalogSnapshot = products;
+}
+
+function upsertSellerCatalogSnapshot(
+  product: SellerProductListing,
+  options?: { prepend?: boolean },
+) {
+  const remainingProducts = sellerCatalogSnapshot.filter((item) => item.id !== product.id);
+  sellerCatalogSnapshot = options?.prepend
+    ? [product, ...remainingProducts]
+    : [product, ...remainingProducts].sort(
+        (left, right) =>
+          new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime(),
+      );
+}
+
+function readSellerProductEnrichment(productId: string) {
+  const enrichments = readSellerProductEnrichments();
+  return enrichments.get(productId);
+}
+
+function persistSellerProductEnrichment(
+  productId: string,
+  enrichment: SellerProductEnrichment,
+) {
+  const enrichments = readSellerProductEnrichments();
+  enrichments.set(productId, enrichment);
+  writeSellerProductEnrichments(enrichments);
+}
+
+function deleteSellerProductEnrichment(productId: string) {
+  const enrichments = readSellerProductEnrichments();
+  enrichments.delete(productId);
+  writeSellerProductEnrichments(enrichments);
+}
+
+function readSellerProductEnrichments() {
+  const storage = getStorage();
+  if (!storage) {
+    return new Map<string, SellerProductEnrichment>();
+  }
+
+  const rawValue = storage.getItem(SELLER_PRODUCT_ENRICHMENT_STORAGE_KEY);
+  if (!rawValue) {
+    return new Map<string, SellerProductEnrichment>();
+  }
+
+  try {
+    const parsed = JSON.parse(rawValue) as Record<string, SellerProductEnrichment>;
+    return new Map<string, SellerProductEnrichment>(Object.entries(parsed));
+  } catch {
+    return new Map<string, SellerProductEnrichment>();
+  }
+}
+
+function writeSellerProductEnrichments(
+  enrichments: Map<string, SellerProductEnrichment>,
+) {
+  const storage = getStorage();
+  if (!storage) return;
+  const serializable = Object.fromEntries(enrichments.entries());
+  storage.setItem(SELLER_PRODUCT_ENRICHMENT_STORAGE_KEY, JSON.stringify(serializable));
+}
+
+function getStorage() {
+  if (typeof window === "undefined") return null;
+  return window.localStorage;
+}
+
+function removeUndefinedValues<T extends Record<string, unknown>>(value: T) {
+  return Object.fromEntries(
+    Object.entries(value).filter((entry) => entry[1] !== undefined),
+  ) as T;
 }
