@@ -13,7 +13,6 @@ import type { AuthUser } from "@/types/auth";
 export default function SellerStatusPage() {
   const { application, loading, error } = useSellerApplication();
   const [currentUser, setCurrentUser] = useState<AuthUser | null>(null);
-  const phoneVerificationAvailable = currentUser?.phoneVerifiedAt !== undefined;
 
   useEffect(() => {
     let active = true;
@@ -73,7 +72,6 @@ export default function SellerStatusPage() {
       <SellerStatusNotice application={application} />
       <SellerTrustChecklist
         user={currentUser}
-        phoneVerificationAvailable={phoneVerificationAvailable}
       />
 
       <section className="rounded-[2rem] border border-zinc-200 bg-white/90 p-6 shadow-[0_24px_60px_rgba(15,23,42,0.08)] backdrop-blur-xl md:p-8">

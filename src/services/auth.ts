@@ -306,9 +306,6 @@ export async function login(input: LoginInput): Promise<AuthSession> {
   let user: AuthUser;
   try {
     user = normalizeUser(payload, input.email);
-    if (user.emailVerified === undefined || user.phoneVerifiedAt === undefined) {
-      user = await getCurrentUser();
-    }
   } catch (error) {
     try {
       user = await getCurrentUser();
@@ -392,6 +389,17 @@ export async function refreshAccessToken(): Promise<string> {
     throw new ApiError("Backend did not return a refreshed access token.", 500, payload);
   }
 
+  // Refresh response now carries data.user — update stored metadata so
+  // phoneVerifiedAt persists across the access-token window without a
+  // separate /user/me round-trip.
+  try {
+    const fallbackEmail = getStoredAuthUser()?.email;
+    const refreshedUser = normalizeUser(payload, fallbackEmail);
+    storeAuthUser(refreshedUser);
+  } catch {
+    // Non-fatal: stored user metadata may be slightly stale until next /user/me.
+  }
+
   return accessToken;
 }
 
@@ -404,11 +412,14 @@ function normalizePhoneOtpPayload(phone: string, code?: string) {
   };
 }
 
-export async function sendPhoneOtp(phone: string): Promise<AuthActionResult> {
+export async function sendPhoneOtp(
+  phone: string,
+  purpose: string = "PHONE_VERIFY",
+): Promise<AuthActionResult> {
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.sendPhoneOtp, {
     method: "POST",
     csrf: true,
-    body: JSON.stringify(normalizePhoneOtpPayload(phone)),
+    body: JSON.stringify({ ...normalizePhoneOtpPayload(phone), purpose }),
   });
 
   return buildActionResult(
@@ -420,17 +431,20 @@ export async function sendPhoneOtp(phone: string): Promise<AuthActionResult> {
 export async function verifyPhoneOtp(
   phone: string,
   code: string,
+  purpose: string = "PHONE_VERIFY",
 ): Promise<AuthActionResult> {
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.verifyPhoneOtp, {
     method: "POST",
     csrf: true,
-    body: JSON.stringify(normalizePhoneOtpPayload(phone, code)),
+    body: JSON.stringify({ ...normalizePhoneOtpPayload(phone, code), purpose }),
   });
 
+  // Always refresh the stored user after a successful OTP verify so that
+  // phoneVerifiedAt is immediately available without a full page reload.
   try {
     await getCurrentUser();
   } catch {
-    // Best-effort session refresh; the verification response itself is still authoritative.
+    // Non-fatal: caller's UI will show the verified state from local optimistic update.
   }
 
   return buildActionResult(payload, "Phone number verified successfully.");

@@ -8,7 +8,6 @@ function TrustRow({
   label,
   description,
   verified,
-  unavailable = false,
   icon,
   ctaHref,
   ctaLabel,
@@ -16,7 +15,6 @@ function TrustRow({
   label: string;
   description: string;
   verified: boolean;
-  unavailable?: boolean;
   icon: React.ReactNode;
   ctaHref?: string;
   ctaLabel?: string;
@@ -45,11 +43,11 @@ function TrustRow({
                   : "bg-amber-100 text-amber-700",
               )}
             >
-              {verified ? "Verified" : unavailable ? "Backend Follow-up" : "Unverified"}
+              {verified ? "Verified" : "Unverified"}
             </span>
           </div>
           <p className="mt-2 text-sm font-medium leading-6 text-zinc-600">{description}</p>
-          {!verified && ctaHref && ctaLabel && !unavailable ? (
+          {!verified && ctaHref && ctaLabel ? (
             <div className="mt-3">
               <Link href={ctaHref}>
                 <Button className="h-9 rounded-xl bg-[#009E49] px-4 text-xs font-black uppercase tracking-[0.14em] text-white hover:bg-[#00853d]">
@@ -66,11 +64,9 @@ function TrustRow({
 
 export function SellerTrustChecklist({
   user,
-  phoneVerificationAvailable,
   compact = false,
 }: {
   user: AuthUser | null;
-  phoneVerificationAvailable: boolean;
   compact?: boolean;
 }) {
   const emailVerified = Boolean(user?.emailVerified);
@@ -108,14 +104,11 @@ export function SellerTrustChecklist({
         <TrustRow
           label="Phone verification"
           description={
-            phoneVerificationAvailable
-              ? phoneVerified
-                ? "Your phone number has been verified for seller trust and Zambia payout readiness."
-                : "Verify a Zambian phone number before the seller application can become fully trust-based."
-              : "Phone OTP flow is wired on the frontend, but the backend session payload does not expose phoneVerifiedAt yet, so verification state cannot be confirmed reliably after refresh."
+            phoneVerified
+              ? "Your phone number has been verified for seller trust and Zambia payout readiness."
+              : "Verify a Zambian phone number before the seller application can become fully trust-based."
           }
           verified={phoneVerified}
-          unavailable={!phoneVerificationAvailable}
           icon={phoneVerified ? <CheckCircle2 className="h-4 w-4" /> : <Phone className="h-4 w-4" />}
           ctaHref="/seller/verify-phone"
           ctaLabel="Verify phone"

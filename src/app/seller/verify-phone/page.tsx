@@ -24,9 +24,12 @@ export default function SellerVerifyPhonePage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
+  // In-page optimistic state: marks verified within the current session
+  // even before the next /user/me response arrives.
   const [verifiedThisSession, setVerifiedThisSession] = useState(false);
 
-  const phoneVerificationAvailable = user?.phoneVerifiedAt !== undefined;
+  // phoneVerified is true if the trusted backend user payload confirms it,
+  // OR if verification just succeeded in this page session.
   const phoneVerified = Boolean(user?.phoneVerifiedAt) || verifiedThisSession;
 
   useEffect(() => {
@@ -57,16 +60,11 @@ export default function SellerVerifyPhonePage() {
 
   const canResend = resendSecondsLeft === 0 && !isSending && !phoneVerified;
   const helperMessage = useMemo(() => {
-    if (phoneVerified && phoneVerificationAvailable) {
+    if (phoneVerified) {
       return "Your phone number is verified and ready for seller trust review.";
     }
-
-    if (phoneVerified && !phoneVerificationAvailable) {
-      return "Phone verification succeeded in this session, but the backend session payload still does not return phoneVerifiedAt after refresh.";
-    }
-
     return "Use a Zambia mobile number like +260971234567, 0971234567, or 0771234567.";
-  }, [phoneVerificationAvailable, phoneVerified]);
+  }, [phoneVerified]);
 
   const handleSendOtp = async () => {
     try {
@@ -93,6 +91,8 @@ export default function SellerVerifyPhonePage() {
       setErrorMessage(null);
       setStatusMessage(null);
       const result = await verifyPhoneOtp(phone, code);
+      // verifyPhoneOtp() already calls getCurrentUser() internally to update the
+      // stored session — fetch the refreshed user and reflect it in local state.
       const refreshedUser = await getCurrentUser().catch(() => null);
       if (refreshedUser) {
         setUser(refreshedUser);
@@ -236,8 +236,8 @@ export default function SellerVerifyPhonePage() {
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">What happens next</p>
               <div className="mt-4 space-y-3 text-sm font-medium leading-6 text-zinc-600">
                 <p>Draft saving stays open whether the phone is verified or not.</p>
-                <p>Final seller application submit should only happen after email and phone trust are both complete.</p>
-                <p>If verification succeeds but the onboarding gate still blocks, the backend session payload still needs to expose <code className="rounded bg-zinc-100 px-1 py-0.5 text-xs text-zinc-700">phoneVerifiedAt</code>.</p>
+                <p>Final seller application submit requires both email and phone trust to be complete.</p>
+                <p>Once verified, your phone status is saved to your account and confirmed on every session reload.</p>
               </div>
             </div>
           </aside>

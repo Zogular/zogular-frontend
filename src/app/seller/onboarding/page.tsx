@@ -51,7 +51,6 @@ function SellerOnboardingContent() {
   const sellerType = form.sellerType ?? "INDIVIDUAL";
   const canEdit = !application || application.status === "DRAFT" || application.status === "NEEDS_INFO";
   const isRegisteredBusiness = sellerType === "REGISTERED_BUSINESS";
-  const phoneVerificationAvailable = currentUser?.phoneVerifiedAt !== undefined;
   const emailVerified = Boolean(currentUser?.emailVerified);
   const phoneVerified = Boolean(currentUser?.phoneVerifiedAt);
 
@@ -194,11 +193,7 @@ function SellerOnboardingContent() {
     }
 
     if (!phoneVerified) {
-      toast.error(
-        phoneVerificationAvailable
-          ? "Verify your phone before submitting the seller application."
-          : "Backend follow-up: /user/me does not expose phoneVerifiedAt yet, so the frontend cannot confirm phone trust.",
-      );
+      toast.error("Verify your phone before submitting the seller application.");
       router.push("/seller/verify-phone");
       return;
     }
@@ -413,7 +408,6 @@ function SellerOnboardingContent() {
           <aside className="space-y-4">
             <SellerTrustChecklist
               user={currentUser}
-              phoneVerificationAvailable={phoneVerificationAvailable}
               compact
             />
 
