@@ -7,12 +7,14 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { verifyEmailToken } from "@/services/auth";
+import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
 
 type VerifyState = "loading" | "success" | "error";
 
 export default function VerifyEmailPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
+  const nextPath = sanitizeInternalNextPath(searchParams.get("next")) ?? getAuthRedirectIntent();
   const [state, setState] = useState<VerifyState>("loading");
   const [message, setMessage] = useState("Verifying your email...");
 
@@ -71,7 +73,7 @@ export default function VerifyEmailPage() {
             </div>
           </div>
 
-          <Link href="/auth/login">
+          <Link href={appendNextPath("/auth/login", nextPath)}>
             <Button
               disabled={isLoading}
               className="h-11 w-full rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]"

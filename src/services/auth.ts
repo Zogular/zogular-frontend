@@ -3,7 +3,6 @@ import {
   clearStoredAuthSession,
   getLastAuthEmail,
   getStoredAuthUser,
-  storeAccessToken,
   storeAuthSession,
   storeAuthUser,
   storeLastAuthEmail,
@@ -22,7 +21,6 @@ import type {
   UpdateMeInput,
   VerifyCodeInput,
 } from "@/types/auth";
-import type { SellerApplicationInput, SellerApplicationResult } from "@/types/seller";
 
 const AUTH_ENDPOINTS = {
   register: "/auth/register",
@@ -37,7 +35,8 @@ const AUTH_ENDPOINTS = {
   resetPassword: "/auth/reset-password",
   updateMe: "/user/update-me",
   changePassword: "/user/change-password",
-  sellerApplication: "/vendor/applications",
+  sendPhoneOtp: "/auth/phone/send-otp",
+  verifyPhoneOtp: "/auth/phone/verify-otp",
 } as const;
 
 const ROLE_REDIRECTS: Record<AuthRole, string> = {
@@ -58,6 +57,16 @@ function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function asNullableIsoString(value: unknown): string | null | undefined {
+  if (value == null) return null;
+  const normalized = asNonEmptyString(String(value));
+  return normalized ?? null;
+}
+
+function asBoolean(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function collectCandidateRecords(payload: unknown): Record<string, unknown>[] {
@@ -175,6 +184,12 @@ function normalizeUser(payload: unknown, fallbackEmail?: string): AuthUser {
     email,
     role,
     phone: getStringByKeys(records, ["phone", "phoneNumber", "telephone", "mobile"]),
+    emailVerified: asBoolean(
+      records.find((record) => "emailVerified" in record)?.emailVerified,
+    ),
+    phoneVerifiedAt: asNullableIsoString(
+      records.find((record) => "phoneVerifiedAt" in record)?.phoneVerifiedAt,
+    ),
     avatarUrl: getStringByKeys(records, ["avatarUrl", "avatar", "photoUrl"]),
   };
 }
@@ -287,11 +302,13 @@ export async function login(input: LoginInput): Promise<AuthSession> {
   }
 
   const accessToken = extractAccessToken(payload);
-  if (accessToken) storeAccessToken(accessToken);
 
   let user: AuthUser;
   try {
     user = normalizeUser(payload, input.email);
+    if (user.emailVerified === undefined || user.phoneVerifiedAt === undefined) {
+      user = await getCurrentUser();
+    }
   } catch (error) {
     try {
       user = await getCurrentUser();
@@ -376,6 +393,47 @@ export async function refreshAccessToken(): Promise<string> {
   }
 
   return accessToken;
+}
+
+function normalizePhoneOtpPayload(phone: string, code?: string) {
+  const normalizedPhone = phone.replace(/[\s()-]/g, "").trim();
+
+  return {
+    phone: normalizedPhone,
+    ...(code ? { code: code.trim() } : {}),
+  };
+}
+
+export async function sendPhoneOtp(phone: string): Promise<AuthActionResult> {
+  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.sendPhoneOtp, {
+    method: "POST",
+    csrf: true,
+    body: JSON.stringify(normalizePhoneOtpPayload(phone)),
+  });
+
+  return buildActionResult(
+    payload,
+    "If the request is valid, a verification code has been sent to your phone.",
+  );
+}
+
+export async function verifyPhoneOtp(
+  phone: string,
+  code: string,
+): Promise<AuthActionResult> {
+  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.verifyPhoneOtp, {
+    method: "POST",
+    csrf: true,
+    body: JSON.stringify(normalizePhoneOtpPayload(phone, code)),
+  });
+
+  try {
+    await getCurrentUser();
+  } catch {
+    // Best-effort session refresh; the verification response itself is still authoritative.
+  }
+
+  return buildActionResult(payload, "Phone number verified successfully.");
 }
 
 export async function requestPasswordReset(
@@ -494,24 +552,5 @@ export async function savePermissionPreferences(
     success: true,
     message: "Preferences saved.",
     nextPath: "/",
-  };
-}
-
-export async function submitSellerApplication(
-  input: SellerApplicationInput,
-): Promise<SellerApplicationResult> {
-  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.sellerApplication, {
-    method: "POST",
-    csrf: true,
-    body: JSON.stringify(input),
-  });
-  const records = collectCandidateRecords(payload);
-  const applicationId =
-    getStringByKeys(records, ["applicationId", "id", "_id"]) ?? input.email;
-
-  return {
-    success: true,
-    applicationId,
-    nextPath: "/seller",
   };
 }

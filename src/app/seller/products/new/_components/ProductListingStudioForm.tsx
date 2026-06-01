@@ -37,6 +37,8 @@ type ProductListingStudioFormProps = {
   mode: ProductListingStudioMode;
   onPersist?: (payload: CreateSellerProductInput, status: ProductStatus) => Promise<void>;
   onStatusChange?: (status: ProductStatus) => Promise<void>;
+  canSubmitForReview?: boolean;
+  submitLabel?: string;
 };
 
 function splitStoredDimensions(value?: string) {
@@ -68,6 +70,8 @@ export function ProductListingStudioForm({
   mode,
   onPersist,
   onStatusChange,
+  canSubmitForReview = true,
+  submitLabel = "Submit for Review",
 }: ProductListingStudioFormProps) {
   const router = useRouter();
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -265,6 +269,10 @@ export function ProductListingStudioForm({
 
   const handleSave = async (e: React.FormEvent | React.MouseEvent, status: ProductStatus) => {
     e.preventDefault();
+    if (status === "pending_review" && !canSubmitForReview) {
+      toast.error("Seller approval is required before products can be submitted for review.");
+      return;
+    }
     if (!validateForm(status)) {
       toast.error("Please fix the highlighted fields.");
       return;
@@ -415,6 +423,8 @@ export function ProductListingStudioForm({
           isSubmitting={isSubmitting}
           revealDetails={revealDetails}
           onSave={handleSave}
+          canSubmitForReview={canSubmitForReview}
+          submitLabel={submitLabel}
         />
 
         <div className="mb-5">
@@ -656,6 +666,8 @@ export function ProductListingStudioForm({
         isSubmitting={isSubmitting}
         revealDetails={revealDetails}
         onSave={handleSave}
+        canSubmitForReview={canSubmitForReview}
+        submitLabel={submitLabel}
       />
     </div>
   );

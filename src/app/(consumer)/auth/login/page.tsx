@@ -8,11 +8,18 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getPostLoginRedirectPath, getStoredAuthSession, login } from "@/services/auth";
+import {
+  appendNextPath,
+  clearAuthRedirectIntent,
+  getAuthRedirectIntent,
+  sanitizeInternalNextPath,
+  storeAuthRedirectIntent,
+} from "@/services/auth-intent";
 
 export default function LoginPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const nextPath = searchParams.get("next");
+  const nextPath = sanitizeInternalNextPath(searchParams.get("next")) ?? getAuthRedirectIntent();
   const emailParam = searchParams.get("email");
   const registered = searchParams.get("registered") === "1";
   const [showPassword, setShowPassword] = useState(false);
@@ -21,6 +28,10 @@ export default function LoginPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+
+  useEffect(() => {
+    storeAuthRedirectIntent(nextPath);
+  }, [nextPath]);
 
   useEffect(() => {
     const existingSession = getStoredAuthSession();
@@ -46,6 +57,7 @@ export default function LoginPage() {
 
       const session = await login({ email, password });
       setSuccess("Signed in successfully. Redirecting...");
+      clearAuthRedirectIntent();
 
       const redirectPath = getPostLoginRedirectPath(session.user, nextPath);
       router.replace(redirectPath);
@@ -163,7 +175,7 @@ export default function LoginPage() {
 
           <p className="mt-8 text-center text-xs font-medium text-zinc-300">
             Don&apos;t have an account?{" "}
-            <Link href="/auth/register" className="font-extrabold text-[#FF6B00] underline-offset-4 drop-shadow-md hover:text-[#e66000] hover:underline">
+            <Link href={appendNextPath("/auth/register", nextPath)} className="font-extrabold text-[#FF6B00] underline-offset-4 drop-shadow-md hover:text-[#e66000] hover:underline">
               Sign up
             </Link>
           </p>

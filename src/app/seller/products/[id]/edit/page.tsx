@@ -14,15 +14,23 @@ import {
   type SellerProductListing,
 } from "@/services/seller-catalog";
 import { ProductListingStudioForm } from "../../new/_components/ProductListingStudioForm";
+import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
+import { hasSellerCapability } from "@/services/vendor-application";
 
 export default function EditSellerProductPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const { application } = useSellerApplication();
   const productId = decodeURIComponent(params.id);
   const [product, setProduct] = useState<SellerProductListing | null>(null);
   const [loading, setLoading] = useState(true);
 
+  const sellerStatus = application?.status ?? null;
+  const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
+  const canSubmitProductForReview = hasSellerCapability(sellerStatus, "canSubmitProductForReview");
+
   useEffect(() => {
+    if (!application || !canCreateDraftProduct) return;
     let mounted = true;
     fetchSellerCatalogProductById(productId)
       .then((item) => {
@@ -35,7 +43,24 @@ export default function EditSellerProductPage() {
     return () => {
       mounted = false;
     };
-  }, [productId]);
+  }, [application, canCreateDraftProduct, productId]);
+
+  if (!application || !canCreateDraftProduct) {
+    return (
+      <div className="mx-auto max-w-xl rounded-3xl border border-amber-200 bg-amber-50/90 p-6 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
+        <ShieldAlert className="mx-auto mb-3 h-9 w-9 text-amber-600" />
+        <h1 className="text-xl font-black text-amber-950">Seller approval is required before editing products</h1>
+        <p className="mt-2 text-sm font-semibold leading-6 text-amber-800">
+          Complete seller onboarding or wait for provisional approval before mutating seller products.
+        </p>
+        <div className="mt-5">
+          <Button type="button" onClick={() => router.push(!application || sellerStatus === "DRAFT" || sellerStatus === "NEEDS_INFO" ? "/seller/onboarding" : "/seller/status")} className="h-11 rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
+            {!application || sellerStatus === "DRAFT" || sellerStatus === "NEEDS_INFO" ? "Continue seller application" : "View seller status"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading) return <div className="rounded-3xl border border-white/70 bg-white/80 p-6 text-sm font-bold text-zinc-500">Loading editor...</div>;
 
@@ -82,6 +107,8 @@ export default function EditSellerProductPage() {
       backHref={`/seller/products/${product.id}`}
       initialProduct={product}
       mode="edit"
+      canSubmitForReview={canSubmitProductForReview}
+      submitLabel={canSubmitProductForReview ? "Submit for Review" : "Seller Approval Required"}
       onPersist={async (payload: CreateSellerProductInput) => {
         const updated = await updateSellerCatalogProduct(product.id, payload);
         setProduct(updated);

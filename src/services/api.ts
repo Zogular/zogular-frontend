@@ -1,8 +1,4 @@
-import {
-  clearStoredAuthSession,
-  getStoredAccessToken,
-  storeAccessToken,
-} from "@/services/auth-session";
+import { clearStoredAuthSession } from "@/services/auth-session";
 
 export class ApiError extends Error {
   status: number;
@@ -175,22 +171,7 @@ async function refreshCookieSession(timeout: number): Promise<boolean> {
       return false;
     }
 
-    const contentType = response.headers.get("content-type");
-    const payload = isJsonResponse(contentType)
-      ? await response.json()
-      : await response.text();
-
-    const refreshedToken =
-      payload &&
-      typeof payload === "object" &&
-      "accessToken" in payload &&
-      typeof (payload as { accessToken?: unknown }).accessToken === "string"
-        ? (payload as { accessToken: string }).accessToken
-        : null;
-
-    if (refreshedToken) {
-      storeAccessToken(refreshedToken);
-    }
+    await parseResponse(response);
 
     return true;
   } catch {
@@ -228,7 +209,6 @@ async function prepareRequest(
   const {
     timeout,
     query,
-    authMode = "include",
     csrf,
     skipAuthRefresh,
     headers,
@@ -241,17 +221,6 @@ async function prepareRequest(
   const resolvedHeaders = new Headers(headers);
   if (!resolvedHeaders.has("Accept")) {
     resolvedHeaders.set("Accept", "application/json");
-  }
-
-  if (
-    typeof window === "undefined" &&
-    authMode === "include" &&
-    !resolvedHeaders.has("Authorization")
-  ) {
-    const legacyToken = getStoredAccessToken();
-    if (legacyToken) {
-      resolvedHeaders.set("Authorization", `Bearer ${legacyToken}`);
-    }
   }
 
   let resolvedBody = body as BodyInit | null | undefined;

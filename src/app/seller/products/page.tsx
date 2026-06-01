@@ -32,6 +32,8 @@ import {
   type SellerProductStatus,
 } from "@/services/seller-catalog";
 import { getProductModerationStatusLabel } from "@/services/product-moderation";
+import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
+import { hasSellerCapability } from "@/services/vendor-application";
 
 // ============================================================================
 // 1. DATA CONTRACTS
@@ -326,6 +328,7 @@ function ProductActionMenu({
 // ============================================================================
 export default function SellerProductsPage() {
   const router = useRouter();
+  const { application } = useSellerApplication();
   const [products, setProducts] = useState<SellerProductListing[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -334,7 +337,19 @@ export default function SellerProductsPage() {
   const [activeTab, setActiveTab] = useState<ProductTab>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
 
+  const sellerStatus = application?.status ?? null;
+  const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
+  const canSubmitProductForReview = hasSellerCapability(sellerStatus, "canSubmitProductForReview");
+  const actionFallbackHref = !application || sellerStatus === "DRAFT" || sellerStatus === "NEEDS_INFO"
+    ? "/seller/onboarding"
+    : "/seller/status";
+
   const duplicateProduct = useCallback(async (product: SellerProductListing) => {
+    if (!canCreateDraftProduct) {
+      router.push(actionFallbackHref);
+      toast.error("Seller approval is required before mutating products.");
+      return;
+    }
     try {
       const duplicate = await duplicateSellerProduct(product.id);
       setProducts((prev) => [duplicate, ...prev]);
@@ -342,21 +357,31 @@ export default function SellerProductsPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to duplicate product.");
     }
-  }, []);
+  }, [actionFallbackHref, canCreateDraftProduct, router]);
 
   const editProduct = useCallback((product: SellerProductListing) => {
+    if (!canCreateDraftProduct) {
+      router.push(actionFallbackHref);
+      toast.error("Seller approval is required before editing products.");
+      return;
+    }
     if (product.status === "pending_review") {
       toast.warning("Withdraw review before editing this product.");
       return;
     }
     router.push(`/seller/products/${product.id}/edit`);
-  }, [router]);
+  }, [actionFallbackHref, canCreateDraftProduct, router]);
 
   const viewProduct = useCallback((product: SellerProductListing) => {
     router.push(`/seller/products/${product.id}`);
   }, [router]);
 
   const submitProductForReview = useCallback(async (productId: string) => {
+    if (!canSubmitProductForReview) {
+      router.push("/seller/status");
+      toast.error("Only APPROVED sellers can submit products for review.");
+      return;
+    }
     try {
       const updated = await submitSellerProductForReviewRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
@@ -364,9 +389,14 @@ export default function SellerProductsPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update product.");
     }
-  }, []);
+  }, [canSubmitProductForReview, router]);
 
   const withdrawProductReview = useCallback(async (productId: string) => {
+    if (!canCreateDraftProduct) {
+      router.push(actionFallbackHref);
+      toast.error("Seller approval is required before mutating products.");
+      return;
+    }
     try {
       const updated = await withdrawSellerProductReviewRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
@@ -374,9 +404,14 @@ export default function SellerProductsPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to withdraw review.");
     }
-  }, []);
+  }, [actionFallbackHref, canCreateDraftProduct, router]);
 
   const unpublishProduct = useCallback(async (productId: string) => {
+    if (!canCreateDraftProduct) {
+      router.push(actionFallbackHref);
+      toast.error("Seller approval is required before mutating products.");
+      return;
+    }
     try {
       const updated = await unpublishSellerProductRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
@@ -384,9 +419,14 @@ export default function SellerProductsPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to unpublish product.");
     }
-  }, []);
+  }, [actionFallbackHref, canCreateDraftProduct, router]);
 
   const removeProduct = useCallback(async (productId: string) => {
+    if (!canCreateDraftProduct) {
+      router.push(actionFallbackHref);
+      toast.error("Seller approval is required before mutating products.");
+      return;
+    }
     try {
       await removeSellerProduct(productId);
       setProducts((prev) => prev.filter((product) => product.id !== productId));
@@ -394,7 +434,7 @@ export default function SellerProductsPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove product.");
     }
-  }, []);
+  }, [actionFallbackHref, canCreateDraftProduct, router]);
 
   const loadProducts = useCallback(async () => {
     try {
@@ -410,8 +450,12 @@ export default function SellerProductsPage() {
   }, []);
 
   useEffect(() => {
+    if (!canCreateDraftProduct) {
+      setLoading(false);
+      return;
+    }
     loadProducts();
-  }, [loadProducts]);
+  }, [canCreateDraftProduct, loadProducts]);
 
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.categoryName))).sort(), [products]);
 
@@ -454,6 +498,25 @@ export default function SellerProductsPage() {
   // --- SYSTEM STATES ---
   if (loading) return <SellerPageLoading variant="table" />;
 
+  if (!application || !canCreateDraftProduct) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-[2rem] border border-amber-200 bg-amber-50/90 p-6 text-center shadow-[0_24px_60px_rgba(15,23,42,0.08)]">
+        <AlertCircle className="mx-auto h-10 w-10 text-amber-600" />
+        <h1 className="mt-4 text-2xl font-black tracking-tight text-amber-950">Seller approval is not ready for product access</h1>
+        <p className="mt-3 text-sm font-medium leading-6 text-amber-800">
+          Product drafts are available only after seller status moves to PROVISIONAL or APPROVED. Complete seller onboarding or follow your seller review status first.
+        </p>
+        <div className="mt-5">
+          <Link href={actionFallbackHref}>
+            <Button className="h-11 rounded-xl bg-[#009E49] px-5 font-bold text-white hover:bg-[#00853d]">
+              {actionFallbackHref === "/seller/onboarding" ? "Continue seller application" : "View seller status"}
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center rounded-3xl border border-red-100 bg-red-50 p-8 text-center mt-6">
@@ -476,12 +539,18 @@ export default function SellerProductsPage() {
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Products</h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">Manage inventory, pricing, visibility, and product review status.</p>
         </div>
-        <Link href="/seller/products/new">
+        <Link href={canCreateDraftProduct ? "/seller/products/new" : actionFallbackHref}>
           <Button className="h-11 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:bg-[#00853d] active:scale-95 md:w-auto">
             <Plus className="mr-2 h-5 w-5" /> Add New Product
           </Button>
         </Link>
       </div>
+
+      {!canSubmitProductForReview && canCreateDraftProduct ? (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50/90 p-4 text-sm font-medium text-amber-800 shadow-sm">
+          Your seller account can create and save draft products, but only APPROVED sellers can submit products for review.
+        </div>
+      ) : null}
 
       {/* 2. KPI SUMMARY (Upgraded UI) */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-5">

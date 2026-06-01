@@ -41,6 +41,8 @@ export interface AuthUser {
   email: string;
   role?: AuthRole;
   phone?: string;
+  emailVerified?: boolean;
+  phoneVerifiedAt?: string | null;
   avatarUrl?: string;
 }
 
