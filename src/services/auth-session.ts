@@ -11,24 +11,50 @@ const LEGACY_REFRESH_TOKEN_KEYS = ["zamoyo_refresh_token"];
 const LEGACY_AUTH_USER_KEYS = ["zamoyo_auth_user"];
 const LEGACY_LAST_AUTH_EMAIL_KEYS = ["zamoyo_auth_last_email"];
 export const AUTH_SESSION_CHANGED_EVENT = "zogular:auth-session-changed";
+const TOKEN_CLEANUP_FLAG = "zogular:legacy-token-cleanup";
 
 function getStorage(): Storage | null {
   if (typeof window === "undefined") return null;
   return window.localStorage;
 }
 
+function getSessionStorage(): Storage | null {
+  if (typeof window === "undefined") return null;
+  return window.sessionStorage;
+}
+
+function removeLegacyTokenKeys(storage: Storage): void {
+  [
+    ACCESS_TOKEN_KEY,
+    REFRESH_TOKEN_KEY,
+    LEGACY_SELLER_TOKEN_KEY,
+    ...LEGACY_ACCESS_TOKEN_KEYS,
+    ...LEGACY_REFRESH_TOKEN_KEYS,
+  ].forEach((key) => {
+    storage.removeItem(key);
+  });
+}
+
+export function cleanupLegacyTokenStorageOnce(): void {
+  const storage = getStorage();
+  const sessionStorage = getSessionStorage();
+  if (!storage || !sessionStorage) return;
+  if (sessionStorage.getItem(TOKEN_CLEANUP_FLAG) === "1") return;
+
+  removeLegacyTokenKeys(storage);
+  sessionStorage.setItem(TOKEN_CLEANUP_FLAG, "1");
+}
+
 function readString(key: string): string | null {
+  cleanupLegacyTokenStorageOnce();
+
   const value = readLocalStorageValue(
     key,
-    key === ACCESS_TOKEN_KEY
-      ? LEGACY_ACCESS_TOKEN_KEYS
-      : key === REFRESH_TOKEN_KEY
-        ? LEGACY_REFRESH_TOKEN_KEYS
-        : key === AUTH_USER_KEY
-          ? LEGACY_AUTH_USER_KEYS
-          : key === LAST_AUTH_EMAIL_KEY
-            ? LEGACY_LAST_AUTH_EMAIL_KEYS
-            : [],
+    key === AUTH_USER_KEY
+      ? LEGACY_AUTH_USER_KEYS
+      : key === LAST_AUTH_EMAIL_KEY
+        ? LEGACY_LAST_AUTH_EMAIL_KEYS
+        : [],
   );
   return value && value.trim().length > 0 ? value : null;
 }
@@ -39,39 +65,36 @@ function notifyAuthSessionChanged(): void {
 }
 
 export function getStoredAccessToken(): string | null {
-  return readString(ACCESS_TOKEN_KEY) ?? readString(LEGACY_SELLER_TOKEN_KEY);
+  cleanupLegacyTokenStorageOnce();
+  return null;
 }
 
 export function getStoredRefreshToken(): string | null {
-  return readString(REFRESH_TOKEN_KEY);
+  cleanupLegacyTokenStorageOnce();
+  return null;
 }
 
 export function storeAccessToken(token: string): void {
-  const storage = getStorage();
-  if (!storage) return;
-
-  storage.setItem(ACCESS_TOKEN_KEY, token);
-  storage.setItem(LEGACY_SELLER_TOKEN_KEY, token);
+  void token;
+  cleanupLegacyTokenStorageOnce();
 }
 
 export function removeStoredAccessToken(): void {
   const storage = getStorage();
   if (!storage) return;
 
-  storage.removeItem(ACCESS_TOKEN_KEY);
-  storage.removeItem(LEGACY_SELLER_TOKEN_KEY);
+  removeLegacyTokenKeys(storage);
 }
 
 export function storeRefreshToken(token: string): void {
-  const storage = getStorage();
-  if (!storage) return;
-  storage.setItem(REFRESH_TOKEN_KEY, token);
+  void token;
+  cleanupLegacyTokenStorageOnce();
 }
 
 export function removeStoredRefreshToken(): void {
   const storage = getStorage();
   if (!storage) return;
-  storage.removeItem(REFRESH_TOKEN_KEY);
+  removeLegacyTokenKeys(storage);
 }
 
 export function storeLastAuthEmail(email: string): void {
@@ -93,6 +116,7 @@ export function storeAuthUser(user: AuthUser): void {
 export function getStoredAuthUser(): AuthUser | null {
   const storage = getStorage();
   if (!storage) return null;
+  cleanupLegacyTokenStorageOnce();
 
   const value = storage.getItem(AUTH_USER_KEY);
   if (!value) return null;
@@ -112,10 +136,9 @@ export function getAuthSessionSnapshot(): string {
 }
 
 export function storeAuthSession(session: AuthSession): void {
+  cleanupLegacyTokenStorageOnce();
   removeStoredAccessToken();
   removeStoredRefreshToken();
-  if (session.accessToken) storeAccessToken(session.accessToken);
-  if (session.refreshToken) storeRefreshToken(session.refreshToken);
   storeAuthUser(session.user);
   storeLastAuthEmail(session.user.email);
   notifyAuthSessionChanged();
@@ -123,21 +146,21 @@ export function storeAuthSession(session: AuthSession): void {
 
 export function clearStoredAuthSession(): void {
   const storage = getStorage();
-  if (!storage) return;
-
-  storage.removeItem(ACCESS_TOKEN_KEY);
-  storage.removeItem(REFRESH_TOKEN_KEY);
-  storage.removeItem(AUTH_USER_KEY);
-  storage.removeItem(LEGACY_SELLER_TOKEN_KEY);
-  [...LEGACY_ACCESS_TOKEN_KEYS, ...LEGACY_REFRESH_TOKEN_KEYS, ...LEGACY_AUTH_USER_KEYS, ...LEGACY_LAST_AUTH_EMAIL_KEYS].forEach((key) => {
-    storage.removeItem(key);
-  });
+  if (storage) {
+    removeLegacyTokenKeys(storage);
+    storage.removeItem(AUTH_USER_KEY);
+    [...LEGACY_AUTH_USER_KEYS, ...LEGACY_LAST_AUTH_EMAIL_KEYS].forEach((key) => {
+      storage.removeItem(key);
+    });
+  }
 
   // Also wipe HttpOnly cookies (accessToken, refreshToken) which JS cannot
   // directly touch. The server route sets Max-Age=0 to expire them immediately.
-  fetch("/api/auth/clear-session", { method: "GET" }).catch(() => {
-    // Best-effort — ignore network errors
-  });
+  if (typeof window !== "undefined") {
+    fetch("/api/auth/clear-session", { method: "GET" }).catch(() => {
+      // Best-effort — ignore network errors
+    });
+  }
 
   notifyAuthSessionChanged();
 }

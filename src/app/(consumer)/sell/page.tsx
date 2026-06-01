@@ -1,304 +1,470 @@
 "use client";
 
-import { useState } from "react";
 import Link from "next/link";
+import { useMemo } from "react";
 import {
-  UploadCloud, ArrowLeft, TrendingUp, ShieldCheck, Truck,
-  Zap, Mail, ChevronDown, Loader2,
+  ArrowRight,
+  BadgeCheck,
+  ChevronRight,
+  FileCheck2,
+  PhoneCall,
+  ShieldCheck,
+  Sparkles,
+  Store,
+  Wallet,
 } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { submitSellerApplication } from "@/services/auth";
-import { toast } from "sonner";
+import { BrandLogo } from "@/components/brand/BrandLogo";
+import { getStoredAuthSession } from "@/services/auth";
+import { appendNextPath } from "@/services/auth-intent";
 
-export default function SellOnZogularLanding() {
-  const router = useRouter();
-  const [step, setStep] = useState(1);
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [form, setForm] = useState({
-    firstName: "",
-    lastName: "",
-    email: "",
-    mobileMoneyNumber: "",
-    shopName: "",
-    businessType: "individual" as const,
-    shopAddress: "",
-    nationalId: "",
-    idDocumentName: "",
-  });
+const SELLER_ONBOARDING_PATH = "/seller/onboarding?start=1";
 
-  const handleNext = async (event: React.FormEvent) => {
-    event.preventDefault();
+const HIGHLIGHTS = [
+  {
+    title: "Reach Lusaka-first buyers",
+    body: "Launch into a marketplace shaped around Zambia, compact mobile UX, and trust-led seller growth from day one.",
+    icon: Store,
+  },
+  {
+    title: "Structured seller review",
+    body: "Seller approval and product approval stay separate, so platform trust remains strong while you prepare listings safely.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "Provisional workspace access",
+    body: "Approved later, but productive earlier. Start onboarding, monitor status, and prepare product drafts once provisional access opens.",
+    icon: Sparkles,
+  },
+];
 
-    if (step < 3) {
-      setStep(step + 1);
-      return;
-    }
+const SELLER_FLOW = [
+  {
+    mobile: "Create or sign in",
+    desktop: "Create or sign in to your ZOGULAR account",
+  },
+  {
+    mobile: "Verify email",
+    desktop: "Verify email before seller access continues",
+  },
+  {
+    mobile: "Start application",
+    desktop: "Start a draft seller application",
+  },
+  {
+    mobile: "Choose seller type",
+    desktop: "Choose individual or registered business",
+  },
+  {
+    mobile: "Add docs and payout",
+    desktop: "Add documents and payout destination",
+  },
+  {
+    mobile: "Submit for review",
+    desktop: "Submit for admin review",
+  },
+  {
+    mobile: "Track seller status",
+    desktop: "Track status from the seller hub",
+  },
+  {
+    mobile: "Create draft products",
+    desktop: "Create draft products once provisional access is granted",
+  },
+];
 
-    try {
-      setIsSubmitting(true);
-      const result = await submitSellerApplication(form);
-      router.push(result.nextPath);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to submit seller application.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
+const REQUIREMENTS = [
+  "Verified email account before seller access",
+  "Zambian phone contact and store identity details",
+  "NRC document links for the seller owner",
+  "PACRA details for registered businesses",
+  "Payout destination details for future seller settlements",
+];
 
-  const handleBack = () => {
-    if (step > 1) setStep(step - 1);
-  };
+const FAQS = [
+  {
+    question: "Can I start as an individual seller?",
+    answer: "Yes. ZOGULAR supports both informal individual sellers and fully registered businesses in the same trust framework.",
+  },
+  {
+    question: "Does seller approval make products live automatically?",
+    answer: "No. Seller approval unlocks seller capabilities. Each product still goes through its own product review flow before it can go live.",
+  },
+  {
+    question: "What happens after I submit the seller application?",
+    answer: "You move into seller review. If approved as provisional, you can prepare draft products. Full product review submission opens only after APPROVED seller status.",
+  },
+];
 
-  const updateField = (key: keyof typeof form, value: string) => {
-    setForm((prev) => ({ ...prev, [key]: value }));
-  };
+export default function SellOnZogularPage() {
+  const isLoggedIn = useMemo(() => Boolean(getStoredAuthSession()?.user), []);
+  const primaryHref = isLoggedIn
+    ? SELLER_ONBOARDING_PATH
+    : appendNextPath("/auth/register", SELLER_ONBOARDING_PATH);
+  const secondaryHref = isLoggedIn
+    ? "/seller/status"
+    : appendNextPath("/auth/login", SELLER_ONBOARDING_PATH);
 
   return (
-    <main className="relative w-full overflow-hidden bg-zinc-950 selection:bg-[#009E49] selection:text-white">
-      <section
-        className="relative min-h-screen w-full bg-cover bg-center bg-no-repeat bg-fixed lg:grid lg:grid-cols-2"
-        style={{ backgroundImage: "url('https://images.unsplash.com/photo-1556742049-0cfed4f6a45d?q=80&w=2070&auto=format&fit=crop')" }}
-      >
-        <div className="absolute inset-0 z-0 bg-black/80 lg:bg-black/60"></div>
+    <main className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
+      <section className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top,rgba(0,158,73,0.28),transparent_36%),linear-gradient(135deg,#06110a_0%,#0a1710_46%,#08120c_100%)]">
+        <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.03))]" />
+        <div className="absolute left-[14%] top-16 h-44 w-44 rounded-full bg-[#00d663]/10 blur-[110px]" />
+        <div className="absolute right-[10%] top-[12%] h-56 w-56 rounded-full bg-emerald-200/8 blur-[140px]" />
 
-        <div className="relative z-10 flex min-h-screen flex-col justify-center border-r border-white/10 bg-black/40 px-6 pb-32 pt-12 shadow-[0_0_50px_rgba(0,0,0,0.5)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-          <Link href="/">
-            <Button aria-label="Go back" variant="ghost" size="icon" className="absolute left-6 top-6 z-20 h-10 w-10 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
-              <ArrowLeft className="h-5 w-5" />
-            </Button>
-          </Link>
-
-          <div className="mx-auto w-full max-w-md pt-12 lg:pt-0">
-            <div className="mb-8 space-y-4 text-center lg:text-left">
-              <div className="flex items-center justify-center gap-2 lg:justify-start">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/20 bg-[#009E49] text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.5)]">
-                  Z
-                </div>
-                <span className="text-2xl font-black tracking-tight text-white drop-shadow-md">Zogular Seller</span>
+        <div className="relative mx-auto grid min-h-[calc(100vh-4rem)] max-w-7xl gap-8 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1.02fr)_minmax(0,0.98fr)] lg:gap-10 lg:px-8 lg:py-10">
+          <div className="relative z-10 flex min-h-[22rem] flex-col justify-between">
+            <div>
+              <div className="inline-flex items-center gap-2.5 rounded-full border border-white/12 bg-white/7 px-3.5 py-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-[#8ee5b1] backdrop-blur-xl sm:px-4 sm:py-2 sm:text-[11px]">
+                <BrandLogo mode="icon" imageClassName="h-5 w-5 rounded-full sm:h-6 sm:w-6" />
+                Sell on ZOGULAR
               </div>
-              <div>
-                <h1 className="mb-2 text-3xl font-extrabold tracking-tighter text-white drop-shadow-sm md:text-4xl">
-                  Partner with us.
+
+              <div className="relative mt-5 max-w-3xl">
+                <div className="absolute -left-4 top-3 hidden h-20 w-20 rounded-full border border-white/10 bg-white/5 blur-[2px] lg:block" />
+                <h1 className="relative text-[2.35rem] font-black leading-[0.9] tracking-[-0.055em] text-white sm:text-[3.35rem] lg:text-[4.35rem]">
+                  Start selling with an auth-first trust flow built for Zambia.
                 </h1>
-                <p className="text-sm font-medium text-zinc-300">
-                  {step === 1 ? "Step 1: Let's get to know you." : step === 2 ? "Step 2: Tell us about your shop." : "Step 3: Verify your identity."}
-                </p>
               </div>
+
+              <p className="mt-4 max-w-2xl text-[13px] font-medium leading-6 text-zinc-300 sm:text-[15px] sm:leading-7 lg:text-base">
+                Join ZOGULAR through a proper seller onboarding path: create your account, verify identity, submit your seller application, then unlock the right seller capabilities as review moves forward.
+              </p>
             </div>
 
-            <div className="mb-8 flex gap-2">
-              {[1, 2, 3].map((index) => (
-                <div key={index} className={`h-1.5 flex-1 rounded-full transition-all duration-500 ${step >= index ? "bg-[#009E49] shadow-[0_0_10px_rgba(0,158,73,0.5)]" : "bg-white/10"}`}></div>
+            <div className="mt-7 flex flex-col gap-3 sm:max-w-xl sm:flex-row">
+              <Link href={primaryHref} className="sm:flex-1">
+                <Button className="group h-12 w-full rounded-[1.35rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_42px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:h-13 sm:text-[13px]">
+                  <span className="mr-2 h-2 w-2 rounded-full bg-white/85 shadow-[0_0_16px_rgba(255,255,255,0.8)] transition-transform duration-300 group-hover:scale-125" />
+                  Start Selling
+                  <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link href={secondaryHref} className="sm:flex-1">
+                <Button className="group h-12 w-full rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:h-13 sm:text-[13px]">
+                  <span className="mr-2 h-2 w-2 rounded-full border border-white/45 bg-white/15 transition-colors duration-300 group-hover:bg-white/8" />
+                  {isLoggedIn ? "Check seller status" : "Sign in to continue"}
+                </Button>
+              </Link>
+            </div>
+
+            <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+              <MetricCard value="Auth-first" label="Seller account creation flow" />
+              <MetricCard value="2 tracks" label="Individual and business paths" />
+              <MetricCard
+                value="Status-led"
+                label="Permissions after onboarding"
+                className="col-span-2 sm:col-span-1"
+              />
+            </div>
+          </div>
+
+          <div className="relative isolate z-0">
+            <div className="pointer-events-none absolute -inset-3 -z-10 rounded-[2.4rem] bg-[radial-gradient(circle_at_top,rgba(0,158,73,0.25),transparent_60%)] blur-2xl" />
+            <div
+              className="sell-tilt-shell relative isolate overflow-hidden rounded-[1.8rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.15),rgba(255,255,255,0.08))] p-4 shadow-[0_32px_90px_rgba(0,0,0,0.34)] backdrop-blur-2xl sm:p-5 lg:rotate-[0.65deg] lg:transition-transform lg:duration-300 lg:hover:rotate-0 lg:hover:-translate-y-1"
+              style={{ transformStyle: "preserve-3d", perspective: "1800px" }}
+            >
+              <div className="pointer-events-none absolute inset-x-10 top-0 h-16 bg-[radial-gradient(circle_at_top,rgba(255,255,255,0.2),transparent_70%)] blur-2xl" />
+              <div className="pointer-events-none absolute inset-x-0 top-0 h-36 overflow-hidden rounded-[1.6rem]">
+                <div className="sell-aurora absolute left-5 top-4 h-24 w-24 rounded-full bg-[#00d663]/18 blur-3xl" />
+                <div className="sell-aurora absolute right-6 top-6 h-20 w-20 rounded-full bg-white/12 blur-3xl [animation-delay:-2.6s]" />
+                <div className="sell-aurora absolute left-1/2 top-2 h-16 w-28 -translate-x-1/2 rounded-full bg-emerald-200/14 blur-3xl [animation-delay:-4.2s]" />
+              </div>
+              <div className="relative mb-4 overflow-hidden rounded-[1.4rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.1),rgba(255,255,255,0.03))] px-3 py-3 shadow-[inset_0_1px_0_rgba(255,255,255,0.1)] sm:px-4">
+                <div
+                  className="relative grid grid-cols-[1.08fr_0.92fr] gap-2"
+                  style={{ transformStyle: "preserve-3d" }}
+                >
+                  <div className="sell-float-panel relative rounded-[1.15rem] border border-white/10 bg-[linear-gradient(160deg,rgba(255,255,255,0.16),rgba(255,255,255,0.05))] p-3 shadow-[0_18px_36px_rgba(0,0,0,0.2)]">
+                    <div className="text-[9px] font-black uppercase tracking-[0.22em] text-[#97efba]">
+                      Seller access
+                    </div>
+                    <div className="mt-2 flex items-center justify-between">
+                      <p className="text-[13px] font-black tracking-[-0.03em] text-white sm:text-[14px]">
+                        Provisional opens draft workflow.
+                      </p>
+                      <div className="ml-3 h-9 w-9 rounded-2xl border border-white/10 bg-white/10" />
+                    </div>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    <div className="sell-float-panel rounded-[1rem] border border-emerald-300/16 bg-[linear-gradient(180deg,rgba(0,158,73,0.2),rgba(0,158,73,0.06))] px-3 py-2.5 shadow-[0_16px_30px_rgba(0,0,0,0.16)] [animation-delay:-1.8s]">
+                      <div className="text-[8px] font-black uppercase tracking-[0.2em] text-emerald-100/80">
+                        Product drafts
+                      </div>
+                      <div className="mt-1 text-[11px] font-semibold text-white">
+                        Enabled at provisional
+                      </div>
+                    </div>
+                    <div className="sell-float-panel rounded-[1rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.15),rgba(255,255,255,0.05))] px-3 py-2.5 shadow-[0_16px_30px_rgba(0,0,0,0.16)] [animation-delay:-3.1s]">
+                      <div className="text-[8px] font-black uppercase tracking-[0.2em] text-zinc-300">
+                        Approved only
+                      </div>
+                      <div className="mt-1 text-[11px] font-semibold text-white">
+                        Review submit, orders, payouts
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#8ee5b1] sm:text-[11px]">
+                How it works
+              </p>
+              <div className="mt-4 grid gap-2.5 min-[360px]:grid-cols-2">
+                {SELLER_FLOW.map((step, index) => (
+                  <div
+                    key={step.desktop}
+                    className="group relative flex min-h-[5.3rem] items-start gap-2.5 overflow-hidden rounded-[1.15rem] border border-white/8 bg-[linear-gradient(180deg,rgba(0,0,0,0.12),rgba(255,255,255,0.03))] px-2.5 py-2.5 transition-all duration-300 hover:border-emerald-300/18 hover:bg-white/8 lg:hover:-translate-y-0.5 sm:min-h-24 sm:gap-3 sm:rounded-[1.25rem] sm:px-3.5 sm:py-3.5"
+                  >
+                    <div className="absolute right-0 top-0 h-16 w-16 rounded-full bg-white/5 blur-2xl transition-opacity duration-300 group-hover:opacity-80" />
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[1rem] border border-white/10 bg-white/11 text-[11px] font-black text-white shadow-inner sm:h-10 sm:w-10 sm:rounded-2xl sm:text-[13px]">
+                      {(index + 1).toString().padStart(2, "0")}
+                    </div>
+                    <p className="pr-1 text-[10.5px] font-semibold leading-4.5 text-zinc-200 sm:text-[13px] sm:leading-5.5">
+                      <span className="sm:hidden">{step.mobile}</span>
+                      <span className="hidden sm:inline">{step.desktop}</span>
+                    </p>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 rounded-[1.2rem] border border-amber-300/16 bg-[linear-gradient(135deg,rgba(255,179,0,0.1),rgba(255,193,7,0.04))] px-3.5 py-2.5 text-[11px] font-medium leading-5 text-amber-100 sm:rounded-[1.35rem] sm:px-4 sm:py-3 sm:text-[13px] sm:leading-5.5">
+                Seller approval and product approval are separate. Approved sellers still need product review before anything goes live.
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
+        <div className="grid gap-3 lg:grid-cols-3">
+          {HIGHLIGHTS.map((item) => {
+            const Icon = item.icon;
+            return (
+              <article
+                key={item.title}
+                className="group rounded-[1.55rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.04))] p-5 shadow-[0_18px_40px_rgba(0,0,0,0.16)] backdrop-blur-xl transition-all duration-300 lg:hover:-translate-y-1 lg:hover:rotate-[0.35deg] lg:hover:border-emerald-300/18"
+              >
+                <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-[#009E49]/16 text-[#9cf2bf] transition-transform duration-300 group-hover:scale-105">
+                  <Icon className="h-4.5 w-4.5" />
+                </div>
+                <h2 className="mt-4 text-lg font-black tracking-tight text-white sm:text-[1.2rem]">
+                  {item.title}
+                </h2>
+                <p className="mt-2.5 text-[13px] font-medium leading-6 text-zinc-300">
+                  {item.body}
+                </p>
+              </article>
+            );
+          })}
+        </div>
+      </section>
+
+      <section className="border-y border-white/10 bg-white/4">
+        <div className="mx-auto grid max-w-7xl gap-6 px-4 py-10 sm:px-6 sm:py-12 lg:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] lg:px-8">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#8ee5b1] sm:text-[11px]">
+              Seller requirements
+            </p>
+            <h2 className="mt-3 max-w-xl text-[2.1rem] font-black leading-[0.95] tracking-[-0.045em] text-white sm:text-[2.7rem]">
+              What you need before approval.
+            </h2>
+            <div className="mt-5 grid gap-2.5 min-[360px]:grid-cols-2">
+              {REQUIREMENTS.map((item, index) => (
+                <div
+                  key={item}
+                  className={`flex min-h-20 items-start gap-3 rounded-[1.25rem] border border-white/10 bg-black/14 px-3.5 py-3 ${
+                    index === REQUIREMENTS.length - 1 ? "min-[360px]:col-span-2" : ""
+                  }`}
+                >
+                  <BadgeCheck className="mt-0.5 h-4 w-4 shrink-0 text-[#8ee5b1] sm:h-4.5 sm:w-4.5" />
+                  <p className="text-[11.5px] font-semibold leading-5 text-zinc-200 sm:text-[13px] sm:leading-5.5">
+                    {item}
+                  </p>
+                </div>
               ))}
             </div>
-
-            <form onSubmit={handleNext} className="space-y-4">
-              {step === 1 ? (
-                <div className="animate-in slide-in-from-right-4 space-y-4 fade-in duration-500">
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">First Name</label>
-                      <Input value={form.firstName} onChange={(event) => updateField("firstName", event.target.value)} placeholder="John" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                    </div>
-                    <div className="space-y-1.5">
-                      <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Last Name</label>
-                      <Input value={form.lastName} onChange={(event) => updateField("lastName", event.target.value)} placeholder="Banda" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                    </div>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Email Address</label>
-                    <Input type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} placeholder="john@example.com" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Mobile Money Number</label>
-                    <Input type="tel" value={form.mobileMoneyNumber} onChange={(event) => updateField("mobileMoneyNumber", event.target.value)} placeholder="+260 97 123 4567" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                  </div>
-                </div>
-              ) : null}
-
-              {step === 2 ? (
-                <div className="animate-in slide-in-from-right-4 space-y-4 fade-in duration-500">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Shop Name</label>
-                    <Input value={form.shopName} onChange={(event) => updateField("shopName", event.target.value)} placeholder="Lusaka Electronics" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Business Type</label>
-                    <select aria-label="Business type" value={form.businessType} onChange={(event) => updateField("businessType", event.target.value)} className="h-11 w-full appearance-none rounded-xl border border-white/10 bg-white/5 px-4 text-sm font-medium text-white outline-none backdrop-blur-md focus-visible:ring-[#009E49]">
-                      <option value="individual" className="bg-zinc-900 text-white">Individual Seller</option>
-                      <option value="registered" className="bg-zinc-900 text-white">Registered Business</option>
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Shop Address</label>
-                    <Input value={form.shopAddress} onChange={(event) => updateField("shopAddress", event.target.value)} placeholder="E.g. Cairo Road, Shop #12" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                  </div>
-                </div>
-              ) : null}
-
-              {step === 3 ? (
-                <div className="animate-in slide-in-from-right-4 space-y-4 fade-in duration-500">
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">National ID (NRC)</label>
-                    <Input value={form.nationalId} onChange={(event) => updateField("nationalId", event.target.value)} placeholder="000000/00/1" className="h-11 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]" required />
-                  </div>
-                  <div className="space-y-1.5">
-                    <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Upload ID Image</label>
-                    <label className="group block cursor-pointer rounded-2xl border-2 border-dashed border-white/20 bg-white/5 p-6 text-center backdrop-blur-md transition-colors hover:bg-white/10">
-                      <UploadCloud className="mx-auto mb-2 h-6 w-6 text-[#009E49] transition-transform group-hover:scale-110" />
-                      <p className="text-xs font-bold text-white">
-                        {form.idDocumentName || "Tap to upload document"}
-                      </p>
-                      <input
-                        type="file"
-                        accept="image/*,.pdf"
-                        className="hidden"
-                        onChange={(event) => updateField("idDocumentName", event.target.files?.[0]?.name ?? "")}
-                      />
-                    </label>
-                  </div>
-                </div>
-              ) : null}
-
-              <div className="flex items-center gap-3 pt-4">
-                {step > 1 ? (
-                  <Button type="button" variant="outline" onClick={handleBack} className="h-12 rounded-xl border-white/10 bg-white/5 px-5 font-semibold text-white backdrop-blur-md transition-all hover:bg-white/10">
-                    Back
-                  </Button>
-                ) : null}
-
-                <Button type="submit" disabled={isSubmitting} className="h-12 flex-1 rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]">
-                  {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-                  {step < 3 ? "Continue" : isSubmitting ? "Submitting..." : "Submit Application"}
-                </Button>
-              </div>
-            </form>
-
-            <p className="mt-8 text-center text-xs font-medium text-zinc-400">
-              Already a verified seller? <Link href="/auth/login" className="font-extrabold text-[#009E49] hover:underline">Sign in here</Link>
-            </p>
           </div>
 
-          <div
-            className="group absolute bottom-2 left-1/2 z-30 flex -translate-x-1/2 cursor-pointer flex-col items-center"
-            onClick={() => window.scrollTo({ top: window.innerHeight, behavior: "smooth" })}
-          >
-            <span className="mb-1.5 text-[10px] font-bold uppercase tracking-widest text-white/50 transition-colors group-hover:text-white">
-              Discover More
-            </span>
-            <div className="flex h-12 w-7 items-start justify-center rounded-full border-2 border-white/20 bg-black/20 p-1.5 shadow-[0_0_15px_rgba(0,0,0,0.5)] backdrop-blur-sm transition-colors group-hover:border-white/40">
-              <div className="mt-1 h-2 w-2 animate-bounce rounded-full bg-[#009E49] shadow-[0_0_8px_rgba(0,158,73,0.8)]"></div>
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+            <div className="sm:col-span-2 rounded-[1.6rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.07))] p-5 backdrop-blur-xl lg:hover:-translate-y-0.5 lg:hover:border-emerald-300/16 lg:transition-all">
+              <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/12 bg-white/10 text-[#8ee5b1]">
+                <FileCheck2 className="h-4.5 w-4.5" />
+              </div>
+              <h3 className="mt-4 text-lg font-black tracking-tight text-white sm:text-[1.15rem]">
+                Trust and safety by default
+              </h3>
+              <p className="mt-2.5 text-[13px] font-medium leading-6 text-zinc-300">
+                ZOGULAR does not treat the `VENDOR` role as automatic selling permission. Seller capability opens only through application status, keeping the marketplace safer for buyers and more predictable for legitimate sellers.
+              </p>
             </div>
-            <ChevronDown className="mt-1 h-4 w-4 animate-pulse text-white/30 transition-colors group-hover:text-[#009E49]" />
+
+            <TrustCard
+              icon={PhoneCall}
+              title="Identity checks"
+              body="Email verification already sits in the flow, with room for stronger phone verification in later phases."
+            />
+            <TrustCard
+              icon={Wallet}
+              title="Payout readiness"
+              body="Payout details are collected early so the trust review covers operational readiness too."
+            />
           </div>
         </div>
+      </section>
 
-        <div className="relative z-10 hidden flex-col items-start justify-center p-16 lg:flex xl:p-24">
-          <div className="animate-in slide-in-from-bottom-8 fade-in duration-1000 delay-300">
-            <h2 className="mb-6 text-5xl font-black leading-[1.1] tracking-tighter text-white drop-shadow-2xl xl:text-7xl">
-              Turn your local <br />
-              shop into a <br />
-              <span className="bg-linear-to-r from-[#009E49] to-[#00d663] bg-clip-text text-transparent filter drop-shadow-[0_0_20px_rgba(0,158,73,0.4)]">
-                national brand.
-              </span>
+      <section className="mx-auto max-w-7xl px-4 py-10 sm:px-6 sm:py-12 lg:px-8">
+        <div className="grid gap-5 lg:grid-cols-[minmax(0,1.12fr)_340px]">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-[0.22em] text-[#8ee5b1] sm:text-[11px]">
+              FAQ
+            </p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-2">
+              {FAQS.map((faq, index) => (
+                <article
+                  key={faq.question}
+                  className={`rounded-[1.35rem] border border-white/10 bg-white/6 p-4 backdrop-blur-xl ${
+                    index === 2 ? "sm:col-span-2" : ""
+                  }`}
+                >
+                  <h3 className="text-[15px] font-black tracking-tight text-white sm:text-base">
+                    {faq.question}
+                  </h3>
+                  <p className="mt-2.5 text-[12px] font-medium leading-5.5 text-zinc-300 sm:text-[13px]">
+                    {faq.answer}
+                  </p>
+                </article>
+              ))}
+            </div>
+          </div>
+
+          <div className="relative overflow-hidden rounded-[1.9rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.14),rgba(255,255,255,0.08))] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.22)] backdrop-blur-xl lg:translate-y-2 lg:transition-transform lg:hover:-translate-y-0.5">
+            <div className="absolute right-0 top-0 h-28 w-28 rounded-full bg-[#00d663]/12 blur-3xl" />
+            <p className="relative text-[10px] font-black uppercase tracking-[0.22em] text-[#8ee5b1] sm:text-[11px]">
+              Ready to begin?
+            </p>
+            <h2 className="relative mt-3 text-[2rem] font-black leading-[0.95] tracking-[-0.045em] text-white sm:text-[2.2rem] lg:text-[2.4rem]">
+              Start the seller flow the right way.
             </h2>
-            <p className="max-w-lg border-l-2 border-[#009E49] pl-4 text-lg font-medium text-zinc-300 drop-shadow-md xl:text-xl">
-              Access thousands of buyers across Lusaka daily. We handle the platform, the marketing, and the payments. You just pack the orders.
+            <p className="relative mt-3 text-[13px] font-medium leading-6 text-zinc-300">
+              Create your seller-ready account, complete the application, and move through review with the correct permissions at each stage.
             </p>
-          </div>
-        </div>
-      </section>
 
-      <section className="relative border-t border-white/5 bg-zinc-950 px-6 py-20 md:px-12">
-        <div className="pointer-events-none absolute left-1/2 top-0 h-100 w-full max-w-3xl -translate-x-1/2 rounded-full bg-[#009E49]/10 blur-[120px]"></div>
-        <div className="relative z-10 mx-auto max-w-7xl">
-          <div className="mb-16 text-center">
-            <h2 className="mb-4 text-3xl font-black tracking-tight text-white md:text-5xl">Why sell on Zogular?</h2>
-            <p className="mx-auto max-w-2xl text-lg font-medium text-zinc-400">We built this platform specifically for Zambian businesses to scale without the technical headaches.</p>
-          </div>
-
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-3">
-            <div className="group rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:border-[#009E49]/50 hover:bg-white/10 hover:shadow-[0_20px_40px_rgba(0,158,73,0.1)]">
-              <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#009E49]/30 bg-[#009E49]/20 transition-transform group-hover:scale-110">
-                <TrendingUp className="h-7 w-7 text-[#00d663]" />
-              </div>
-              <h3 className="mb-3 text-xl font-bold text-white">Lowest Commission</h3>
-              <p className="text-sm leading-relaxed text-zinc-400">Keep more of your profit. Our fees are strictly capped, ensuring you take home exactly what you deserve from every sale.</p>
-            </div>
-
-            <div className="group rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:border-[#009E49]/50 hover:bg-white/10 hover:shadow-[0_20px_40px_rgba(0,158,73,0.1)]">
-              <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#009E49]/30 bg-[#009E49]/20 transition-transform group-hover:scale-110">
-                <ShieldCheck className="h-7 w-7 text-[#00d663]" />
-              </div>
-              <h3 className="mb-3 text-xl font-bold text-white">Guaranteed Payouts</h3>
-              <p className="text-sm leading-relaxed text-zinc-400">No waiting weeks for your cash. Get secure, automated payouts directly to your registered Mobile Money or Bank Account.</p>
-            </div>
-
-            <div className="group rounded-3xl border border-white/10 bg-white/5 p-8 backdrop-blur-sm transition-all duration-300 hover:-translate-y-2 hover:border-[#009E49]/50 hover:bg-white/10 hover:shadow-[0_20px_40px_rgba(0,158,73,0.1)]">
-              <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl border border-[#009E49]/30 bg-[#009E49]/20 transition-transform group-hover:scale-110">
-                <Truck className="h-7 w-7 text-[#00d663]" />
-              </div>
-              <h3 className="mb-3 text-xl font-bold text-white">Managed Logistics</h3>
-              <p className="text-sm leading-relaxed text-zinc-400">You pack the order, we handle the rest. Our integrated delivery partners will pick up from your shop and deliver to the buyer.</p>
+            <div className="relative mt-5 grid gap-3">
+              <Link href={primaryHref}>
+                <Button className="group h-12 w-full rounded-[1.25rem] border border-emerald-300/18 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[0_20px_46px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:text-[13px]">
+                  <span className="mr-2 h-2 w-2 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.72)] transition-transform duration-300 group-hover:scale-125" />
+                  Start Selling
+                  <ChevronRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
+                </Button>
+              </Link>
+              <Link href={secondaryHref}>
+                <Button className="group h-12 w-full rounded-[1.25rem] border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:text-[13px]">
+                  <span className="mr-2 h-2 w-2 rounded-full border border-white/40 bg-white/12" />
+                  {isLoggedIn ? "Open seller status" : "Sign in first"}
+                </Button>
+              </Link>
             </div>
           </div>
         </div>
       </section>
 
-      <section className="relative border-t border-white/5 bg-black px-6 py-24 md:px-12">
-        <div className="mx-auto max-w-5xl">
-          <h2 className="mb-16 text-center text-3xl font-black tracking-tight text-white md:text-5xl">How the partnership works.</h2>
+      <style jsx>{`
+        .sell-tilt-shell::after {
+          content: "";
+          position: absolute;
+          inset: 1px;
+          border-radius: 1.7rem;
+          background: linear-gradient(135deg, rgba(255, 255, 255, 0.08), transparent 28%, transparent 72%, rgba(255, 255, 255, 0.05));
+          opacity: 0.6;
+          pointer-events: none;
+        }
 
-          <div className="relative space-y-12 before:absolute before:inset-0 before:ml-5 before:h-full before:w-0.5 before:-translate-x-px before:bg-linear-to-b before:from-transparent before:via-white/10 before:to-transparent md:before:mx-auto md:before:translate-x-0">
-            <div className="group relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse">
-              <div className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-black bg-[#009E49] text-white shadow-[0_0_20px_rgba(0,158,73,0.6)] md:order-1 md:group-even:translate-x-1/2 md:group-odd:-translate-x-1/2">
-                1
-              </div>
-              <div className="w-[calc(100%-4rem)] rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-colors group-hover:border-[#009E49]/50 md:w-[calc(50%-3rem)]">
-                <h3 className="mb-2 text-xl font-bold text-white">Submit Application</h3>
-                <p className="text-sm text-zinc-400">Fill out the quick 3-step form at the top of this page with your basic shop and payout details.</p>
-              </div>
-            </div>
+        .sell-float-panel {
+          transform: translateZ(24px);
+          animation: sell-float 8s ease-in-out infinite;
+          will-change: transform;
+        }
 
-            <div className="group relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse">
-              <div className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-black bg-zinc-800 text-zinc-400 transition-colors group-hover:bg-[#009E49] group-hover:text-white md:order-1 md:group-even:translate-x-1/2 md:group-odd:-translate-x-1/2">
-                2
-              </div>
-              <div className="w-[calc(100%-4rem)] rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-colors group-hover:border-[#009E49]/50 md:w-[calc(50%-3rem)]">
-                <h3 className="mb-2 text-xl font-bold text-white">Get Verified</h3>
-                <p className="text-sm text-zinc-400">Our team reviews your ID and shop details within 24 hours to ensure a safe platform.</p>
-              </div>
-            </div>
+        .sell-aurora {
+          animation: sell-aurora 10s ease-in-out infinite;
+          will-change: transform, opacity;
+        }
 
-            <div className="group relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse">
-              <div className="z-10 flex h-10 w-10 shrink-0 items-center justify-center rounded-full border-4 border-black bg-zinc-800 text-zinc-400 transition-colors group-hover:bg-[#009E49] group-hover:text-white md:order-1 md:group-even:translate-x-1/2 md:group-odd:-translate-x-1/2">
-                <Zap className="h-4 w-4" />
-              </div>
-              <div className="w-[calc(100%-4rem)] rounded-3xl border border-white/10 bg-white/5 p-6 backdrop-blur-sm transition-colors group-hover:border-[#009E49]/50 md:w-[calc(50%-3rem)]">
-                <h3 className="mb-2 text-xl font-bold text-white">Upload & Sell</h3>
-                <p className="text-sm text-zinc-400">Access your Seller Dashboard, upload your products, and immediately start reaching buyers across Lusaka.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
+        @keyframes sell-float {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 24px) rotateX(0deg) rotateY(0deg);
+          }
+          50% {
+            transform: translate3d(0, -6px, 36px) rotateX(2deg) rotateY(-2deg);
+          }
+        }
 
-      <section className="relative flex justify-center border-t border-white/5 bg-zinc-950 px-6 py-24 text-center md:px-12">
-        <div className="relative w-full max-w-2xl overflow-hidden rounded-[3rem] border border-white/10 bg-linear-to-b from-white/10 to-white/5 p-8 shadow-2xl backdrop-blur-xl md:p-16">
-          <div className="pointer-events-none absolute left-1/2 top-0 h-32 w-full -translate-x-1/2 rounded-full bg-[#009E49]/20 blur-[60px]"></div>
-          <Mail className="relative z-10 mx-auto mb-6 h-10 w-10 text-[#009E49]" />
-          <h2 className="relative z-10 mb-4 text-3xl font-black tracking-tight text-white">Not ready to sell yet?</h2>
-          <p className="relative z-10 mb-8 font-medium text-zinc-400">Subscribe to our seller newsletter. Get tips on scaling your physical shop, local e-commerce trends, and updates on Zogular.</p>
-          <div className="relative z-10 mx-auto flex max-w-md flex-col gap-3 sm:flex-row">
-            <Input type="email" placeholder="Enter your email" className="h-12 rounded-xl border-white/10 bg-black/50 text-white placeholder:text-white/40 transition-all focus-visible:ring-[#009E49]" />
-            <Button className="h-12 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white transition-all hover:bg-[#00d663] sm:w-auto">
-              Subscribe
-            </Button>
-          </div>
-        </div>
-      </section>
+        @keyframes sell-aurora {
+          0%,
+          100% {
+            transform: translate3d(0, 0, 0) scale(1);
+            opacity: 0.75;
+          }
+          50% {
+            transform: translate3d(0, 10px, 0) scale(1.08);
+            opacity: 1;
+          }
+        }
+
+        @media (hover: hover) {
+          .sell-tilt-shell:hover .sell-float-panel {
+            animation-duration: 5.8s;
+          }
+        }
+      `}</style>
     </main>
+  );
+}
+
+function MetricCard({
+  value,
+  label,
+  className = "",
+}: {
+  value: string;
+  label: string;
+  className?: string;
+}) {
+  return (
+    <div
+      className={`relative isolate rounded-[1.1rem] border border-white/10 bg-white/6 px-3.5 py-3 backdrop-blur-xl sm:rounded-[1.25rem] sm:px-4 sm:py-3.5 ${className}`}
+    >
+      <p className="text-[15px] font-black tracking-[-0.03em] text-white sm:text-[17px]">
+        {value}
+      </p>
+      <p className="mt-1 text-[9px] font-medium uppercase tracking-[0.15em] text-zinc-400 sm:text-[11px]">
+        {label}
+      </p>
+    </div>
+  );
+}
+
+function TrustCard({
+  icon: Icon,
+  title,
+  body,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  title: string;
+  body: string;
+}) {
+  return (
+    <article className="rounded-[1.35rem] border border-white/10 bg-white/6 p-4 backdrop-blur-xl lg:hover:-translate-y-0.5 lg:hover:border-emerald-300/16 lg:transition-all">
+      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white/10 bg-white/8 text-[#8ee5b1]">
+        <Icon className="h-4.5 w-4.5" />
+      </div>
+      <h3 className="mt-3 text-[15px] font-black tracking-tight text-white sm:text-base">
+        {title}
+      </h3>
+      <p className="mt-2 text-[12px] font-medium leading-5.5 text-zinc-300 sm:text-[13px]">
+        {body}
+      </p>
+    </article>
   );
 }

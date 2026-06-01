@@ -72,12 +72,16 @@ export function ProductListingStudioHeader({
   isSubmitting,
   revealDetails,
   onSave,
+  canSubmitForReview = true,
+  submitLabel = "Submit for Review",
 }: {
   backHref: string;
   isEditMode: boolean;
   isSubmitting: boolean;
   revealDetails: boolean;
   onSave: (event: React.MouseEvent, status: ProductStatus) => void;
+  canSubmitForReview?: boolean;
+  submitLabel?: string;
 }) {
   return (
     <div className="sticky top-18 z-20 mb-5 -mx-4 flex items-center justify-between border-b border-white/60 bg-[#f4fbf6]/85 px-4 py-4 backdrop-blur-2xl md:top-0 md:mx-0 md:border-none md:bg-transparent md:px-0">
@@ -97,8 +101,8 @@ export function ProductListingStudioHeader({
           {isEditMode ? "Save Changes" : "Save Draft"}
         </Button>
         {revealDetails ? (
-          <Button type="submit" disabled={isSubmitting} className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_10px_25px_rgba(0,158,73,0.22)] hover:bg-[#00853d]">
-            {isSubmitting ? "Submitting..." : "Submit for Review"}
+          <Button type="submit" disabled={isSubmitting || !canSubmitForReview} className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_10px_25px_rgba(0,158,73,0.22)] hover:bg-[#00853d] disabled:bg-zinc-300">
+            {isSubmitting ? "Submitting..." : submitLabel}
           </Button>
         ) : null}
       </div>
@@ -111,11 +115,15 @@ export function ProductListingMobileActions({
   isSubmitting,
   revealDetails,
   onSave,
+  canSubmitForReview = true,
+  submitLabel = "Submit for Review",
 }: {
   isEditMode: boolean;
   isSubmitting: boolean;
   revealDetails: boolean;
   onSave: (event: React.MouseEvent, status: ProductStatus) => void;
+  canSubmitForReview?: boolean;
+  submitLabel?: string;
 }) {
   return (
     <div className="fixed inset-x-3 bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-white/70 bg-white/92 p-3 shadow-[0_-10px_28px_rgba(15,23,42,0.12)] backdrop-blur-2xl md:hidden">
@@ -123,8 +131,8 @@ export function ProductListingMobileActions({
         <Button type="button" variant="outline" onClick={(event) => onSave(event, "draft")} disabled={isSubmitting} className="h-12 rounded-xl border-zinc-200 bg-white font-bold text-zinc-700">
           {isEditMode ? "Save" : "Save Draft"}
         </Button>
-        <Button type="button" onClick={(event) => onSave(event, "pending_review")} disabled={isSubmitting || !revealDetails} className="h-12 rounded-xl bg-[#009E49] font-extrabold text-white shadow-[0_4px_15px_rgba(0,158,73,0.3)] transition-all active:scale-95 hover:bg-[#00853d] disabled:bg-zinc-300 disabled:shadow-none">
-          {isSubmitting ? "Submitting..." : "Submit for Review"}
+        <Button type="button" onClick={(event) => onSave(event, "pending_review")} disabled={isSubmitting || !revealDetails || !canSubmitForReview} className="h-12 rounded-xl bg-[#009E49] font-extrabold text-white shadow-[0_4px_15px_rgba(0,158,73,0.3)] transition-all active:scale-95 hover:bg-[#00853d] disabled:bg-zinc-300 disabled:shadow-none">
+          {isSubmitting ? "Submitting..." : submitLabel}
         </Button>
       </div>
     </div>

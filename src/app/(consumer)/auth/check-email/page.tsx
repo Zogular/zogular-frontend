@@ -7,6 +7,7 @@ import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getDemoVerificationEmail, resendVerificationEmail } from "@/services/auth";
+import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
 
 export default function CheckEmailPage() {
   const searchParams = useSearchParams();
@@ -14,6 +15,15 @@ export default function CheckEmailPage() {
     () => searchParams.get("email") ?? getDemoVerificationEmail(),
     [searchParams],
   );
+  const nextPath = useMemo(
+    () => sanitizeInternalNextPath(searchParams.get("next")) ?? getAuthRedirectIntent(),
+    [searchParams],
+  );
+  const loginHref = useMemo(() => {
+    const baseHref = appendNextPath("/auth/login", nextPath);
+    if (!email) return baseHref;
+    return `${baseHref}${baseHref.includes("?") ? "&" : "?"}email=${encodeURIComponent(email)}`;
+  }, [email, nextPath]);
   const [isResending, setIsResending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,7 +54,7 @@ export default function CheckEmailPage() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
       <div className="relative z-10 flex min-h-screen flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Link href="/auth/login">
+        <Link href={appendNextPath("/auth/login", nextPath)}>
           <Button aria-label="Back to login" variant="ghost" size="icon" className="absolute left-4 top-4 z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -86,7 +96,7 @@ export default function CheckEmailPage() {
               {isResending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCcw className="mr-2 h-4 w-4" />}
               {isResending ? "Sending..." : "Resend verification email"}
             </Button>
-            <Link href={`/auth/login${email ? `?email=${encodeURIComponent(email)}` : ""}`}>
+            <Link href={loginHref}>
               <Button variant="outline" className="h-11 w-full rounded-xl border-white/10 bg-white/5 text-sm font-bold text-white backdrop-blur-md transition-all hover:bg-white/10 hover:text-white">
                 Go to login
               </Button>

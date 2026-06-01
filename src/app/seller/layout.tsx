@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import {
   Bell, CircleHelp, LayoutDashboard, LogOut, Package,
   Plus, Settings, ShoppingCart, Store, TrendingUp, Wallet, Boxes, PanelLeftClose, PanelLeftOpen, MoreHorizontal, X,
@@ -11,6 +11,16 @@ import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { cn } from "@/lib/utils";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
+import { SellerApplicationContext } from "@/components/seller/SellerApplicationContext";
+import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
+import { getStoredAuthSession, logout } from "@/services/auth";
+import { ApiError } from "@/services/api";
+import {
+  getMyVendorApplication,
+  hasSellerCapability,
+  isSellerBlockedStatus,
+} from "@/services/vendor-application";
+import type { SellerApplicationStatus, VendorApplication } from "@/types/seller";
 
 // --- TYPES & NAV DATA ---
 type SellerNavItem = {
@@ -129,7 +139,73 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
   const [mobileMoreOpen, setMobileMoreOpen] = useState(false);
+  const [application, setApplication] = useState<VendorApplication | null>(null);
+  const [applicationLoading, setApplicationLoading] = useState(true);
+  const [applicationError, setApplicationError] = useState<string | null>(null);
   const pageTitle = getPageTitle(pathname);
+  const isOnboardingRoute = pathname.startsWith("/seller/onboarding");
+  const isStatusRoute = pathname.startsWith("/seller/status");
+  const isVerifyPhoneRoute = pathname.startsWith("/seller/verify-phone");
+  const sellerStatus: SellerApplicationStatus | null = application?.status ?? null;
+  const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
+  const addProductHref = !application
+    ? "/seller/onboarding?start=1"
+    : canCreateDraftProduct
+      ? "/seller/products/new"
+      : application.status === "DRAFT" || application.status === "NEEDS_INFO"
+        ? "/seller/onboarding"
+        : "/seller/status";
+
+  const refreshApplication = useCallback(async () => {
+    const existingSession = getStoredAuthSession();
+    if (!existingSession) {
+      setApplication(null);
+      setApplicationLoading(false);
+      router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
+      return;
+    }
+
+    try {
+      setApplicationLoading(true);
+      setApplicationError(null);
+      const nextApplication = await getMyVendorApplication();
+      setApplication(nextApplication);
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 404) {
+        setApplication(null);
+        return;
+      }
+
+      if (error instanceof ApiError && error.status === 401) {
+        setApplication(null);
+        router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
+        return;
+      }
+
+      setApplicationError(error instanceof Error ? error.message : "Failed to load seller access state.");
+    } finally {
+      setApplicationLoading(false);
+    }
+  }, [pathname, router]);
+
+  useEffect(() => {
+    void refreshApplication();
+  }, [refreshApplication]);
+
+  useEffect(() => {
+    if (applicationLoading) return;
+
+    if (!application) {
+      if (!isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
+        router.replace("/seller/onboarding");
+      }
+      return;
+    }
+
+    if (isSellerBlockedStatus(application.status) && !isStatusRoute && !isVerifyPhoneRoute) {
+      router.replace("/seller/status");
+    }
+  }, [application, applicationLoading, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, router]);
 
   const handleSidebarToggle = () => {
     setSidebarCollapsed((current) => {
@@ -139,11 +215,35 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     });
   };
 
-  const handleSignOut = () => {
-    router.push("/auth/login");
+  const handleSignOut = async () => {
+    const result = await logout();
+    router.push(result.nextPath ?? "/auth/login");
   };
 
+  const contextValue = useMemo(
+    () => ({
+      application,
+      loading: applicationLoading,
+      error: applicationError,
+      refresh: refreshApplication,
+      setApplication,
+      status: sellerStatus,
+    }),
+    [application, applicationError, applicationLoading, refreshApplication, sellerStatus],
+  );
+
+  if (applicationLoading && !application && !isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f4fbf6] p-6">
+        <div className="rounded-3xl border border-zinc-200 bg-white/90 px-6 py-5 text-sm font-semibold text-zinc-600 shadow-sm">
+          Loading seller workspace...
+        </div>
+      </div>
+    );
+  }
+
   return (
+    <SellerApplicationContext.Provider value={contextValue}>
     <div className="flex min-h-screen w-full flex-col bg-[#f4fbf6] md:flex-row">
       
       {/* =========================================
@@ -159,7 +259,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link href="/seller/products/new">
+          <Link href={addProductHref}>
             <Button aria-label="Add product" size="icon" className="h-8 w-8 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
               <Plus className="h-4 w-4" />
             </Button>
@@ -268,7 +368,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
-            <Link href="/seller/products/new">
+            <Link href={addProductHref}>
               <Button className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d]">
                 <Plus className="mr-2 h-4 w-4" /> Add Product
               </Button>
@@ -296,6 +396,16 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
         {/* Page Content Injection */}
         <main className="flex-1 p-4 md:p-6 w-full">
+          {application && !isOnboardingRoute && !isStatusRoute && application.status !== "APPROVED" ? (
+            <div className="mx-auto mb-5 max-w-350">
+              <SellerStatusNotice application={application} compact />
+            </div>
+          ) : null}
+          {applicationError && !application ? (
+            <div className="mx-auto mb-5 max-w-350 rounded-3xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-700 shadow-sm">
+              {applicationError}
+            </div>
+          ) : null}
           {children}
         </main>
       </div>
@@ -367,5 +477,6 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       </div>
 
     </div>
+    </SellerApplicationContext.Provider>
   );
 }

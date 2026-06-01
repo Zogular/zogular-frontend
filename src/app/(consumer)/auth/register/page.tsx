@@ -2,15 +2,22 @@
 
 import Link from "next/link";
 import { Eye, EyeOff, ArrowLeft, X, Loader2 } from "lucide-react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { register } from "@/services/auth";
+import {
+  appendNextPath,
+  sanitizeInternalNextPath,
+  storeAuthRedirectIntent,
+} from "@/services/auth-intent";
 
 export default function RegisterPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextPath = sanitizeInternalNextPath(searchParams.get("next"));
   const [showPassword, setShowPassword] = useState(false);
   const [form, setForm] = useState({
     firstName: "",
@@ -26,13 +33,17 @@ export default function RegisterPage() {
     setForm((prev) => ({ ...prev, [key]: value }));
   };
 
+  useEffect(() => {
+    storeAuthRedirectIntent(nextPath);
+  }, [nextPath]);
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     try {
       setIsSubmitting(true);
       setError(null);
       const result = await register(form);
-      router.push(result.nextPath ?? "/auth/permissions");
+      router.push(appendNextPath(result.nextPath ?? "/auth/permissions", nextPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create account.");
     } finally {
@@ -155,7 +166,7 @@ export default function RegisterPage() {
 
           <p className="mt-6 text-center text-xs font-medium text-zinc-300">
             Already have an account?{" "}
-            <Link href="/auth/login" className="font-extrabold text-[#FF6B00] underline-offset-4 drop-shadow-md hover:text-[#e66000] hover:underline">
+            <Link href={appendNextPath("/auth/login", nextPath)} className="font-extrabold text-[#FF6B00] underline-offset-4 drop-shadow-md hover:text-[#e66000] hover:underline">
               Sign in
             </Link>
           </p>

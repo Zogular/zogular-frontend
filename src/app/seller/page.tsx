@@ -12,6 +12,8 @@ import {
 } from "recharts";
 import { Button } from "@/components/ui/button";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
+import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
 import {
   fetchSellerDashboardData,
   type SellerActivityItem,
@@ -20,6 +22,7 @@ import {
   type SellerOrderStatusPoint,
   type SellerRecentOrder,
 } from "@/services/seller-metrics";
+import { hasSellerCapability } from "@/services/vendor-application";
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
@@ -66,11 +69,16 @@ function QuickActionCard({ href, icon: Icon, title, description }: { href: strin
 }
 
 export default function SellerDashboard() {
+  const { application } = useSellerApplication();
   const [data, setData] = useState<SellerDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   
   const [range, setRange] = useState<SellerDashboardRange>("7d");
+
+  const sellerStatus = application?.status ?? null;
+  const canReceiveOrders = hasSellerCapability(sellerStatus, "canReceiveOrders");
+  const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
 
   const loadData = useCallback(async () => {
     try {
@@ -86,8 +94,12 @@ export default function SellerDashboard() {
   }, []);
 
   useEffect(() => {
+    if (!canReceiveOrders) {
+      setLoading(false);
+      return;
+    }
     loadData();
-  }, [loadData]);
+  }, [canReceiveOrders, loadData]);
 
   const revenueData = useMemo(() => {
     return data?.revenueByRange[range] || [];
@@ -109,6 +121,37 @@ export default function SellerDashboard() {
 
   // --- SYSTEM STATES ---
   if (loading) return <SellerPageLoading variant="dashboard" />;
+
+  if (!application) {
+    return (
+      <div className="rounded-3xl border border-zinc-200 bg-white/90 p-8 shadow-sm">
+        <h1 className="text-2xl font-black tracking-tight text-zinc-950">Seller onboarding required</h1>
+        <p className="mt-3 text-sm font-medium leading-6 text-zinc-600">
+          Start your seller application before the dashboard becomes available.
+        </p>
+        <div className="mt-5">
+          <Link href="/seller/onboarding?start=1">
+            <Button className="h-11 rounded-xl bg-[#009E49] px-5 font-bold text-white hover:bg-[#00853d]">
+              Start seller onboarding
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  if (!canReceiveOrders) {
+    return (
+      <div className="mx-auto max-w-5xl space-y-5">
+        <SellerStatusNotice application={application} />
+        <div className="grid gap-4 md:grid-cols-3">
+          <QuickActionCard href={canCreateDraftProduct ? "/seller/products" : "/seller/status"} icon={Package} title="Products" description={canCreateDraftProduct ? "Create or manage seller drafts." : "Review the seller status needed for product access."} />
+          <QuickActionCard href="/seller/onboarding" icon={Box} title="Application" description="Update business details, documents, and seller identity records." />
+          <QuickActionCard href="/seller/status" icon={AlertCircle} title="Review Status" description="Track review outcomes, reasons, and the next seller actions." />
+        </div>
+      </div>
+    );
+  }
 
   if (error || !data) {
     return (
