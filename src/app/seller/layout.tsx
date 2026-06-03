@@ -146,6 +146,10 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   const isOnboardingRoute = pathname.startsWith("/seller/onboarding");
   const isStatusRoute = pathname.startsWith("/seller/status");
   const isVerifyPhoneRoute = pathname.startsWith("/seller/verify-phone");
+  const isAuthRoute =
+    pathname.startsWith("/seller/login") ||
+    pathname.startsWith("/seller/register") ||
+    pathname.startsWith("/seller/check-email");
   const sellerStatus: SellerApplicationStatus | null = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
   const addProductHref = !application
@@ -157,11 +161,15 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         : "/seller/status";
 
   const refreshApplication = useCallback(async () => {
+    if (isAuthRoute) return; // auth pages handle their own auth
+
     const existingSession = getStoredAuthSession();
     if (!existingSession) {
       setApplication(null);
       setApplicationLoading(false);
-      router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
+      // Onboarding and auth routes are allowed without a stored session
+      if (isOnboardingRoute || isAuthRoute) return;
+      router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
       return;
     }
 
@@ -178,7 +186,8 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
       if (error instanceof ApiError && error.status === 401) {
         setApplication(null);
-        router.replace(`/auth/login?next=${encodeURIComponent(pathname)}`);
+        if (isOnboardingRoute || isAuthRoute) return;
+        router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
         return;
       }
 
@@ -186,14 +195,14 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     } finally {
       setApplicationLoading(false);
     }
-  }, [pathname, router]);
+  }, [isAuthRoute, isOnboardingRoute, pathname, router]);
 
   useEffect(() => {
-    void refreshApplication();
+    refreshApplication();
   }, [refreshApplication]);
-
   useEffect(() => {
     if (applicationLoading) return;
+    if (isAuthRoute) return; // auth pages manage their own session state
 
     if (!application) {
       if (!isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
@@ -205,7 +214,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     if (isSellerBlockedStatus(application.status) && !isStatusRoute && !isVerifyPhoneRoute) {
       router.replace("/seller/status");
     }
-  }, [application, applicationLoading, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, router]);
+  }, [application, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, router]);
 
   const handleSidebarToggle = () => {
     setSidebarCollapsed((current) => {

@@ -3,13 +3,14 @@
 import Link from "next/link";
 import { ArrowLeft, Loader2, MailCheck, RefreshCcw, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getDemoVerificationEmail, resendVerificationEmail } from "@/services/auth";
 import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
 
 export default function CheckEmailPage() {
+  const router = useRouter();
   const searchParams = useSearchParams();
   const email = useMemo(
     () => searchParams.get("email") ?? getDemoVerificationEmail(),
@@ -30,15 +31,18 @@ export default function CheckEmailPage() {
 
   const handleResend = async () => {
     if (!email) {
-      setError("Enter your email on the login page to request a new verification link.");
+      setError("Enter your email on the login page to request another verification email.");
       return;
     }
 
     try {
       setIsResending(true);
       setError(null);
-      const result = await resendVerificationEmail(email);
+      const result = await resendVerificationEmail(email, nextPath);
       setMessage(result.message);
+      if (result.nextPath?.startsWith("/verify-email")) {
+        router.push(result.nextPath);
+      }
     } catch (err) {
       setMessage(null);
       setError(err instanceof Error ? err.message : "Failed to resend verification email.");
@@ -73,14 +77,14 @@ export default function CheckEmailPage() {
                 Verify your email
               </h1>
               <p className="text-xs font-medium leading-relaxed text-zinc-300 md:text-sm">
-                We created your account, but the backend keeps it locked until you open the verification link sent to {email ? <span className="font-bold text-white">{email}</span> : "your email"}.
+                We created your account. Open the email we sent to {email ? <span className="font-bold text-white">{email}</span> : "your email"} to continue.
               </p>
             </div>
           </div>
 
           <div className="space-y-3 rounded-2xl border border-white/10 bg-white/5 p-4 text-xs font-medium text-zinc-300 backdrop-blur-md">
-            <p>After verification, return to sign in with your email and password.</p>
-            <p>If the email is not in your inbox, check spam or request a new link.</p>
+            <p>After you confirm your email, come back and sign in.</p>
+            <p>If you do not see the email, check spam or request a new one.</p>
           </div>
 
           {message ? <p className="mt-4 text-xs font-medium text-emerald-300">{message}</p> : null}

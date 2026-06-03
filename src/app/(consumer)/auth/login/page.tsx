@@ -93,7 +93,7 @@ export default function LoginPage() {
                 Welcome back
               </h1>
               <p className="text-xs font-medium text-zinc-300 md:text-sm">
-                Enter your details to sign in to your account.
+                Sign in to continue shopping.
               </p>
             </div>
           </div>
@@ -144,7 +144,7 @@ export default function LoginPage() {
               className="mt-4 h-11 w-full rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]"
             >
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isSubmitting ? "Signing In..." : "Sign In"}
+              {isSubmitting ? "Signing In..." : "Continue to your account"}
             </Button>
           </form>
 
@@ -179,6 +179,13 @@ export default function LoginPage() {
               Sign up
             </Link>
           </p>
+
+          <p className="mt-3 text-center text-xs font-medium text-zinc-400">
+            Want to sell?{" "}
+            <Link href="/seller/login" className="font-bold text-zinc-300 hover:text-white hover:underline">
+              Seller sign in
+            </Link>
+          </p>
         </div>
       </div>
 
@@ -194,7 +201,7 @@ export default function LoginPage() {
             Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            Join thousands of sellers and buyers connecting every day on the fastest growing e-commerce platform in Lusaka.
+            Track orders, save addresses, and checkout faster. Join thousands of shoppers on the fastest growing e-commerce platform in Lusaka.
           </p>
         </div>
       </div>

@@ -58,12 +58,12 @@ export function SellerStatusNotice({
           <p className="mt-2 text-sm font-medium leading-6 text-zinc-700">{meta.description}</p>
           {application.needsInfoReason ? (
             <p className="mt-3 rounded-2xl border border-white/70 bg-white/75 px-4 py-3 text-sm font-semibold text-zinc-800">
-              Needs info reason: {application.needsInfoReason}
+              More information needed: {application.needsInfoReason}
             </p>
           ) : null}
           {application.rejectionReason ? (
             <p className="mt-3 rounded-2xl border border-white/70 bg-white/75 px-4 py-3 text-sm font-semibold text-zinc-800">
-              Rejection reason: {application.rejectionReason}
+              Reason: {application.rejectionReason}
             </p>
           ) : null}
           {meta.ctaHref && meta.ctaLabel ? (

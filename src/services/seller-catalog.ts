@@ -20,6 +20,7 @@ export interface SellerProductImage {
   id: string;
   url: string;
   name: string;
+  alt?: string;
   isPrimary: boolean;
   publicId?: string;
   sortOrder?: number;
@@ -775,6 +776,7 @@ function normalizeBackendImages(product: BackendVendorProduct): SellerProductIma
         id: `${product.id}-image-${index + 1}`,
         url: image,
         name: `Product image ${index + 1}`,
+        alt: `Product image ${index + 1}`,
         isPrimary: index === 0,
         sortOrder: index,
         uploadStatus: "uploaded",
@@ -785,12 +787,13 @@ function normalizeBackendImages(product: BackendVendorProduct): SellerProductIma
       id: `${product.id}-image-${index + 1}`,
       url: image.url,
       name: image.alt?.trim() || `Product image ${index + 1}`,
-    publicId: image.publicId ?? undefined,
-    isPrimary: image.isPrimary === true || index === 0,
-    sortOrder: image.sortOrder ?? index,
-    originalWidth: image.width ?? undefined,
-    originalHeight: image.height ?? undefined,
-    processedWidth: image.width ?? undefined,
+      alt: image.alt?.trim() || `Product image ${index + 1}`,
+      publicId: image.publicId ?? undefined,
+      isPrimary: image.isPrimary === true || index === 0,
+      sortOrder: image.sortOrder ?? index,
+      originalWidth: image.width ?? undefined,
+      originalHeight: image.height ?? undefined,
+      processedWidth: image.width ?? undefined,
       processedHeight: image.height ?? undefined,
       linkedVariantValue: image.linkedVariantValue ?? undefined,
       uploadStatus: "uploaded",
@@ -992,7 +995,7 @@ function normalizePayloadImages(images?: SellerProductImage[]) {
   return (images ?? []).map((image, index) => ({
     url: image.url,
     publicId: image.publicId ?? null,
-    alt: image.name,
+    alt: image.alt?.trim() || image.name,
     isPrimary: image.isPrimary || index === 0,
     sortOrder: index,
     linkedVariantValue: image.linkedVariantValue ?? null,

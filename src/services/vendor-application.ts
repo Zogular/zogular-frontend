@@ -61,19 +61,22 @@ function findApplicationRecord(payload: unknown): Record<string, unknown> | null
   if (!root) return null;
 
   const candidates: unknown[] = [
-    root,
-    root.data,
-    root.payload,
-    root.result,
+    root.vendorApplication,
+    asRecord(root.data)?.vendorApplication,
     root.application,
     asRecord(root.data)?.application,
-    asRecord(root.data)?.vendorApplication,
-    root.vendorApplication,
+    root.result,
+    root.payload,
+    root.data,
+    root,
   ];
 
   for (const candidate of candidates) {
     const record = asRecord(candidate);
-    if (record && (record.id || record.status || record.sellerType || record.storeName)) {
+    // A true application record MUST have an id, or at least a recognizable sellerType.
+    // The API envelope has a 'status' field ("success") which can cause false positives 
+    // if we just check for 'status'.
+    if (record && (record.id || (record.sellerType && record.ownerFullName !== undefined))) {
       return record;
     }
   }

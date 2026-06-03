@@ -134,6 +134,11 @@ function useScrolled(threshold = 40, resetAt = 16) {
 
 function useAuthState() {
   const [devUser, setDevUser] = useState<AuthUser | null>(null);
+  const hydrated = useSyncExternalStore(
+    () => () => undefined,
+    () => true,
+    () => false,
+  );
   const authSnapshot = useSyncExternalStore(
     (onStoreChange) => {
       const handleStorage = (event: StorageEvent) => {
@@ -157,7 +162,7 @@ function useAuthState() {
   );
 
   void authSnapshot;
-  const user = getStoredAuthSession()?.user ?? devUser;
+  const user = hydrated ? getStoredAuthSession()?.user ?? devUser : devUser;
 
   const signOut = async () => {
     await logout();

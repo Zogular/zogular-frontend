@@ -54,7 +54,7 @@ export default function SellerStatusPage() {
         </div>
         <h1 className="mt-5 text-2xl font-black tracking-tight text-zinc-950">No seller application yet</h1>
         <p className="mt-3 max-w-2xl text-sm font-medium leading-6 text-zinc-600">
-          Your account can access the seller area, but a seller application has not been started yet. Begin onboarding to create your draft application and unlock the correct seller trust flow.
+          Your account can access the seller area, but your seller application has not been started yet. Begin onboarding to add your details and get ready for review.
         </p>
         <div className="mt-5">
           <Link href="/seller/onboarding?start=1">
@@ -80,7 +80,7 @@ export default function SellerStatusPage() {
             <ShieldAlert className="h-5 w-5" />
           </div>
           <div>
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Seller Trust Snapshot</p>
+            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Application Summary</p>
             <h2 className="mt-1 text-xl font-black tracking-tight text-zinc-950">Application details on file</h2>
           </div>
         </div>

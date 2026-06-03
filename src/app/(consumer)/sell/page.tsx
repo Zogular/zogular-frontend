@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo } from "react";
+import { useSyncExternalStore } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -19,6 +19,34 @@ import { getStoredAuthSession } from "@/services/auth";
 import { appendNextPath } from "@/services/auth-intent";
 
 const SELLER_ONBOARDING_PATH = "/seller/onboarding?start=1";
+const SELLER_REGISTER_PATH = appendNextPath(
+  "/seller/register",
+  SELLER_ONBOARDING_PATH,
+);
+const SELLER_LOGIN_PATH = appendNextPath(
+  "/seller/login",
+  SELLER_ONBOARDING_PATH,
+);
+
+function subscribeAuthSession(callback: () => void) {
+  if (typeof window === "undefined") return () => {};
+
+  window.addEventListener("storage", callback);
+  window.addEventListener("zogular-auth-session", callback);
+
+  return () => {
+    window.removeEventListener("storage", callback);
+    window.removeEventListener("zogular-auth-session", callback);
+  };
+}
+
+function getAuthSessionSnapshot() {
+  return Boolean(getStoredAuthSession()?.user);
+}
+
+function getServerAuthSessionSnapshot() {
+  return false;
+}
 
 const HIGHLIGHTS = [
   {
@@ -97,13 +125,17 @@ const FAQS = [
 ];
 
 export default function SellOnZogularPage() {
-  const isLoggedIn = useMemo(() => Boolean(getStoredAuthSession()?.user), []);
+  const isLoggedIn = useSyncExternalStore(
+    subscribeAuthSession,
+    getAuthSessionSnapshot,
+    getServerAuthSessionSnapshot,
+  );
   const primaryHref = isLoggedIn
     ? SELLER_ONBOARDING_PATH
-    : appendNextPath("/auth/register", SELLER_ONBOARDING_PATH);
+    : SELLER_REGISTER_PATH;
   const secondaryHref = isLoggedIn
     ? "/seller/status"
-    : appendNextPath("/auth/login", SELLER_ONBOARDING_PATH);
+    : SELLER_LOGIN_PATH;
 
   return (
     <main className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
