@@ -17,6 +17,34 @@ export type SellerCapability =
   | "canReceiveOrders"
   | "canAccessPayouts";
 
+export type SellerDocumentType =
+  | "NRC_FRONT"
+  | "NRC_BACK"
+  | "SHOP_PHOTO"
+  | "PACRA_DOCUMENT";
+
+export type SellerDocumentField =
+  | "nrcFrontUrl"
+  | "nrcBackUrl"
+  | "shopPhotoUrl"
+  | "pacraDocumentUrl";
+
+export type SellerDocumentUploadStatus =
+  | "idle"
+  | "uploading"
+  | "uploaded"
+  | "failed";
+
+export interface SellerDocumentUploadState {
+  status: SellerDocumentUploadStatus;
+  progress: number;
+  error?: string;
+  previewUrl?: string | null;
+  uploadedUrl?: string;
+  fileName?: string | null;
+  fileKind?: "image" | "pdf" | null;
+}
+
 export interface VendorApplication {
   id: string;
   userId?: string;
@@ -59,6 +87,7 @@ export interface VendorApplication {
     telephone: string;
     role: string;
     emailVerified: boolean;
+    phoneVerifiedAt?: string | null;
     isActive: boolean;
   } | null;
 }

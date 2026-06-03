@@ -24,12 +24,7 @@ export default function SellerVerifyPhonePage() {
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
-  // In-page optimistic state: marks verified within the current session
-  // even before the next /user/me response arrives.
   const [verifiedThisSession, setVerifiedThisSession] = useState(false);
-
-  // phoneVerified is true if the trusted backend user payload confirms it,
-  // OR if verification just succeeded in this page session.
   const phoneVerified = Boolean(user?.phoneVerifiedAt) || verifiedThisSession;
 
   useEffect(() => {
@@ -61,7 +56,7 @@ export default function SellerVerifyPhonePage() {
   const canResend = resendSecondsLeft === 0 && !isSending && !phoneVerified;
   const helperMessage = useMemo(() => {
     if (phoneVerified) {
-      return "Your phone number is verified and ready for seller trust review.";
+      return "Your phone number is confirmed and ready.";
     }
     return "Use a Zambia mobile number like +260971234567, 0971234567, or 0771234567.";
   }, [phoneVerified]);
@@ -73,6 +68,9 @@ export default function SellerVerifyPhonePage() {
       setStatusMessage(null);
       const result = await sendPhoneOtp(phone);
       setStatusMessage(result.message);
+      if (result.developmentCode) {
+        setCode(result.developmentCode);
+      }
       setResendSecondsLeft(RESEND_SECONDS);
       toast.success(result.message);
     } catch (error) {
@@ -119,7 +117,7 @@ export default function SellerVerifyPhonePage() {
             <div className="max-w-2xl">
               <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Verify the seller phone number.</h1>
               <p className="mt-2 text-sm font-medium leading-6 text-zinc-600">
-                Phone trust is part of seller onboarding for Zambia reality. Send an OTP to your seller phone, enter the 6-digit code, then return to onboarding when trust is complete.
+                We will send a 6-digit code to the number you want to use for your seller account.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-white/80 px-4 py-3 text-sm font-semibold text-zinc-700 shadow-sm">
@@ -181,7 +179,7 @@ export default function SellerVerifyPhonePage() {
                 <div>
                   <h2 className="text-lg font-black tracking-tight text-zinc-950">Verify OTP</h2>
                   <p className="mt-1 text-sm font-medium leading-6 text-zinc-600">
-                    Enter the 6-digit code from SMS. The backend allows only limited attempts before the code is burned.
+                    Enter the 6-digit code sent to your phone.
                   </p>
                 </div>
               </div>
@@ -224,7 +222,7 @@ export default function SellerVerifyPhonePage() {
 
           <aside className="space-y-4">
             <div className="rounded-[1.75rem] border border-zinc-200 bg-white/85 p-5 shadow-sm">
-              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Accepted Formats</p>
+              <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Phone formats</p>
               <div className="mt-4 space-y-3 text-sm font-semibold text-zinc-700">
                 <p className="rounded-2xl border border-zinc-100 bg-zinc-50/80 px-4 py-3">+260971234567</p>
                 <p className="rounded-2xl border border-zinc-100 bg-zinc-50/80 px-4 py-3">0971234567</p>
@@ -232,12 +230,21 @@ export default function SellerVerifyPhonePage() {
               </div>
             </div>
 
+            {process.env.NODE_ENV !== "production" && code && (
+              <div className="rounded-[1.75rem] border border-zinc-200 bg-white/85 p-5 shadow-sm">
+                <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">Development Code</p>
+                <div className="mt-4 break-all rounded-2xl border border-zinc-100 bg-zinc-50/80 px-4 py-3 text-sm font-semibold text-emerald-700">
+                  {code}
+                </div>
+              </div>
+            )}
+
             <div className="rounded-[1.75rem] border border-zinc-200 bg-white/85 p-5 shadow-sm">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-zinc-500">What happens next</p>
               <div className="mt-4 space-y-3 text-sm font-medium leading-6 text-zinc-600">
-                <p>Draft saving stays open whether the phone is verified or not.</p>
-                <p>Final seller application submit requires both email and phone trust to be complete.</p>
-                <p>Once verified, your phone status is saved to your account and confirmed on every session reload.</p>
+                <p>You can keep saving your application while this step is still pending.</p>
+                <p>You will need both email and phone verification before you can send your application for review.</p>
+                <p>Once your phone is confirmed, you can go back and finish your application.</p>
               </div>
             </div>
           </aside>

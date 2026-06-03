@@ -9,6 +9,7 @@ export interface RegisterInput {
   email: string;
   phone: string;
   password: string;
+  next?: string | null;
 }
 
 export interface ForgotPasswordInput {
@@ -56,6 +57,7 @@ export interface AuthActionResult {
   success: true;
   message: string;
   nextPath?: string;
+  developmentCode?: string;
 }
 
 export interface UpdateMeInput {

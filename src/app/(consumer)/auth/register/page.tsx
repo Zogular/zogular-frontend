@@ -42,8 +42,8 @@ export default function RegisterPage() {
     try {
       setIsSubmitting(true);
       setError(null);
-      const result = await register(form);
-      router.push(appendNextPath(result.nextPath ?? "/auth/permissions", nextPath));
+      const result = await register({ ...form, next: nextPath });
+      router.push(result.nextPath ?? appendNextPath("/auth/permissions", nextPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create account.");
     } finally {
@@ -72,10 +72,10 @@ export default function RegisterPage() {
 
             <div className="space-y-1">
               <h1 className="text-2xl font-extrabold tracking-tighter text-white drop-shadow-sm md:text-3xl">
-                Create an Account
+                Create your ZOGULAR account
               </h1>
               <p className="text-xs font-medium text-zinc-300 md:text-sm">
-                Connecting buyers and sellers across Zambia.
+                Track orders, save addresses, and checkout faster.
               </p>
             </div>
           </div>
@@ -135,7 +135,7 @@ export default function RegisterPage() {
               className="mt-2 h-11 w-full rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]"
             >
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isSubmitting ? "Creating Account..." : "Create Account"}
+              {isSubmitting ? "Creating account..." : "Create Account"}
             </Button>
           </form>
 
@@ -170,6 +170,13 @@ export default function RegisterPage() {
               Sign in
             </Link>
           </p>
+
+          <p className="mt-3 text-center text-xs font-medium text-zinc-400">
+            Want to sell?{" "}
+            <Link href="/seller/register" className="font-bold text-zinc-300 hover:text-white hover:underline">
+              Create a seller account
+            </Link>
+          </p>
         </div>
       </div>
 
@@ -185,7 +192,7 @@ export default function RegisterPage() {
             Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            Join thousands of sellers and buyers connecting every day on the fastest growing e-commerce platform in Lusaka.
+            Join thousands of shoppers connecting every day on the fastest growing e-commerce platform in Lusaka.
           </p>
         </div>
       </div>

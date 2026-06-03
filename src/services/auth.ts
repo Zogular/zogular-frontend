@@ -215,6 +215,14 @@ function sanitizeInternalPath(path?: string | null): string | undefined {
   return normalized;
 }
 
+function appendSafeNext(path: string, nextPath?: string | null): string {
+  const safeNextPath = sanitizeInternalPath(nextPath);
+  if (!safeNextPath) return path;
+
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}next=${encodeURIComponent(safeNextPath)}`;
+}
+
 function extractActionMessage(payload: unknown, fallbackMessage: string): string {
   const records = collectCandidateRecords(payload);
   return (
@@ -237,6 +245,7 @@ function buildActionResult(
     success: true,
     message: extractActionMessage(payload, fallbackMessage),
     nextPath: payloadNextPath ?? sanitizeInternalPath(fallbackPath),
+    developmentCode: getStringByKeys(records, ["developmentCode", "devCode"]),
   };
 }
 
@@ -253,6 +262,7 @@ function buildRegisterPayload(input: RegisterInput) {
     email: input.email.trim().toLowerCase(),
     password: input.password,
     telephone,
+    ...(sanitizeInternalPath(input.next) ? { next: sanitizeInternalPath(input.next) } : {}),
   };
 }
 
@@ -337,7 +347,10 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
   return buildActionResult(
     payload,
     "Account created successfully. Please check your email to verify your account.",
-    `/auth/check-email?email=${encodeURIComponent(input.email.trim().toLowerCase())}`,
+    appendSafeNext(
+      `/auth/check-email?email=${encodeURIComponent(input.email.trim().toLowerCase())}`,
+      input.next,
+    ),
   );
 }
 
@@ -479,14 +492,20 @@ export async function verifyEmailToken(token: string): Promise<AuthActionResult>
   return buildActionResult(payload, "Email verified successfully.", "/auth/login");
 }
 
-export async function resendVerificationEmail(email: string): Promise<AuthActionResult> {
+export async function resendVerificationEmail(
+  email: string,
+  nextPath?: string | null,
+): Promise<AuthActionResult> {
   storeLastAuthEmail(email);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resendVerification, {
     method: "POST",
     authMode: "omit",
     csrf: true,
-    body: JSON.stringify({ email: email.trim().toLowerCase() }),
+    body: JSON.stringify({
+      email: email.trim().toLowerCase(),
+      ...(sanitizeInternalPath(nextPath) ? { next: sanitizeInternalPath(nextPath) } : {}),
+    }),
   });
 
   return buildActionResult(payload, "Verification email sent.");
