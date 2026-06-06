@@ -29,39 +29,26 @@ export function SellerProductPreview({
   onWithdraw: () => void;
 }) {
   return (
-    <div className="mx-auto min-w-0 max-w-6xl space-y-5 overflow-x-hidden pb-24">
-      <div className="-mx-4 flex items-center justify-between border-b border-white/60 bg-[#f4fbf6]/90 px-4 py-4 backdrop-blur-2xl md:sticky md:top-24 md:z-20 md:mx-0 md:border-none md:bg-transparent md:px-0">
-        <div className="flex min-w-0 items-center gap-3">
+    <div className="mx-auto min-w-0 max-w-[1400px] space-y-6 pb-28 md:pb-24">
+      {/* 1. Header Area */}
+      <div className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-[#f4fbf6]/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-2xl md:flex-row md:items-center md:justify-between md:p-6">
+        <div className="flex min-w-0 items-center gap-3 md:gap-4">
           <Link href="/seller/products">
-            <Button aria-label="Back to products" type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-white/70 bg-white/80 shadow-sm">
-              <ArrowLeft className="h-4 w-4" />
+            <Button aria-label="Back to products" type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-2xl border border-white/70 bg-white/80 shadow-sm transition-all hover:bg-white hover:shadow-md md:h-10 md:w-10">
+              <ArrowLeft className="h-4 w-4 md:h-4 md:w-4" />
             </Button>
           </Link>
           <div className="min-w-0">
-            <p className="text-[11px] font-black uppercase tracking-[0.18em] text-[#009E49]">Seller Product Preview</p>
-            <h1 className="wrap-break-word pr-2 text-xl font-black leading-tight text-zinc-950 md:text-2xl">{product.title}</h1>
+            <div className="flex flex-wrap items-center gap-2">
+              <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#009E49] md:text-[10px]">Product Preview</p>
+              <SellerProductStatusBadge status={product.status} />
+            </div>
+            <h1 className="wrap-break-word pr-2 text-xl font-black tracking-tight text-zinc-950 md:text-3xl">{product.title}</h1>
           </div>
         </div>
-        <span className="hidden md:inline-flex"><SellerProductStatusBadge status={product.status} /></span>
-      </div>
-
-      <SellerProductStatusBanner product={product} />
-
-      <div className="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
-        <div className="min-w-0 space-y-5">
-          <SellerProductGallery product={product} />
-          <section className="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:p-6">
-            <div className="mb-3 flex flex-wrap items-center gap-2">
-              <SellerProductStatusBadge status={product.status} />
-              <span className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-[10px] font-black uppercase tracking-wider text-zinc-500">{product.id}</span>
-            </div>
-            <h2 className="wrap-break-word text-2xl font-black tracking-tight text-zinc-950">{product.title}</h2>
-            <p className="mt-3 text-sm font-semibold leading-7 text-zinc-600">{product.description || "No description added yet."}</p>
-          </section>
-          <SellerProductSpecs product={product} />
-        </div>
-
-        <aside className="min-w-0 space-y-5 lg:sticky lg:top-24 lg:self-start">
+        
+        {/* Desktop Actions */}
+        <div className="hidden shrink-0 lg:block">
           <SellerProductActionBar
             product={product}
             onDuplicate={onDuplicate}
@@ -69,9 +56,73 @@ export function SellerProductPreview({
             onSubmit={onSubmit}
             onUnpublish={onUnpublish}
             onWithdraw={onWithdraw}
+            horizontal
           />
+        </div>
+      </div>
+
+      <div className="hidden md:block">
+        <SellerProductStatusBanner product={product} />
+      </div>
+
+      {/* 2. Main Content Grid */}
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[400px_minmax(0,1fr)_340px] xl:grid-cols-[440px_minmax(0,1fr)_340px]">
+        
+        {/* Left Column: Media */}
+        <div className="min-w-0 space-y-6 lg:sticky lg:top-32 lg:self-start">
+          <div className="-mx-4 md:mx-0">
+            <SellerProductGallery product={product} />
+          </div>
+          <div className="md:hidden">
+            <SellerProductStatusBanner product={product} />
+          </div>
+        </div>
+
+        {/* Center Column: Description & Specs */}
+        <div className="min-w-0 space-y-6">
+          <section className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:p-8">
+            <h2 className="mb-4 text-xs font-black uppercase tracking-[0.16em] text-zinc-400">Description</h2>
+            <div className="prose prose-sm prose-zinc max-w-none font-medium leading-relaxed text-zinc-700">
+              {product.description ? (
+                <p>{product.description}</p>
+              ) : (
+                <p className="italic text-zinc-400">No description provided.</p>
+              )}
+            </div>
+          </section>
+          
+          <SellerProductSpecs product={product} />
+        </div>
+
+        {/* Right Column: Meta & Snapshot */}
+        <aside className="min-w-0 space-y-6 lg:sticky lg:top-32 lg:self-start">
+          {/* Tablet Actions (Between Mobile and Desktop) */}
+          <div className="hidden md:block lg:hidden">
+            <SellerProductActionBar
+              product={product}
+              onDuplicate={onDuplicate}
+              onEdit={onEdit}
+              onSubmit={onSubmit}
+              onUnpublish={onUnpublish}
+              onWithdraw={onWithdraw}
+              horizontal
+            />
+          </div>
           <SellerProductInfoGrid product={product} />
         </aside>
+      </div>
+
+      {/* Mobile Sticky Bottom Action Bar */}
+      <div className="fixed bottom-0 left-0 right-0 z-40 border-t border-zinc-200/50 bg-white/95 p-4 pb-safe shadow-[0_-15px_40px_rgba(0,0,0,0.08)] backdrop-blur-2xl md:hidden">
+        <SellerProductActionBar
+          product={product}
+          onDuplicate={onDuplicate}
+          onEdit={onEdit}
+          onSubmit={onSubmit}
+          onUnpublish={onUnpublish}
+          onWithdraw={onWithdraw}
+          horizontal
+        />
       </div>
     </div>
   );

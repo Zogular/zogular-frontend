@@ -167,7 +167,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "SUBMITTED":
       return {
         eyebrow: "Under Review",
-        title: "Your seller application is pending review.",
+        title: "Your application is under review. We’ll notify you when there’s an update.",
         description:
           "Your account is in the queue for trust and compliance checks. You can monitor progress from the seller hub while review is in progress.",
         tone: "neutral",
@@ -177,7 +177,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "NEEDS_INFO":
       return {
         eyebrow: "Action Needed",
-        title: "Your seller application needs more information.",
+        title: "Admin requested updates. Please fix these details before resubmitting.",
         description:
           "Update the requested identity or business details, then resubmit so review can continue.",
         tone: "warning",
@@ -187,9 +187,9 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "PROVISIONAL":
       return {
         eyebrow: "Provisional Access",
-        title: "You can prepare draft products while final approval is pending.",
+        title: "You have provisional access. You can create draft products, but product review submission is locked until full approval.",
         description:
-          "Draft creation is open, but product review submission, orders, and payouts stay locked until your seller approval becomes APPROVED.",
+          "Draft creation is open, but orders and payouts stay locked until your seller approval becomes APPROVED.",
         tone: "warning",
         ctaLabel: "Manage products",
         ctaHref: "/seller/products",
@@ -197,7 +197,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "APPROVED":
       return {
         eyebrow: "Approved",
-        title: "Your seller account is approved.",
+        title: "Your seller account is approved. You can now create products and manage your shop.",
         description:
           "You can now manage listings, submit products for review, receive orders, and access payouts as those features become available in the seller portal.",
         tone: "success",
@@ -207,7 +207,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "RESTRICTED":
       return {
         eyebrow: "Restricted",
-        title: "Your seller account is restricted.",
+        title: "Your seller account has restrictions. Some actions are temporarily unavailable.",
         description:
           "Seller shell access remains available, but core selling actions are currently limited. Review the status details and wait for further guidance from the ZOGULAR team.",
         tone: "warning",
@@ -217,7 +217,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "SUSPENDED":
       return {
         eyebrow: "Suspended",
-        title: "Your seller account is suspended.",
+        title: "Your seller account is suspended. Contact support for help.",
         description:
           "Selling actions are blocked while the ZOGULAR team reviews the account. Check the latest notes and wait for further communication before attempting seller actions.",
         tone: "danger",

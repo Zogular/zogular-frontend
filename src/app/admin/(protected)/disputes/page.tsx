@@ -197,7 +197,7 @@ export default function AdminDisputesPage() {
         description="Manage delivery, payment, refund, and seller-buyer disputes with evidence and resolution history."
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <AdminMetricCard title="Open disputes" value={metrics.open} note="Active operational workload" icon={<Scale className="h-5 w-5" />} tone="amber" />
         <AdminMetricCard title="Escalated" value={metrics.escalated} note="Needs senior review" icon={<AlertOctagon className="h-5 w-5" />} tone="rose" />
         <AdminMetricCard title="Critical severity" value={metrics.critical} note="Payment or trust exposure" icon={<FileWarning className="h-5 w-5" />} tone="orange" />

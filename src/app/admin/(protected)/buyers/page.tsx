@@ -186,7 +186,7 @@ export default function AdminBuyersPage() {
         )}
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <AdminMetricCard title="Buyer records" value={buyers.length} note="Loaded into admin CRM" icon={<Users className="h-5 w-5" />} tone="indigo" />
         <AdminMetricCard title="Under review" value={metrics.underReview} note="Manual fraud or trust review" icon={<AlertTriangle className="h-5 w-5" />} tone="amber" />
         <AdminMetricCard title="High risk" value={metrics.highRisk} note="Requires stricter handling" icon={<ShieldCheck className="h-5 w-5" />} tone="rose" />

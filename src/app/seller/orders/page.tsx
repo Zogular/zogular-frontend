@@ -105,13 +105,11 @@ function OrderActionMenu({
         <ActionMenuItem onClick={handleCopyId}>
           <Copy className="h-3.5 w-3.5 text-zinc-400" /> Copy Order ID
         </ActionMenuItem>
-        <a
-          href={`tel:${order.phone}`}
-          className="flex w-full items-center gap-2 rounded-xl px-3 py-2 text-left text-xs font-bold text-zinc-700 transition-colors hover:bg-zinc-100"
-          onClick={() => setIsOpen(false)}
-        >
-          <Phone className="h-3.5 w-3.5 text-zinc-400" /> Call Buyer
-        </a>
+        <ActionMenuItem onClick={() => { window.location.href = `tel:${order.phone}`; }}>
+          <div className="flex w-full items-center gap-2 cursor-pointer">
+            <Phone className="h-3.5 w-3.5 text-zinc-400" /> Call Customer
+          </div>
+        </ActionMenuItem>
         <ActionMenuSeparator />
         <ActionMenuItem
           onClick={() => {
@@ -192,7 +190,6 @@ export default function SellerOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const [activeTab, setActiveTab] = useState<SellerOrderStatus | "all">("all");
   const [statusFilter, setStatusFilter] = useState<SellerOrderStatus | "all">("all");
   const [dateFilter, setDateFilter] = useState<DateFilter>("30days");
   
@@ -385,43 +382,13 @@ export default function SellerOrdersPage() {
         </div>
       </div>
 
-      {/* 3. MOBILE TABS (Horizontal Scroll) */}
-      <div className="-mx-4 flex shrink-0 gap-2 overflow-x-auto px-4 pb-2 hide-scrollbar md:hidden">
-        <button onClick={() => setActiveTab("all")} className={`whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${activeTab === "all" ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50"}`}>
-          All Orders
-        </button>
-        {STATUS_COLUMNS.map((column) => {
-          const count = filteredOrders.filter((o) => o.status === column.id).length;
-          const isActive = activeTab === column.id;
-          return (
-            <button key={column.id} onClick={() => setActiveTab(column.id)} className={`flex items-center gap-2 whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${isActive ? `${column.bg} ${column.border} ${column.color}` : "border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50"}`}>
-              <span>{column.title}</span>
-              <span className={`rounded-md px-2 py-0.5 text-[10px] ${isActive ? "bg-white/60" : "bg-zinc-100 text-zinc-600"}`}>{count}</span>
-            </button>
-          );
-        })}
-      </div>
-
-      {/* 4. MOBILE VIEW: Stacked List */}
-      <div className="flex-1 space-y-4 overflow-y-auto pb-4 md:hidden">
-        {filteredOrders.filter(o => activeTab === "all" || o.status === activeTab).map(order => (
-          <OrderCard key={order.id} order={order} onCancelOrder={handleCancelOrder} />
-        ))}
-        {filteredOrders.filter(o => activeTab === "all" || o.status === activeTab).length === 0 && (
-          <div className="rounded-2xl border border-zinc-200/50 bg-white py-12 text-center">
-            <Package className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
-            <p className="text-sm font-bold text-zinc-500">No orders in this stage.</p>
-          </div>
-        )}
-      </div>
-
-      {/* 5. DESKTOP VIEW: Horizontal Scrolling Kanban */}
-      <div className="hidden flex-1 items-start gap-6 overflow-x-auto px-2 pb-4 pt-2 -mx-2 hide-scrollbar md:flex">
+      {/* 3. UNIFIED KANBAN VIEW (Desktop & Mobile) */}
+      <div className="flex-1 flex items-start gap-4 md:gap-6 overflow-x-auto px-4 md:px-2 pb-4 pt-2 -mx-4 md:-mx-2 hide-scrollbar snap-x snap-mandatory">
         {STATUS_COLUMNS.map((column) => {
           const columnOrders = filteredOrders.filter(o => o.status === column.id);
           const Icon = column.icon;
           return (
-            <div key={column.id} className="flex min-w-[320px] flex-col gap-4">
+            <div key={column.id} className="flex w-[85vw] max-w-[320px] min-w-[280px] md:min-w-[320px] flex-col gap-4 snap-center shrink-0">
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-[#f4fbf6] pb-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${column.bg} ${column.color}`}>

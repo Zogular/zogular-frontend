@@ -18,7 +18,6 @@ import { ApiError } from "@/services/api";
 import {
   getMyVendorApplication,
   hasSellerCapability,
-  isSellerBlockedStatus,
 } from "@/services/vendor-application";
 import type { SellerApplicationStatus, VendorApplication } from "@/types/seller";
 
@@ -211,8 +210,30 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       return;
     }
 
-    if (isSellerBlockedStatus(application.status) && !isStatusRoute && !isVerifyPhoneRoute) {
+    const status = application.status;
+
+    // 1. DRAFT & NEEDS_INFO -> Onboarding
+    if ((status === "DRAFT" || status === "NEEDS_INFO") && !isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
+      router.replace("/seller/onboarding");
+      return;
+    }
+
+    // 2. SUBMITTED, RESTRICTED, SUSPENDED, REJECTED -> Status page
+    const isRestrictedStatus =
+      status === "SUBMITTED" ||
+      status === "RESTRICTED" ||
+      status === "SUSPENDED" ||
+      status === "REJECTED";
+
+    if (isRestrictedStatus && !isStatusRoute && !isVerifyPhoneRoute) {
       router.replace("/seller/status");
+      return;
+    }
+
+    // 3. APPROVED & PROVISIONAL -> Dashboard (/seller)
+    if ((status === "APPROVED" || status === "PROVISIONAL") && (isOnboardingRoute || isStatusRoute)) {
+      router.replace("/seller");
+      return;
     }
   }, [application, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, router]);
 
@@ -225,8 +246,8 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   };
 
   const handleSignOut = async () => {
-    const result = await logout();
-    router.push(result.nextPath ?? "/auth/login");
+    await logout();
+    router.push("/seller/login");
   };
 
   const contextValue = useMemo(
@@ -240,6 +261,14 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     }),
     [application, applicationError, applicationLoading, refreshApplication, sellerStatus],
   );
+
+  if (isAuthRoute) {
+    return (
+      <SellerApplicationContext.Provider value={contextValue}>
+        {children}
+      </SellerApplicationContext.Provider>
+    );
+  }
 
   if (applicationLoading && !application && !isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
     return (

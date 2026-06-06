@@ -15,7 +15,7 @@ import {
   storeAuthRedirectIntent,
 } from "@/services/auth-intent";
 
-const SELLER_ONBOARDING_FALLBACK = "/seller/onboarding?start=1";
+const SELLER_ONBOARDING_FALLBACK = "/seller";
 
 export default function SellerLoginPage() {
   return (
@@ -182,7 +182,7 @@ function SellerLoginContent() {
           </Button>
         </Link>
 
-        <div className="max-w-lg rounded-3xl border border-white/10 bg-black/30 p-8 shadow-2xl backdrop-blur-md">
+        <div className="max-w-lg">
           <h2 className="mb-4 text-4xl font-extrabold leading-tight tracking-tighter text-white drop-shadow-lg xl:text-5xl">
             Continue your seller setup.
           </h2>

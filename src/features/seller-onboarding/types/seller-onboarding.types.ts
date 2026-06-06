@@ -136,6 +136,10 @@ export type SellerOnboardingViewModel = {
   status: SellerApplicationStatus | "NOT_STARTED";
   statusLabel: string;
   statusMessage: string;
+  /** The exact reason the admin wrote when requesting more information. */
+  needsInfoReason: string | null;
+  /** The exact reason the admin wrote when rejecting the application. */
+  rejectionReason: string | null;
   submitDisabledReason: string;
   nextStep: string;
   seller: {

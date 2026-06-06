@@ -181,7 +181,7 @@ export default function AdminSystemPage() {
         description="Audit logs, feature flags, platform configs, operational notices, and environment health."
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <AdminMetricCard title="Audit logs" value={workspace.auditLogs.length} note="Sensitive action trail" icon={<ClipboardList className="h-5 w-5" />} tone="indigo" />
         <AdminMetricCard title="Enabled flags" value={metrics.enabledFlags} note="Active operational controls" icon={<Flag className="h-5 w-5" />} tone="emerald" />
         <AdminMetricCard title="Critical logs" value={metrics.criticalLogs} note="Requires governance review" icon={<ShieldAlert className="h-5 w-5" />} tone="rose" />

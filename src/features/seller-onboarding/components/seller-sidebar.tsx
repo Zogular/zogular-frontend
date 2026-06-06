@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ExternalLink, LogOut } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { sellerSidebarItems } from "../data/seller-onboarding.mock";
 import type { SellerOnboardingViewModel } from "../types/seller-onboarding.types";
 import { cn } from "@/lib/utils";
+import { logout } from "@/services/auth";
 
 export function SellerSidebar({
   viewModel,
@@ -12,6 +14,7 @@ export function SellerSidebar({
   viewModel: SellerOnboardingViewModel;
   className?: string;
 }) {
+  const router = useRouter();
   return (
     <aside className={cn("bg-[#09281C] px-4 py-5 text-white", className)}>
       <div className="flex h-full min-h-0 flex-col">
@@ -52,7 +55,13 @@ export function SellerSidebar({
             <p className="text-sm font-black">{viewModel.seller.storeName}</p>
             <p className="mt-1 text-xs font-semibold text-[#A4C9B4]">{viewModel.seller.ownerName}</p>
           </div>
-          <button className="flex h-10 w-full items-center gap-2 rounded-2xl px-3 text-sm font-black text-[#F4B8A9] hover:bg-white/7">
+          <button 
+            onClick={async () => {
+              await logout();
+              router.push("/seller/login");
+            }}
+            className="flex h-10 w-full items-center gap-2 rounded-2xl px-3 text-sm font-black text-[#F4B8A9] hover:bg-white/7"
+          >
             <LogOut className="h-4 w-4" />
             Sign out
           </button>

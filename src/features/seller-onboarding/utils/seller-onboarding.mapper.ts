@@ -84,12 +84,17 @@ function statusLabel(status: SellerApplicationStatus | "NOT_STARTED") {
   }
 }
 
-function statusMessage(status: SellerApplicationStatus | "NOT_STARTED") {
+function statusMessage(
+  status: SellerApplicationStatus | "NOT_STARTED",
+  needsInfoReason?: string | null,
+) {
   switch (status) {
     case "SUBMITTED":
       return "Your application has been sent.";
     case "NEEDS_INFO":
-      return "Please update the requested details.";
+      return needsInfoReason?.trim()
+        ? needsInfoReason.trim()
+        : "Please update the requested details and resubmit your application.";
     case "PROVISIONAL":
       return "Your shop is almost ready.";
     case "APPROVED":
@@ -281,6 +286,15 @@ export function mapSellerOnboardingToViewModel(
     return `Confirm ${missing.join(" and ")}.`;
   };
 
+  const resolvedNeedsInfoReason = application?.needsInfoReason ?? null;
+  const resolvedRejectionReason = application?.rejectionReason ?? null;
+
+  // When the admin has requested specific updates, surface that as the next step
+  // so the seller sees it immediately in the hero and notice bar.
+  const nextStep = status === "NEEDS_INFO" && resolvedNeedsInfoReason?.trim()
+    ? resolvedNeedsInfoReason.trim()
+    : missingItems[0] ?? "Send your application for review.";
+
   return {
     application,
     hasApplication: Boolean(application),
@@ -288,9 +302,11 @@ export function mapSellerOnboardingToViewModel(
     canSubmit,
     status,
     statusLabel: statusLabel(status),
-    statusMessage: statusMessage(status),
+    statusMessage: statusMessage(status, resolvedNeedsInfoReason),
+    needsInfoReason: resolvedNeedsInfoReason,
+    rejectionReason: resolvedRejectionReason,
     submitDisabledReason: getSubmitDisabledReason(status, missingItems),
-    nextStep: missingItems[0] ?? "Send your application for review.",
+    nextStep,
     seller: {
       storeName: formValues.storeName || "Zogular Store",
       ownerName:

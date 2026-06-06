@@ -86,15 +86,15 @@ export function AdminMetricCard({
   tone?: AdminTone;
 }) {
   return (
-    <div className={cn("rounded-3xl border bg-linear-to-br p-5 shadow-md shadow-zinc-900/5 transition-all hover:-translate-y-0.5 hover:shadow-lg", toneClasses[tone].card)}>
-      <div className="mb-3 flex items-center justify-between gap-3">
-        <p className="text-[10px] font-black uppercase tracking-wider text-zinc-600">{title}</p>
-        <div className={cn("flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl shadow-lg", toneClasses[tone].icon)}>
+    <div className={cn("rounded-2xl sm:rounded-3xl border bg-linear-to-br p-4 sm:p-5 shadow-md shadow-zinc-900/5 transition-all hover:-translate-y-0.5 hover:shadow-lg", toneClasses[tone].card)}>
+      <div className="mb-3 flex items-start justify-between gap-2 sm:gap-3">
+        <p className="text-[9px] sm:text-[10px] leading-snug font-black uppercase tracking-wider text-zinc-600">{title}</p>
+        <div className={cn("flex h-8 w-8 sm:h-10 sm:w-10 shrink-0 items-center justify-center rounded-xl sm:rounded-2xl shadow-md sm:shadow-lg [&>svg]:h-4 [&>svg]:w-4 sm:[&>svg]:h-5 sm:[&>svg]:w-5", toneClasses[tone].icon)}>
           {icon}
         </div>
       </div>
-      <h3 className="text-3xl font-black text-zinc-950">{value}</h3>
-      <p className="mt-1 text-xs font-bold text-current">{note}</p>
+      <h3 className="text-2xl sm:text-3xl font-black text-zinc-950">{value}</h3>
+      <p className="mt-1 text-[10px] sm:text-xs font-bold text-current">{note}</p>
     </div>
   );
 }
@@ -141,7 +141,7 @@ export function AdminSearchField({
 
 export function AdminToolbar({ children }: { children: ReactNode }) {
   return (
-    <div className="flex flex-col gap-3 rounded-3xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:flex-row md:items-center">
+    <div className="flex flex-col gap-2 rounded-2xl border border-white/70 bg-white/75 p-2 shadow-md shadow-zinc-900/5 backdrop-blur-xl sm:gap-3 sm:rounded-3xl sm:p-4 md:flex-row md:items-center">
       {children}
     </div>
   );

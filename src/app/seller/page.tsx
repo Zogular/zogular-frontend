@@ -13,7 +13,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
-import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
+import { SellerOperatingHub } from "@/features/seller-hub/sections/SellerOperatingHub";
 import {
   fetchSellerDashboardData,
   type SellerActivityItem,
@@ -78,7 +78,6 @@ export default function SellerDashboard() {
 
   const sellerStatus = application?.status ?? null;
   const canReceiveOrders = hasSellerCapability(sellerStatus, "canReceiveOrders");
-  const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
 
   const loadData = useCallback(async () => {
     try {
@@ -142,13 +141,8 @@ export default function SellerDashboard() {
 
   if (!canReceiveOrders) {
     return (
-      <div className="mx-auto max-w-5xl space-y-5">
-        <SellerStatusNotice application={application} />
-        <div className="grid gap-4 md:grid-cols-3">
-          <QuickActionCard href={canCreateDraftProduct ? "/seller/products" : "/seller/status"} icon={Package} title="Products" description={canCreateDraftProduct ? "Create or manage seller drafts." : "Review the seller status needed for product access."} />
-          <QuickActionCard href="/seller/onboarding" icon={Box} title="Application" description="Update business details, documents, and seller identity records." />
-          <QuickActionCard href="/seller/status" icon={AlertCircle} title="Review Status" description="Track review outcomes, reasons, and the next seller actions." />
-        </div>
+      <div className="py-6">
+        <SellerOperatingHub application={application} />
       </div>
     );
   }
@@ -168,16 +162,19 @@ export default function SellerDashboard() {
 
   // --- MAIN UI ---
   return (
-    <div className="mx-auto max-w-350 animate-in space-y-4 fade-in slide-in-from-bottom-4 duration-500 min-w-0">
+    <div className="mx-auto max-w-350 animate-in space-y-8 fade-in slide-in-from-bottom-4 duration-500 min-w-0">
       
-      {/* HEADER */}
-      <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900">Overview</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Track sales, orders, stock, and seller activity from one place.</p>
-        </div>
-        <div className="rounded-xl bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-600 self-start md:self-auto">
-          Today: {getTodayLabel()}
+      <SellerOperatingHub application={application} />
+
+      <div className="pt-4 border-t border-zinc-200">
+        <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
+          <div>
+            <h2 className="text-xl font-black tracking-tight text-zinc-900">Performance Analytics</h2>
+            <p className="mt-1 text-sm font-medium text-zinc-500">Track sales, orders, and stock.</p>
+          </div>
+          <div className="rounded-xl bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-600 self-start md:self-auto">
+            Today: {getTodayLabel()}
+          </div>
         </div>
       </div>
 

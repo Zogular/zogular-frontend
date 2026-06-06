@@ -208,7 +208,7 @@ export default function AdminSupportPage() {
         description="Handle seller and buyer tickets with SLA views, linked context, macros, and assignment controls."
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <AdminMetricCard title="Open tickets" value={metrics.open} note="Awaiting support response" icon={<LifeBuoy className="h-5 w-5" />} tone="indigo" />
         <AdminMetricCard title="Escalated" value={metrics.escalated} note="Linked to ops or disputes" icon={<Siren className="h-5 w-5" />} tone="rose" />
         <AdminMetricCard title="Urgent priority" value={metrics.urgent} note="Highest service risk" icon={<TicketCheck className="h-5 w-5" />} tone="amber" />

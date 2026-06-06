@@ -124,7 +124,7 @@ export default function VerifyCodePage() {
           </Button>
         </Link>
 
-        <div className="max-w-lg rounded-3xl border border-white/10 bg-black/30 p-8 shadow-2xl backdrop-blur-md">
+        <div className="max-w-lg">
           <h2 className="mb-4 text-4xl font-extrabold leading-tight tracking-tighter text-white drop-shadow-lg xl:text-5xl">
             Powering Zambia&apos;s Online Marketplace.
           </h2>
