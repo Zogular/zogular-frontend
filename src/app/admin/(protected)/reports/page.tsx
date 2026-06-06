@@ -237,7 +237,7 @@ export default function AdminReportsPage() {
         description="Executive and investor-safe reporting with presets, KPI snapshots, exports, and schedule-ready flows."
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <AdminMetricCard title="GMV" value={formatAdminCurrency(workspace.snapshot.gmv)} note="Selected period snapshot" icon={<BarChart3 className="h-5 w-5" />} tone="emerald" />
         <AdminMetricCard title="Net revenue" value={formatAdminCurrency(workspace.snapshot.netRevenue)} note="Platform revenue snapshot" icon={<FileSpreadsheet className="h-5 w-5" />} tone="indigo" />
         <AdminMetricCard title="Orders" value={workspace.snapshot.orders} note="Completed and active orders" icon={<FileText className="h-5 w-5" />} tone="sky" />

@@ -1,7 +1,8 @@
 import {
-  fetchSellerCatalogProductById,
-  fetchSellerCatalogProducts,
+  fetchAdminCatalogProductById,
+  fetchAdminCatalogProducts,
   updateSellerProductModeration,
+  updateAdminCatalogProductStatus,
   type SellerProductListing,
 } from "@/services/seller-catalog";
 import {
@@ -38,16 +39,16 @@ export interface AdminProductReviewInput {
 
 export const adminProductsApi = {
   async fetchProducts(): Promise<AdminProductRecord[]> {
-    const products = await fetchSellerCatalogProducts();
+    const products = await fetchAdminCatalogProducts();
     return products
       .filter((product) => product.status !== "draft")
       .map(toAdminProductRecord)
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   },
 
-  async fetchProductById(productId: string): Promise<AdminProductRecord> {
-    const product = await fetchSellerCatalogProductById(productId);
-    return toAdminProductRecord(product);
+  async fetchProductById(productId: string): Promise<SellerProductListing> {
+    const product = await fetchAdminCatalogProductById(productId);
+    return product;
   },
 
   async reviewProduct(
@@ -61,6 +62,15 @@ export const adminProductsApi = {
       reviewedBy: "admin",
     });
 
+    return toAdminProductRecord(updated);
+  },
+
+  async updateProductStatus(
+    productId: string,
+    status: ProductModerationStatus,
+  ): Promise<AdminProductRecord> {
+    const backendStatus = status === "published" ? "PUBLISHED" : status === "suspended" ? "SUSPENDED" : status.toUpperCase();
+    const updated = await updateAdminCatalogProductStatus(productId, backendStatus);
     return toAdminProductRecord(updated);
   },
 };

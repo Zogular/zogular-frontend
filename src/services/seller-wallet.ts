@@ -34,27 +34,19 @@ export interface SellerWalletDashboard {
 }
 
 const WALLET: SellerWalletBalances = {
-  pendingBalance: 2300,
-  availableBalance: 8450,
-  totalSales: 58000,
-  totalWithdrawn: 45000,
-  totalCommissionPaid: 5800,
-  totalPayoutFeesPaid: 48,
-  paymentProcessingFeesAbsorbed: 940,
-  totalRefunds: 510,
+  pendingBalance: 0,
+  availableBalance: 0,
+  totalSales: 0,
+  totalWithdrawn: 0,
+  totalCommissionPaid: 0,
+  totalPayoutFeesPaid: 0,
+  paymentProcessingFeesAbsorbed: 0,
+  totalRefunds: 0,
 };
 
-const METHODS: PayoutMethod[] = [
-  { id: "pm-1", type: "mobile_money", provider: "MTN Mobile Money", accountName: "Zogular Store", maskedAccount: "******1111", accountNumber: "+260971111111", isDefault: true },
-  { id: "pm-2", type: "mobile_money", provider: "Airtel Money", accountName: "Zogular Store", maskedAccount: "******2222", accountNumber: "+260972222222", isDefault: false },
-];
+const METHODS: PayoutMethod[] = [];
 
-const HISTORY: PayoutTransaction[] = [
-  buildPayout("WD-8892", 4500, "successful", "MTN Mobile Money", "2026-04-10T09:00:00Z", "2026-04-10T11:30:00Z"),
-  buildPayout("WD-8891", 1200, "pending", "MTN Mobile Money", "2026-04-15T14:20:00Z", null),
-  buildPayout("WD-8885", 8500, "failed", "Zanaco Bank", "2026-03-28T10:00:00Z", null, "Invalid account routing number."),
-  buildPayout("WD-8880", 3200, "successful", "MTN Mobile Money", "2026-03-15T08:15:00Z", "2026-03-15T09:45:00Z"),
-];
+const HISTORY: PayoutTransaction[] = [];
 
 export const sellerWalletApi = {
   async fetchDashboard(): Promise<SellerWalletDashboard> {
@@ -137,35 +129,6 @@ function getPayoutTransaction(payoutId: string): PayoutTransaction {
   return transaction;
 }
 
-function buildPayout(
-  id: string,
-  amount: number,
-  status: PayoutStatus,
-  method: string,
-  requestedAt: string,
-  paidAt: string | null,
-  failureReason?: string,
-): PayoutTransaction {
-  const quote = calculatePayoutQuote(amount);
-  return {
-    id,
-    reference: `REF-${id}`,
-    requestedAmount: quote.requestedAmount,
-    withdrawalFee: quote.withdrawalFee,
-    sellerReceives: quote.sellerReceives,
-    status,
-    method,
-    requestedAt,
-    paidAt,
-    provider: {
-      providerName: DEFAULT_PLATFORM_FINANCE_CONFIG.paymentProvider.activeProvider,
-      providerTransactionId: `payout-${id}`,
-      providerReference: `REF-${id}`,
-      providerStatus: status === "successful" ? "successful" : status === "failed" ? "failed" : "pending",
-    },
-    failureReason,
-  };
-}
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

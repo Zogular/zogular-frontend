@@ -7,7 +7,6 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { ProductModerationDialog } from "@/components/admin/ProductModerationDialog";
 import {
   adminProductsApi,
   type AdminProductRecord,
@@ -48,8 +47,6 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<AdminProductRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [selectedProduct, setSelectedProduct] = useState<AdminProductRecord | null>(null);
-  const [moderationNote, setModerationNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
@@ -99,49 +96,10 @@ export default function AdminProductsPage() {
     };
   }, [products]);
 
-  async function handleModerationAction(action: ProductModerationAction) {
-    if (!selectedProduct) return;
-    if (!canModerate) {
-      toast.error("Unauthorized.");
-      return;
-    }
 
-    try {
-      setIsSubmitting(true);
-      const updated = await adminProductsApi.reviewProduct(selectedProduct.sellerProductId, {
-        action,
-        note: moderationNote,
-      });
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: `product_${action}`,
-        target: selectedProduct.sellerProductId,
-        severity: action === "approve" ? "info" : "warning",
-        note: moderationNote,
-      });
-
-      setProducts((current) =>
-        current.map((product) => (product.sellerProductId === updated.sellerProductId ? updated : product)),
-      );
-      setSelectedProduct(updated);
-      toast.success(
-        action === "approve"
-          ? "Product approved."
-          : action === "reject"
-            ? "Product rejected."
-            : "Changes requested from seller.",
-      );
-      setModerationNote(updated.moderationNotes ?? "");
-    } catch {
-      toast.error("Failed to update moderation status.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
 
   function openReview(product: AdminProductRecord) {
-    setSelectedProduct(product);
-    setModerationNote(product.moderationNotes ?? "");
+    window.location.href = `/admin/products/${product.sellerProductId}`;
   }
 
   function toggleProductSelection(productId: string) {
@@ -157,14 +115,14 @@ export default function AdminProductsPage() {
       const selectedProducts = products.filter((product) => selectedProductIds.includes(product.sellerProductId));
       const updatedProducts = await Promise.all(selectedProducts.map((product) => adminProductsApi.reviewProduct(product.sellerProductId, {
         action,
-        note: moderationNote || `Bulk ${action} action.`,
+        note: `Bulk ${action} action by admin.`,
       })));
       await recordAdminAudit({
         actorId: CURRENT_ADMIN_IDENTITY.id,
         action: `product_bulk_${action}`,
         target: `${selectedProducts.length} products`,
         severity: "warning",
-        note: moderationNote || `Bulk ${action} action.`,
+        note: `Bulk ${action} action by admin.`,
       });
       setProducts((current) => current.map((product) => updatedProducts.find((updated) => updated.sellerProductId === product.sellerProductId) ?? product));
       setSelectedProductIds([]);
@@ -189,14 +147,22 @@ export default function AdminProductsPage() {
 
   async function handlePublishState(product: AdminProductRecord, status: ProductModerationStatus) {
     if (!canModerate) return toast.error("Unauthorized.");
-    await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
-      action: `product_${status}`,
-      target: product.sellerProductId,
-      severity: status === "suspended" ? "critical" : "warning",
-    });
-    setProducts((current) => current.map((item) => item.sellerProductId === product.sellerProductId ? { ...item, status } : item));
-    toast.success(`Product moved to ${getProductModerationStatusLabel(status)}.`);
+    try {
+      setIsSubmitting(true);
+      const updated = await adminProductsApi.updateProductStatus(product.sellerProductId, status);
+      await recordAdminAudit({
+        actorId: CURRENT_ADMIN_IDENTITY.id,
+        action: `product_${status}`,
+        target: product.sellerProductId,
+        severity: status === "suspended" ? "critical" : "warning",
+      });
+      setProducts((current) => current.map((item) => item.sellerProductId === product.sellerProductId ? updated : item));
+      toast.success(`Product moved to ${getProductModerationStatusLabel(status)}.`);
+    } catch {
+      toast.error("Failed to update product status.");
+    } finally {
+      setIsSubmitting(false);
+    }
   }
 
   if (loading) {
@@ -361,20 +327,6 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      <ProductModerationDialog
-        isOpen={Boolean(selectedProduct)}
-        onOpenChange={(open) => {
-          if (!open) {
-            setSelectedProduct(null);
-            setModerationNote("");
-          }
-        }}
-        product={selectedProduct}
-        moderationNote={moderationNote}
-        onModerationNoteChange={setModerationNote}
-        onSubmit={handleModerationAction}
-        isSubmitting={isSubmitting}
-      />
     </div>
   );
 }

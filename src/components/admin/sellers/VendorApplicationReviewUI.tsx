@@ -51,59 +51,59 @@ const STATUS_META: Record<
 > = {
   DRAFT: {
     label: "Draft",
-    tone: "text-zinc-700",
-    chip: "border-zinc-200 bg-zinc-100 text-zinc-700",
+    tone: "text-zinc-600",
+    chip: "border-zinc-300/70 bg-zinc-100/90 text-zinc-600",
     icon: FileWarning,
     summary: "Started but not submitted for review.",
   },
   SUBMITTED: {
-    label: "Submitted",
+    label: "Pending review",
     tone: "text-amber-700",
-    chip: "border-amber-300/60 bg-amber-950 text-amber-100",
+    chip: "border-amber-300/80 bg-amber-50 text-amber-700",
     icon: Clock3,
-    summary: "Waiting for admin review.",
+    summary: "Application submitted and waiting for admin review.",
   },
   NEEDS_INFO: {
-    label: "Needs Info",
+    label: "More info needed",
     tone: "text-orange-700",
-    chip: "border-orange-300/60 bg-orange-950 text-orange-100",
+    chip: "border-orange-300/80 bg-orange-50 text-orange-700",
     icon: AlertTriangle,
-    summary: "Seller must update details before review continues.",
+    summary: "The seller has been asked to update their application before review can continue.",
   },
   PROVISIONAL: {
     label: "Provisional",
     tone: "text-sky-700",
-    chip: "border-sky-300/60 bg-sky-950 text-sky-100",
+    chip: "border-sky-300/80 bg-sky-50 text-sky-700",
     icon: ShieldCheck,
-    summary: "Draft product capability can be opened while final approval is pending.",
+    summary: "Seller has provisional access. Draft product creation is open while full approval is pending.",
   },
   APPROVED: {
     label: "Approved",
-    tone: "text-emerald-700",
-    chip: "border-emerald-300/60 bg-emerald-950 text-emerald-100",
+    tone: "text-[#009E49]",
+    chip: "border-emerald-300/80 bg-emerald-50 text-[#009E49]",
     icon: CheckCheck,
-    summary: "Seller capabilities are fully approved.",
+    summary: "Seller is fully approved. All selling capabilities are active.",
   },
   RESTRICTED: {
     label: "Restricted",
     tone: "text-orange-700",
-    chip: "border-orange-300/60 bg-orange-950 text-orange-100",
+    chip: "border-orange-300/80 bg-orange-50 text-orange-700",
     icon: ShieldAlert,
-    summary: "Seller remains visible in the shell but with limited capability.",
+    summary: "Seller account is restricted. Key capabilities are limited but the store remains visible.",
   },
   SUSPENDED: {
     label: "Suspended",
-    tone: "text-rose-700",
-    chip: "border-rose-300/60 bg-rose-950 text-rose-100",
+    tone: "text-rose-600",
+    chip: "border-rose-300/80 bg-rose-50 text-rose-600",
     icon: Ban,
-    summary: "Seller is blocked from selling actions.",
+    summary: "Seller is suspended. Selling actions are blocked.",
   },
   REJECTED: {
     label: "Rejected",
-    tone: "text-rose-700",
-    chip: "border-rose-300/60 bg-rose-950 text-rose-100",
+    tone: "text-rose-600",
+    chip: "border-rose-300/80 bg-rose-50 text-rose-600",
     icon: Ban,
-    summary: "Application has been rejected and cannot proceed without a new path.",
+    summary: "Application has been rejected. The seller cannot proceed without a new application path.",
   },
 };
 
@@ -192,11 +192,13 @@ const ACTION_COPY: Record<
 
 export function formatAdminDate(value: string | null | undefined) {
   if (!value) return "Not yet";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Not yet";
   return new Intl.DateTimeFormat("en-ZM", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export function getStatusMeta(status: SellerApplicationStatus) {
@@ -554,15 +556,47 @@ export function AdminSellerActionButtons({
   );
 }
 
-export function SellerIdentityBlock({ application }: { application: VendorApplication }) {
+export function TrustSignal({ verified, label }: { verified: boolean; label: string }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2">
-      <MetaRow icon={Store} label="Store / business" value={getApplicationPrimaryName(application)} />
-      <MetaRow icon={ShieldCheck} label="Owner full name" value={application.ownerFullName || "Unavailable"} />
-      <MetaRow icon={Phone} label="Seller phone" value={application.businessPhone || application.user?.telephone || "Unavailable"} />
-      <MetaRow icon={Mail} label="Seller email" value={application.businessEmail || application.user?.email || "Unavailable"} />
-      <MetaRow icon={MapPin} label="Location" value={getApplicationLocation(application) || "Unavailable"} />
-      <MetaRow icon={HandCoins} label="Payout" value={[application.payoutProvider, application.payoutPhone].filter(Boolean).join(" • ") || "Unavailable"} />
+    <div className={cn(
+      "flex items-center gap-2 rounded-[1.1rem] border px-3.5 py-2.5",
+      verified
+        ? "border-emerald-200/80 bg-emerald-50/80 text-[#009E49]"
+        : "border-stone-200/80 bg-stone-50 text-stone-500",
+    )}>
+      <div className={cn(
+        "flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[10px]",
+        verified ? "bg-[#009E49] text-white" : "bg-stone-200 text-stone-500",
+      )}>
+        {verified ? "✓" : "–"}
+      </div>
+      <span className="text-xs font-bold">{label}</span>
+    </div>
+  );
+}
+
+export function SellerIdentityBlock({ application }: { application: VendorApplication }) {
+  const emailVerified = application.user?.emailVerified ?? false;
+  const phoneVerified = Boolean(application.user?.phoneVerifiedAt);
+
+  return (
+    <div className="space-y-4">
+      <div className="grid gap-3 sm:grid-cols-2">
+        <MetaRow icon={Store} label="Store / business" value={getApplicationPrimaryName(application)} />
+        <MetaRow icon={ShieldCheck} label="Owner full name" value={application.ownerFullName || "Unavailable"} />
+        <MetaRow icon={Phone} label="Business phone" value={application.businessPhone || application.user?.telephone || "Unavailable"} />
+        <MetaRow icon={Mail} label="Business email" value={application.businessEmail || application.user?.email || "Unavailable"} />
+        <MetaRow icon={MapPin} label="Location" value={getApplicationLocation(application) || "Unavailable"} />
+        <MetaRow icon={HandCoins} label="Payout details" value={[application.payoutProvider, application.payoutPhone].filter(Boolean).join(" • ") || "Unavailable"} />
+      </div>
+      <div>
+        <p className="mb-2 text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">Account trust signals</p>
+        <div className="flex flex-wrap gap-2">
+          <TrustSignal verified={emailVerified} label={emailVerified ? "Email verified" : "Email not verified"} />
+          <TrustSignal verified={phoneVerified} label={phoneVerified ? "Phone on file" : "Phone not on file"} />
+          <TrustSignal verified={Boolean(application.user?.isActive)} label={application.user?.isActive ? "Account active" : "Account inactive"} />
+        </div>
+      </div>
     </div>
   );
 }

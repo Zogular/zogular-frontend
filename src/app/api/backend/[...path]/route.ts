@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { ADMIN_SESSION_COOKIE } from "@/services/admin/session-cookie";
 
 const BACKEND_BASE_URL =
   process.env.ADMIN_API_URL ??
@@ -139,6 +140,14 @@ async function handler(request: Request, context: RouteContext) {
     : rawCookie;
 
   if (requestCookie) headers.set("Cookie", requestCookie);
+
+  // Bridge the admin session cookie to an Authorization header for the backend
+  if (rawCookie && !headers.has("Authorization")) {
+    const adminTokenMatch = rawCookie.match(new RegExp(`(?:^|;\\s*)${ADMIN_SESSION_COOKIE}=([^;]*)`));
+    if (adminTokenMatch && adminTokenMatch[1]) {
+      headers.set("Authorization", `Bearer ${adminTokenMatch[1]}`);
+    }
+  }
 
   if (STATE_CHANGING_METHODS.has(method)) {
     const csrfHeaders = await getBackendCsrfHeaders(requestCookie);

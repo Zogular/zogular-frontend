@@ -1,4 +1,3 @@
-import type { Product, ProductDetail, ProductSpec, ProductVariant } from "@/types/product";
 import { apiClient } from "@/services/api";
 import { type ProductAttributeInput } from "@/services/categories-api";
 import {
@@ -334,6 +333,15 @@ export async function fetchSellerCatalogProducts(): Promise<SellerProductListing
   return products;
 }
 
+export async function fetchAdminCatalogProducts(): Promise<SellerProductListing[]> {
+  const response = await apiClient<BackendListResponse>("/admin/products", {
+    method: "GET",
+    query: { page: 1, limit: 500 },
+  });
+
+  return response.data.products.map(normalizeBackendSellerProduct);
+}
+
 export async function fetchSellerCatalogProductById(
   productId: string,
 ): Promise<SellerProductListing> {
@@ -344,6 +352,16 @@ export async function fetchSellerCatalogProductById(
   const product = normalizeBackendSellerProduct(response.data.product);
   upsertSellerCatalogSnapshot(product);
   return product;
+}
+
+export async function fetchAdminCatalogProductById(
+  productId: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/admin/products/${productId}`, {
+    method: "GET",
+  });
+
+  return normalizeBackendSellerProduct(response.data.product);
 }
 
 export async function createSellerCatalogProduct(
@@ -470,6 +488,21 @@ export async function updateSellerProductModeration(
   return product;
 }
 
+export async function updateAdminCatalogProductStatus(
+  productId: string,
+  status: string,
+): Promise<SellerProductListing> {
+  const response = await apiClient<BackendDetailResponse>(`/admin/products/${productId}`, {
+    method: "PATCH",
+    body: JSON.stringify({ status }),
+    csrf: true,
+  });
+
+  const product = normalizeBackendSellerProduct(response.data.product);
+  upsertSellerCatalogSnapshot(product);
+  return product;
+}
+
 export async function duplicateSellerProduct(
   productId: string,
 ): Promise<SellerProductListing> {
@@ -571,99 +604,6 @@ export async function removeSellerProduct(productId: string): Promise<void> {
   sellerCatalogSnapshot = sellerCatalogSnapshot.filter((product) => product.id !== productId);
 }
 
-export function getSellerConsumerCatalogProducts(): Product[] {
-  return sellerCatalogSnapshot
-    .filter((product) => product.status === "published" || product.status === "approved")
-    .map(sellerProductToConsumerProduct);
-}
-
-export function getSellerConsumerProductDetailBySlug(slug: string): ProductDetail | null {
-  const product = sellerCatalogSnapshot.find((item) => item.slug === slug);
-  return product ? sellerProductToProductDetail(product) : null;
-}
-
-export function sellerProductToConsumerProduct(product: SellerProductListing): Product {
-  const image =
-    product.images.find((item) => item.isPrimary)?.url ??
-    product.images[0]?.url ??
-    FALLBACK_IMAGE;
-  const displayPrice = product.salePrice ?? product.price;
-
-  return {
-    id: product.id,
-    slug: product.slug,
-    title: product.title,
-    name: product.title,
-    categoryName: product.categoryName,
-    subcategoryName: product.subcategoryName,
-    price: displayPrice,
-    originalPrice: product.salePrice ? product.price : Math.round(product.price * 1.08),
-    oldPrice: product.salePrice ? product.price : null,
-    discount: product.salePrice
-      ? Math.round(((product.price - product.salePrice) / product.price) * 100)
-      : null,
-    badge:
-      product.status === "published" || product.status === "approved"
-        ? "Seller Pick"
-        : null,
-    rating: 4.7,
-    reviews: 42,
-    image,
-  };
-}
-
-export function sellerProductToProductDetail(product: SellerProductListing): ProductDetail {
-  const consumerProduct = sellerProductToConsumerProduct(product);
-  const images = product.images.length
-    ? product.images.map((image) => image.url)
-    : [FALLBACK_IMAGE];
-
-  return {
-    id: product.id,
-    slug: product.slug,
-    title: product.title,
-    brand: product.brand || "Zogular",
-    category: { name: product.categoryName, href: `/category/${product.categorySlug}` },
-    subcategory: {
-      name: product.subcategoryName,
-      href: `/category/${product.categorySlug}?subcategory=${product.subcategorySlug}`,
-    },
-    sku: product.sku,
-    price: consumerProduct.price,
-    originalPrice: consumerProduct.originalPrice ?? product.price,
-    rating: consumerProduct.rating,
-    reviewCount: consumerProduct.reviews,
-    badge: consumerProduct.badge ?? null,
-    seller: {
-      name: product.seller.name,
-      href: `/store/${product.seller.slug}`,
-      avatar: "https://github.com/shadcn.png",
-      verified: product.seller.verified,
-      positiveRate: "98% Positive",
-      followers: "1.2k Followers",
-    },
-    stock: product.stock,
-    shippingText:
-      product.deliveryType === "express"
-        ? "Express delivery available in supported Zambia delivery zones."
-        : "Standard Zogular delivery or pickup is available after checkout.",
-    images,
-    variants: product.variants.length
-      ? product.variants.map(toProductVariant)
-      : defaultVariants(product),
-    description: product.description,
-    specs: [
-      ...product.specifications.map<ProductSpec>((spec) => ({
-        label: spec.name,
-        value: spec.value,
-      })),
-      { label: "Condition", value: formatCondition(product.condition) },
-      { label: "Category", value: product.categoryName },
-      { label: "SKU", value: product.sku },
-    ],
-    boxItems: [product.title, "Receipt", "Seller packaging"],
-  };
-}
 
 export function getCategoryMetaByName(categoryName: string) {
   return (
@@ -950,12 +890,14 @@ function buildBackendProductPayload(
     input.subcategorySlug && input.subcategorySlug.trim()
       ? input.subcategorySlug.trim()
       : normalizedCategorySlug;
-  const normalizedAttributes = (input.attributes ?? []).map((attribute) => ({
-    attributeId: attribute.attributeId,
-    slug: attribute.slug,
-    name: attribute.name,
-    value: attribute.value,
-  }));
+  const normalizedAttributes = (input.attributes ?? [])
+    .filter((attribute) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attribute.attributeId))
+    .map((attribute) => ({
+      attributeId: attribute.attributeId,
+      slug: attribute.slug,
+      name: attribute.name,
+      value: attribute.value,
+    }));
   const derivedLegacyFields = deriveLegacyFields(input);
 
   return removeUndefinedValues({
@@ -1148,33 +1090,6 @@ function mergeSellerProductEnrichment(
     moderation: next.moderation ?? base?.moderation,
     seller: next.seller ?? base?.seller,
   };
-}
-
-function toProductVariant(variant: SellerProductVariant): ProductVariant {
-  return {
-    id: variant.id,
-    label: variant.label,
-    value: variant.value,
-    swatchClass: variant.swatchClass ?? "bg-zinc-200 border-zinc-200",
-  };
-}
-
-function defaultVariants(product: SellerProductListing): ProductVariant[] {
-  return [
-    {
-      id: `${product.id}-default`,
-      label: "Option",
-      value: "Default",
-      swatchClass: "bg-zinc-200 border-zinc-200",
-    },
-  ];
-}
-
-function formatCondition(condition: ProductCondition): string {
-  if (condition === "new") return "Brand New";
-  if (condition === "used-like-new") return "Used - Like New";
-  if (condition === "used-good") return "Used - Good";
-  return "Refurbished";
 }
 
 function getStaticCategoryNameFromSlug(categorySlug?: string | null) {

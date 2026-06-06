@@ -90,7 +90,7 @@ export function SellerProductGallery({ product }: { product: SellerProductListin
   const primary = product.images.find((image) => image.isPrimary) ?? product.images[0];
 
   return (
-    <section className="min-w-0 overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl">
+    <section className="min-w-0 overflow-hidden border-y border-white/70 bg-white/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:rounded-3xl md:border-x">
       <div className="relative aspect-square bg-zinc-100 md:aspect-16/10">
         {primary ? <Image src={primary.url} alt={product.title} fill sizes="(max-width: 768px) 100vw, 760px" unoptimized className="object-cover" /> : null}
       </div>
@@ -125,9 +125,9 @@ export function SellerProductInfoGrid({ product }: { product: SellerProductListi
         {rows.map((row) => {
           const Icon = row.icon;
           return (
-            <div key={row.label} className="flex min-w-0 flex-col gap-2 rounded-2xl border border-zinc-100 bg-white/70 p-3 text-sm sm:flex-row sm:items-center sm:justify-between">
-              <span className="flex min-w-0 items-center gap-2 font-semibold text-zinc-500"><Icon className="h-4 w-4 shrink-0" /> {row.label}</span>
-              <strong className="min-w-0 wrap-break-word text-left font-black text-zinc-950 sm:max-w-[65%] sm:text-right">{row.value}</strong>
+            <div key={row.label} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white/70 p-3 text-sm">
+              <span className="flex shrink-0 items-center gap-2 font-semibold text-zinc-500"><Icon className="h-4 w-4 shrink-0" /> {row.label}</span>
+              <strong className="min-w-0 wrap-break-word text-right font-black text-zinc-950 max-w-[60%]">{row.value}</strong>
             </div>
           );
         })}
@@ -150,19 +150,24 @@ export function SellerProductSpecs({ product }: { product: SellerProductListing 
       </GlassPanel>
 
       <GlassPanel title="Variants">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2">
           {product.variants.length ? product.variants.map((variant) => (
-            <div key={variant.id} className="rounded-2xl border border-zinc-100 bg-white/70 p-3">
-              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{variant.label}</p>
-              <p className="mt-1 text-sm font-bold text-zinc-900">{variant.value}</p>
-              <p className="mt-1 text-[11px] font-semibold text-zinc-500">SKU {variant.sku} · Stock {variant.stock}</p>
+            <div key={variant.id} className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white/70 p-3">
+              <div className="min-w-0 shrink-0">
+                <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">{variant.label}</p>
+                <p className="mt-0.5 text-sm font-bold text-zinc-950">{variant.value}</p>
+              </div>
+              <div className="min-w-0 text-right">
+                <p className="text-[11px] font-semibold text-zinc-500">SKU {variant.sku}</p>
+                <p className="mt-0.5 text-xs font-black text-zinc-900">Stock {variant.stock}</p>
+              </div>
             </div>
           )) : <p className="text-sm font-semibold text-zinc-500">No variants configured.</p>}
         </div>
       </GlassPanel>
 
       <GlassPanel title="Logistics">
-        <div className="grid gap-2 sm:grid-cols-2">
+        <div className="grid gap-2">
           <SpecTile label="Delivery" value={product.deliveryType} />
           <SpecTile label="Weight" value={`${product.logistics.weightKG} kg`} />
           <SpecTile label="Dimensions" value={product.logistics.dimensions} />
@@ -175,7 +180,7 @@ export function SellerProductSpecs({ product }: { product: SellerProductListing 
 function SpecGrid({ items, empty }: { items: Array<{ name: string; value: string }>; empty: string }) {
   if (!items.length) return <p className="text-sm font-semibold text-zinc-500">{empty}</p>;
   return (
-    <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid gap-2">
       {items.map((item) => <SpecTile key={`${item.name}-${item.value}`} label={item.name} value={item.value} />)}
     </div>
   );
@@ -183,9 +188,9 @@ function SpecGrid({ items, empty }: { items: Array<{ name: string; value: string
 
 function SpecTile({ label, value }: { label: string; value: string }) {
   return (
-    <div className="min-w-0 rounded-2xl border border-zinc-100 bg-white/70 p-3">
-      <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">{label}</p>
-      <p className="mt-1 wrap-break-word text-sm font-bold capitalize text-zinc-900">{value}</p>
+    <div className="flex min-w-0 items-center justify-between gap-3 rounded-2xl border border-zinc-100 bg-white/70 p-3">
+      <p className="shrink-0 text-xs font-black uppercase tracking-wider text-zinc-500">{label}</p>
+      <p className="min-w-0 wrap-break-word text-right text-sm font-bold capitalize text-zinc-950">{value}</p>
     </div>
   );
 }
@@ -197,6 +202,7 @@ export function SellerProductActionBar({
   onWithdraw,
   onUnpublish,
   onDuplicate,
+  horizontal,
 }: {
   product: SellerProductListing;
   onEdit: () => void;
@@ -204,6 +210,7 @@ export function SellerProductActionBar({
   onWithdraw: () => void;
   onUnpublish: () => void;
   onDuplicate: () => void;
+  horizontal?: boolean;
 }) {
   const actions: Array<{
     key: string;
@@ -234,31 +241,34 @@ export function SellerProductActionBar({
     actions.push({ key: "duplicate", label: "Duplicate", onClick: onDuplicate, variant: "outline" });
   }
 
-  const gridClass = actions.length === 1 ? "grid-cols-1" : "grid-cols-2";
+  if (!actions.length) return null;
 
-  return (
-    <GlassPanel title="Seller Actions">
-      <div className={`grid gap-2 ${gridClass}`}>
-        {actions.map((action) => (
-          <Button
-            key={action.key}
-            type="button"
-            variant={action.variant ?? "default"}
-            onClick={action.onClick}
-            className={`h-11 rounded-xl font-bold ${
-              action.variant === "outline"
-                ? action.tone === "warning"
-                  ? "text-amber-700"
-                  : ""
-                : action.tone === "success"
-                  ? "bg-[#009E49] text-white hover:bg-[#00853d]"
-                  : ""
-            } ${actions.length === 1 ? "justify-start" : "justify-center px-3 text-center text-[13px]"}`}
-          >
-            {action.label}
-          </Button>
-        ))}
-      </div>
-    </GlassPanel>
+  const content = (
+    <div className={`flex ${horizontal ? "flex-row flex-wrap items-center gap-3" : "flex-col gap-2"}`}>
+      {actions.map((action) => (
+        <Button
+          key={action.key}
+          type="button"
+          variant={action.variant ?? "default"}
+          onClick={action.onClick}
+          className={`h-11 rounded-xl font-bold transition-all ${
+            horizontal ? "px-6 flex-1 md:flex-none" : "w-full justify-center px-3"
+          } ${
+            action.variant === "outline"
+              ? action.tone === "warning"
+                ? "text-amber-700 hover:bg-amber-50"
+                : "border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+              : action.tone === "success"
+                ? "bg-[#009E49] text-white hover:bg-[#00853d] shadow-[0_4px_15px_rgba(0,158,73,0.2)] hover:scale-105"
+                : ""
+          }`}
+        >
+          {action.label}
+        </Button>
+      ))}
+    </div>
   );
+
+  if (horizontal) return content;
+  return <GlassPanel title="Seller Actions">{content}</GlassPanel>;
 }

@@ -196,7 +196,7 @@ export default function AdminContentPage() {
         description="Manage homepage banners, featured sections, announcements, campaign hooks, and preview states."
       />
 
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <AdminMetricCard title="Banners" value={workspace.banners.length} note="Homepage and promo placements" icon={<ImagePlus className="h-5 w-5" />} tone="indigo" />
         <AdminMetricCard title="Live banners" value={metrics.liveBanners} note="Currently published" icon={<Sparkles className="h-5 w-5" />} tone="emerald" />
         <AdminMetricCard title="Scheduled" value={metrics.scheduledItems} note="Queued campaigns and notices" icon={<Send className="h-5 w-5" />} tone="sky" />

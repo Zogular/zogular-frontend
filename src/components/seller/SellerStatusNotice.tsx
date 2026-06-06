@@ -57,14 +57,24 @@ export function SellerStatusNotice({
           <h2 className="mt-1 text-base font-black tracking-tight md:text-lg">{meta.title}</h2>
           <p className="mt-2 text-sm font-medium leading-6 text-zinc-700">{meta.description}</p>
           {application.needsInfoReason ? (
-            <p className="mt-3 rounded-2xl border border-white/70 bg-white/75 px-4 py-3 text-sm font-semibold text-zinc-800">
-              More information needed: {application.needsInfoReason}
-            </p>
+            <div className="mt-3 rounded-2xl border border-white/70 bg-white/75 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-amber-600">
+                What to fix
+              </p>
+              <p className="mt-1.5 text-sm font-semibold leading-6 text-zinc-800">
+                {application.needsInfoReason}
+              </p>
+            </div>
           ) : null}
           {application.rejectionReason ? (
-            <p className="mt-3 rounded-2xl border border-white/70 bg-white/75 px-4 py-3 text-sm font-semibold text-zinc-800">
-              Reason: {application.rejectionReason}
-            </p>
+            <div className="mt-3 rounded-2xl border border-white/70 bg-white/75 px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[0.18em] text-red-600">
+                Reason
+              </p>
+              <p className="mt-1.5 text-sm font-semibold leading-6 text-zinc-800">
+                {application.rejectionReason}
+              </p>
+            </div>
           ) : null}
           {meta.ctaHref && meta.ctaLabel ? (
             <div className="mt-4">

@@ -92,6 +92,7 @@ function normalizeUser(value: unknown): VendorApplication["user"] {
     telephone: asString(record.telephone),
     role: asString(record.role),
     emailVerified: Boolean(record.emailVerified),
+    phoneVerifiedAt: asNullableString(record.phoneVerifiedAt),
     isActive: Boolean(record.isActive),
   };
 }
@@ -102,18 +103,22 @@ function findApplicationRecord(payload: unknown): Record<string, unknown> | null
 
   const data = asRecord(root.data);
   const candidates: unknown[] = [
-    root,
-    data,
     data?.application,
     data?.vendorApplication,
     root.application,
     root.vendorApplication,
+    data,
+    root,
   ];
 
   for (const candidate of candidates) {
     const record = asRecord(candidate);
-    if (record && (record.id || record.status || record.sellerType || record.storeName)) {
-      return record;
+    // Ignore `status` for duck-typing because the API response root has `{ status: "success" }`
+    if (record && (record.id || record.sellerType || record.storeName || record.ownerFullName)) {
+      // Ensure we don't accidentally match the root wrapper by verifying it has typical application fields
+      if (record.id || record.sellerType || record.storeName) {
+        return record;
+      }
     }
   }
 
@@ -121,14 +126,19 @@ function findApplicationRecord(payload: unknown): Record<string, unknown> | null
 }
 
 function normalizeVendorApplicationRecord(record: Record<string, unknown>): VendorApplication {
+  // Resolve document URL aliases: backend may store under idDocument/userPic
+  // as legacy fields; prefer the explicit named fields first.
+  const nrcFrontUrl = asString(record.nrcFrontUrl) || asString(record.idDocument);
+  const shopPhotoUrl = asString(record.shopPhotoUrl) || asString(record.userPic);
+
   return {
     id: asString(record.id) || "vendor-application",
-    userId: asString(record.userId) || undefined,
+    userId: asNullableString(record.userId) || undefined,
     sellerType: normalizeSellerType(record.sellerType),
     status: normalizeStatus(record.status),
     ownerFullName: asString(record.ownerFullName),
     storeName: asString(record.storeName),
-    businessName: asString(record.businessName) || undefined,
+    businessName: asNullableString(record.businessName) || undefined,
     legalBusinessName: asString(record.legalBusinessName) || asString(record.businessName),
     businessAddress: asString(record.businessAddress),
     district: asString(record.district),
@@ -136,9 +146,9 @@ function normalizeVendorApplicationRecord(record: Record<string, unknown>): Vend
     businessEmail: asString(record.businessEmail),
     productCategories: asStringArray(record.productCategories),
     nrcNumber: asString(record.nrcNumber),
-    nrcFrontUrl: asString(record.nrcFrontUrl),
+    nrcFrontUrl,
     nrcBackUrl: asString(record.nrcBackUrl),
-    shopPhotoUrl: asString(record.shopPhotoUrl),
+    shopPhotoUrl,
     pacraNumber: asString(record.pacraNumber),
     pacraDocumentUrl: asString(record.pacraDocumentUrl),
     tpin: asString(record.tpin),
