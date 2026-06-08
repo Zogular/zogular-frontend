@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 
 // Architecture Imports
 import { adminOrdersApi, AdminOrderRecord, OrderStatus } from "@/services/admin/orders";
@@ -49,6 +50,7 @@ export default function AdminOrdersPage() {
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
 
   // Functional Modal State
   const [selectedOrder, setSelectedOrder] = useState<AdminOrderRecord | null>(null);
@@ -237,8 +239,92 @@ export default function AdminOrdersPage() {
         </div>
       </div>
 
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
+
+      <div className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3" : "overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl")}>
+        {filteredOrders.length === 0 ? (
+          <div className="p-10 text-center">
+            <p className="text-sm font-bold text-zinc-500">No orders match your search.</p>
+          </div>
+        ) : mobileView === "list" ? (
+          <div className="divide-y divide-zinc-100">
+            {filteredOrders.map((order) => {
+              const statUI = STATUS_UI[order.status];
+              const StatIcon = statUI.icon;
+              return (
+                <div key={order.id} className="p-3.5">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="text-[13px] font-black text-zinc-900">{order.id}</p>
+                      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{order.sellerStoreName}</p>
+                    </div>
+                    <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
+                      <StatIcon className="h-3 w-3" />
+                      {statUI.label}
+                    </span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                    <span className="inline-flex items-center gap-1">
+                      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Buyer</span>
+                      <span>{order.buyerName}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Amount</span>
+                      <span>{formatCurrency(order.totalAmount)}</span>
+                    </span>
+                    <span className="inline-flex items-center gap-1">
+                      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Placed</span>
+                      <span>{formatDate(order.placedAt)}</span>
+                    </span>
+                  </div>
+                  <div className="mt-2 flex justify-end">
+                    <Button onClick={() => setSelectedOrder(order)} variant="outline" size="sm" className="h-8 rounded-xl border-zinc-200 text-[10px] font-bold text-zinc-700">
+                      View Details
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        ) : (
+          filteredOrders.map((order) => {
+            const statUI = STATUS_UI[order.status];
+            const StatIcon = statUI.icon;
+            return (
+              <article key={order.id} className="rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-md shadow-zinc-900/5 backdrop-blur-xl">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-black text-zinc-900">{order.id}</p>
+                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{order.sellerStoreName}</p>
+                  </div>
+                  <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
+                    <StatIcon className="h-3 w-3" />
+                    {statUI.label}
+                  </span>
+                </div>
+                <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
+                  <GridLine label="Buyer" value={order.buyerName} />
+                  <GridLine label="Amount" value={formatCurrency(order.totalAmount)} />
+                  <GridLine label="Items" value={`${order.itemsCount} items`} />
+                  <GridLine label="Placed" value={formatDate(order.placedAt)} isLast />
+                </div>
+                <div className="mt-2.5 flex justify-end">
+                  <Button onClick={() => setSelectedOrder(order)} variant="outline" size="sm" className="h-9 rounded-xl border-zinc-200 text-[11px] font-bold text-zinc-700">
+                    View Details
+                  </Button>
+                </div>
+              </article>
+            );
+          })
+        )}
+      </div>
+
       {/* 4. PREMIUM DATA GRID */}
-      <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl">
+      <div className="hidden overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:block">
         <div className="overflow-x-auto hide-scrollbar">
           <table className="w-full text-left text-sm min-w-250">
             <thead className="border-b border-zinc-100 bg-zinc-100/80 backdrop-blur-sm">
@@ -426,6 +512,23 @@ export default function AdminOrdersPage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function GridLine({
+  label,
+  value,
+  isLast = false,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2", !isLast && "border-b border-zinc-100")}>
+      <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <span className="truncate text-right text-[11px] font-bold text-zinc-900">{value}</span>
     </div>
   );
 }

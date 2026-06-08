@@ -1,337 +1,53 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import {
-  AlertCircle,
-  AlertTriangle,
-  ArrowUpDown,
-  Box,
-  CheckCircle2,
-  Image as ImageIcon,
-  Minus,
-  MoreHorizontal,
-  Plus,
-  Save,
-  Search,
-  XCircle,
-} from "lucide-react";
-import type { LucideIcon } from "lucide-react";
+import { AlertCircle, AlertTriangle, Box, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import {
-  ActionMenu,
-  ActionMenuContent,
-  ActionMenuItem,
-  ActionMenuSeparator,
-  ActionMenuTrigger,
-} from "@/components/ui/action-menu";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
-import { inventoryApi, type InventoryProduct } from "@/services/inventory";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { CollectionViewToggle } from "@/components/shared/CollectionViewToggle";
 
-type InventoryStatus = "in-stock" | "low-stock" | "out-of-stock";
-type SortOption = "recent" | "stock-low" | "stock-high";
-
-type StatusInfo = {
-  state: InventoryStatus;
-  label: string;
-  bg: string;
-  text: string;
-  border: string;
-  icon: LucideIcon;
-};
-
-function formatCurrency(value: number) {
-  return `K${value.toLocaleString()}`;
-}
-
-function getStatusInfo(stock: number, threshold: number): StatusInfo {
-  if (stock === 0) {
-    return {
-      state: "out-of-stock",
-      label: "Out of Stock",
-      bg: "bg-red-50",
-      text: "text-red-700",
-      border: "border-red-200",
-      icon: XCircle,
-    };
-  }
-
-  if (stock <= threshold) {
-    return {
-      state: "low-stock",
-      label: "Low Stock",
-      bg: "bg-amber-50",
-      text: "text-amber-700",
-      border: "border-amber-200",
-      icon: AlertTriangle,
-    };
-  }
-
-  return {
-    state: "in-stock",
-    label: "In Stock",
-    bg: "bg-[#009E49]/10",
-    text: "text-[#009E49]",
-    border: "border-[#009E49]/20",
-    icon: CheckCircle2,
-  };
-}
-
-function parseStockInput(value: string): number | null {
-  if (value.trim() === "") return null;
-  const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.floor(parsed);
-}
-
-function InventoryItemMenu({
-  item,
-  isSelected,
-  onToggleSelect,
-  onRestock,
-  onMarkOutOfStock,
-}: {
-  item: InventoryProduct;
-  isSelected: boolean;
-  onToggleSelect: (id: string) => void;
-  onRestock: (id: string, threshold: number) => void;
-  onMarkOutOfStock: (id: string) => void;
-}) {
-  const [open, setOpen] = useState(false);
-
-  return (
-    <ActionMenu open={open} onOpenChange={setOpen}>
-      <ActionMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="icon"
-          aria-label="Open inventory actions"
-          className="h-8 w-8 rounded-lg text-zinc-400 hover:bg-zinc-100 hover:text-zinc-900"
-        >
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </ActionMenuTrigger>
-
-      <ActionMenuContent>
-        <ActionMenuItem
-          onClick={() => {
-            onToggleSelect(item.id);
-            setOpen(false);
-          }}
-        >
-          {isSelected ? "Unselect Item" : "Select Item"}
-        </ActionMenuItem>
-        <ActionMenuItem
-          onClick={() => {
-            onRestock(item.id, item.threshold);
-            setOpen(false);
-          }}
-        >
-          Restock to Threshold
-        </ActionMenuItem>
-        <ActionMenuSeparator />
-        <ActionMenuItem
-          onClick={() => {
-            onMarkOutOfStock(item.id);
-            setOpen(false);
-          }}
-          className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200"
-        >
-          Mark Out of Stock
-        </ActionMenuItem>
-      </ActionMenuContent>
-    </ActionMenu>
-  );
-}
+import { useInventory } from "@/features/seller-inventory/hooks/useInventory";
+import { InventoryListRow } from "@/features/seller-inventory/components/InventoryListRow";
+import { InventoryGridCard } from "@/features/seller-inventory/components/InventoryGridCard";
+import type { InventoryStatus, SortOption } from "@/features/seller-inventory/types/inventory-types";
 
 export default function SellerInventoryPage() {
-  const [inventory, setInventory] = useState<InventoryProduct[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<InventoryStatus | "all">("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [sortBy, setSortBy] = useState<SortOption>("recent");
-
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [editingStock, setEditingStock] = useState<Record<string, string>>({});
-  const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
-  const [bulkStockValue, setBulkStockValue] = useState("");
-  const [isBulkSaving, setIsBulkSaving] = useState(false);
-
-  const loadInventory = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await inventoryApi.fetchAll();
-      setInventory(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load inventory.");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadInventory();
-  }, [loadInventory]);
-
-  const categories = useMemo(
-    () => Array.from(new Set(inventory.map((item) => item.category.name))).sort(),
-    [inventory],
-  );
-
-  const lowStockItems = useMemo(
-    () => inventory.filter((item) => item.stock > 0 && item.stock <= item.threshold),
-    [inventory],
-  );
-
-  const outOfStockItems = useMemo(
-    () => inventory.filter((item) => item.stock === 0),
-    [inventory],
-  );
-
-  const filteredAndSorted = useMemo(() => {
-    const normalizedQuery = searchQuery.trim().toLowerCase();
-
-    const filtered = inventory.filter((item) => {
-      const matchesSearch =
-        !normalizedQuery ||
-        item.name.toLowerCase().includes(normalizedQuery) ||
-        item.sku.toLowerCase().includes(normalizedQuery);
-
-      const matchesCategory =
-        categoryFilter === "all" || item.category.name === categoryFilter;
-
-      const matchesStatus =
-        statusFilter === "all" ||
-        getStatusInfo(item.stock, item.threshold).state === statusFilter;
-
-      return matchesSearch && matchesCategory && matchesStatus;
-    });
-
-    return [...filtered].sort((a, b) => {
-      if (sortBy === "stock-low") return a.stock - b.stock;
-      if (sortBy === "stock-high") return b.stock - a.stock;
-      return new Date(b.lastUpdated).getTime() - new Date(a.lastUpdated).getTime();
-    });
-  }, [inventory, searchQuery, categoryFilter, statusFilter, sortBy]);
-
-  const allFilteredSelected =
-    filteredAndSorted.length > 0 &&
-    filteredAndSorted.every((item) => selectedIds.has(item.id));
-
-  const handleToggleSelect = (id: string) => {
-    setSelectedIds((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
-
-  const handleToggleAll = () => {
-    setSelectedIds(() => {
-      if (allFilteredSelected) return new Set<string>();
-      return new Set(filteredAndSorted.map((item) => item.id));
-    });
-  };
-
-  const updateEditingStock = (id: string, value: string) => {
-    setEditingStock((prev) => ({ ...prev, [id]: value }));
-  };
-
-  const clearEditingStock = (id: string) => {
-    setEditingStock((prev) => {
-      const next = { ...prev };
-      delete next[id];
-      return next;
-    });
-  };
-
-  const handleInlineStockSave = async (id: string, overrideValue?: number) => {
-    const rawValue = overrideValue !== undefined ? String(overrideValue) : editingStock[id];
-    const parsedValue = parseStockInput(rawValue ?? "");
-
-    if (parsedValue === null) {
-      toast.error("Enter a valid stock number.");
-      return;
-    }
-
-    setIsSaving((prev) => ({ ...prev, [id]: true }));
-
-    try {
-      const result = await inventoryApi.updateStock(id, parsedValue);
-
-      setInventory((prev) =>
-        prev.map((item) =>
-          item.id === id ? { ...item, stock: result.stock } : item,
-        ),
-      );
-
-      clearEditingStock(id);
-      toast.success("Stock updated successfully.");
-    } catch {
-      toast.error("Failed to update stock.");
-    } finally {
-      setIsSaving((prev) => ({ ...prev, [id]: false }));
-    }
-  };
-
-  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, id: string) => {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void handleInlineStockSave(id);
-    }
-  };
-
-  const adjustStock = (id: string, currentStock: number, delta: number) => {
-    const currentEditValue = editingStock[id];
-    const baseValue =
-      currentEditValue !== undefined ? parseStockInput(currentEditValue) : currentStock;
-
-    const nextValue = Math.max(0, (baseValue ?? currentStock) + delta);
-    updateEditingStock(id, String(nextValue));
-  };
-
-  const handleBulkUpdate = async () => {
-    const parsedBulkStock = parseStockInput(bulkStockValue);
-
-    if (parsedBulkStock === null) {
-      toast.error("Enter a valid stock number.");
-      return;
-    }
-
-    const ids = Array.from(selectedIds);
-    if (ids.length === 0) {
-      toast.error("Select at least one item.");
-      return;
-    }
-
-    setIsBulkSaving(true);
-
-    try {
-      const result = await inventoryApi.bulkUpdateStock(ids, parsedBulkStock);
-
-      setInventory((prev) =>
-        prev.map((item) =>
-          result.ids.includes(item.id) ? { ...item, stock: result.stock } : item,
-        ),
-      );
-
-      setSelectedIds(new Set());
-      setBulkStockValue("");
-      toast.success(`Updated ${result.ids.length} item${result.ids.length > 1 ? "s" : ""}.`);
-    } catch {
-      toast.error("Failed to bulk update items.");
-    } finally {
-      setIsBulkSaving(false);
-    }
-  };
+  const {
+    inventory,
+    loading,
+    error,
+    searchQuery,
+    setSearchQuery,
+    statusFilter,
+    setStatusFilter,
+    categoryFilter,
+    setCategoryFilter,
+    sortBy,
+    setSortBy,
+    mobileView,
+    setMobileView,
+    selectedIds,
+    setSelectedIds,
+    editingStock,
+    isSaving,
+    bulkStockValue,
+    setBulkStockValue,
+    isBulkSaving,
+    categories,
+    lowStockItems,
+    outOfStockItems,
+    filteredAndSorted,
+    allFilteredSelected,
+    loadInventory,
+    handleToggleSelect,
+    handleToggleAll,
+    updateEditingStock,
+    handleInlineStockSave,
+    adjustStock,
+    handleBulkUpdate,
+  } = useInventory();
 
   if (loading) return <SellerPageLoading variant="table" />;
 
@@ -351,6 +67,13 @@ export default function SellerInventoryPage() {
       </div>
     );
   }
+
+  const handleKeyDown = (event: React.KeyboardEvent<HTMLInputElement>, id: string) => {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void handleInlineStockSave(id);
+    }
+  };
 
   return (
     <div className="mx-auto min-w-0 max-w-350 animate-in space-y-6 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:pb-12">
@@ -462,6 +185,12 @@ export default function SellerInventoryPage() {
         </div>
       </div>
 
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
+
       {selectedIds.size > 0 && (
         <div className="animate-in slide-in-from-top-2 sticky top-20 z-40 flex flex-col gap-3 rounded-2xl border border-[#009E49]/30 bg-[#009E49]/10 p-3 px-5 shadow-md backdrop-blur-md md:top-22 md:flex-row md:items-center md:justify-between">
           <span className="text-sm font-black text-[#009E49]">
@@ -543,264 +272,50 @@ export default function SellerInventoryPage() {
                   </td>
                 </tr>
               ) : (
-                filteredAndSorted.map((item) => {
-                  const status = getStatusInfo(item.stock, item.threshold);
-                  const isEditing = editingStock[item.id] !== undefined;
-                  const isItemSaving = Boolean(isSaving[item.id]);
-
-                  return (
-                    <tr
-                      key={item.id}
-                      className={cn(
-                        "transition-colors hover:bg-zinc-50/50",
-                        selectedIds.has(item.id) && "bg-[#009E49]/5 hover:bg-[#009E49]/10",
-                      )}
-                    >
-                      <td className="p-4 pl-6">
-                        <input
-                          type="checkbox"
-                          checked={selectedIds.has(item.id)}
-                          onChange={() => handleToggleSelect(item.id)}
-                          className="h-4 w-4 cursor-pointer rounded border-zinc-300 text-[#009E49] focus:ring-[#009E49]"
-                        />
-                      </td>
-
-                      <td className="p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100">
-                            {item.image ? (
-                              <div
-                                className="h-full w-full rounded-xl bg-cover bg-center"
-                                style={{ backgroundImage: `url('${item.image}')` }}
-                              />
-                            ) : (
-                              <ImageIcon className="h-4 w-4 text-zinc-400" />
-                            )}
-                          </div>
-
-                          <div>
-                            <p className="max-w-55 truncate font-bold text-zinc-900">
-                              {item.name}
-                            </p>
-                            <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                              {item.category.name}
-                              {item.hasVariants ? " • Variants" : ""}
-                            </p>
-                          </div>
-                        </div>
-                      </td>
-
-                      <td className="p-4 text-xs font-bold text-zinc-600">{item.sku}</td>
-                      <td className="p-4 font-black text-zinc-900">{formatCurrency(item.price)}</td>
-
-                      <td className="p-4">
-                        <span
-                          className={`inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider ${status.bg} ${status.text} ${status.border}`}
-                        >
-                          <status.icon className="h-3 w-3" />
-                          {status.label}
-                        </span>
-                      </td>
-
-                      <td className="p-4">
-                        <div className="flex items-center gap-1">
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label={`Decrease stock for ${item.name}`}
-                            className="h-9 w-9 shrink-0 rounded-lg text-zinc-500 hover:text-zinc-900"
-                            onClick={() => adjustStock(item.id, item.stock, -1)}
-                          >
-                            <Minus className="h-3 w-3" />
-                          </Button>
-
-                          <Input
-                            type="number"
-                            value={isEditing ? editingStock[item.id] : String(item.stock)}
-                            onChange={(event) => updateEditingStock(item.id, event.target.value)}
-                            onKeyDown={(event) => handleKeyDown(event, item.id)}
-                            className={cn(
-                              "h-9 w-16 rounded-lg px-1 text-center text-sm font-bold shadow-inner focus-visible:ring-[#009E49]",
-                              isEditing && "border-[#009E49] bg-[#009E49]/5",
-                            )}
-                          />
-
-                          <Button
-                            variant="outline"
-                            size="icon"
-                            aria-label={`Increase stock for ${item.name}`}
-                            className="h-9 w-9 shrink-0 rounded-lg text-zinc-500 hover:text-zinc-900"
-                            onClick={() => adjustStock(item.id, item.stock, 1)}
-                          >
-                            <Plus className="h-3 w-3" />
-                          </Button>
-
-                          {isEditing ? (
-                            <Button
-                              size="icon"
-                              aria-label={`Save stock for ${item.name}`}
-                              onClick={() => handleInlineStockSave(item.id)}
-                              disabled={isItemSaving}
-                              className="ml-1 h-9 w-9 shrink-0 rounded-lg bg-[#009E49] text-white hover:bg-[#00853d]"
-                            >
-                              {isItemSaving ? (
-                                <ArrowUpDown className="h-4 w-4 animate-spin" />
-                              ) : (
-                                <Save className="h-4 w-4" />
-                              )}
-                            </Button>
-                          ) : null}
-                        </div>
-                      </td>
-
-                      <td className="p-4 pr-6 text-right">
-                        <InventoryItemMenu
-                          item={item}
-                          isSelected={selectedIds.has(item.id)}
-                          onToggleSelect={handleToggleSelect}
-                          onRestock={(id, threshold) => {
-                            void handleInlineStockSave(id, threshold);
-                          }}
-                          onMarkOutOfStock={(id) => {
-                            void handleInlineStockSave(id, 0);
-                          }}
-                        />
-                      </td>
-                    </tr>
-                  );
-                })
+                filteredAndSorted.map((item) => (
+                  <InventoryListRow
+                    key={item.id}
+                    item={item}
+                    isSelected={selectedIds.has(item.id)}
+                    onToggleSelect={handleToggleSelect}
+                    isEditing={editingStock[item.id] !== undefined}
+                    isItemSaving={Boolean(isSaving[item.id])}
+                    editingStockValue={editingStock[item.id]}
+                    onUpdateEditingStock={updateEditingStock}
+                    onKeyDown={handleKeyDown}
+                    onAdjustStock={adjustStock}
+                    onSaveStock={(id, overrideValue) => void handleInlineStockSave(id, overrideValue)}
+                  />
+                ))
               )}
             </tbody>
           </table>
         </div>
 
-        <div className="flex flex-col divide-y divide-zinc-100 md:hidden">
+        <div className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3 p-3" : "flex flex-col divide-y divide-zinc-100")}>
           {filteredAndSorted.length === 0 ? (
             <div className="p-12 text-center text-sm font-medium text-zinc-500">
               <Box className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
               No inventory matches found.
             </div>
           ) : (
-            filteredAndSorted.map((item) => {
-              const status = getStatusInfo(item.stock, item.threshold);
-              const isEditing = editingStock[item.id] !== undefined;
-              const isItemSaving = Boolean(isSaving[item.id]);
-
-              return (
-                <div
-                  key={item.id}
-                  className={cn("p-4 transition-colors", selectedIds.has(item.id) && "bg-[#009E49]/5")}
-                >
-                  <div className="flex items-start gap-3">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.has(item.id)}
-                      onChange={() => handleToggleSelect(item.id)}
-                      className="mt-1 h-5 w-5 shrink-0 rounded border-zinc-300 text-[#009E49] focus:ring-[#009E49]"
-                    />
-
-                    <div className="min-w-0 flex-1">
-                      <div className="flex justify-between gap-2">
-                        <h3 className="line-clamp-2 text-sm font-bold text-zinc-900">
-                          {item.name}
-                        </h3>
-
-                        <InventoryItemMenu
-                          item={item}
-                          isSelected={selectedIds.has(item.id)}
-                          onToggleSelect={handleToggleSelect}
-                          onRestock={(id, threshold) => {
-                            void handleInlineStockSave(id, threshold);
-                          }}
-                          onMarkOutOfStock={(id) => {
-                            void handleInlineStockSave(id, 0);
-                          }}
-                        />
-                      </div>
-
-                      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">
-                        {item.sku}
-                      </p>
-
-                      <div className="mt-3 flex items-center justify-between">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${status.bg} ${status.text} ${status.border}`}
-                        >
-                          <status.icon className="h-3 w-3" />
-                          {status.label}
-                        </span>
-
-                        <span className="text-sm font-black text-zinc-900">
-                          {formatCurrency(item.price)}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 border-t border-zinc-100 pt-3">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs font-bold text-zinc-500">Quick Update</span>
-
-                          <div className="flex items-center gap-1">
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label={`Decrease stock for ${item.name}`}
-                              className="h-8 w-8 shrink-0 rounded-lg text-zinc-500 hover:text-zinc-900"
-                              onClick={() => adjustStock(item.id, item.stock, -1)}
-                            >
-                              <Minus className="h-3 w-3" />
-                            </Button>
-
-                            <Input
-                              type="number"
-                              value={isEditing ? editingStock[item.id] : String(item.stock)}
-                              onChange={(event) => updateEditingStock(item.id, event.target.value)}
-                              onKeyDown={(event) => handleKeyDown(event, item.id)}
-                              className={cn(
-                                "h-8 w-16 rounded-lg px-1 text-center text-sm font-bold shadow-inner focus-visible:ring-[#009E49]",
-                                isEditing && "border-[#009E49] bg-[#009E49]/5",
-                              )}
-                            />
-
-                            <Button
-                              variant="outline"
-                              size="icon"
-                              aria-label={`Increase stock for ${item.name}`}
-                              className="h-8 w-8 shrink-0 rounded-lg text-zinc-500 hover:text-zinc-900"
-                              onClick={() => adjustStock(item.id, item.stock, 1)}
-                            >
-                              <Plus className="h-3 w-3" />
-                            </Button>
-
-                            {isEditing ? (
-                              <Button
-                                size="icon"
-                                aria-label={`Save stock for ${item.name}`}
-                                onClick={() => handleInlineStockSave(item.id)}
-                                disabled={isItemSaving}
-                                className="ml-1 h-8 w-8 shrink-0 rounded-lg bg-[#009E49] text-white hover:bg-[#00853d]"
-                              >
-                                {isItemSaving ? (
-                                  <ArrowUpDown className="h-4 w-4 animate-spin" />
-                                ) : (
-                                  <Save className="h-4 w-4" />
-                                )}
-                              </Button>
-                            ) : null}
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
+            filteredAndSorted.map((item) => (
+              <InventoryGridCard
+                key={item.id}
+                item={item}
+                isSelected={selectedIds.has(item.id)}
+                onToggleSelect={handleToggleSelect}
+                isEditing={editingStock[item.id] !== undefined}
+                isItemSaving={Boolean(isSaving[item.id])}
+                editingStockValue={editingStock[item.id]}
+                onUpdateEditingStock={updateEditingStock}
+                onKeyDown={handleKeyDown}
+                onAdjustStock={adjustStock}
+                onSaveStock={(id, overrideValue) => void handleInlineStockSave(id, overrideValue)}
+                viewMode={mobileView}
+              />
+            ))
           )}
-        </div>
-
-        <div className="border-t border-zinc-100 bg-zinc-50/50 p-4 text-center md:text-left">
-          <p className="text-xs font-bold text-zinc-500">
-            Showing {filteredAndSorted.length} of {inventory.length} items
-          </p>
         </div>
       </div>
     </div>

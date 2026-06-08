@@ -1,13 +1,10 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   TrendingUp,
   ShoppingCart,
   Users,
-  ArrowUpRight,
-  ArrowDownRight,
   AlertTriangle,
   Receipt,
   Target,
@@ -19,206 +16,33 @@ import {
   Box,
   Tag,
 } from "lucide-react";
-import {
-  AreaChart,
-  Area,
-  XAxis,
-  YAxis,
-  CartesianGrid,
-  Tooltip,
-  ResponsiveContainer,
-} from "recharts";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
-import {
-  fetchSellerAnalyticsData,
-  type SellerAnalyticsCategoryFilter,
-  type SellerAnalyticsData,
-  type SellerAnalyticsTimeRange,
-} from "@/services/seller-metrics";
 
-function formatCurrency(value: number) {
-  return `K${value.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
-}
-
-function formatNumber(value: number) {
-  return new Intl.NumberFormat().format(Math.floor(value));
-}
-
-function widthClass(percent: number) {
-  if (percent >= 95) return "w-full";
-  if (percent >= 90) return "w-[90%]";
-  if (percent >= 80) return "w-[80%]";
-  if (percent >= 70) return "w-[70%]";
-  if (percent >= 60) return "w-[60%]";
-  if (percent >= 50) return "w-1/2";
-  if (percent >= 40) return "w-[40%]";
-  if (percent >= 30) return "w-[30%]";
-  if (percent >= 20) return "w-[20%]";
-  if (percent >= 10) return "w-[10%]";
-  if (percent > 0) return "w-[5%]";
-  return "w-0";
-}
-
-function StatCard({
-  title,
-  value,
-  growth,
-  icon: Icon,
-  isCurrency = false,
-  inverseGrowth = false,
-  colorClass = "bg-white border-zinc-200/80 text-zinc-900",
-}: {
-  title: string;
-  value: number;
-  growth?: number;
-  icon: React.ComponentType<{ className?: string }>;
-  isCurrency?: boolean;
-  inverseGrowth?: boolean;
-  colorClass?: string;
-}) {
-  const isPositive = growth !== undefined && growth > 0;
-  const isGood = inverseGrowth ? !isPositive : isPositive;
-
-  return (
-    <div className={cn("rounded-2xl border p-4 shadow-sm transition-shadow hover:shadow-md", colorClass)}>
-      <div className="mb-2 flex items-center justify-between opacity-80">
-        <p className="text-[10px] font-bold uppercase tracking-wider">{title}</p>
-        <Icon className="h-4 w-4" />
-      </div>
-      <h3 className="text-xl font-black md:text-2xl">
-        {isCurrency ? formatCurrency(value) : formatNumber(value)}
-        {title.includes("Rate") ? "%" : ""}
-      </h3>
-      {growth !== undefined && (
-        <div className="mt-2 flex items-center gap-1">
-          <span className={cn("flex items-center rounded-sm px-1 py-0.5 text-[10px] font-bold", isGood ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700")}>
-            {isPositive ? <ArrowUpRight className="mr-0.5 h-3 w-3" /> : <ArrowDownRight className="mr-0.5 h-3 w-3" />}
-            {Math.abs(Number(growth.toFixed(1)))}%
-          </span>
-          <span className="text-[9px] font-medium opacity-70">vs prev.</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function ProgressBar({
-  label,
-  value,
-  total,
-  colorClass,
-}: {
-  label: string;
-  value: number;
-  total: number;
-  colorClass: string;
-}) {
-  const percentage = total > 0 ? Math.round((value / total) * 100) : 0;
-
-  return (
-    <div className="space-y-1.5">
-      <div className="flex justify-between text-xs font-bold">
-        <span className="text-zinc-700">{label}</span>
-        <span className="text-zinc-900">
-          {formatNumber(value)} <span className="text-[10px] font-medium text-zinc-400">({percentage}%)</span>
-        </span>
-      </div>
-      <div className="h-2 w-full overflow-hidden rounded-full bg-zinc-100">
-        <div className={cn("h-full rounded-full", colorClass, widthClass(percentage))} />
-      </div>
-    </div>
-  );
-}
+import { useSellerAnalytics } from "@/features/seller-analytics/hooks/useSellerAnalytics";
+import { StatCard, ProgressBar } from "@/features/seller-analytics/components/AnalyticsSummaryCards";
+import { AnalyticsCharts } from "@/features/seller-analytics/components/AnalyticsCharts";
+import { formatCurrency, formatNumber, widthClass } from "@/features/seller-analytics/utils/analytics-utils";
+import type { SellerAnalyticsCategoryFilter, SellerAnalyticsTimeRange } from "@/services/seller-metrics";
 
 export default function SellerAnalyticsPage() {
-  const [data, setData] = useState<SellerAnalyticsData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-
-  const [range, setRange] = useState<SellerAnalyticsTimeRange>("30d");
-  const [chartMetric, setChartMetric] = useState<"revenue" | "orders">("revenue");
-  const [categoryFilter, setCategoryFilter] = useState<SellerAnalyticsCategoryFilter>("all");
-
-  const loadData = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const result = await fetchSellerAnalyticsData(range);
-      setData(result);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load analytics");
-    } finally {
-      setLoading(false);
-    }
-  }, [range]);
-
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
-
-  const handleExport = () => {
-    if (!data) return;
-    // Export mirrors exactly what is rendered after category + range filtering.
-    const reportRows = [
-      ["Metric", "Value"],
-      ["Range", range],
-      ["Category Filter", categoryFilter],
-      ["Total Revenue", String(Math.round(data.summary.totalRevenue))],
-      ["Total Orders", String(data.summary.totalOrders)],
-      ["Customers", String(data.summary.totalCustomers)],
-      [""],
-      ["Top Products", ""],
-      ["Product", "Sales", "Revenue"],
-      ...filteredTopProducts.map((product) => [
-        product.name,
-        String(product.sales),
-        String(Math.round(product.revenue)),
-      ]),
-      [""],
-      ["Low Performers", ""],
-      ["Product", "Issue", "Stock"],
-      ...filteredLowPerformers.map((item) => [item.name, item.issue, String(item.stock)]),
-    ];
-
-    const csv = reportRows
-      .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `zogular-analytics-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
-    toast.success("Analytics report exported.");
-  };
-
-  const filteredTopProducts = useMemo(
-    () => (categoryFilter === "all" ? data?.topProducts ?? [] : (data?.topProducts ?? []).filter((p) => p.category === categoryFilter)),
-    [data, categoryFilter],
-  );
-
-  const filteredCategoryPerformance = useMemo(
-    () =>
-      categoryFilter === "all"
-        ? data?.categoryPerformance ?? []
-        : (data?.categoryPerformance ?? []).filter((c) => c.slug === categoryFilter),
-    [data, categoryFilter],
-  );
-
-  const filteredLowPerformers = useMemo(
-    () =>
-      categoryFilter === "all"
-        ? data?.lowPerformers ?? []
-        : (data?.lowPerformers ?? []).filter((item) => item.category === categoryFilter),
-    [data, categoryFilter],
-  );
+  const {
+    data,
+    loading,
+    error,
+    range,
+    setRange,
+    chartMetric,
+    setChartMetric,
+    categoryFilter,
+    setCategoryFilter,
+    filteredTopProducts,
+    filteredCategoryPerformance,
+    filteredLowPerformers,
+    loadData,
+    handleExport,
+  } = useSellerAnalytics();
 
   if (loading && !data) return <SellerPageLoading variant="dashboard" />;
 
@@ -290,39 +114,7 @@ export default function SellerAnalyticsPage() {
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="flex min-w-0 flex-col rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6 lg:col-span-2">
-          <div className="mb-6 flex flex-col justify-between gap-4 sm:flex-row sm:items-center">
-            <div>
-              <h2 className="text-base font-black text-zinc-900">Performance Trends</h2>
-              <p className="mt-1 text-xs font-medium text-zinc-500">Compare {chartMetric} over the selected time period.</p>
-            </div>
-            <div className="flex rounded-lg border border-zinc-200 bg-zinc-50 p-1">
-              <button onClick={() => setChartMetric("revenue")} className={cn("rounded-md px-4 py-1.5 text-xs font-bold transition-all", chartMetric === "revenue" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700")}>
-                Revenue
-              </button>
-              <button onClick={() => setChartMetric("orders")} className={cn("rounded-md px-4 py-1.5 text-xs font-bold transition-all", chartMetric === "orders" ? "bg-white text-zinc-900 shadow-sm" : "text-zinc-500 hover:text-zinc-700")}>
-                Orders
-              </button>
-            </div>
-          </div>
-          <div className="h-62.5 w-full min-w-0 flex-1 md:h-70">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={data.trends} margin={{ top: 10, right: 10, left: chartMetric === "revenue" ? 10 : -20, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="colorMetric" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor={chartMetric === "revenue" ? "#009E49" : "#3B82F6"} stopOpacity={0.3} />
-                    <stop offset="95%" stopColor={chartMetric === "revenue" ? "#009E49" : "#3B82F6"} stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <CartesianGrid stroke="#f4f4f5" strokeDasharray="3 3" vertical={false} />
-                <XAxis dataKey="label" axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#a1a1aa", fontWeight: 600 }} dy={10} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fontSize: 10, fill: "#a1a1aa", fontWeight: 600 }} tickFormatter={(value) => (chartMetric === "revenue" ? `K${Number(value) / 1000}k` : value)} />
-                <Tooltip />
-                <Area type="monotone" dataKey={chartMetric} stroke={chartMetric === "revenue" ? "#009E49" : "#3B82F6"} strokeWidth={3} fillOpacity={1} fill="url(#colorMetric)" animationDuration={1000} />
-              </AreaChart>
-            </ResponsiveContainer>
-          </div>
-        </div>
+        <AnalyticsCharts data={data.trends} chartMetric={chartMetric} setChartMetric={setChartMetric} />
 
         <div className="flex flex-col gap-6">
           <div className="flex-1 rounded-3xl border border-indigo-100 bg-indigo-50/30 p-5 shadow-sm md:p-6">
@@ -469,7 +261,7 @@ export default function SellerAnalyticsPage() {
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold leading-snug text-zinc-800">{activity.message}</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <span className="text-[10px] font-medium text-zinc-400">{activity.time}</span>
+                     <span className="text-[10px] font-medium text-zinc-400">{activity.time}</span>
                     {activity.amount && <span className="text-[10px] font-black text-zinc-700">• {formatCurrency(activity.amount)}</span>}
                   </div>
                 </div>

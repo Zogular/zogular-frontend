@@ -3,14 +3,16 @@
 import { useState, useMemo, useEffect, useCallback } from "react";
 import {
   Wallet, ArrowUpRight, Clock3, CheckCircle2, XCircle, Search,
-  Building2, CreditCard, AlertCircle, Receipt, ArrowDownRight, Smartphone, X
+  Building2, AlertCircle, Receipt, Smartphone, X
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { cn } from "@/lib/utils";
 import { calculatePayoutQuote, DEFAULT_PLATFORM_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/platform-finance";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 import {
   sellerWalletApi,
   type PayoutMethod,
@@ -85,6 +87,7 @@ export default function SellerPayoutsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<PayoutFilterStatus>("all");
   const [sortBy, setSortBy] = useState<SortBy>("newest");
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
 
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState("");
@@ -385,6 +388,12 @@ export default function SellerPayoutsPage() {
         </div>
       </div>
 
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
+
       <div className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
         <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-left text-sm">
@@ -451,7 +460,7 @@ export default function SellerPayoutsPage() {
           </table>
         </div>
 
-        <div className="flex flex-col divide-y divide-zinc-100 md:hidden">
+        <div className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3 p-3" : "flex flex-col divide-y divide-zinc-100")}>
           {filteredHistory.length === 0 ? (
             <div className="p-12 text-center text-sm font-medium text-zinc-500">
               <Wallet className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
@@ -462,33 +471,84 @@ export default function SellerPayoutsPage() {
               const statusUI = getStatusUI(tx.status);
               const Icon = statusUI.icon;
               return (
-                <div key={tx.id} className="p-4 transition-colors hover:bg-zinc-50/50">
-                  <div className="mb-2 flex items-start justify-between gap-2">
-                    <div>
-                      <p className="font-bold text-zinc-900">{formatCurrency(tx.sellerReceives)}</p>
-                      <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{formatDate(tx.requestedAt)}</p>
-                    </div>
-                    <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${statusUI.bg} ${statusUI.text} ${statusUI.border}`}>
-                      <Icon className="h-3 w-3" />
-                      {statusUI.label}
-                    </span>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedTransaction(tx)}
-                    className="flex w-full items-center justify-between rounded-xl border border-zinc-100 bg-zinc-50 p-3 text-left"
-                    title="View transaction details"
-                  >
-                    <div className="min-w-0 flex items-center gap-2">
-                      <CreditCard className="h-4 w-4 shrink-0 text-zinc-400" />
-                      <div className="min-w-0">
-                        <p className="truncate text-xs font-bold text-zinc-700">{tx.method}</p>
-                        <p className="text-[9px] font-bold uppercase tracking-wider text-zinc-400">{tx.id}</p>
+                <div key={tx.id} className={cn(mobileView === "grid" ? "rounded-[1.4rem] border border-zinc-200/80 bg-white p-4 shadow-sm" : "p-3.5 transition-colors hover:bg-zinc-50/50")}>
+                  {mobileView === "list" ? (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-zinc-900">{formatCurrency(tx.sellerReceives)}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{tx.id}</p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${statusUI.bg} ${statusUI.text} ${statusUI.border}`}>
+                          <Icon className="h-3 w-3" />
+                          {statusUI.label}
+                        </span>
                       </div>
-                    </div>
-                    <ArrowDownRight className="h-4 w-4 shrink-0 text-zinc-300" />
-                  </button>
+
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Date</span>
+                          <span>{formatDate(tx.requestedAt)}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Method</span>
+                          <span>{tx.method}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Ref</span>
+                          <span>{tx.reference}</span>
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex justify-end">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedTransaction(tx)}
+                          className="h-8 rounded-xl border-zinc-200 bg-white px-3 text-[10px] font-bold text-zinc-700"
+                        >
+                          Details
+                        </Button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <p className="font-bold text-zinc-900">{formatCurrency(tx.sellerReceives)}</p>
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{formatDate(tx.requestedAt)}</p>
+                        </div>
+                        <span className={`inline-flex items-center gap-1 rounded-md border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${statusUI.bg} ${statusUI.text} ${statusUI.border}`}>
+                          <Icon className="h-3 w-3" />
+                          {statusUI.label}
+                        </span>
+                      </div>
+
+                      <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-zinc-100 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Method</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{tx.method}</span>
+                        </div>
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-zinc-100 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Reference</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{tx.reference}</span>
+                        </div>
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Fee</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{formatCurrency(tx.withdrawalFee)}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2.5 flex justify-end">
+                        <Button
+                          variant="outline"
+                          onClick={() => setSelectedTransaction(tx)}
+                          className="h-9 rounded-xl border-zinc-200 bg-white px-3 text-[11px] font-bold text-zinc-700"
+                        >
+                          Details
+                        </Button>
+                      </div>
+                    </>
+                  )}
 
                   {tx.failureReason ? (
                     <p className="mt-2 rounded-lg border border-red-100 bg-red-50 p-2 text-[10px] font-semibold text-red-500">

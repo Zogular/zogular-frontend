@@ -133,6 +133,33 @@ function getInitialSidebarCollapsed() {
   return readLocalStorageValue(SELLER_SIDEBAR_COLLAPSED_KEY, ["zamoyo_seller_sidebar_collapsed"]) === "true";
 }
 
+function getSellerInitials(name: string) {
+  const initials = name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase())
+    .join("");
+
+  return initials || "ZS";
+}
+
+function getSellerDisplayName(application: VendorApplication | null) {
+  return (
+    application?.storeName?.trim() ||
+    application?.legalBusinessName?.trim() ||
+    application?.ownerFullName?.trim() ||
+    "Seller workspace"
+  );
+}
+
+function getSellerDisplayRole(application: VendorApplication | null) {
+  if (!application) return "Seller";
+  if (application.status === "APPROVED") return "Approved seller";
+  if (application.status === "PROVISIONAL") return "Provisional seller";
+  return "Seller applicant";
+}
+
 export default function SellerLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname() || "";
   const router = useRouter();
@@ -151,6 +178,9 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     pathname.startsWith("/seller/check-email");
   const sellerStatus: SellerApplicationStatus | null = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
+  const sellerDisplayName = getSellerDisplayName(application);
+  const sellerDisplayRole = getSellerDisplayRole(application);
+  const sellerInitials = getSellerInitials(sellerDisplayName);
   const addProductHref = !application
     ? "/seller/onboarding?start=1"
     : canCreateDraftProduct
@@ -291,7 +321,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">
-            <h1 className="truncate text-sm font-black tracking-tight text-white">Zogular Store</h1>
+            <h1 className="truncate text-sm font-black tracking-tight text-white">{sellerDisplayName}</h1>
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#009E49]">{pageTitle}</p>
           </div>
         </div>
@@ -422,11 +452,11 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
             {/* Seller Identity Dropdown Trigger */}
             <Link href="/seller/settings" className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white p-1.5 pr-4 shadow-sm cursor-pointer hover:bg-zinc-50 transition-colors">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-linear-to-br from-zinc-800 to-zinc-900 text-white font-bold text-xs shadow-inner">
-                ZS
+                {sellerInitials}
               </div>
               <div className="leading-none">
-                <p className="text-sm font-bold text-zinc-900">Zogular Store</p>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500 mt-0.5">Admin</p>
+                <p className="max-w-38 truncate text-sm font-bold text-zinc-900">{sellerDisplayName}</p>
+                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{sellerDisplayRole}</p>
               </div>
             </Link>
           </div>

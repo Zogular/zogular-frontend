@@ -73,7 +73,7 @@ function ProductImageGallery({
     <div className="space-y-4 md:sticky md:top-25 group">
       <div className="md:hidden">
         <div className="space-y-3">
-          <div className="relative flex aspect-4/3 w-full items-center justify-center overflow-hidden bg-zinc-50">
+          <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden bg-zinc-50">
             <div className="pointer-events-none absolute left-4 top-4 z-30 flex items-center gap-2">
               <Link href="/" className="pointer-events-auto">
                 <Button variant="ghost" size="icon" title="Go back" aria-label="Go back" className="h-8 w-8 rounded-full bg-white/80 text-zinc-900 shadow-sm backdrop-blur-md hover:bg-white">
@@ -102,7 +102,7 @@ function ProductImageGallery({
               fill
               sizes="100vw"
               unoptimized
-              className="object-contain mix-blend-multiply"
+              className="object-cover"
             />
           </div>
           <div className="hide-scrollbar flex gap-2 overflow-x-auto px-4 pb-1">
@@ -121,7 +121,7 @@ function ProductImageGallery({
                   fill
                   sizes="64px"
                   unoptimized
-                  className="object-cover mix-blend-multiply"
+                  className="object-cover"
                 />
               </button>
             ))}
@@ -129,7 +129,7 @@ function ProductImageGallery({
         </div>
       </div>
 
-      <div className="hidden md:block relative aspect-auto h-120 w-full overflow-hidden rounded-3xl border border-zinc-200/50 bg-zinc-50 shadow-sm">
+      <div className="hidden md:block relative aspect-square w-full overflow-hidden rounded-3xl border border-zinc-200/50 bg-zinc-50 shadow-sm">
         <div className="pointer-events-none absolute left-4 top-4 z-30 flex items-center gap-2">
           {badge ? (
             <Badge className="pointer-events-auto border-none bg-[#FF6B00] px-3 py-1 text-[10px] uppercase tracking-widest shadow-md">
@@ -153,7 +153,7 @@ function ProductImageGallery({
           fill
           sizes="(min-width: 768px) 700px, 100vw"
           unoptimized
-          className="object-contain transition-transform duration-700 hover:scale-[1.03] mix-blend-multiply"
+          className="object-cover transition-transform duration-700 hover:scale-[1.03]"
         />
       </div>
 
@@ -173,7 +173,7 @@ function ProductImageGallery({
               width={160}
               height={160}
               unoptimized
-              className="h-full w-full object-cover mix-blend-multiply"
+              className="h-full w-full object-cover"
             />
           </button>
         ))}
@@ -232,9 +232,9 @@ export function ProductDetailsClient({
   }, [productData]);
 
   const wishlistProduct = toProductFromDetail(productData);
-  const selectedVariant =
-    productData.variants.find((variant) => variant.id === selectedVariantId) ??
-    productData.variants[0];
+  const selectedVariant = productData.variants.length > 0 
+    ? (productData.variants.find((variant) => variant.id === selectedVariantId) ?? productData.variants[0])
+    : undefined;
   const stockMeta = getStockMeta(productData.stock);
   const brandLabel = productData.brand === "Zogular" ? "Verified listing" : `Brand: ${productData.brand}`;
   const hasDiscount = productData.originalPrice > productData.price;
@@ -299,31 +299,35 @@ export function ProductDetailsClient({
               </div>
             </div>
 
-            <Separator className="bg-zinc-200/60 animate-in fade-in duration-500 [animation-delay:200ms]" />
+            {productData.variants.length > 0 && selectedVariant ? (
+              <>
+                <Separator className="bg-zinc-200/60 animate-in fade-in duration-500 [animation-delay:200ms]" />
 
-            <div className="rounded-2xl border border-white/60 bg-white/60 p-4 shadow-sm backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 [animation-delay:300ms]">
-              <div className="mb-3 flex items-center justify-between">
-                <h3 className="text-sm font-semibold text-zinc-900">{selectedVariant.label}: <span className="font-normal text-zinc-600">{selectedVariant.value}</span></h3>
-              </div>
-              <div className="flex gap-3">
-                {productData.variants.map((variant) => (
-                  <button
-                    key={variant.id}
-                    type="button"
-                    onClick={() => setSelectedVariantId(variant.id)}
-                    className={`h-14 w-14 rounded-xl border-2 ring-4 ring-white shadow-sm transition-all hover:scale-[1.03] ${selectedVariantId === variant.id ? variant.swatchClass : variant.swatchClass.replace("border-[#FF6B00]", "border-zinc-200 opacity-70")}`}
-                    title={variant.value}
-                  />
-                ))}
-              </div>
-            </div>
+                <div className="rounded-2xl border border-white/60 bg-white/60 p-4 shadow-sm backdrop-blur-md animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 [animation-delay:300ms]">
+                  <div className="mb-3 flex items-center justify-between">
+                    <h3 className="text-sm font-semibold text-zinc-900">{selectedVariant.label}: <span className="font-normal text-zinc-600">{selectedVariant.value}</span></h3>
+                  </div>
+                  <div className="flex gap-3">
+                    {productData.variants.map((variant) => (
+                      <button
+                        key={variant.id}
+                        type="button"
+                        onClick={() => setSelectedVariantId(variant.id)}
+                        className={`h-14 w-14 rounded-xl border-2 ring-4 ring-white shadow-sm transition-all hover:scale-[1.03] ${selectedVariantId === variant.id ? variant.swatchClass : variant.swatchClass.replace("border-[#FF6B00]", "border-zinc-200 opacity-70")}`}
+                        title={variant.value}
+                      />
+                    ))}
+                  </div>
+                </div>
+              </>
+            ) : null}
 
             <div className="hidden grid-cols-[120px_1fr] gap-3 animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 [animation-delay:350ms] md:grid">
               <QuantitySelector value={quantity} onDecrease={decrementQuantity} onIncrease={incrementQuantity} />
               <AddToCartButton
                 product={wishlistProduct}
                 quantity={quantity}
-                variant={selectedVariant.value}
+                variant={selectedVariant?.value}
                 className="h-12 rounded-2xl bg-[#FF6B00] text-base font-bold text-white shadow-lg shadow-[#FF6B00]/25 transition-all hover:-translate-y-0.5 hover:bg-[#e66000]"
               />
             </div>
@@ -456,7 +460,7 @@ export function ProductDetailsClient({
             <AddToCartButton
               product={wishlistProduct}
               quantity={quantity}
-              variant={selectedVariant.value}
+              variant={selectedVariant?.value}
               className="h-12 flex-1 rounded-2xl bg-[#FF6B00] text-base font-bold text-white shadow-xl shadow-[#FF6B00]/30 transition-all hover:bg-[#e66000] active:scale-95"
             />
           </div>

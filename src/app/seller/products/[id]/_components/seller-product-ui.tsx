@@ -181,7 +181,7 @@ function SpecGrid({ items, empty }: { items: Array<{ name: string; value: string
   if (!items.length) return <p className="text-sm font-semibold text-zinc-500">{empty}</p>;
   return (
     <div className="grid gap-2">
-      {items.map((item) => <SpecTile key={`${item.name}-${item.value}`} label={item.name} value={item.value} />)}
+      {items.map((item, index) => <SpecTile key={`${item.name}-${item.value}-${index}`} label={item.name} value={item.value} />)}
     </div>
   );
 }

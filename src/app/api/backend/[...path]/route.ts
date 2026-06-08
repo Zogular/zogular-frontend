@@ -24,6 +24,7 @@ const PUBLIC_AUTH_PATHS = new Set([
 ]);
 
 const AUTH_COOKIE_NAMES = ["accessToken", "refreshToken"];
+const ADMIN_BACKEND_PATH_PREFIX = "admin/";
 
 type RouteContext = {
   params: Promise<{ path?: string[] }> | { path?: string[] };
@@ -132,10 +133,11 @@ async function handler(request: Request, context: RouteContext) {
   // Determine whether this is a public auth endpoint
   const routePath = path.join("/");
   const isPublicAuth = PUBLIC_AUTH_PATHS.has(routePath);
+  const isAdminBackendPath = routePath.startsWith(ADMIN_BACKEND_PATH_PREFIX);
 
   // Strip expired auth cookies for public routes to prevent
   // "jwt expired" errors on routes that don't need authentication.
-  const requestCookie = rawCookie && isPublicAuth
+  const requestCookie = rawCookie && (isPublicAuth || isAdminBackendPath)
     ? stripAuthCookies(rawCookie) || null
     : rawCookie;
 

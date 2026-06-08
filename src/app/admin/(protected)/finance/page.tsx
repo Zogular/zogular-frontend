@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 
 // Architecture Imports
 import { adminFinanceApi, PayoutRequest, LedgerEntry, TreasuryMetrics, TransactionType } from "@/services/admin/finance";
@@ -54,6 +55,7 @@ export default function AdminFinancePage() {
   const [activeTab, setActiveTab] = useState<ViewTab>("payouts");
   const [searchQuery, setSearchQuery] = useState("");
   const [ledgerTypeFilter, setLedgerTypeFilter] = useState<TransactionType | "all">("all");
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
 
   // Modal State
   const [selectedPayout, setSelectedPayout] = useState<PayoutRequest | null>(null);
@@ -290,12 +292,182 @@ export default function AdminFinancePage() {
           )}
         </div>
 
+        {(activeTab === "payouts" || activeTab === "ledger" || activeTab === "refunds") ? (
+          <div className="px-4 pb-4 md:hidden">
+            <CollectionViewToggle value={mobileView} onChange={setMobileView} />
+          </div>
+        ) : null}
+
         {/* 4. TABBED DATA VIEWS */}
         <div className="overflow-x-auto hide-scrollbar">
+          {activeTab === "payouts" && (
+            <div className={cn("p-4 md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3" : "space-y-0")}>
+              {filteredPayouts.length === 0 ? (
+                <div className="rounded-3xl border border-zinc-200 bg-white p-10 text-center text-sm font-bold text-zinc-500">No payout requests found.</div>
+              ) : mobileView === "list" ? (
+                <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white">
+                  <div className="divide-y divide-zinc-100">
+                    {filteredPayouts.map((payout) => {
+                      const statUI = PAYOUT_STATUS_UI[payout.status];
+                      const StatIcon = statUI.icon;
+                      return (
+                        <div key={payout.id} className="p-3.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-black text-zinc-900">{payout.storeName}</p>
+                              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{payout.id}</p>
+                            </div>
+                            <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
+                              <StatIcon className="h-3 w-3" />
+                              {statUI.label}
+                            </span>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                            <span className="inline-flex items-center gap-1"><span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Amount</span><span>{formatCurrency(payout.amount)}</span></span>
+                            <span className="inline-flex items-center gap-1"><span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Method</span><span>{payout.method}</span></span>
+                          </div>
+                          <div className="mt-2 flex justify-end">
+                            <Button onClick={() => setSelectedPayout(payout)} variant="outline" size="sm" className="h-8 rounded-xl text-[10px] font-bold">Review</Button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                filteredPayouts.map((payout) => {
+                  const statUI = PAYOUT_STATUS_UI[payout.status];
+                  const StatIcon = statUI.icon;
+                  return (
+                    <article key={payout.id} className="rounded-[1.5rem] border border-zinc-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-black text-zinc-900">{payout.storeName}</p>
+                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{payout.id}</p>
+                        </div>
+                        <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
+                          <StatIcon className="h-3 w-3" />
+                          {statUI.label}
+                        </span>
+                      </div>
+                      <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
+                        <FinanceDetailRow label="Amount" value={formatCurrency(payout.amount)} />
+                        <FinanceDetailRow label="Method" value={payout.method} />
+                        <FinanceDetailRow label="Account" value={payout.accountDetails} isLast />
+                      </div>
+                      <div className="mt-2.5 flex justify-end">
+                        <Button onClick={() => setSelectedPayout(payout)} variant="outline" size="sm" className="h-9 rounded-xl text-[11px] font-bold">Review</Button>
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {activeTab === "ledger" && (
+            <div className={cn("p-4 md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3" : "space-y-0")}>
+              {filteredLedger.length === 0 ? (
+                <div className="rounded-3xl border border-zinc-200 bg-white p-10 text-center text-sm font-bold text-zinc-500">No ledger entries found.</div>
+              ) : mobileView === "list" ? (
+                <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white">
+                  <div className="divide-y divide-zinc-100">
+                    {filteredLedger.map((entry) => {
+                      const typeUI = TXN_TYPE_UI[entry.type];
+                      return (
+                        <div key={entry.id} className="p-3.5">
+                          <div className="flex items-start justify-between gap-2">
+                            <div className="min-w-0">
+                              <p className="text-[13px] font-black text-zinc-900">{entry.id}</p>
+                              <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{typeUI.label}</p>
+                            </div>
+                            <span className={cn("text-[11px] font-black", typeUI.color)}>{typeUI.sign}{formatCurrency(Math.abs(entry.amount))}</span>
+                          </div>
+                          <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                            <span>{entry.description}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : (
+                filteredLedger.map((entry) => {
+                  const typeUI = TXN_TYPE_UI[entry.type];
+                  return (
+                    <article key={entry.id} className="rounded-[1.5rem] border border-zinc-200 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-black text-zinc-900">{entry.id}</p>
+                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{typeUI.label}</p>
+                        </div>
+                        <span className={cn("text-[11px] font-black", typeUI.color)}>{typeUI.sign}{formatCurrency(Math.abs(entry.amount))}</span>
+                      </div>
+                      <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
+                        <FinanceDetailRow label="Desc" value={entry.description} />
+                        <FinanceDetailRow label="Balance" value={formatCurrency(entry.balanceAfter)} />
+                        <FinanceDetailRow label="Time" value={formatDate(entry.timestamp)} isLast />
+                      </div>
+                    </article>
+                  );
+                })
+              )}
+            </div>
+          )}
+
+          {activeTab === "refunds" && (
+            <div className={cn("p-4 md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3" : "space-y-0")}>
+              {refundQueue.length === 0 ? (
+                <div className="rounded-3xl border border-zinc-200 bg-white p-10 text-center text-sm font-bold text-zinc-500">No refund queue entries found.</div>
+              ) : mobileView === "list" ? (
+                <div className="overflow-hidden rounded-3xl border border-zinc-200 bg-white">
+                  <div className="divide-y divide-zinc-100">
+                    {refundQueue.map((entry) => (
+                      <div key={entry.id} className="p-3.5">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="text-[13px] font-black text-zinc-900">{entry.id}</p>
+                            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{entry.orderId ?? "Manual refund"}</p>
+                          </div>
+                          <span className="text-[11px] font-black text-rose-600">{formatCurrency(Math.abs(entry.amount))}</span>
+                        </div>
+                        <div className="mt-2 flex justify-end">
+                          <Button disabled={!canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-8 rounded-xl text-[10px] font-bold">
+                            {reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
+                          </Button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                refundQueue.map((entry) => (
+                  <article key={entry.id} className="rounded-[1.5rem] border border-zinc-200 bg-white p-4 shadow-sm">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="text-[13px] font-black text-zinc-900">{entry.id}</p>
+                        <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{entry.orderId ?? "Manual refund"}</p>
+                      </div>
+                      <span className="text-[11px] font-black text-rose-600">{formatCurrency(Math.abs(entry.amount))}</span>
+                    </div>
+                    <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
+                      <FinanceDetailRow label="Reason" value={entry.description} />
+                      <FinanceDetailRow label="Date" value={formatDate(entry.timestamp)} isLast />
+                    </div>
+                    <div className="mt-2.5 flex justify-end">
+                      <Button disabled={!canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-9 rounded-xl text-[11px] font-bold">
+                        {reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
+                      </Button>
+                    </div>
+                  </article>
+                ))
+              )}
+            </div>
+          )}
           
           {/* Payouts View */}
           {activeTab === "payouts" && (
-            <table className="w-full text-left text-sm min-w-250">
+            <table className="hidden w-full min-w-250 text-left text-sm md:table">
               <thead className="bg-white">
                 <tr>
                   <th className="rounded-tl-2xl p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-zinc-500">Request ID & Date</th>
@@ -349,7 +521,7 @@ export default function AdminFinancePage() {
 
           {/* Ledger View */}
           {activeTab === "ledger" && (
-            <table className="w-full text-left text-sm min-w-250">
+            <table className="hidden w-full min-w-250 text-left text-sm md:table">
               <thead className="bg-white">
                 <tr>
                   <th className="rounded-tl-2xl p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-zinc-500">TXN & Date</th>
@@ -394,7 +566,7 @@ export default function AdminFinancePage() {
           )}
 
           {activeTab === "refunds" && (
-            <table className="w-full text-left text-sm min-w-250">
+            <table className="hidden w-full min-w-250 text-left text-sm md:table">
               <thead className="bg-white">
                 <tr>
                   <th className="rounded-tl-2xl p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-zinc-500">Refund</th>
@@ -536,6 +708,23 @@ export default function AdminFinancePage() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function FinanceDetailRow({
+  label,
+  value,
+  isLast = false,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2", !isLast && "border-b border-zinc-100")}>
+      <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <span className="truncate text-right text-[11px] font-bold text-zinc-900">{value}</span>
     </div>
   );
 }

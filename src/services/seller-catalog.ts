@@ -233,8 +233,6 @@ type SellerProductEnrichment = {
 
 const SELLER_PRODUCT_ENRICHMENT_STORAGE_KEY = "zogular-seller-product-enrichments";
 const DEFAULT_SELLER = { name: "Zogular Store", slug: "zogular-official", verified: true };
-const FALLBACK_IMAGE =
-  "https://images.unsplash.com/photo-1607082349566-187342175e2f?auto=format&fit=crop&w=1200&q=80";
 const SELLER_PRODUCTS_QUERY_LIMIT = 100;
 
 let sellerCatalogSnapshot: SellerProductListing[] = [];
@@ -337,6 +335,7 @@ export async function fetchAdminCatalogProducts(): Promise<SellerProductListing[
   const response = await apiClient<BackendListResponse>("/admin/products", {
     method: "GET",
     query: { page: 1, limit: 500 },
+    cache: "no-store",
   });
 
   return response.data.products.map(normalizeBackendSellerProduct);
@@ -700,45 +699,50 @@ function normalizeBackendSellerProduct(product: BackendVendorProduct): SellerPro
 
 function normalizeBackendImages(product: BackendVendorProduct): SellerProductImage[] {
   if (!Array.isArray(product.images) || product.images.length === 0) {
-    return [
-      {
-        id: `${product.id}-fallback-image`,
-        url: FALLBACK_IMAGE,
-        name: "Fallback product image",
-        isPrimary: true,
-      },
-    ];
+    return [];
   }
 
-  const normalizedImages = product.images.map((image, index) => {
-    if (typeof image === "string") {
-      return {
-        id: `${product.id}-image-${index + 1}`,
-        url: image,
-        name: `Product image ${index + 1}`,
-        alt: `Product image ${index + 1}`,
-        isPrimary: index === 0,
-        sortOrder: index,
-        uploadStatus: "uploaded",
-      } satisfies SellerProductImage;
-    }
+  const normalizedImages = product.images.reduce<SellerProductImage[]>((images, image, index) => {
+      if (typeof image === "string") {
+        const url = image.trim();
+        if (!url) return images;
 
-    return {
-      id: `${product.id}-image-${index + 1}`,
-      url: image.url,
-      name: image.alt?.trim() || `Product image ${index + 1}`,
-      alt: image.alt?.trim() || `Product image ${index + 1}`,
-      publicId: image.publicId ?? undefined,
-      isPrimary: image.isPrimary === true || index === 0,
-      sortOrder: image.sortOrder ?? index,
-      originalWidth: image.width ?? undefined,
-      originalHeight: image.height ?? undefined,
-      processedWidth: image.width ?? undefined,
-      processedHeight: image.height ?? undefined,
-      linkedVariantValue: image.linkedVariantValue ?? undefined,
-      uploadStatus: "uploaded",
-    } satisfies SellerProductImage;
-  });
+        images.push({
+          id: `${product.id}-image-${index + 1}`,
+          url,
+          name: `Product image ${index + 1}`,
+          alt: `Product image ${index + 1}`,
+          isPrimary: index === 0,
+          sortOrder: index,
+          uploadStatus: "uploaded",
+        });
+        return images;
+      }
+
+      const url = typeof image.url === "string" ? image.url.trim() : "";
+      if (!url) return images;
+
+      images.push({
+        id: `${product.id}-image-${index + 1}`,
+        url,
+        name: image.alt?.trim() || `Product image ${index + 1}`,
+        alt: image.alt?.trim() || `Product image ${index + 1}`,
+        publicId: image.publicId ?? undefined,
+        isPrimary: image.isPrimary === true || index === 0,
+        sortOrder: image.sortOrder ?? index,
+        originalWidth: image.width ?? undefined,
+        originalHeight: image.height ?? undefined,
+        processedWidth: image.width ?? undefined,
+        processedHeight: image.height ?? undefined,
+        linkedVariantValue: image.linkedVariantValue ?? undefined,
+        uploadStatus: "uploaded",
+      });
+      return images;
+    }, []);
+
+  if (normalizedImages.length === 0) {
+    return [];
+  }
 
   if (normalizedImages.some((image) => image.isPrimary)) {
     return normalizedImages;
@@ -904,7 +908,7 @@ function buildBackendProductPayload(
     title: input.title,
     description: input.description,
     price: input.price,
-    salePrice: input.salePrice,
+    salePrice: mode === "create" ? input.salePrice ?? undefined : input.salePrice,
     images: normalizePayloadImages(input.images),
     condition,
     category: mapLegacyCategory(normalizedCategoryName, normalizedCategorySlug, normalizedSubcategorySlug),
@@ -1094,15 +1098,23 @@ function mergeSellerProductEnrichment(
 
 function getStaticCategoryNameFromSlug(categorySlug?: string | null) {
   if (!categorySlug) return null;
-  const category = SELLER_CATALOG_CATEGORIES.find((item) => item.slug === categorySlug);
+  const category = SELLER_CATALOG_CATEGORIES.find((item) => slugsMatch(item.slug, categorySlug));
   return category?.name ?? null;
 }
 
 function getStaticSubcategoryNameFromSlug(categoryName: string, subcategorySlug?: string | null) {
   if (!subcategorySlug) return null;
   const category = getCategoryMetaByName(categoryName);
-  const subcategory = category.subcategories.find((item) => item.slug === subcategorySlug);
+  const subcategory = category.subcategories.find((item) => slugsMatch(item.slug, subcategorySlug));
   return subcategory?.name ?? null;
+}
+
+function slugsMatch(left: string, right: string) {
+  return normalizeComparableSlug(left) === normalizeComparableSlug(right);
+}
+
+function normalizeComparableSlug(value: string) {
+  return slugifySellerValue(value).replace(/(^|-)and(?=-|$)/g, "").replace(/-/g, "");
 }
 
 function humanizeLegacyCategory(category: BackendLegacyCategory) {

@@ -43,6 +43,8 @@ export function CategoryDrawer({
   onSelectOther,
   onSubmitCategory,
 }: CategoryDrawerProps) {
+  const canSelectOther = browsePath.length > 0;
+
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className="h-full w-full overflow-hidden border-l border-white/50 bg-white/80 p-0 shadow-[0_0_80px_rgba(15,23,42,0.18)] backdrop-blur-2xl sm:max-w-xl" showCloseButton>
@@ -77,7 +79,7 @@ export function CategoryDrawer({
             </div>
           ) : (
             <div className="space-y-2">
-              {currentLevel.map((node) => {
+              {currentLevel.length ? currentLevel.map((node) => {
                 const isLeaf = !node.children?.length;
                 const isSelected = pickerSelection && !pickerSelection.isOther && pickerSelection.path[pickerSelection.path.length - 1]?.id === node.id;
                 return (
@@ -91,16 +93,29 @@ export function CategoryDrawer({
                     {isLeaf ? <CheckCircle2 className={`h-4 w-4 ${isSelected ? "text-[#009E49]" : "text-zinc-300"}`} /> : <ChevronRight className="h-4 w-4 text-zinc-400" />}
                   </button>
                 );
-              })}
+              }) : (
+                <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/90 p-4 text-sm font-semibold text-zinc-600">
+                  No categories are available yet. Create them in admin before listing products here.
+                </div>
+              )}
               <button
                 type="button"
                 onClick={onSelectOther}
+                disabled={!canSelectOther}
                 className={`w-full rounded-2xl border border-dashed p-3 text-left transition ${
-                  pickerSelection?.isOther ? "border-amber-400 bg-amber-50 text-amber-900" : "border-amber-200 bg-amber-50/70 text-amber-800 hover:border-amber-400"
+                  pickerSelection?.isOther
+                    ? "border-amber-400 bg-amber-50 text-amber-900"
+                    : canSelectOther
+                      ? "border-amber-200 bg-amber-50/70 text-amber-800 hover:border-amber-400"
+                      : "border-zinc-200 bg-zinc-100 text-zinc-400"
                 }`}
               >
                 <span className="block text-sm font-black">Other</span>
-                <span className="mt-1 block text-xs font-semibold">Use when the exact category is missing under the current parent.</span>
+                <span className="mt-1 block text-xs font-semibold">
+                  {canSelectOther
+                    ? "Use when the exact category is missing under the current parent."
+                    : "Select a parent category first."}
+                </span>
               </button>
             </div>
           )}

@@ -1,5 +1,6 @@
 import { normalizeProduct } from "@/lib/normalizers/product";
 import { apiClient } from "@/services/api";
+import { getCategoryMetaBySlug } from "@/services/categories";
 import type {
   CategoryFilterOption,
   CategoryPageData,
@@ -8,87 +9,23 @@ import type {
 } from "@/types/category";
 import type { Product, ProductDetail } from "@/types/product";
 
-const CATEGORY_META: Record<string, CategoryPageData["meta"]> = {
-  "phones-and-tablets": {
-    title: "Phones And Tablets",
-    description: "Explore top smartphones, tablets, and accessories in Lusaka with fast delivery and trusted sellers.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "smartphones", slug: "smartphones", name: "Smartphones" },
-      { id: "tablets", slug: "tablets", name: "Tablets" },
-      { id: "accessories", slug: "accessories", name: "Accessories" },
-    ],
-  },
-  computing: {
-    title: "Computing",
-    description: "Discover laptops, desktops, and accessories for work, school, and everyday performance.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "laptops", slug: "laptops", name: "Laptops" },
-      { id: "desktops", slug: "desktops", name: "Desktops" },
-      { id: "accessories", slug: "accessories", name: "Accessories" },
-    ],
-  },
-  fashion: {
-    title: "Fashion",
-    description: "Shop premium fashion, footwear, and accessories curated for your style and everyday wear.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "mens-fashion", slug: "mens-fashion", name: "Men's" },
-      { id: "womens-fashion", slug: "womens-fashion", name: "Women's" },
-      { id: "footwear", slug: "footwear", name: "Footwear" },
-    ],
-  },
-  electronics: {
-    title: "Electronics",
-    description: "Find trending electronics, entertainment gear, and premium gadgets from trusted sellers.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "audio-and-headphones", slug: "audio-and-headphones", name: "Audio" },
-      { id: "tvs-and-entertainment", slug: "tvs-and-entertainment", name: "TVs" },
-      { id: "cameras", slug: "cameras", name: "Cameras" },
-    ],
-  },
-  supermarket: {
-    title: "Supermarket",
-    description: "Shop pantry staples, drinks, household essentials, and daily supplies with fast local delivery.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "pantry", slug: "pantry", name: "Pantry" },
-      { id: "household-essentials", slug: "household-essentials", name: "Household" },
-      { id: "drinks", slug: "drinks", name: "Drinks" },
-    ],
-  },
-  "health-and-beauty": {
-    title: "Health & Beauty",
-    description: "Discover skincare, wellness, grooming, and beauty essentials from trusted Zogular sellers.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "skincare", slug: "skincare", name: "Skincare" },
-      { id: "wellness", slug: "wellness", name: "Wellness" },
-      { id: "grooming", slug: "grooming", name: "Grooming" },
-    ],
-  },
-  "sports-and-outdoors": {
-    title: "Sports & Outdoors",
-    description: "Find fitness gear, outdoor essentials, and active lifestyle products for everyday movement.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "fitness", slug: "fitness", name: "Fitness" },
-      { id: "outdoor-gear", slug: "outdoor-gear", name: "Outdoor Gear" },
-      { id: "team-sports", slug: "team-sports", name: "Team Sports" },
-    ],
-  },
-  "home-and-living": {
-    title: "Home & Living",
-    description: "Upgrade your home with kitchen, decor, storage, and everyday living essentials.",
-    subcategories: [
-      { id: "all", slug: "all", name: "All" },
-      { id: "kitchen", slug: "kitchen", name: "Kitchen" },
-      { id: "decor", slug: "decor", name: "Decor" },
-      { id: "storage", slug: "storage", name: "Storage" },
-    ],
-  },
+const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
+  "phones-and-tablets":
+    "Explore top smartphones, tablets, and accessories in Lusaka with fast delivery and trusted sellers.",
+  computing:
+    "Discover laptops, desktops, and accessories for work, school, and everyday performance.",
+  fashion:
+    "Shop premium fashion, footwear, and accessories curated for your style and everyday wear.",
+  electronics:
+    "Find trending electronics, entertainment gear, and premium gadgets from trusted sellers.",
+  supermarket:
+    "Shop pantry staples, drinks, household essentials, and daily supplies with fast local delivery.",
+  "health-and-beauty":
+    "Discover skincare, wellness, grooming, and beauty essentials from trusted Zogular sellers.",
+  "sports-and-outdoors":
+    "Find fitness gear, outdoor essentials, and active lifestyle products for everyday movement.",
+  "home-and-living":
+    "Upgrade your home with kitchen, decor, storage, and everyday living essentials.",
 };
 
 const PRODUCT_IMAGE_PLACEHOLDER = "/file.svg";
@@ -130,16 +67,45 @@ type BackendReview = {
   rating?: number | null;
 };
 
+type BackendCategoryRef = {
+  id?: string | null;
+  name?: string | null;
+  slug?: string | null;
+  parentId?: string | null;
+};
+
+type BackendAttributeValue = {
+  id?: string | null;
+  attributeId?: string | null;
+  slug?: string | null;
+  name?: string | null;
+  value?: string | null;
+  attribute?: {
+    id?: string | null;
+    name?: string | null;
+    slug?: string | null;
+    type?: string | null;
+    isRequired?: boolean | null;
+    sortOrder?: number | null;
+  } | null;
+};
+
 type BackendProduct = {
   id?: string;
   slug?: string | null;
   title?: string | null;
   description?: string | null;
   price?: number | string | null;
+  salePrice?: number | string | null;
   images?: unknown;
   condition?: string | null;
   category?: string | null;
+  categoryRef?: BackendCategoryRef | null;
+  categorySlug?: string | null;
+  subcategorySlug?: string | null;
   location?: string | null;
+  sku?: string | null;
+  stock?: number | string | null;
   brand?: string | null;
   model?: string | null;
   ram?: string | null;
@@ -154,6 +120,7 @@ type BackendProduct = {
   views?: number | null;
   user?: BackendProductUser | null;
   reviews?: BackendReview[] | null;
+  attributeValues?: BackendAttributeValue[] | null;
 };
 
 type BackendProductListResponse = {
@@ -175,14 +142,14 @@ function titleFromSlug(slug: string): string {
     .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-function getCategoryMeta(slug: string): CategoryPageData["meta"] {
-  return (
-    CATEGORY_META[slug] ?? {
-      title: titleFromSlug(slug),
-      description: `Explore the best deals on ${titleFromSlug(slug).toLowerCase()} in Lusaka. Fast delivery, trusted sellers.`,
-      subcategories: [{ id: "all", slug: "all", name: "All" }],
-    }
-  );
+function getFallbackCategoryMeta(slug: string): CategoryPageData["meta"] {
+  return {
+    title: titleFromSlug(slug),
+    description:
+      CATEGORY_DESCRIPTION_FALLBACKS[slug] ??
+      `Explore the best deals on ${titleFromSlug(slug).toLowerCase()} in Lusaka. Fast delivery, trusted sellers.`,
+    subcategories: [{ id: "all", slug: "all", name: "All" }],
+  };
 }
 
 function asString(value: unknown): string | undefined {
@@ -209,13 +176,33 @@ function parseBackendImages(value: unknown): string[] {
   }
   if (!Array.isArray(candidate)) return [];
   return candidate
-    .map((item) => asString(item))
+    .map((item) => {
+      if (typeof item === "string") return asString(item);
+      if (item && typeof item === "object" && "url" in item) {
+        return asString((item as { url?: unknown }).url);
+      }
+      return undefined;
+    })
     .filter((item): item is string => Boolean(item));
 }
 
 function getBackendCategoryMeta(category?: string | null) {
   const key = asString(category)?.toUpperCase() ?? "OTHERS";
   return FRONTEND_CATEGORY_BY_BACKEND[key] ?? FRONTEND_CATEGORY_BY_BACKEND.OTHERS;
+}
+
+function getProductCategoryMeta(product: BackendProduct) {
+  const categoryRefName = asString(product.categoryRef?.name);
+  const categoryRefSlug = asString(product.categoryRef?.slug);
+  if (categoryRefName && categoryRefSlug) {
+    return { name: categoryRefName, slug: categoryRefSlug };
+  }
+
+  const fallback = getBackendCategoryMeta(product.category);
+  return {
+    name: categoryRefName ?? fallback.name,
+    slug: categoryRefSlug ?? fallback.slug,
+  };
 }
 
 function getBackendCategoryForSlug(slug: string): string | undefined {
@@ -251,12 +238,37 @@ function normalizeToSlug(value: string): string {
     .replace(/\s+/g, "-");
 }
 
+function getDisplayPricing(product: BackendProduct) {
+  const regularPrice = toNumber(product.price);
+  const salePrice = toNumber(product.salePrice, Number.NaN);
+  const hasSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < regularPrice;
+
+  return {
+    currentPrice: hasSalePrice ? salePrice : regularPrice,
+    originalPrice: hasSalePrice ? regularPrice : null,
+    discount: hasSalePrice ? Math.round(((regularPrice - salePrice) / regularPrice) * 100) : null,
+  };
+}
+
+function normalizeAttributeValues(product: BackendProduct): ProductDetail["specs"] {
+  if (!Array.isArray(product.attributeValues)) return [];
+
+  return product.attributeValues
+    .map((attribute) => {
+      const label = asString(attribute.name) ?? asString(attribute.attribute?.name);
+      const value = asString(attribute.value);
+      return label && value ? { label, value } : null;
+    })
+    .filter((spec): spec is ProductDetail["specs"][number] => Boolean(spec));
+}
+
 function normalizeBackendProduct(product: BackendProduct): Product {
   const title = asString(product.title) ?? titleFromSlug(asString(product.slug) ?? "product");
   const slug = asString(product.slug) ?? normalizeToSlug(title);
-  const category = getBackendCategoryMeta(product.category);
+  const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
   const reviews = product.reviews?.length ?? 0;
+  const pricing = getDisplayPricing(product);
 
   return normalizeProduct({
     id: asString(product.id) ?? slug,
@@ -264,9 +276,13 @@ function normalizeBackendProduct(product: BackendProduct): Product {
     title,
     name: title,
     categoryName: category.name,
-    price: toNumber(product.price),
-    originalPrice: null,
-    badge: isRecentProduct(product.createdAt) ? "New" : null,
+    subcategoryName: asString(product.subcategorySlug)
+      ? titleFromSlug(asString(product.subcategorySlug)!)
+      : undefined,
+    price: pricing.currentPrice,
+    originalPrice: pricing.originalPrice,
+    discount: pricing.discount,
+    badge: pricing.discount ? `${pricing.discount}% OFF` : isRecentProduct(product.createdAt) ? "New" : null,
     isNew: isRecentProduct(product.createdAt),
     rating: getAverageRating(product.reviews),
     reviews,
@@ -344,8 +360,10 @@ async function fetchBackendProductCollection(
 }
 
 function buildBackendProductSpecs(product: BackendProduct): ProductDetail["specs"] {
-  return [
-    { label: "Category", value: getBackendCategoryMeta(product.category).name },
+  const attributeSpecs = normalizeAttributeValues(product);
+  const existingLabels = new Set(attributeSpecs.map((spec) => spec.label.trim().toLowerCase()));
+  const legacySpecs = [
+    { label: "Category", value: getProductCategoryMeta(product).name },
     { label: "Condition", value: asString(product.condition) ?? "Seller provided" },
     { label: "Location", value: asString(product.location) ?? "Confirmed at checkout" },
     { label: "Brand", value: asString(product.brand) ?? "Not specified" },
@@ -354,7 +372,9 @@ function buildBackendProductSpecs(product: BackendProduct): ProductDetail["specs
     { label: "Storage", value: asString(product.storage) ?? "Not specified" },
     { label: "Size", value: asString(product.size) ?? "Not specified" },
     { label: "Color", value: asString(product.color) ?? "Not specified" },
-  ].filter((spec) => spec.value !== "Not specified");
+  ].filter((spec) => spec.value !== "Not specified" && !existingLabels.has(spec.label.toLowerCase()));
+
+  return [...attributeSpecs, ...legacySpecs];
 }
 
 function buildBackendProductVariants(product: BackendProduct): ProductDetail["variants"] {
@@ -365,19 +385,14 @@ function buildBackendProductVariants(product: BackendProduct): ProductDetail["va
     asString(product.size)
       ? { id: "size", label: "Size", value: asString(product.size)!, swatchClass: "bg-zinc-100 border-[#FF6B00]" }
       : null,
-    asString(product.condition)
-      ? { id: "condition", label: "Condition", value: asString(product.condition)!, swatchClass: "bg-zinc-200 border-[#FF6B00]" }
-      : null,
   ].filter((variant): variant is ProductDetail["variants"][number] => Boolean(variant));
 
-  return variants.length
-    ? variants
-    : [{ id: "standard", label: "Option", value: "Standard", swatchClass: "bg-white border-[#FF6B00]" }];
+  return variants;
 }
 
 function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
   const summary = normalizeBackendProduct(product);
-  const category = getBackendCategoryMeta(product.category);
+  const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
   const title = summary.title ?? summary.name ?? titleFromSlug(summary.slug);
   const sellerName = [product.user?.firstName, product.user?.lastName]
@@ -392,8 +407,15 @@ function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
     title,
     brand,
     category: { name: category.name, href: `/category/${category.slug}` },
-    subcategory: { name: category.name, href: `/category/${category.slug}` },
-    sku: `ZM-${String(summary.id).replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase() || "ITEM"}`,
+    subcategory: {
+      name: asString(product.subcategorySlug)
+        ? titleFromSlug(asString(product.subcategorySlug)!)
+        : category.name,
+      href: asString(product.subcategorySlug)
+        ? `/category/${category.slug}?subcategory=${asString(product.subcategorySlug)!}`
+        : `/category/${category.slug}`,
+    },
+    sku: asString(product.sku) ?? `ZM-${String(summary.id).replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase() || "ITEM"}`,
     price: summary.price,
     originalPrice: summary.originalPrice ?? summary.price,
     rating: summary.rating,
@@ -407,7 +429,7 @@ function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
       positiveRate: "Platform seller",
       followers: asString(product.location) ?? "Zambia",
     },
-    stock: product.isSold ? 0 : 99,
+    stock: product.isSold ? 0 : toNumber(product.stock, 0),
     shippingText: "Delivery options and exact availability are confirmed at checkout.",
     images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
     variants: buildBackendProductVariants(product),
@@ -456,10 +478,10 @@ export async function getTrendingProducts(): Promise<Product[]> {
 
 export async function getFlashSaleProducts(): Promise<Product[]> {
   const backendProducts = await fetchBackendProductCollection("/products", {
-    limit: 8,
-    sort: "price_asc",
+    limit: 50,
+    sort: "newest",
   });
-  return backendProducts ?? [];
+  return backendProducts?.filter((product) => (product.discount ?? 0) > 0).slice(0, 8) ?? [];
 }
 
 export async function getCategoryPageData(
@@ -472,36 +494,49 @@ export async function getCategoryPageData(
     pageSize?: number;
   } = {},
 ): Promise<CategoryPageData> {
-  const backendCategory = getBackendCategoryForSlug(slug);
   const activeFilter = options.filter ?? "all";
   const activeSort = options.sort ?? "recommended";
   const activePage = options.page ?? 1;
   const activePageSize = options.pageSize ?? 50;
   const backendPriceQuery = getBackendPriceQuery(activeFilter);
+  const activeSubcategory =
+    options.subcategory && options.subcategory !== "all"
+      ? options.subcategory
+      : undefined;
+  const meta = await getCategoryMetaBySlug(slug).catch(() => getFallbackCategoryMeta(slug));
 
-  if (backendCategory) {
-    const backendData = await fetchBackendProducts({
-      category: backendCategory,
+  const backendData =
+    (await fetchBackendProducts({
+      categorySlug: slug,
+      subcategorySlug: activeSubcategory,
       sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
       page: activePage,
       limit: activePageSize,
       ...backendPriceQuery,
-    });
+    })) ??
+    (getBackendCategoryForSlug(slug)
+      ? await fetchBackendProducts({
+          category: getBackendCategoryForSlug(slug),
+          sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
+          page: activePage,
+          limit: activePageSize,
+          ...backendPriceQuery,
+        })
+      : null);
 
-    if (backendData) {
-      return {
-        slug,
-        meta: getCategoryMeta(slug),
-        products: backendData.products,
-        pagination: backendData.pagination,
-      };
-    }
+  if (backendData) {
+    return {
+      slug,
+      meta,
+      products: backendData.products,
+      pagination: backendData.pagination,
+    };
   }
 
   // Fallback to empty if not found
   return {
     slug,
-    meta: getCategoryMeta(slug),
+    meta,
     products: [],
     pagination: {
       page: 1,
@@ -554,6 +589,20 @@ export async function getSearchableProducts(): Promise<Product[]> {
     limit: 100,
     sort: "newest",
   });
+  return backendData?.products ?? [];
+}
+
+export async function searchProducts(query: string, limit = 24): Promise<Product[]> {
+  const trimmedQuery = query.trim();
+  if (!trimmedQuery) return [];
+
+  const backendData = await fetchBackendProducts({
+    page: 1,
+    limit,
+    sort: "newest",
+    search: trimmedQuery,
+  });
+
   return backendData?.products ?? [];
 }
 

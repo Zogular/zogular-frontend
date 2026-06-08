@@ -5,6 +5,7 @@ import {
   updateAdminCatalogProductStatus,
   type SellerProductListing,
 } from "@/services/seller-catalog";
+import { apiClient } from "@/services/api";
 import {
   type ProductModerationAction,
   type ProductModerationSignals,
@@ -35,6 +36,10 @@ export interface AdminProductRecord extends ProductModerationSignals {
 export interface AdminProductReviewInput {
   action: ProductModerationAction;
   note?: string;
+}
+
+interface AdminBulkModerationResult {
+  count: number;
 }
 
 export const adminProductsApi = {
@@ -72,6 +77,35 @@ export const adminProductsApi = {
     const backendStatus = status === "published" ? "PUBLISHED" : status === "suspended" ? "SUSPENDED" : status.toUpperCase();
     const updated = await updateAdminCatalogProductStatus(productId, backendStatus);
     return toAdminProductRecord(updated);
+  },
+
+  async bulkReviewProducts(
+    productIds: string[],
+    input: AdminProductReviewInput,
+  ): Promise<AdminBulkModerationResult> {
+    if (input.action === "approve") {
+      const response = await apiClient<{ data?: { count?: number } }>("/admin/products/bulk-approve", {
+        method: "POST",
+        body: JSON.stringify({ productIds }),
+        csrf: true,
+      });
+
+      return { count: response.data?.count ?? 0 };
+    }
+
+    const reason =
+      input.note?.trim() ||
+      (input.action === "request_changes"
+        ? "Admin requested changes before approval."
+        : "Product rejected during bulk moderation.");
+
+    const response = await apiClient<{ data?: { count?: number } }>("/admin/products/bulk-reject", {
+      method: "POST",
+      body: JSON.stringify({ productIds, reason }),
+      csrf: true,
+    });
+
+    return { count: response.data?.count ?? 0 };
   },
 };
 

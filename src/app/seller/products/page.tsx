@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/action-menu";
 import { toast } from "sonner";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 import {
   duplicateSellerProduct,
   fetchSellerCatalogProducts,
@@ -336,6 +337,7 @@ export default function SellerProductsPage() {
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState<ProductTab>("all");
   const [categoryFilter, setCategoryFilter] = useState("all");
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
 
   const sellerStatus = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
@@ -628,7 +630,7 @@ export default function SellerProductsPage() {
       </div>
 
         {/* 4. FILTERS & SEARCH */}
-        <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200/60 bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] md:flex-row relative z-30">
+      <div className="flex flex-col gap-3 rounded-2xl border border-zinc-200/60 bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] md:flex-row relative z-30">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
             <Input
@@ -645,6 +647,12 @@ export default function SellerProductsPage() {
             categories={categories} 
           />
       </div>
+
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
 
       {/* 5. PRODUCT LIST (Desktop Table / Mobile Stack) */}
       <div className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
@@ -705,24 +713,86 @@ export default function SellerProductsPage() {
                   />
                 </div>
 
-                {/* Mobile View Additions */}
-                <div className="flex items-center justify-between border-t border-zinc-100 pt-3 mt-1 md:hidden">
-                  <div className="text-sm font-black text-zinc-900">{formatCurrency(product.salePrice ?? product.price)}</div>
-                  <div className="flex items-center gap-2">
-                    <StockBadge product={product} />
-                    <ListingStatusBadge status={product.status} />
-                    <ProductActionMenu
-                      product={product}
-                      onEdit={editProduct}
-                      onView={viewProduct}
-                      onDuplicate={duplicateProduct}
-                      onSubmitForReview={submitProductForReview}
-                      onWithdrawReview={withdrawProductReview}
-                      onUnpublish={unpublishProduct}
-                      onRemove={removeProduct}
-                    />
+                {mobileView === "list" ? (
+                  <div className="mt-1 border-t border-zinc-100 pt-2.5 md:hidden">
+                    <div className="flex items-start justify-end gap-2">
+                      <ProductActionMenu
+                        product={product}
+                        onEdit={editProduct}
+                        onView={viewProduct}
+                        onDuplicate={duplicateProduct}
+                        onSubmitForReview={submitProductForReview}
+                        onWithdrawReview={withdrawProductReview}
+                        onUnpublish={unpublishProduct}
+                        onRemove={removeProduct}
+                      />
+                    </div>
+
+                    <div className="mt-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Price</span>
+                        <span>{formatCurrency(product.salePrice ?? product.price)}</span>
+                      </span>
+                      <span className="inline-flex items-center gap-1">
+                        <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Stock</span>
+                        <span>{product.stock}</span>
+                      </span>
+                    </div>
+
+                    <div className="mt-2 flex items-center justify-between gap-2">
+                      <StockBadge product={product} />
+                      <ListingStatusBadge status={product.status} />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="md:hidden">
+                    <div className="rounded-[1.35rem] border border-zinc-200/80 bg-zinc-50/80 p-3">
+                      <div className="flex items-start justify-end gap-3">
+                        <ListingStatusBadge status={product.status} />
+                      </div>
+
+                      <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-white/80 px-3">
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-zinc-100 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Category</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{product.categoryName}</span>
+                        </div>
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-zinc-100 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Price</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{formatCurrency(product.salePrice ?? product.price)}</span>
+                        </div>
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 border-b border-zinc-100 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">Stock</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{product.stock} units</span>
+                        </div>
+                        <div className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2">
+                          <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">SKU</span>
+                          <span className="truncate text-right text-[11px] font-bold text-zinc-900">{product.id}</span>
+                        </div>
+                      </div>
+
+                      <div className="mt-2.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => viewProduct(product)}
+                          className="h-9 rounded-xl border-zinc-200 bg-white text-[11px] font-bold text-zinc-700 hover:bg-zinc-900 hover:text-white"
+                        >
+                          View
+                        </Button>
+                        <ProductActionMenu
+                          product={product}
+                          onEdit={editProduct}
+                          onView={viewProduct}
+                          onDuplicate={duplicateProduct}
+                          onSubmitForReview={submitProductForReview}
+                          onWithdrawReview={withdrawProductReview}
+                          onUnpublish={unpublishProduct}
+                          onRemove={removeProduct}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>

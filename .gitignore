@@ -51,3 +51,7 @@ playwright-report/
 screenshots/
 videos/
 traces/
+
+*-test.js
+e2e-*.js
+output/

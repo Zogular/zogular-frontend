@@ -2,7 +2,7 @@
 
 import type { ReactNode } from "react";
 import { useEffect, useMemo, useState } from "react";
-import { AlertTriangle, CheckCircle2, Package, Search, ShieldAlert, Store } from "lucide-react";
+import { AlertTriangle, CheckCircle2, LayoutGrid, Package, Rows3, Search, ShieldAlert, Store } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
@@ -47,6 +47,8 @@ export default function AdminProductsPage() {
   const [products, setProducts] = useState<AdminProductRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [mobileView, setMobileView] = useState<"list" | "grid">("list");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
@@ -75,9 +77,13 @@ export default function AdminProductsPage() {
   }, []);
 
   const filteredProducts = useMemo(() => {
+    let filtered = products;
+    if (statusFilter !== "all") {
+      filtered = filtered.filter((product) => product.status === statusFilter);
+    }
     const query = search.trim().toLowerCase();
-    if (!query) return products;
-    return products.filter((product) => {
+    if (!query) return filtered;
+    return filtered.filter((product) => {
       return (
         product.name.toLowerCase().includes(query) ||
         product.sellerStore.toLowerCase().includes(query) ||
@@ -85,7 +91,7 @@ export default function AdminProductsPage() {
         product.categoryName.toLowerCase().includes(query)
       );
     });
-  }, [products, search]);
+  }, [products, search, statusFilter]);
 
   const summary = useMemo(() => {
     return {
@@ -95,6 +101,23 @@ export default function AdminProductsPage() {
       flagged: products.filter((product) => product.flags > 0).length,
     };
   }, [products]);
+
+  const filteredProductIds = useMemo(
+    () => filteredProducts.map((product) => product.sellerProductId),
+    [filteredProducts],
+  );
+  const allFilteredSelected =
+    filteredProductIds.length > 0 &&
+    filteredProductIds.every((id) => selectedProductIds.includes(id));
+  const selectedPendingCount = useMemo(
+    () =>
+      products.filter(
+        (product) =>
+          selectedProductIds.includes(product.sellerProductId) &&
+          product.status === "pending_review",
+      ).length,
+    [products, selectedProductIds],
+  );
 
 
 
@@ -113,20 +136,36 @@ export default function AdminProductsPage() {
     try {
       setIsSubmitting(true);
       const selectedProducts = products.filter((product) => selectedProductIds.includes(product.sellerProductId));
-      const updatedProducts = await Promise.all(selectedProducts.map((product) => adminProductsApi.reviewProduct(product.sellerProductId, {
-        action,
-        note: `Bulk ${action} action by admin.`,
-      })));
+      const eligibleProducts = selectedProducts.filter((product) => product.status === "pending_review");
+
+      if (eligibleProducts.length === 0) {
+        toast.error("Bulk moderation only works for products that are still pending review.");
+        return;
+      }
+
+      const note =
+        action === "approve"
+          ? "Bulk approval by admin."
+          : action === "request_changes"
+            ? "Bulk changes request by admin."
+            : "Bulk rejection by admin.";
+
+      const result = await adminProductsApi.bulkReviewProducts(
+        eligibleProducts.map((product) => product.sellerProductId),
+        { action, note },
+      );
+
+      const refreshedProducts = await adminProductsApi.fetchProducts();
       await recordAdminAudit({
         actorId: CURRENT_ADMIN_IDENTITY.id,
         action: `product_bulk_${action}`,
-        target: `${selectedProducts.length} products`,
+        target: `${eligibleProducts.length} products`,
         severity: "warning",
-        note: `Bulk ${action} action by admin.`,
+        note,
       });
-      setProducts((current) => current.map((product) => updatedProducts.find((updated) => updated.sellerProductId === product.sellerProductId) ?? product));
+      setProducts(refreshedProducts);
       setSelectedProductIds([]);
-      toast.success(`${selectedProducts.length} products updated.`);
+      toast.success(`${result.count} products updated.`);
     } catch {
       toast.error("Failed to run bulk moderation.");
     } finally {
@@ -170,7 +209,7 @@ export default function AdminProductsPage() {
   }
 
   return (
-    <div className="mx-auto max-w-[88rem] animate-in space-y-6 pb-12 fade-in slide-in-from-bottom-4 duration-500">
+    <div className="mx-auto max-w-[88rem] animate-in space-y-5 pb-10 fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Product Moderation</h1>
@@ -180,7 +219,7 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3 lg:grid-cols-4">
         <SummaryCard
           title="Published"
           value={summary.published}
@@ -211,38 +250,298 @@ export default function AdminProductsPage() {
         />
       </div>
 
-      <div className="rounded-3xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5 backdrop-blur-xl">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-        <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-          <Input
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            placeholder="Search product, seller, category, or ID..."
-            className="h-11 rounded-xl border-zinc-200 bg-zinc-50 pl-9 text-sm font-medium shadow-inner focus-visible:ring-zinc-900"
-          />
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="rounded-xl bg-zinc-100 px-3 py-2 text-xs font-black text-zinc-600">{selectedProductIds.length} selected</span>
-          <Button disabled={isSubmitting || selectedProductIds.length === 0} onClick={() => handleBulkModeration("approve")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">Bulk approve</Button>
-          <Button disabled={isSubmitting || selectedProductIds.length === 0} onClick={() => handleBulkModeration("request_changes")} variant="outline" className="rounded-xl font-black">Bulk changes</Button>
-          <Button disabled={isSubmitting || selectedProductIds.length === 0} onClick={() => handleBulkModeration("reject")} variant="destructive" className="rounded-xl font-black">Bulk reject</Button>
-        </div>
+      <div className="rounded-[1.75rem] border border-white/70 bg-white/75 p-2.5 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:p-3.5">
+        <div className="flex flex-col gap-2.5 lg:flex-row lg:items-center lg:justify-between">
+          <div className="grid flex-1 gap-2 min-[540px]:grid-cols-[152px_minmax(0,1fr)]">
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-9 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-xs font-bold shadow-inner outline-none focus-visible:ring-1 focus-visible:ring-zinc-900 md:h-10 md:text-sm"
+            >
+              <option value="all">All Statuses</option>
+              <option value="pending_review">Pending Review</option>
+              <option value="needs_changes">Needs Changes</option>
+              <option value="published">Published</option>
+              <option value="approved">Approved</option>
+              <option value="suspended">Suspended</option>
+              <option value="rejected">Rejected</option>
+            </select>
+            <div className="relative min-w-0">
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
+              <Input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search product, seller, category, or ID..."
+                className="h-9 w-full rounded-xl border-zinc-200 bg-zinc-50 pl-9 text-xs font-medium shadow-inner focus-visible:ring-zinc-900 md:h-10 md:text-sm"
+              />
+            </div>
+          </div>
+          <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-1 md:hidden">
+            <span className="pl-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">View</span>
+            <div className="grid grid-cols-2 gap-1">
+              <Button
+                type="button"
+                variant={mobileView === "list" ? "default" : "ghost"}
+                onClick={() => setMobileView("list")}
+                className={cn(
+                  "h-8 rounded-xl px-3 text-[11px] font-black",
+                  mobileView === "list"
+                    ? "bg-zinc-950 text-white hover:bg-zinc-900"
+                    : "text-zinc-600 hover:bg-white",
+                )}
+              >
+                <Rows3 className="mr-1.5 h-3.5 w-3.5" />
+                List
+              </Button>
+              <Button
+                type="button"
+                variant={mobileView === "grid" ? "default" : "ghost"}
+                onClick={() => setMobileView("grid")}
+                className={cn(
+                  "h-8 rounded-xl px-3 text-[11px] font-black",
+                  mobileView === "grid"
+                    ? "bg-zinc-950 text-white hover:bg-zinc-900"
+                    : "text-zinc-600 hover:bg-white",
+                )}
+              >
+                <LayoutGrid className="mr-1.5 h-3.5 w-3.5" />
+                Grid
+              </Button>
+            </div>
+          </div>
+          <div className="flex flex-col gap-2 min-[540px]:flex-row min-[540px]:items-center min-[540px]:justify-between lg:flex-none lg:justify-end">
+            <div className="flex items-center justify-center gap-2 rounded-2xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-600 min-[540px]:justify-start">
+              <span>{selectedProductIds.length} selected</span>
+              <span className="h-1 w-1 rounded-full bg-zinc-300" />
+              <span>{selectedPendingCount} pending</span>
+            </div>
+            <div className="grid grid-cols-3 gap-2 min-[540px]:flex min-[540px]:flex-wrap">
+              <Button
+                disabled={isSubmitting || selectedProductIds.length === 0}
+                onClick={() => handleBulkModeration("approve")}
+                className="h-9 rounded-xl bg-emerald-600 px-3 text-[11px] font-black text-white hover:bg-emerald-700 md:h-10"
+              >
+                Approve
+              </Button>
+              <Button
+                disabled={isSubmitting || selectedProductIds.length === 0}
+                onClick={() => handleBulkModeration("request_changes")}
+                variant="outline"
+                className="h-9 rounded-xl px-3 text-[11px] font-black md:h-10"
+              >
+                Changes
+              </Button>
+              <Button
+                disabled={isSubmitting || selectedProductIds.length === 0}
+                onClick={() => handleBulkModeration("reject")}
+                variant="destructive"
+                className="h-9 rounded-xl px-3 text-[11px] font-black md:h-10"
+              >
+                Reject
+              </Button>
+            </div>
+          </div>
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl">
+      <div className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-2 min-[430px]:grid-cols-2" : "space-y-2.5")}>
+        {filteredProducts.length === 0 ? (
+          <div className={cn("rounded-3xl border border-white/70 bg-white/75 px-4 py-10 text-center shadow-md shadow-zinc-900/5 backdrop-blur-xl", mobileView === "grid" && "col-span-2")}>
+            <p className="text-sm font-bold text-zinc-500">No products match your search.</p>
+          </div>
+        ) : (
+          filteredProducts.map((product) => {
+            const statusUi = STATUS_UI[product.status];
+            const isGridView = mobileView === "grid";
+            return (
+              <article
+                key={product.sellerProductId}
+                className={cn(
+                  "border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(247,248,250,0.94))] backdrop-blur-2xl",
+                  isGridView
+                    ? "rounded-[1.55rem] p-3 shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    : "rounded-[1.35rem] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]",
+                )}
+              >
+                {isGridView ? (
+                  <div className="space-y-2.5">
+                    <div className="flex items-start gap-2.5">
+                      <input
+                        type="checkbox"
+                        aria-label={`Select ${product.name}`}
+                        checked={selectedProductIds.includes(product.sellerProductId)}
+                        onChange={() => toggleProductSelection(product.sellerProductId)}
+                        className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 accent-[#009E49]"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2.5">
+                          <div className="min-w-0">
+                            <p className="line-clamp-2 text-[13px] font-black leading-5 text-zinc-950">
+                              {product.name}
+                            </p>
+                            <p className="mt-1 flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                              <Store className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{product.sellerStore}</span>
+                            </p>
+                          </div>
+                          <span className={cn("shrink-0 rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em]", statusUi.bg, statusUi.text, statusUi.border)}>
+                            {getProductModerationStatusLabel(product.status)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[1.2rem] border border-zinc-200/80 bg-zinc-50/90 px-3">
+                      <GridDetailRow label="Category" value={product.categoryName} />
+                      <GridDetailRow label="Submitted" value={formatDate(product.submittedAt)} />
+                      <GridDetailRow label="Price" value={formatCurrency(product.price)} />
+                      <GridDetailRow label="Stock" value={`${product.stock} units`} isLast />
+                    </div>
+
+                    {product.flags > 0 ? (
+                      <p className="flex items-center gap-1 text-[10px] font-bold text-rose-600">
+                        <ShieldAlert className="h-3.5 w-3.5" />
+                        {product.flags} moderation signals
+                      </p>
+                    ) : null}
+
+                    <div className={cn("grid gap-2", product.status === "approved" || product.status === "published" ? "grid-cols-2" : "grid-cols-1")}>
+                      <Button
+                        onClick={() => openReview(product)}
+                        variant="outline"
+                        size="sm"
+                        className="h-9 rounded-xl border-zinc-200 bg-white text-[11px] font-bold text-zinc-700 shadow-sm hover:bg-zinc-900 hover:text-white"
+                      >
+                        {product.status === "pending_review" ? "Review" : "View"}
+                      </Button>
+                      {product.status === "approved" ? (
+                        <Button
+                          onClick={() => handlePublishState(product, "published")}
+                          size="sm"
+                          className="h-9 rounded-xl bg-emerald-600 px-3 text-[11px] font-bold text-white hover:bg-emerald-700"
+                        >
+                          Publish
+                        </Button>
+                      ) : null}
+                      {product.status === "published" ? (
+                        <Button
+                          onClick={() => handlePublishState(product, "suspended")}
+                          size="sm"
+                          variant="destructive"
+                          className="h-9 rounded-xl px-3 text-[11px] font-bold"
+                        >
+                          Suspend
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-[auto_minmax(0,1fr)] items-start gap-2.5">
+                    <input
+                      type="checkbox"
+                      aria-label={`Select ${product.name}`}
+                      checked={selectedProductIds.includes(product.sellerProductId)}
+                      onChange={() => toggleProductSelection(product.sellerProductId)}
+                      className="mt-0.5 h-4 w-4 rounded border-zinc-300 accent-[#009E49]"
+                    />
+                    <div className="min-w-0 flex-1">
+                      <>
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="line-clamp-1 text-[13px] font-black leading-5 text-zinc-950">
+                              {product.name}
+                            </p>
+                            <p className="mt-0.5 flex items-center gap-1 text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">
+                              <Store className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{product.sellerStore}</span>
+                            </p>
+                          </div>
+                          <span className={cn("shrink-0 rounded-lg border px-2 py-1 text-[9px] font-black uppercase tracking-[0.14em]", statusUi.bg, statusUi.text, statusUi.border)}>
+                            {getProductModerationStatusLabel(product.status)}
+                          </span>
+                        </div>
+
+                        <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                          <ListInlineMetric label="Category" value={product.categoryName} />
+                          <ListInlineMetric label="Submitted" value={formatDate(product.submittedAt)} />
+                          <ListInlineMetric label="Price" value={formatCurrency(product.price)} />
+                          <ListInlineMetric label="Stock" value={`${product.stock} units`} />
+                        </div>
+
+                        {product.flags > 0 ? (
+                          <p className="mt-1 flex items-center gap-1 text-[10px] font-bold text-rose-600">
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            {product.flags} moderation signals
+                          </p>
+                        ) : null}
+
+                        <div className={cn("mt-1.5 flex items-center gap-2", product.status === "approved" || product.status === "published" ? "justify-between" : "justify-start")}>
+                          <Button
+                            onClick={() => openReview(product)}
+                            variant="outline"
+                            size="sm"
+                            className="h-8 rounded-xl border-zinc-200 bg-white px-3 text-[10px] font-bold text-zinc-700 shadow-sm hover:bg-zinc-900 hover:text-white"
+                          >
+                            {product.status === "pending_review" ? "Review" : "View"}
+                          </Button>
+                          {product.status === "approved" ? (
+                            <Button
+                              onClick={() => handlePublishState(product, "published")}
+                              size="sm"
+                              className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-bold text-white hover:bg-emerald-700"
+                            >
+                              Publish
+                            </Button>
+                          ) : product.status === "published" ? (
+                            <Button
+                              onClick={() => handlePublishState(product, "suspended")}
+                              size="sm"
+                              variant="destructive"
+                              className="h-8 rounded-xl px-3 text-[10px] font-bold"
+                            >
+                              Suspend
+                            </Button>
+                          ) : null}
+                        </div>
+                      </>
+                    </div>
+                  </div>
+                )}
+              </article>
+            );
+          })
+        )}
+      </div>
+
+      <div className="hidden overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:block">
         <div className="overflow-x-auto hide-scrollbar">
           <table className="min-w-[1080px] w-full text-left text-sm">
             <thead className="border-b border-zinc-100 bg-zinc-100/80 backdrop-blur-sm">
               <tr>
-                <th className="rounded-tl-2xl p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-zinc-500">Select</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Product & Seller</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Status</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Category</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Submitted</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Price & Stock</th>
-                <th className="rounded-tr-2xl p-4 pr-6 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500">Action</th>
+                <th className="rounded-tl-2xl p-3 pl-4">
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={allFilteredSelected}
+                      onChange={(e) => {
+                        if (e.target.checked) {
+                          setSelectedProductIds(Array.from(new Set([...selectedProductIds, ...filteredProductIds])));
+                        } else {
+                          const visibleIds = new Set(filteredProductIds);
+                          setSelectedProductIds(selectedProductIds.filter(id => !visibleIds.has(id)));
+                        }
+                      }}
+                      className="h-4 w-4 rounded border-zinc-300 text-emerald-600 focus:ring-emerald-600"
+                    />
+                    <span className="text-[10px] font-black uppercase tracking-wider text-zinc-500">All</span>
+                  </div>
+                </th>
+                <th className="p-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">Product & Seller</th>
+                <th className="p-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">Status</th>
+                <th className="p-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">Category</th>
+                <th className="p-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">Submitted</th>
+                <th className="p-3 text-[10px] font-black uppercase tracking-wider text-zinc-500">Price & Stock</th>
+                <th className="rounded-tr-2xl p-3 pr-4 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-50">
@@ -257,7 +556,7 @@ export default function AdminProductsPage() {
                   const statusUi = STATUS_UI[product.status];
                   return (
                     <tr key={product.sellerProductId} className="group transition-colors hover:bg-amber-50/35">
-                      <td className="p-4 pl-6">
+                      <td className="p-3 pl-4">
                         <input
                           type="checkbox"
                           aria-label={`Select ${product.name}`}
@@ -266,13 +565,13 @@ export default function AdminProductsPage() {
                           className="h-4 w-4 rounded border-zinc-300 accent-[#009E49]"
                         />
                       </td>
-                      <td className="p-4">
+                      <td className="p-3">
                         <p className="font-bold text-zinc-900 transition-colors group-hover:text-amber-700">{product.name}</p>
                         <p className="mt-1 flex items-center text-[10px] font-bold text-zinc-500">
                           <Store className="mr-1 h-3 w-3" /> {product.sellerStore} • {product.id}
                         </p>
                       </td>
-                      <td className="p-4">
+                      <td className="p-3">
                         <span className={cn("inline-flex rounded-lg border px-2.5 py-1 text-[10px] font-black uppercase tracking-wider", statusUi.bg, statusUi.text, statusUi.border)}>
                           {getProductModerationStatusLabel(product.status)}
                         </span>
@@ -282,7 +581,7 @@ export default function AdminProductsPage() {
                           </p>
                         ) : null}
                       </td>
-                      <td className="p-4">
+                      <td className="p-3">
                         <p className="font-bold text-zinc-900">{product.categoryName}</p>
                         <p className="text-[10px] font-medium text-zinc-500">{product.subcategoryName}</p>
                         <select
@@ -297,12 +596,12 @@ export default function AdminProductsPage() {
                           <option value="Healthcare & Beauty">Healthcare & Beauty</option>
                         </select>
                       </td>
-                      <td className="p-4 text-xs font-bold text-zinc-600">{formatDate(product.submittedAt)}</td>
-                      <td className="p-4">
+                      <td className="p-3 text-xs font-bold text-zinc-600">{formatDate(product.submittedAt)}</td>
+                      <td className="p-3">
                         <p className="font-black text-zinc-900">{formatCurrency(product.price)}</p>
                         <p className="text-[10px] font-bold text-zinc-500">{product.stock} units</p>
                       </td>
-                      <td className="p-4 pr-6 text-right">
+                      <td className="p-3 pr-4 text-right">
                         <Button
                           onClick={() => openReview(product)}
                           variant="outline"
@@ -352,15 +651,41 @@ function SummaryCard({
   };
 
   return (
-    <div className={cn("rounded-3xl border bg-linear-to-br p-5 shadow-md shadow-zinc-900/5 transition-all hover:-translate-y-0.5 hover:shadow-lg", toneClasses[tone])}>
-      <div className="mb-3 flex items-center justify-between">
+    <div className={cn("min-h-[7.5rem] rounded-[1.55rem] border bg-linear-to-br p-3.5 shadow-md shadow-zinc-900/5 transition-all hover:-translate-y-0.5 hover:shadow-lg md:min-h-[8.5rem] md:p-4", toneClasses[tone])}>
+      <div className="mb-2 flex items-center justify-between">
         <p className="text-[10px] font-black uppercase tracking-wider text-zinc-600">{title}</p>
-        <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white/80 text-current shadow-sm">
+        <div className="flex h-8 w-8 items-center justify-center rounded-2xl bg-white/80 text-current shadow-sm md:h-9 md:w-9">
           {icon}
         </div>
       </div>
-      <h3 className="text-3xl font-black text-zinc-950">{value}</h3>
-      <p className="mt-1 text-xs font-bold">{note}</p>
+      <h3 className="text-[1.65rem] font-black leading-none text-zinc-950 md:text-[2rem]">{value}</h3>
+      <p className="mt-1 text-[10px] font-bold leading-4 md:text-[11px]">{note}</p>
     </div>
+  );
+}
+
+function GridDetailRow({
+  label,
+  value,
+  isLast = false,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2.5", !isLast && "border-b border-zinc-200/80")}>
+      <p className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
+      <p className="truncate text-right text-[11px] font-bold text-zinc-900">{value}</p>
+    </div>
+  );
+}
+
+function ListInlineMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1">
+      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">{label}</span>
+      <span className="text-[10px] font-bold text-zinc-700">{value}</span>
+    </span>
   );
 }

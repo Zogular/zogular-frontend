@@ -32,7 +32,7 @@ export function ProductCard({ product }: { product: Product }) {
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_2px_15px_rgba(0,0,0,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
       <div className="p-2 pb-0">
-        <div className="relative flex aspect-4/3 w-full items-center justify-center overflow-hidden rounded-2xl bg-zinc-50 md:aspect-5/4">
+        <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-zinc-50">
           {displayBadge ? (
             <Badge className={`absolute left-2 top-2 z-10 border-none px-2.5 py-0.5 text-[10px] font-bold shadow-sm ${getBadgeColor(displayBadge)}`}>
               {displayBadge}
@@ -47,7 +47,7 @@ export function ProductCard({ product }: { product: Product }) {
 
           <Link href={productHref} className="absolute inset-2 block">
             <div
-              className="h-full w-full bg-contain bg-center bg-no-repeat mix-blend-multiply transition-transform duration-500 group-hover:scale-105"
+              className="h-full w-full bg-cover bg-center bg-no-repeat transition-transform duration-500 group-hover:scale-105"
               style={{ backgroundImage: `url('${product.image}')` }}
             />
           </Link>
