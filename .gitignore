@@ -55,3 +55,5 @@ traces/
 *-test.js
 e2e-*.js
 output/
+
+.codex-artifacts/
