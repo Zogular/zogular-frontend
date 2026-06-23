@@ -8,10 +8,12 @@ import { ChevronRight, CreditCard, Lock, ShieldCheck, Smartphone, Truck } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { PurchaseProgress, type PurchaseProgressStep } from "@/components/checkout/PurchaseProgress";
 import { useCart } from "@/hooks/use-cart";
 import {
   CHECKOUT_DELIVERY_FEE,
+  CHECKOUT_DELIVERY_FEE_NOTICE,
   createCheckoutOrder,
   type CheckoutContact,
   type CheckoutDelivery,
@@ -303,6 +305,11 @@ export default function CheckoutPage() {
                   <span className="flex items-center gap-1"><Truck className="h-4 w-4" /> Delivery</span>
                   <span className="font-bold text-zinc-900">{formatCurrency(deliveryFee)}</span>
                 </div>
+                <FeaturePendingNotice
+                  compact
+                  title="Delivery quote pending"
+                  description={CHECKOUT_DELIVERY_FEE_NOTICE}
+                />
                 <Separator className="bg-zinc-200" />
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-zinc-900">Total to Pay</span>

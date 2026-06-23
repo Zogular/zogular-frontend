@@ -13,7 +13,9 @@ import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { cn } from "@/lib/utils";
 import { calculatePayoutQuote, DEFAULT_PLATFORM_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/platform-finance";
 import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
+import { BackendPendingBadge, FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import {
+  SELLER_WALLET_BACKEND_PENDING_NOTICE,
   sellerWalletApi,
   type PayoutMethod,
   type PayoutStatus,
@@ -40,6 +42,8 @@ type PayoutMethodDraft = {
   accountName: string;
   accountNumber: string;
 };
+
+const SELLER_WALLET_BACKEND_PENDING = true;
 
 // ============================================================================
 // 3. LOGIC HELPERS
@@ -248,10 +252,18 @@ export default function SellerPayoutsPage() {
     <div className="mx-auto min-w-0 max-w-350 animate-in space-y-6 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:pb-12">
       <div className="shrink-0 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Payouts & Wallet</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage your earnings, view history, and withdraw to mobile money or bank.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Payouts & Wallet</h1>
+            <BackendPendingBadge />
+          </div>
+          <p className="mt-1 text-sm font-medium text-zinc-500">View the wallet preview while backend wallet, balance, and payout support is pending.</p>
         </div>
       </div>
+
+      <FeaturePendingNotice
+        title="Operations-only preview"
+        description={SELLER_WALLET_BACKEND_PENDING_NOTICE}
+      />
 
       <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
         <div className="relative flex flex-col justify-between overflow-hidden rounded-3xl border border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] p-5 text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)] md:p-6">
@@ -261,7 +273,7 @@ export default function SellerPayoutsPage() {
               <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
                 <Wallet className="h-5 w-5 text-white" />
               </div>
-              <span className="rounded-md bg-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm">Ready to pay</span>
+              <span className="rounded-md bg-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm">Backend pending</span>
             </div>
             <p className="text-xs font-bold uppercase tracking-wider text-[#99e6bc]">Available Balance</p>
             <h3 className="mt-1 text-3xl font-black tracking-tight md:text-4xl">{formatCurrency(balances.availableBalance)}</h3>
@@ -269,10 +281,10 @@ export default function SellerPayoutsPage() {
 
           <Button
             onClick={() => setIsWithdrawModalOpen(true)}
-            disabled={balances.availableBalance < MIN_WITHDRAWAL}
+            disabled={SELLER_WALLET_BACKEND_PENDING || balances.availableBalance < MIN_WITHDRAWAL}
             className="mt-6 h-11 w-full rounded-xl bg-white text-sm font-black text-[#009E49] shadow-sm hover:bg-zinc-50 active:scale-95 disabled:bg-zinc-100 disabled:text-zinc-400 disabled:opacity-90"
           >
-            {balances.availableBalance < MIN_WITHDRAWAL ? `Min. Withdrawal: ${formatCurrency(MIN_WITHDRAWAL)}` : "Request Payout"}
+            {SELLER_WALLET_BACKEND_PENDING ? "Backend integration pending" : balances.availableBalance < MIN_WITHDRAWAL ? `Min. Withdrawal: ${formatCurrency(MIN_WITHDRAWAL)}` : "Request Payout"}
           </Button>
         </div>
 
@@ -331,9 +343,10 @@ export default function SellerPayoutsPage() {
               <button
                 type="button"
                 onClick={openMethodEditor}
-                className="cursor-pointer text-[10px] font-bold text-[#009E49] hover:underline"
+                disabled={SELLER_WALLET_BACKEND_PENDING}
+                className="cursor-pointer text-[10px] font-bold text-[#009E49] hover:underline disabled:cursor-not-allowed disabled:text-zinc-400 disabled:no-underline"
               >
-                Edit
+                Backend pending
               </button>
             </div>
             {defaultMethod ? (
@@ -584,7 +597,7 @@ export default function SellerPayoutsPage() {
             </div>
 
             <h2 className="mb-1 text-xl font-black text-zinc-900">Request Payout</h2>
-            <p className="mb-6 text-xs font-medium text-zinc-500">Withdraw funds to your active payout method.</p>
+            <p className="mb-6 text-xs font-medium text-zinc-500">Backend integration pending. This action is disabled until backend support is implemented.</p>
 
             <form onSubmit={handleWithdrawSubmit} className="space-y-5">
               <div className="flex items-center justify-between rounded-2xl border border-[#009E49]/20 bg-[#009E49]/5 p-4">
@@ -602,13 +615,14 @@ export default function SellerPayoutsPage() {
                     onChange={(e) => setWithdrawAmount(e.target.value)}
                     placeholder="0.00"
                     className="h-14 rounded-2xl bg-zinc-50 pl-10 text-xl font-black shadow-inner focus-visible:ring-[#009E49]"
-                    disabled={isWithdrawing}
+                    disabled={SELLER_WALLET_BACKEND_PENDING || isWithdrawing}
                     autoFocus
                   />
                   <button
                     type="button"
                     onClick={() => setWithdrawAmount(balances.availableBalance.toString())}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-zinc-200/50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600 hover:bg-zinc-200"
+                    disabled={SELLER_WALLET_BACKEND_PENDING}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-lg bg-zinc-200/50 px-2 py-1 text-[10px] font-bold uppercase tracking-wider text-zinc-600 hover:bg-zinc-200 disabled:cursor-not-allowed disabled:text-zinc-400"
                   >
                     Max
                   </button>
@@ -646,10 +660,10 @@ export default function SellerPayoutsPage() {
               <div className="pt-2">
                 <Button
                   type="submit"
-                  disabled={isWithdrawing || !withdrawAmount}
+                  disabled={SELLER_WALLET_BACKEND_PENDING || isWithdrawing || !withdrawAmount}
                   className="h-12 w-full rounded-xl bg-[#009E49] text-base font-black text-white shadow-[0_4px_15px_rgba(0,158,73,0.3)] transition-all hover:bg-[#00853d] active:scale-95"
                 >
-                  {isWithdrawing ? "Processing..." : "Confirm Withdrawal"}
+                  {SELLER_WALLET_BACKEND_PENDING ? "Backend integration pending" : isWithdrawing ? "Processing..." : "Confirm Withdrawal"}
                 </Button>
                 <p className="mt-3 text-center text-[10px] font-medium text-zinc-500">
                   Withdrawal fee is 1%, minimum K3 and capped at K15. Minimum withdrawal is {formatCurrency(MIN_WITHDRAWAL)}.
@@ -684,7 +698,8 @@ export default function SellerPayoutsPage() {
                       type: event.target.value as PayoutMethod["type"],
                     }))
                   }
-                  className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
+                  disabled={SELLER_WALLET_BACKEND_PENDING}
+                  className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] disabled:cursor-not-allowed disabled:text-zinc-400"
                 >
                   <option value="mobile_money">Mobile Money</option>
                   <option value="bank">Bank</option>
@@ -700,6 +715,7 @@ export default function SellerPayoutsPage() {
                   }
                   className="h-11 rounded-xl bg-zinc-50 shadow-inner focus-visible:ring-[#009E49]"
                   placeholder="e.g. MTN Mobile Money"
+                  disabled={SELLER_WALLET_BACKEND_PENDING}
                 />
               </div>
 
@@ -712,6 +728,7 @@ export default function SellerPayoutsPage() {
                   }
                   className="h-11 rounded-xl bg-zinc-50 shadow-inner focus-visible:ring-[#009E49]"
                   placeholder="Name on payout account"
+                  disabled={SELLER_WALLET_BACKEND_PENDING}
                 />
               </div>
 
@@ -724,6 +741,7 @@ export default function SellerPayoutsPage() {
                   }
                   className="h-11 rounded-xl bg-zinc-50 shadow-inner focus-visible:ring-[#009E49]"
                   placeholder="Enter account or mobile number"
+                  disabled={SELLER_WALLET_BACKEND_PENDING}
                 />
               </div>
             </div>
@@ -732,8 +750,8 @@ export default function SellerPayoutsPage() {
               <Button variant="outline" onClick={() => setIsMethodModalOpen(false)} className="rounded-xl">
                 Cancel
               </Button>
-              <Button onClick={saveMethodDraft} className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
-                Save Method
+              <Button disabled={SELLER_WALLET_BACKEND_PENDING} onClick={saveMethodDraft} className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
+                Backend pending
               </Button>
             </div>
           </div>

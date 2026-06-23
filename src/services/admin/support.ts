@@ -1,3 +1,5 @@
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type SupportTicketStatus = "open" | "pending" | "escalated" | "closed";
 export type SupportPriority = "low" | "normal" | "high" | "urgent";
 export type SupportCategory = "buyer" | "seller" | "orders" | "payments" | "account";
@@ -47,13 +49,16 @@ export const adminSupportApi = {
   async replyToTicket(ticketId: string, body: string): Promise<void> {
     void ticketId;
     void body;
+    throwBackendPendingFeature("Admin support reply");
   },
   async assignTicket(ticketId: string, assignee: string): Promise<void> {
     void ticketId;
     void assignee;
+    throwBackendPendingFeature("Admin support assignment");
   },
   async updateTicketStatus(ticketId: string, status: SupportTicketStatus): Promise<void> {
     void ticketId;
     void status;
+    throwBackendPendingFeature("Admin support status update");
   },
 };

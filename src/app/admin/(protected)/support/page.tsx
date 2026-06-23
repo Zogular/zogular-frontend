@@ -13,10 +13,12 @@ import {
   AdminToolbar,
   type AdminTone,
 } from "@/components/admin/AdminPrimitives";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 import { recordAdminAudit } from "@/services/admin/audit";
 import {
   adminSupportApi,
@@ -41,6 +43,8 @@ const priorityTone: Record<SupportPriority, AdminTone> = {
   high: "amber",
   urgent: "rose",
 };
+
+const ADMIN_SUPPORT_BACKEND_PENDING = true;
 
 export default function AdminSupportPage() {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
@@ -205,7 +209,12 @@ export default function AdminSupportPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Support Hub"
-        description="Handle seller and buyer tickets with SLA views, linked context, macros, and assignment controls."
+        description="Operations-only preview for seller and buyer support tickets, SLA views, linked context, and assignment controls."
+      />
+
+      <FeaturePendingNotice
+        title="Support actions disabled"
+        description="Backend integration pending. Replies, assignment, and ticket status updates are disabled until backend support is implemented."
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
@@ -312,8 +321,8 @@ export default function AdminSupportPage() {
               <h3 className="text-sm font-black text-zinc-950">Assignment</h3>
               <p className="mt-1 text-xs font-bold text-zinc-500">Current owner: {selectedTicket.assignedTo}</p>
               <div className="mt-3 flex gap-2">
-                <Input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Assign to agent, queue, or team" className="h-11 rounded-xl border-zinc-200" />
-                <Button onClick={assignTicket} disabled={isMutating} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Assign</Button>
+                <Input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_SUPPORT_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200" />
+                <Button onClick={assignTicket} disabled={ADMIN_SUPPORT_BACKEND_PENDING || isMutating} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Backend pending</Button>
               </div>
             </div>
 
@@ -321,7 +330,7 @@ export default function AdminSupportPage() {
               <h3 className="text-sm font-black text-zinc-950">Macros</h3>
               <div className="mt-3 grid gap-2">
                 {macros.filter((macro) => macro.category === selectedTicket.category || macro.category === "orders").map((macro) => (
-                  <button key={macro.id} type="button" onClick={() => setReply(macro.body)} className="rounded-2xl border border-zinc-100 bg-white p-3 text-left text-sm font-bold text-zinc-700 transition hover:border-emerald-200 hover:bg-emerald-50">
+                  <button key={macro.id} type="button" disabled={ADMIN_SUPPORT_BACKEND_PENDING} onClick={() => setReply(macro.body)} className="rounded-2xl border border-zinc-100 bg-white p-3 text-left text-sm font-bold text-zinc-700 transition hover:border-emerald-200 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:text-zinc-400">
                     {macro.title}
                   </button>
                 ))}
@@ -330,21 +339,21 @@ export default function AdminSupportPage() {
 
             <div>
               <h3 className="text-sm font-black text-zinc-950">Reply</h3>
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Write a clear buyer/seller support reply..." className="mt-3 min-h-28 rounded-2xl border-zinc-200 bg-white" />
-              <Button onClick={sendReply} disabled={isMutating} className="mt-3 rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
-                <Send className="mr-2 h-4 w-4" /> Send reply
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_SUPPORT_BACKEND_PENDING} className="mt-3 min-h-28 rounded-2xl border-zinc-200 bg-white" />
+              <Button onClick={sendReply} disabled={ADMIN_SUPPORT_BACKEND_PENDING || isMutating} className="mt-3 rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
+                <Send className="mr-2 h-4 w-4" /> Backend pending
               </Button>
             </div>
 
             <div className="grid gap-2 md:grid-cols-4">
-              <Button disabled={isMutating} variant="outline" onClick={() => updateStatus("pending")} className="rounded-xl font-black">Pending</Button>
-              <Button disabled={isMutating} variant="destructive" onClick={() => updateStatus("escalated")} className="rounded-xl font-black">
+              <Button disabled={ADMIN_SUPPORT_BACKEND_PENDING || isMutating} variant="outline" onClick={() => updateStatus("pending")} className="rounded-xl font-black">Pending</Button>
+              <Button disabled={ADMIN_SUPPORT_BACKEND_PENDING || isMutating} variant="destructive" onClick={() => updateStatus("escalated")} className="rounded-xl font-black">
                 <Siren className="mr-2 h-4 w-4" /> Escalate
               </Button>
-              <Button disabled={isMutating} onClick={() => updateStatus("closed")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+              <Button disabled={ADMIN_SUPPORT_BACKEND_PENDING || isMutating} onClick={() => updateStatus("closed")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
                 <TicketCheck className="mr-2 h-4 w-4" /> Close
               </Button>
-              <Button disabled={isMutating} variant="outline" onClick={() => updateStatus("open")} className="rounded-xl font-black">
+              <Button disabled={ADMIN_SUPPORT_BACKEND_PENDING || isMutating} variant="outline" onClick={() => updateStatus("open")} className="rounded-xl font-black">
                 <MessageSquareReply className="mr-2 h-4 w-4" /> Reopen
               </Button>
             </div>

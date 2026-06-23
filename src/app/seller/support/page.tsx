@@ -10,10 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { BackendPendingBadge, FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 
 // Import from our new service layer
 import { supportApi, SupportTicket, SupportStats, TicketStatus, TicketPriority } from "@/services/support";
 import { CreateTicketModal } from "@/app/seller/CreateTicketModal";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 
 // ============================================================================
 // LOGIC HELPERS & UI MAPS
@@ -36,6 +38,8 @@ const PRIORITY_UI: Record<TicketPriority, { icon: React.ComponentType<{ classNam
   "high": { icon: AlertTriangle, color: "text-amber-500" },
   "urgent": { icon: ShieldAlert, color: "text-red-500" },
 };
+
+const SELLER_SUPPORT_BACKEND_PENDING = true;
 
 // ============================================================================
 // SUBCOMPONENTS
@@ -169,13 +173,21 @@ export default function SellerSupportPage() {
       {/* 1. HEADER */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage inquiries, resolve issues, and communicate with the Zogular team.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
+            <BackendPendingBadge />
+          </div>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Operations-only preview for seller support workflows.</p>
         </div>
-        <Button onClick={() => setIsCreateModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
-          Create New Ticket
+        <Button disabled={SELLER_SUPPORT_BACKEND_PENDING} onClick={() => setIsCreateModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
+          Backend integration pending
         </Button>
       </div>
+
+      <FeaturePendingNotice
+        title="Support actions unavailable"
+        description="Seller support tickets are not available in MVP yet. Ticket creation, replies, and resolution stay disabled until backend support is implemented."
+      />
 
       {/* 2. SUMMARY CARDS */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 shrink-0">
@@ -279,8 +291,8 @@ export default function SellerSupportPage() {
                     </div>
                   </div>
                   {selectedTicket.status !== "resolved" && selectedTicket.status !== "closed" && (
-                    <Button variant="outline" size="sm" onClick={handleMarkResolved} className="h-9 shrink-0 rounded-xl border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50 hidden sm:flex">
-                      <CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark Resolved
+                    <Button variant="outline" size="sm" disabled={SELLER_SUPPORT_BACKEND_PENDING} onClick={handleMarkResolved} className="h-9 shrink-0 rounded-xl border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50 hidden sm:flex">
+                      <CheckCircle2 className="mr-1.5 h-4 w-4" /> Backend pending
                     </Button>
                   )}
                 </div>
@@ -322,14 +334,15 @@ export default function SellerSupportPage() {
                       aria-label="Reply message"
                       value={replyText}
                       onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Type your reply..." 
+                      placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE}
+                      disabled={SELLER_SUPPORT_BACKEND_PENDING}
                       className="min-h-20 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-14 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
                     />
                     <Button 
                       aria-label="Send reply"
                       size="icon" 
                       onClick={handleSendReply}
-                      disabled={!replyText.trim() || isReplying}
+                      disabled={SELLER_SUPPORT_BACKEND_PENDING || !replyText.trim() || isReplying}
                       className="absolute bottom-3 right-3 h-8 w-8 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400"
                     >
                       <Send className="h-4 w-4" />

@@ -11,6 +11,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 
 // Architecture Imports
 import { adminFinanceApi, PayoutRequest, LedgerEntry, TreasuryMetrics, TransactionType } from "@/services/admin/finance";
@@ -41,6 +43,7 @@ const TXN_TYPE_UI: Record<string, { label: string; color: string; sign: string }
 };
 
 type ViewTab = "payouts" | "ledger" | "refunds" | "reconciliation";
+const ADMIN_FINANCE_BACKEND_PENDING = true;
 
 // ============================================================================
 // MAIN PAGE EXPORT
@@ -196,7 +199,7 @@ export default function AdminFinancePage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Finance & Treasury</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage escrow holdings, seller payouts, and platform revenue.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Operations-only preview for treasury, payout, refund, and ledger workflows.</p>
         </div>
         {canExport && (
           <Button onClick={handleExport} variant="outline" className="h-10 rounded-xl border-emerald-200/70 bg-white/80 px-4 font-bold text-emerald-800 shadow-md shadow-emerald-900/5 backdrop-blur-xl hover:bg-emerald-50 md:w-auto">
@@ -204,11 +207,16 @@ export default function AdminFinancePage() {
           </Button>
         )}
         {canApprovePayouts && (
-          <Button onClick={handleBatchApproveVisible} className="h-10 rounded-xl bg-zinc-950 px-4 font-bold text-white shadow-md shadow-zinc-900/20 hover:bg-zinc-800 md:w-auto">
-            Batch Release Visible
+          <Button disabled={ADMIN_FINANCE_BACKEND_PENDING} onClick={handleBatchApproveVisible} className="h-10 rounded-xl bg-zinc-950 px-4 font-bold text-white shadow-md shadow-zinc-900/20 hover:bg-zinc-800 md:w-auto">
+            Backend integration pending
           </Button>
         )}
       </div>
+
+      <FeaturePendingNotice
+        title="Treasury actions disabled"
+        description="Backend integration pending. Payout release, payout rejection, refund review, and treasury mutation actions are disabled until backend support is implemented."
+      />
 
       {/* 2. PREMIUM KPI BENTO GRID */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -432,8 +440,8 @@ export default function AdminFinancePage() {
                           <span className="text-[11px] font-black text-rose-600">{formatCurrency(Math.abs(entry.amount))}</span>
                         </div>
                         <div className="mt-2 flex justify-end">
-                          <Button disabled={!canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-8 rounded-xl text-[10px] font-bold">
-                            {reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
+                          <Button disabled={ADMIN_FINANCE_BACKEND_PENDING || !canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-8 rounded-xl text-[10px] font-bold">
+                            {ADMIN_FINANCE_BACKEND_PENDING ? "Backend pending" : reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
                           </Button>
                         </div>
                       </div>
@@ -455,8 +463,8 @@ export default function AdminFinancePage() {
                       <FinanceDetailRow label="Date" value={formatDate(entry.timestamp)} isLast />
                     </div>
                     <div className="mt-2.5 flex justify-end">
-                      <Button disabled={!canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-9 rounded-xl text-[11px] font-bold">
-                        {reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
+                      <Button disabled={ADMIN_FINANCE_BACKEND_PENDING || !canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-9 rounded-xl text-[11px] font-bold">
+                        {ADMIN_FINANCE_BACKEND_PENDING ? "Backend pending" : reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
                       </Button>
                     </div>
                   </article>
@@ -586,8 +594,8 @@ export default function AdminFinancePage() {
                     <td className="p-4 text-xs font-bold text-zinc-700">{entry.description}</td>
                     <td className="p-4 text-right font-black text-rose-600">{formatCurrency(Math.abs(entry.amount))}</td>
                     <td className="p-4 pr-6 text-right">
-                      <Button disabled={!canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-9 rounded-xl font-bold">
-                        {reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
+                      <Button disabled={ADMIN_FINANCE_BACKEND_PENDING || !canManageRefunds || reviewedRefunds.includes(entry.id)} onClick={() => handleReviewRefund(entry)} variant="outline" size="sm" className="h-9 rounded-xl font-bold">
+                        {ADMIN_FINANCE_BACKEND_PENDING ? "Backend pending" : reviewedRefunds.includes(entry.id) ? "Reviewed" : "Review"}
                       </Button>
                     </td>
                   </tr>
@@ -669,7 +677,7 @@ export default function AdminFinancePage() {
 
               <div className="rounded-3xl border border-white/70 p-5 shadow-md shadow-zinc-900/5 bg-white/75">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400 mb-3">Payout notes / history</p>
-                <Textarea value={payoutNote} onChange={(event) => setPayoutNote(event.target.value)} placeholder="Add payout approval, rejection, or reconciliation note..." className="min-h-24 rounded-2xl border-zinc-200 bg-white" />
+                <Textarea value={payoutNote} onChange={(event) => setPayoutNote(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_FINANCE_BACKEND_PENDING} className="min-h-24 rounded-2xl border-zinc-200 bg-white" />
                 <div className="mt-3 space-y-2">
                   {(payoutNotes[selectedPayout.id] ?? ["No payout notes recorded in this frontend session."]).map((note, index) => (
                     <p key={`${selectedPayout.id}-note-${index}`} className="rounded-2xl bg-zinc-50 p-3 text-sm font-bold text-zinc-600">{note}</p>
@@ -687,10 +695,10 @@ export default function AdminFinancePage() {
                     </div>
                   ) : (
                     <>
-                      <Button onClick={() => handleProcessPayout("completed")} disabled={isProcessing} className="w-full h-12 rounded-xl bg-emerald-600 text-sm font-black text-white hover:bg-emerald-700 shadow-md">
-                        {isProcessing ? "Processing..." : "Approve & Release Funds"}
+                      <Button onClick={() => handleProcessPayout("completed")} disabled={ADMIN_FINANCE_BACKEND_PENDING || isProcessing} className="w-full h-12 rounded-xl bg-emerald-600 text-sm font-black text-white hover:bg-emerald-700 shadow-md">
+                        {ADMIN_FINANCE_BACKEND_PENDING ? "Backend integration pending" : isProcessing ? "Processing..." : "Approve & Release Funds"}
                       </Button>
-                      <Button onClick={() => handleProcessPayout("rejected")} disabled={isProcessing} variant="outline" className="w-full h-12 rounded-xl border-rose-200 text-sm font-bold text-rose-700 hover:bg-rose-50">
+                      <Button onClick={() => handleProcessPayout("rejected")} disabled={ADMIN_FINANCE_BACKEND_PENDING || isProcessing} variant="outline" className="w-full h-12 rounded-xl border-rose-200 text-sm font-bold text-rose-700 hover:bg-rose-50">
                         Reject Request
                       </Button>
                     </>

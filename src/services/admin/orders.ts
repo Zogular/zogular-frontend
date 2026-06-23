@@ -1,3 +1,5 @@
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type OrderStatus = "pending" | "processing" | "shipped" | "delivered" | "cancelled" | "refunded" | "escalated";
 
 export interface AdminOrderRecord {
@@ -19,8 +21,10 @@ export const adminOrdersApi = {
   },
   async overrideOrderStatus(orderId: string, newStatus: OrderStatus): Promise<void> {
     void orderId; void newStatus;
+    throwBackendPendingFeature("Admin order status override");
   },
   async processRefund(orderId: string): Promise<void> {
     void orderId;
+    throwBackendPendingFeature("Admin order refund");
   }
 };

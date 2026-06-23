@@ -12,10 +12,12 @@ import {
   AdminToolbar,
   type AdminTone,
 } from "@/components/admin/AdminPrimitives";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 import { recordAdminAudit } from "@/services/admin/audit";
 import {
   adminSystemApi,
@@ -47,6 +49,8 @@ const healthTone: Record<HealthStatus, AdminTone> = {
   degraded: "amber",
   attention: "rose",
 };
+
+const ADMIN_SYSTEM_BACKEND_PENDING = true;
 
 export default function AdminSystemPage() {
   const [workspace, setWorkspace] = useState<AdminSystemWorkspace>(emptyWorkspace);
@@ -178,7 +182,12 @@ export default function AdminSystemPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Platform System"
-        description="Audit logs, feature flags, platform configs, operational notices, and environment health."
+        description="Operations-only preview for audit logs, feature flags, platform configs, operational notices, and environment health."
+      />
+
+      <FeaturePendingNotice
+        title="System actions disabled"
+        description="Backend integration pending. Feature flags, platform config saves, and operational notice publishing are disabled until backend support is implemented."
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
@@ -250,8 +259,8 @@ export default function AdminSystemPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <AdminStatusBadge tone={flag.status === "enabled" ? "emerald" : "zinc"}>{flag.status}</AdminStatusBadge>
-                      <Button disabled={isMutating || !canConfigure} onClick={() => toggleFlag(flag)} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
-                        {flag.status === "enabled" ? "Disable" : "Enable"}
+                      <Button disabled={ADMIN_SYSTEM_BACKEND_PENDING || isMutating || !canConfigure} onClick={() => toggleFlag(flag)} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+                        Backend pending
                       </Button>
                     </div>
                   </div>
@@ -285,9 +294,9 @@ export default function AdminSystemPage() {
                     <p className="font-black text-zinc-950">{config.label}</p>
                     <p className="text-xs font-bold text-zinc-500">{config.key} · {config.valueType} · owner {config.owner}</p>
                     <div className="mt-3 flex gap-2">
-                      <Input value={configDrafts[config.id] ?? config.value} onChange={(event) => setConfigDrafts((current) => ({ ...current, [config.id]: event.target.value }))} className="h-11 rounded-xl border-zinc-200 bg-white" />
-                      <Button disabled={isMutating || !canConfigure || (configDrafts[config.id] ?? config.value) === config.value} onClick={() => saveConfig(config)} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
-                        <Save className="mr-2 h-4 w-4" /> Save
+                      <Input value={configDrafts[config.id] ?? config.value} onChange={(event) => setConfigDrafts((current) => ({ ...current, [config.id]: event.target.value }))} disabled={ADMIN_SYSTEM_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
+                      <Button disabled={ADMIN_SYSTEM_BACKEND_PENDING || isMutating || !canConfigure || (configDrafts[config.id] ?? config.value) === config.value} onClick={() => saveConfig(config)} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+                        <Save className="mr-2 h-4 w-4" /> Backend pending
                       </Button>
                     </div>
                   </div>
@@ -298,10 +307,10 @@ export default function AdminSystemPage() {
             <section className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
               <h2 className="text-lg font-black text-zinc-950">Operational notice</h2>
               <div className="mt-4 space-y-3">
-                <Input value={noticeTitle} onChange={(event) => setNoticeTitle(event.target.value)} placeholder="Notice title" className="h-11 rounded-xl border-zinc-200 bg-white" />
-                <Textarea value={noticeBody} onChange={(event) => setNoticeBody(event.target.value)} placeholder="Operational notice body" className="min-h-24 rounded-2xl border-zinc-200 bg-white" />
-                <Button disabled={isMutating || !canConfigure} onClick={publishNotice} className="w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
-                  <Bell className="mr-2 h-4 w-4" /> Publish notice
+                <Input value={noticeTitle} onChange={(event) => setNoticeTitle(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_SYSTEM_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
+                <Textarea value={noticeBody} onChange={(event) => setNoticeBody(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_SYSTEM_BACKEND_PENDING} className="min-h-24 rounded-2xl border-zinc-200 bg-white" />
+                <Button disabled={ADMIN_SYSTEM_BACKEND_PENDING || isMutating || !canConfigure} onClick={publishNotice} className="w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
+                  <Bell className="mr-2 h-4 w-4" /> Backend pending
                 </Button>
               </div>
               <div className="mt-4 space-y-2">

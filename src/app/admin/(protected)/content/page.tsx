@@ -11,9 +11,11 @@ import {
   AdminStatusBadge,
   type AdminTone,
 } from "@/components/admin/AdminPrimitives";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
 import { recordAdminAudit } from "@/services/admin/audit";
 import {
@@ -39,6 +41,8 @@ const emptyWorkspace: AdminContentWorkspace = {
   collections: [],
   announcements: [],
 };
+
+const ADMIN_CONTENT_BACKEND_PENDING = true;
 
 export default function AdminContentPage() {
   const [workspace, setWorkspace] = useState<AdminContentWorkspace>(emptyWorkspace);
@@ -193,7 +197,12 @@ export default function AdminContentPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Content & Promo"
-        description="Manage homepage banners, featured sections, announcements, campaign hooks, and preview states."
+        description="Operations-only preview for homepage banners, featured sections, announcements, campaign hooks, and preview states."
+      />
+
+      <FeaturePendingNotice
+        title="Content actions disabled"
+        description="Backend integration pending. Banner scheduling, publish/pause/archive, collection reorder, and announcements are disabled until backend support is implemented."
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
@@ -214,14 +223,14 @@ export default function AdminContentPage() {
                   <h2 className="text-lg font-black text-zinc-950">Banner manager</h2>
                   <p className="text-sm font-bold text-zinc-500">Create, preview, publish, pause, and archive campaign surfaces.</p>
                 </div>
-                <Button onClick={createBanner} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
-                  <ImagePlus className="mr-2 h-4 w-4" /> Schedule banner
+                <Button disabled={ADMIN_CONTENT_BACKEND_PENDING} onClick={createBanner} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+                  <ImagePlus className="mr-2 h-4 w-4" /> Backend pending
                 </Button>
               </div>
               <div className="mt-4 grid gap-3 md:grid-cols-3">
-                <Input value={bannerTitle} onChange={(event) => setBannerTitle(event.target.value)} placeholder="Banner title" className="h-11 rounded-xl border-zinc-200 bg-white" />
-                <Input value={bannerTarget} onChange={(event) => setBannerTarget(event.target.value)} placeholder="/category/electronics" className="h-11 rounded-xl border-zinc-200 bg-white" />
-                <Input value={bannerAudience} onChange={(event) => setBannerAudience(event.target.value)} placeholder="Audience" className="h-11 rounded-xl border-zinc-200 bg-white" />
+                <Input value={bannerTitle} onChange={(event) => setBannerTitle(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
+                <Input value={bannerTarget} onChange={(event) => setBannerTarget(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
+                <Input value={bannerAudience} onChange={(event) => setBannerAudience(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
               </div>
               <div className="mt-4 space-y-3">
                 {workspace.banners.map((banner) => (
@@ -256,8 +265,8 @@ export default function AdminContentPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <AdminStatusBadge tone={statusTone[collection.status]}>{toTitleCase(collection.status)}</AdminStatusBadge>
-                      <Button variant="outline" size="icon-sm" aria-label={`Move ${collection.title} up`} disabled={isMutating || collection.order === 1} onClick={() => reorderCollection(collection, "up")}><MoveUp className="h-4 w-4" /></Button>
-                      <Button variant="outline" size="icon-sm" aria-label={`Move ${collection.title} down`} disabled={isMutating || collection.order === workspace.collections.length} onClick={() => reorderCollection(collection, "down")}><MoveDown className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon-sm" aria-label={`Move ${collection.title} up`} disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating || collection.order === 1} onClick={() => reorderCollection(collection, "up")}><MoveUp className="h-4 w-4" /></Button>
+                      <Button variant="outline" size="icon-sm" aria-label={`Move ${collection.title} down`} disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating || collection.order === workspace.collections.length} onClick={() => reorderCollection(collection, "down")}><MoveDown className="h-4 w-4" /></Button>
                     </div>
                   </div>
                 ))}
@@ -270,16 +279,16 @@ export default function AdminContentPage() {
               <h2 className="text-lg font-black text-zinc-950">Announcement composer</h2>
               <p className="text-sm font-bold text-zinc-500">Schedule storefront, admin, or seller-facing notices.</p>
               <div className="mt-4 space-y-3">
-                <Input value={announcementTitle} onChange={(event) => setAnnouncementTitle(event.target.value)} placeholder="Announcement title" className="h-11 rounded-xl border-zinc-200 bg-white" />
-                <Textarea value={announcementBody} onChange={(event) => setAnnouncementBody(event.target.value)} placeholder="Announcement body" className="min-h-28 rounded-2xl border-zinc-200 bg-white" />
-                <select value={announcementChannel} onChange={(event) => setAnnouncementChannel(event.target.value as Announcement["channel"])} className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+                <Input value={announcementTitle} onChange={(event) => setAnnouncementTitle(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
+                <Textarea value={announcementBody} onChange={(event) => setAnnouncementBody(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="min-h-28 rounded-2xl border-zinc-200 bg-white" />
+                <select value={announcementChannel} onChange={(event) => setAnnouncementChannel(event.target.value as Announcement["channel"])} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="h-11 w-full rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm disabled:cursor-not-allowed disabled:text-zinc-400">
                   <option value="marketplace">Storefront</option>
                   <option value="seller_portal">Seller portal</option>
                   <option value="admin">Admin</option>
                 </select>
-                <Input type="datetime-local" value={announcementScheduledAt} onChange={(event) => setAnnouncementScheduledAt(event.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white" />
-                <Button onClick={publishAnnouncement} disabled={isMutating} className="w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
-                  <Megaphone className="mr-2 h-4 w-4" /> Schedule announcement
+                <Input type="datetime-local" value={announcementScheduledAt} onChange={(event) => setAnnouncementScheduledAt(event.target.value)} disabled={ADMIN_CONTENT_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200 bg-white" />
+                <Button onClick={publishAnnouncement} disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating} className="w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
+                  <Megaphone className="mr-2 h-4 w-4" /> Backend pending
                 </Button>
               </div>
             </section>
@@ -311,10 +320,10 @@ export default function AdminContentPage() {
             </div>
 
             <div className="grid gap-2 md:grid-cols-2">
-              <Button disabled={isMutating || selectedBanner.status === "published"} onClick={() => updateBanner(selectedBanner, "published")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">Publish</Button>
-              <Button disabled={isMutating || selectedBanner.status === "paused"} variant="outline" onClick={() => updateBanner(selectedBanner, "paused")} className="rounded-xl font-black">Unpublish</Button>
-              <Button disabled={isMutating || selectedBanner.status === "scheduled"} variant="outline" onClick={() => updateBanner(selectedBanner, "scheduled")} className="rounded-xl font-black">Schedule campaign</Button>
-              <Button disabled={isMutating || selectedBanner.status === "archived"} variant="destructive" onClick={() => updateBanner(selectedBanner, "archived")} className="rounded-xl font-black">Archive item</Button>
+              <Button disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating || selectedBanner.status === "published"} onClick={() => updateBanner(selectedBanner, "published")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">Publish</Button>
+              <Button disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating || selectedBanner.status === "paused"} variant="outline" onClick={() => updateBanner(selectedBanner, "paused")} className="rounded-xl font-black">Unpublish</Button>
+              <Button disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating || selectedBanner.status === "scheduled"} variant="outline" onClick={() => updateBanner(selectedBanner, "scheduled")} className="rounded-xl font-black">Schedule campaign</Button>
+              <Button disabled={ADMIN_CONTENT_BACKEND_PENDING || isMutating || selectedBanner.status === "archived"} variant="destructive" onClick={() => updateBanner(selectedBanner, "archived")} className="rounded-xl font-black">Archive item</Button>
             </div>
           </div>
         ) : null}

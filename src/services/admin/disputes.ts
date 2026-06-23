@@ -1,3 +1,5 @@
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type DisputeSeverity = "low" | "medium" | "high" | "critical";
 export type DisputeStatus = "open" | "waiting_evidence" | "in_review" | "escalated" | "resolved_buyer" | "resolved_seller";
 export type DisputeCategory = "delivery" | "payment" | "refund" | "product_quality";
@@ -48,14 +50,17 @@ export const adminDisputesApi = {
   async assignDispute(disputeId: string, assignee: string): Promise<void> {
     void disputeId;
     void assignee;
+    throwBackendPendingFeature("Admin dispute assignment");
   },
   async updateDisputeStatus(disputeId: string, status: DisputeStatus, note: string): Promise<void> {
     void disputeId;
     void status;
     void note;
+    throwBackendPendingFeature("Admin dispute status update");
   },
   async addDisputeNote(disputeId: string, note: string): Promise<void> {
     void disputeId;
     void note;
+    throwBackendPendingFeature("Admin dispute note");
   },
 };

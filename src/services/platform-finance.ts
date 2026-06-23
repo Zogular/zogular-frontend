@@ -57,6 +57,9 @@ export interface PayoutQuote {
   sellerReceives: number;
 }
 
+export const PLATFORM_FINANCE_PLACEHOLDER_NOTICE =
+  "Frontend finance values are planning placeholders only. Commission, payout, refund, and fee truth must come from the backend before production use.";
+
 export const DEFAULT_PLATFORM_FINANCE_CONFIG: PlatformFinanceConfig = {
   defaultCommissionPercentage: 10,
   categoryCommissionRules: [],

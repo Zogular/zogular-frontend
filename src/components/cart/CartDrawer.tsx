@@ -26,6 +26,8 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useCart, type CartItem } from "@/hooks/use-cart";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
+import { CHECKOUT_DELIVERY_FEE, CHECKOUT_DELIVERY_FEE_NOTICE } from "@/services/checkout";
 
 type CartDrawerProps = {
   children: ReactNode;
@@ -167,7 +169,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
   const displayItemCount = hasHydrated ? itemCount : 0;
   const displayItems = hasHydrated ? items : [];
   const displayTotalAmount = hasHydrated ? totalAmount : 0;
-  const deliveryFee = displayItemCount > 0 ? 50 : 0;
+  const deliveryFee = displayItemCount > 0 ? CHECKOUT_DELIVERY_FEE : 0;
   const total = displayTotalAmount + deliveryFee;
   const closeDrawer = () => setOpen(false);
 
@@ -224,6 +226,12 @@ export function CartDrawer({ children }: CartDrawerProps) {
                     {formatCurrency(deliveryFee)}
                   </span>
                 </div>
+
+                <FeaturePendingNotice
+                  compact
+                  title="Delivery quote pending"
+                  description={CHECKOUT_DELIVERY_FEE_NOTICE}
+                />
 
                 <Separator className="bg-zinc-200" />
 

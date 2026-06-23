@@ -1,4 +1,5 @@
 import { getActivePlatformFinanceConfig } from "@/services/platform-finance";
+import { throwBackendPendingFeature } from "@/services/backend-pending";
 
 export type PaymentProviderName = "flutterwave" | "pawapay";
 export type ProviderPaymentStatus = "pending" | "successful" | "failed" | "cancelled";
@@ -72,48 +73,40 @@ export interface PaymentProviderAdapter {
   refundPayment(input: RefundPaymentInput): Promise<ProviderReference>;
 }
 
-function buildProviderReference(
-  providerName: PaymentProviderName,
-  prefix: string,
-  reference: string,
-): ProviderReference {
-  return {
-    providerName,
-    providerTransactionId: `${prefix}-${reference}`,
-    providerReference: reference,
-    providerStatus: "pending",
-  };
-}
+export const PAYMENT_PROVIDER_PLACEHOLDER_NOTICE =
+  "Development placeholder only. Payment verification, payouts, refunds, and webhooks are disabled until backend provider integration is implemented.";
 
 class FlutterwaveProvider implements PaymentProviderAdapter {
   name: PaymentProviderName = "flutterwave";
 
   async initializePayment(input: InitializePaymentInput): Promise<InitializePaymentResult> {
-    const providerReference = `FLW-${input.orderId}`;
-    return {
-      ...buildProviderReference(this.name, "txn", providerReference),
-      checkoutUrl: `/checkout?provider=flutterwave&order=${input.orderId}`,
-    };
+    void input;
+    throwBackendPendingFeature("Flutterwave payment initialization placeholder");
   }
 
   async verifyPayment(input: VerifyPaymentInput): Promise<ProviderReference> {
-    return { ...buildProviderReference(this.name, "verify", input.providerReference), providerStatus: "successful" };
+    void input;
+    throwBackendPendingFeature("Flutterwave payment verification placeholder");
   }
 
   async handleWebhook(envelope: WebhookEnvelope): Promise<ProviderReference> {
-    return buildProviderReference(this.name, "webhook", envelope.idempotencyKey);
+    void envelope;
+    throwBackendPendingFeature("Flutterwave webhook placeholder");
   }
 
   async createPayout(input: CreatePayoutInput): Promise<ProviderReference> {
-    return buildProviderReference(this.name, "payout", input.payoutId);
+    void input;
+    throwBackendPendingFeature("Flutterwave payout creation placeholder");
   }
 
   async verifyPayout(input: VerifyPayoutInput): Promise<ProviderReference> {
-    return { ...buildProviderReference(this.name, "payout-verify", input.providerReference), providerStatus: "pending" };
+    void input;
+    throwBackendPendingFeature("Flutterwave payout verification placeholder");
   }
 
   async refundPayment(input: RefundPaymentInput): Promise<ProviderReference> {
-    return buildProviderReference(this.name, "refund", input.providerReference);
+    void input;
+    throwBackendPendingFeature("Flutterwave refund placeholder");
   }
 }
 
@@ -121,31 +114,33 @@ class PawaPayProvider implements PaymentProviderAdapter {
   name: PaymentProviderName = "pawapay";
 
   async initializePayment(input: InitializePaymentInput): Promise<InitializePaymentResult> {
-    const providerReference = `PAWA-${input.orderId}`;
-    return {
-      ...buildProviderReference(this.name, "txn", providerReference),
-      checkoutUrl: `/checkout?provider=pawapay&order=${input.orderId}`,
-    };
+    void input;
+    throwBackendPendingFeature("PawaPay payment initialization placeholder");
   }
 
   async verifyPayment(input: VerifyPaymentInput): Promise<ProviderReference> {
-    return { ...buildProviderReference(this.name, "verify", input.providerReference), providerStatus: "successful" };
+    void input;
+    throwBackendPendingFeature("PawaPay payment verification placeholder");
   }
 
   async handleWebhook(envelope: WebhookEnvelope): Promise<ProviderReference> {
-    return buildProviderReference(this.name, "webhook", envelope.idempotencyKey);
+    void envelope;
+    throwBackendPendingFeature("PawaPay webhook placeholder");
   }
 
   async createPayout(input: CreatePayoutInput): Promise<ProviderReference> {
-    return buildProviderReference(this.name, "payout", input.payoutId);
+    void input;
+    throwBackendPendingFeature("PawaPay payout creation placeholder");
   }
 
   async verifyPayout(input: VerifyPayoutInput): Promise<ProviderReference> {
-    return { ...buildProviderReference(this.name, "payout-verify", input.providerReference), providerStatus: "pending" };
+    void input;
+    throwBackendPendingFeature("PawaPay payout verification placeholder");
   }
 
   async refundPayment(input: RefundPaymentInput): Promise<ProviderReference> {
-    return buildProviderReference(this.name, "refund", input.providerReference);
+    void input;
+    throwBackendPendingFeature("PawaPay refund placeholder");
   }
 }
 
@@ -153,8 +148,6 @@ const providerAdapters: Record<PaymentProviderName, PaymentProviderAdapter> = {
   flutterwave: new FlutterwaveProvider(),
   pawapay: new PawaPayProvider(),
 };
-
-const processedWebhookKeys = new Set<string>();
 
 export const PaymentProviderService = {
   getActiveProvider(): PaymentProviderAdapter {
@@ -170,15 +163,6 @@ export const PaymentProviderService = {
     if (!envelope.signature.trim()) {
       throw new Error("Payment webhook signature is required.");
     }
-    if (processedWebhookKeys.has(envelope.idempotencyKey)) {
-      return Promise.resolve({
-        providerName: envelope.providerName,
-        providerTransactionId: `duplicate-${envelope.idempotencyKey}`,
-        providerReference: envelope.idempotencyKey,
-        providerStatus: "pending",
-      } satisfies ProviderReference);
-    }
-    processedWebhookKeys.add(envelope.idempotencyKey);
     return providerAdapters[envelope.providerName].handleWebhook(envelope);
   },
   createPayout(input: CreatePayoutInput) {

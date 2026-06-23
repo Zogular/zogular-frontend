@@ -1,3 +1,5 @@
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type ContentStatus = "draft" | "scheduled" | "published" | "paused" | "archived";
 
 export interface AdminBanner {
@@ -48,16 +50,15 @@ export const adminContentApi = {
   async updateBannerStatus(bannerId: string, status: ContentStatus): Promise<void> {
     void bannerId;
     void status;
+    throwBackendPendingFeature("Admin content banner status update");
   },
   async reorderCollection(collectionId: string, direction: "up" | "down"): Promise<void> {
     void collectionId;
     void direction;
+    throwBackendPendingFeature("Admin content collection reorder");
   },
   async publishAnnouncement(announcement: Omit<Announcement, "id" | "status">): Promise<Announcement> {
-    return {
-      ...announcement,
-      id: crypto.randomUUID(),
-      status: "scheduled",
-    };
+    void announcement;
+    throwBackendPendingFeature("Admin content announcement scheduling");
   },
 };

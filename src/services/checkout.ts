@@ -2,7 +2,10 @@ import type { CartItem } from "@/types/cart";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { apiClient } from "@/services/api";
 
+// Temporary frontend-only delivery estimate. Replace with a backend delivery quote before production pricing.
 export const CHECKOUT_DELIVERY_FEE = 50;
+export const CHECKOUT_DELIVERY_FEE_NOTICE =
+  "Temporary delivery estimate. Backend delivery quote pending.";
 
 export type CheckoutPaymentMethod = "mobile-money" | "bank-card";
 export type CheckoutOrderStatus = "processing";

@@ -13,10 +13,12 @@ import {
   AdminToolbar,
   type AdminTone,
 } from "@/components/admin/AdminPrimitives";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminCurrency, formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 import { recordAdminAudit } from "@/services/admin/audit";
 import {
   adminDisputesApi,
@@ -41,6 +43,8 @@ const severityTone: Record<DisputeSeverity, AdminTone> = {
   high: "orange",
   critical: "rose",
 };
+
+const ADMIN_DISPUTES_BACKEND_PENDING = true;
 
 export default function AdminDisputesPage() {
   const [disputes, setDisputes] = useState<AdminDisputeRecord[]>([]);
@@ -194,7 +198,12 @@ export default function AdminDisputesPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Dispute Queue"
-        description="Manage delivery, payment, refund, and seller-buyer disputes with evidence and resolution history."
+        description="Operations-only preview for delivery, payment, refund, and seller-buyer disputes."
+      />
+
+      <FeaturePendingNotice
+        title="Dispute actions disabled"
+        description="Backend integration pending. Assignment, notes, status changes, refund recommendations, and fund-release recommendations are disabled until backend support is implemented."
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
@@ -321,14 +330,14 @@ export default function AdminDisputesPage() {
               <h3 className="text-sm font-black text-zinc-950">Assignment</h3>
               <p className="mt-1 text-xs font-bold text-zinc-500">Current owner: {selectedDispute.assignedTo}</p>
               <div className="mt-3 flex gap-2">
-                <Input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Assign to admin or queue" className="h-11 rounded-xl border-zinc-200" />
-                <Button onClick={assignDispute} disabled={isMutating} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Assign</Button>
+                <Input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_DISPUTES_BACKEND_PENDING} className="h-11 rounded-xl border-zinc-200" />
+                <Button onClick={assignDispute} disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Backend pending</Button>
               </div>
             </div>
 
             <div>
               <h3 className="text-sm font-black text-zinc-950">Internal note / decision context</h3>
-              <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Add resolution context, evidence requirement, or decision rationale..." className="mt-3 min-h-24 rounded-2xl border-zinc-200 bg-white" />
+              <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_DISPUTES_BACKEND_PENDING} className="mt-3 min-h-24 rounded-2xl border-zinc-200 bg-white" />
             </div>
 
             {recommendation ? (
@@ -336,22 +345,22 @@ export default function AdminDisputesPage() {
             ) : null}
 
             <div className="grid gap-2 md:grid-cols-2">
-              <Button disabled={isMutating} variant="outline" onClick={() => updateStatus("waiting_evidence", "request_more_evidence", "Requested more evidence from buyer and seller.")} className="rounded-xl font-black">
+              <Button disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} variant="outline" onClick={() => updateStatus("waiting_evidence", "request_more_evidence", "Requested more evidence from buyer and seller.")} className="rounded-xl font-black">
                 <Clock className="mr-2 h-4 w-4" /> Request more evidence
               </Button>
-              <Button disabled={isMutating} variant="destructive" onClick={() => updateStatus("escalated", "dispute_escalated", "Escalated for senior operations review.")} className="rounded-xl font-black">
+              <Button disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} variant="destructive" onClick={() => updateStatus("escalated", "dispute_escalated", "Escalated for senior operations review.")} className="rounded-xl font-black">
                 <AlertOctagon className="mr-2 h-4 w-4" /> Escalate
               </Button>
-              <Button disabled={isMutating} onClick={() => updateStatus("resolved_buyer", "resolved_for_buyer", "Resolved in favor of the buyer.")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
+              <Button disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} onClick={() => updateStatus("resolved_buyer", "resolved_for_buyer", "Resolved in favor of the buyer.")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Resolve for buyer
               </Button>
-              <Button disabled={isMutating} onClick={() => updateStatus("resolved_seller", "resolved_for_seller", "Resolved in favor of the seller.")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+              <Button disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} onClick={() => updateStatus("resolved_seller", "resolved_for_seller", "Resolved in favor of the seller.")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
                 <CheckCircle2 className="mr-2 h-4 w-4" /> Resolve for seller
               </Button>
-              <Button disabled={isMutating} variant="outline" onClick={() => setDecisionRecommendation("refund buyer")} className="rounded-xl font-black">
+              <Button disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} variant="outline" onClick={() => setDecisionRecommendation("refund buyer")} className="rounded-xl font-black">
                 Recommend refund
               </Button>
-              <Button disabled={isMutating} variant="outline" onClick={() => setDecisionRecommendation("release funds")} className="rounded-xl font-black">
+              <Button disabled={ADMIN_DISPUTES_BACKEND_PENDING || isMutating} variant="outline" onClick={() => setDecisionRecommendation("release funds")} className="rounded-xl font-black">
                 Recommend release
               </Button>
             </div>

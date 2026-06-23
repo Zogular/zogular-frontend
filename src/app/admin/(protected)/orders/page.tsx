@@ -12,6 +12,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
+import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
 
 // Architecture Imports
 import { adminOrdersApi, AdminOrderRecord, OrderStatus } from "@/services/admin/orders";
@@ -39,6 +41,8 @@ const STATUS_UI: Record<OrderStatus, { label: string; bg: string; text: string; 
 function ClockIcon(props: React.SVGProps<SVGSVGElement>) { 
   return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; 
 }
+
+const ADMIN_ORDERS_BACKEND_PENDING = true;
 
 // ============================================================================
 // MAIN PAGE EXPORT
@@ -183,9 +187,14 @@ export default function AdminOrdersPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Logistics & Orders</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Monitor all platform fulfillment and resolve stuck deliveries.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Operations-only preview for platform fulfillment and stuck delivery workflows.</p>
         </div>
       </div>
+
+      <FeaturePendingNotice
+        title="Admin order mutations disabled"
+        description="Backend integration pending. Order overrides, refunds, dispute creation, and order notes are disabled until backend support is implemented."
+      />
 
       {/* 2. PREMIUM KPI BENTO GRID */}
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
@@ -460,10 +469,10 @@ export default function AdminOrdersPage() {
 
               <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Admin notes</p>
-                <Textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Add order note, shipment update context, or dispute rationale..." className="mt-3 min-h-24 rounded-2xl border-zinc-200 bg-white" />
+                <Textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE} disabled={ADMIN_ORDERS_BACKEND_PENDING} className="mt-3 min-h-24 rounded-2xl border-zinc-200 bg-white" />
                 <div className="mt-3 flex flex-wrap gap-2">
-                  <Button onClick={handleSaveOrderNote} className="rounded-xl bg-zinc-950 text-xs font-black text-white hover:bg-zinc-800">Save note</Button>
-                  <Button onClick={handleCreateDispute} disabled={!canCreateDispute} variant="outline" className="rounded-xl text-xs font-black">Create dispute</Button>
+                  <Button disabled={ADMIN_ORDERS_BACKEND_PENDING} onClick={handleSaveOrderNote} className="rounded-xl bg-zinc-950 text-xs font-black text-white hover:bg-zinc-800">Backend pending</Button>
+                  <Button onClick={handleCreateDispute} disabled={ADMIN_ORDERS_BACKEND_PENDING || !canCreateDispute} variant="outline" className="rounded-xl text-xs font-black">Create dispute disabled</Button>
                 </div>
                 <div className="mt-3 space-y-2">
                   {(orderNotes[selectedOrder.id] ?? ["No admin notes recorded in this frontend session."]).map((note, index) => (
@@ -477,30 +486,30 @@ export default function AdminOrdersPage() {
                 <div className="rounded-3xl border border-rose-300/70 bg-linear-to-br from-rose-50 to-white p-5 mt-8 shadow-md shadow-rose-900/5">
                   <div className="flex items-center gap-2 mb-4">
                     <ShieldAlert className="h-4 w-4 text-rose-600" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-rose-900">God-Mode Overrides</h3>
+                    <h3 className="text-xs font-black uppercase tracking-wider text-rose-900">Backend-pending overrides</h3>
                   </div>
                   
                   <div className="space-y-3">
                     {(selectedOrder.status === "pending" || selectedOrder.status === "processing") && (
-                      <Button onClick={() => handleOverrideStatus("shipped")} disabled={isProcessingOverride} className="w-full h-10 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 shadow-sm">
+                      <Button onClick={() => handleOverrideStatus("shipped")} disabled={ADMIN_ORDERS_BACKEND_PENDING || isProcessingOverride} className="w-full h-10 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 shadow-sm">
                         <Truck className="mr-2 h-4 w-4" /> Update Shipment to In Transit
                       </Button>
                     )}
 
                     {selectedOrder.status !== "delivered" && selectedOrder.status !== "refunded" && selectedOrder.status !== "cancelled" && (
-                      <Button onClick={() => handleOverrideStatus("delivered")} disabled={isProcessingOverride} className="w-full h-10 rounded-xl bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm">
+                      <Button onClick={() => handleOverrideStatus("delivered")} disabled={ADMIN_ORDERS_BACKEND_PENDING || isProcessingOverride} className="w-full h-10 rounded-xl bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm">
                         <CheckCircle2 className="mr-2 h-4 w-4" /> Force Mark as Delivered
                       </Button>
                     )}
 
                     {selectedOrder.status !== "refunded" && (
-                      <Button onClick={handleForceRefund} disabled={isProcessingOverride} className="w-full h-10 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 shadow-sm">
+                      <Button onClick={handleForceRefund} disabled={ADMIN_ORDERS_BACKEND_PENDING || isProcessingOverride} className="w-full h-10 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 shadow-sm">
                         <RefreshCcw className="mr-2 h-4 w-4" /> Force Issue Refund
                       </Button>
                     )}
 
                     {selectedOrder.status !== "cancelled" && selectedOrder.status !== "refunded" && selectedOrder.status !== "delivered" && (
-                      <Button onClick={() => handleOverrideStatus("cancelled")} disabled={isProcessingOverride} variant="outline" className="w-full h-10 rounded-xl border-rose-200 text-xs font-bold text-rose-700 hover:bg-rose-100">
+                      <Button onClick={() => handleOverrideStatus("cancelled")} disabled={ADMIN_ORDERS_BACKEND_PENDING || isProcessingOverride} variant="outline" className="w-full h-10 rounded-xl border-rose-200 text-xs font-bold text-rose-700 hover:bg-rose-100">
                         <PackageX className="mr-2 h-4 w-4" /> Force Cancel Order
                       </Button>
                     )}

@@ -6,6 +6,8 @@ import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { useCart, type CartItemIdentity } from "@/hooks/use-cart";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
+import { CHECKOUT_DELIVERY_FEE, CHECKOUT_DELIVERY_FEE_NOTICE } from "@/services/checkout";
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
@@ -22,7 +24,7 @@ export default function CartPage() {
     removeItem,
   } = useCart();
 
-  const deliveryFee = itemCount > 0 ? 50 : 0;
+  const deliveryFee = itemCount > 0 ? CHECKOUT_DELIVERY_FEE : 0;
   const finalTotal = totalAmount + deliveryFee;
 
   if (!hasHydrated) {
@@ -121,6 +123,11 @@ export default function CartPage() {
                   <span>Delivery</span>
                   <span className="font-bold text-zinc-900">{formatCurrency(deliveryFee)}</span>
                 </div>
+                <FeaturePendingNotice
+                  compact
+                  title="Delivery quote pending"
+                  description={CHECKOUT_DELIVERY_FEE_NOTICE}
+                />
                 <div className="flex justify-between border-t border-zinc-100 pt-2 text-base font-black text-zinc-900">
                   <span>Total</span>
                   <span className="text-[#FF6B00]">{formatCurrency(finalTotal)}</span>

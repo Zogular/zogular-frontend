@@ -1,5 +1,7 @@
 // src/services/support.ts
 
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type TicketStatus = "open" | "waiting-seller" | "waiting-support" | "resolved" | "closed";
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
 export type TicketCategory = "order" | "payout" | "inventory" | "tech" | "account" | "general";
@@ -35,35 +37,19 @@ export const supportApi = {
     return [];
   },
   async createTicket(subject: string, category: TicketCategory, priority: TicketPriority, message: string): Promise<SupportTicket> {
-    const timestamp = new Date().toISOString();
-    return {
-      id: crypto.randomUUID(),
-      subject,
-      status: "open",
-      priority,
-      category,
-      createdAt: timestamp,
-      updatedAt: timestamp,
-      messages: [
-        { id: buildMessageId(), senderType: "seller", senderName: "You", body: message, createdAt: timestamp },
-      ],
-    };
+    void subject;
+    void category;
+    void priority;
+    void message;
+    throwBackendPendingFeature("Seller support ticket creation");
   },
   async replyToTicket(ticketId: string, message: string): Promise<SupportMessage> {
     void ticketId;
-    return {
-      id: buildMessageId(),
-      senderType: "seller",
-      senderName: "You",
-      body: message,
-      createdAt: new Date().toISOString()
-    };
+    void message;
+    throwBackendPendingFeature("Seller support reply");
   },
   async resolveTicket(ticketId: string): Promise<void> {
     void ticketId;
+    throwBackendPendingFeature("Seller support ticket resolution");
   }
 };
-
-function buildMessageId(): string {
-  return `msg-${globalThis.crypto?.randomUUID?.() ?? Date.now().toString()}`;
-}
