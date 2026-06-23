@@ -15,7 +15,6 @@ import type { InventoryStatus, SortOption } from "@/features/seller-inventory/ty
 
 export default function SellerInventoryPage() {
   const {
-    inventory,
     loading,
     error,
     searchQuery,

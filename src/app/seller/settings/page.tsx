@@ -13,7 +13,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 
 import { useSellerSettings, type TabType } from "@/features/seller-settings/hooks/useSellerSettings";
 import { StoreProfileForm } from "@/features/seller-settings/components/StoreProfileForm";

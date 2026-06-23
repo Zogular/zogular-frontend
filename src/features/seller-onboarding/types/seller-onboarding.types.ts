@@ -54,30 +54,17 @@ export type UploadRequirement = {
   acceptLabel: string;
 };
 
-export type SellerOnboardingMock = {
-  seller: {
-    storeName: string;
-    ownerName: string;
-    status: string;
-    sellerType: string;
-  };
-  progress: {
-    completed: number;
-    total: number;
-    percent: number;
-    remainingLabel: string;
-  };
-  sections: Record<"operatingModel" | "identity" | "storeFootprint" | "compliance" | "settlement", SellerOnboardingSection>;
-  readiness: ChecklistItem[];
-  trustControls: ChecklistItem[];
-  missingItems: string[];
-  uploads: {
-    shopPhoto: UploadRequirement;
-    nrcFront: UploadRequirement;
-    nrcBack: UploadRequirement;
-    pacraDocument?: UploadRequirement;
-  };
-};
+export type SellerOnboardingSectionKey =
+  | "operatingModel"
+  | "identity"
+  | "storeFootprint"
+  | "compliance"
+  | "settlement";
+
+export type SellerOnboardingSections = Record<
+  SellerOnboardingSectionKey,
+  SellerOnboardingSection
+>;
 
 export type SellerOnboardingFormValues = {
   sellerType: SellerType;
@@ -154,7 +141,7 @@ export type SellerOnboardingViewModel = {
     percent: number;
     remainingLabel: string;
   };
-  sections: SellerOnboardingMock["sections"];
+  sections: SellerOnboardingSections;
   readiness: ChecklistItem[];
   trustControls: ChecklistItem[];
   missingItems: string[];

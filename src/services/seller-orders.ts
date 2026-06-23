@@ -1,4 +1,4 @@
-import { ApiError, apiClient } from "@/services/api";
+import { apiClient } from "@/services/api";
 import { type SellerOrderEarnings } from "@/services/platform-finance";
 
 export type SellerOrderStatus = "new" | "processing" | "shipped" | "delivered" | "cancelled" | "refund";
