@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState, useEffect, useMemo } from "react";
-import { ArrowLeft, AlertTriangle, CheckCircle2, CopyCheck, XCircle } from "lucide-react";
+import { useState, useMemo } from "react";
+import { ArrowLeft, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -80,11 +80,7 @@ export function ProductReviewActionDialog({
   submitting: boolean;
   onConfirm: (action: ProductModerationAction, note: string) => void;
 }) {
-  const [note, setNote] = useState("");
-
-  useEffect(() => {
-    if (open) setNote(initialNote);
-  }, [open, initialNote]);
+  const [note, setNote] = useState(initialNote);
 
   const copy = useMemo(() => (action ? ACTION_COPY[action] : null), [action]);
 
@@ -249,15 +245,17 @@ export function AdminProductModerationView({
 
   return (
     <div className="mx-auto min-w-0 max-w-[1400px] space-y-6 pb-28 md:pb-24">
-      <ProductReviewActionDialog
-        open={actionDialog.isOpen}
-        onOpenChange={(isOpen) => setActionDialog((prev) => ({ ...prev, isOpen }))}
-        action={actionDialog.action}
-        product={product}
-        initialNote={moderationNote}
-        submitting={isSubmitting}
-        onConfirm={handleDialogConfirm}
-      />
+      {actionDialog.isOpen && (
+        <ProductReviewActionDialog
+          open={actionDialog.isOpen}
+          onOpenChange={(isOpen) => setActionDialog((prev) => ({ ...prev, isOpen }))}
+          action={actionDialog.action}
+          product={product}
+          initialNote={moderationNote}
+          submitting={isSubmitting}
+          onConfirm={handleDialogConfirm}
+        />
+      )}
 
       {/* 1. Header Area */}
       <div className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-[#f4fbf6]/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-2xl md:flex-row md:items-center md:justify-between md:p-6">

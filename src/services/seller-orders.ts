@@ -1,4 +1,4 @@
-import { ApiError, apiClient } from "@/services/api";
+import { apiClient } from "@/services/api";
 import { type SellerOrderEarnings } from "@/services/platform-finance";
 
 export type SellerOrderStatus = "new" | "processing" | "shipped" | "delivered" | "cancelled" | "refund";
@@ -55,11 +55,21 @@ interface BackendOrdersResponse {
   }
 }
 
+interface BackendShippingAddress {
+  street?: string;
+  area?: string;
+  city?: string;
+}
+
+interface BackendProductImage {
+  url?: string;
+}
+
 interface BackendOrder {
   id: string;
   orderNumber: string;
   totalAmount: number;
-  shippingAddress: any;
+  shippingAddress: BackendShippingAddress | null;
   deliveryMethod: string;
   status: string;
   createdAt: string;
@@ -77,7 +87,7 @@ interface BackendOrder {
     product: {
       id: string;
       title: string;
-      images: any[];
+      images: BackendProductImage[];
       category: string;
     }
   }>;

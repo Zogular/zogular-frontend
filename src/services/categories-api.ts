@@ -1,12 +1,3 @@
-// services/categories-api.ts
-// ============================================================
-// Categories API Service
-// Fetches the dynamic category tree, attributes, and metadata
-// from the backend REST API at /api/v1/categories.
-// Falls back to the static CATEGORY_DIRECTORY if the backend
-// is unreachable (graceful degradation for offline-first PWA).
-// ============================================================
-
 import { apiClient } from "@/services/api";
 
 // ============================================================
@@ -80,10 +71,14 @@ export interface CategoryAttributesResponse {
  */
 export async function fetchCategoryTree(): Promise<CategoryNode[]> {
   try {
-    const response = await apiClient<CategoryTreeResponse>("/categories");
+    const response = await apiClient<CategoryTreeResponse>("/categories", {
+      method: "GET",
+      authMode: "omit",
+      cache: "no-store",
+    });
     return response.data.categories;
   } catch (error) {
-    console.warn("[categories-api] Failed to fetch category tree, using empty fallback:", error);
+    console.warn("[categories-api] Failed to fetch category tree:", error);
     return [];
   }
 }
@@ -93,7 +88,11 @@ export async function fetchCategoryTree(): Promise<CategoryNode[]> {
  */
 export async function fetchCategoryBySlug(slug: string): Promise<CategoryNode | null> {
   try {
-    const response = await apiClient<CategoryDetailResponse>(`/categories/${slug}`);
+    const response = await apiClient<CategoryDetailResponse>(`/categories/${slug}`, {
+      method: "GET",
+      authMode: "omit",
+      cache: "no-store",
+    });
     return response.data.category;
   } catch (error) {
     console.warn(`[categories-api] Failed to fetch category "${slug}":`, error);
@@ -110,6 +109,11 @@ export async function fetchCategoryAttributes(
   try {
     const response = await apiClient<CategoryAttributesResponse>(
       `/categories/${slug}/attributes`,
+      {
+        method: "GET",
+        authMode: "omit",
+        cache: "no-store",
+      },
     );
     return response.data.attributes;
   } catch (error) {

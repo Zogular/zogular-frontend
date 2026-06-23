@@ -43,3 +43,17 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# debug and test artifacts
+tmp-*.js
+check*.js
+playwright-report/
+screenshots/
+videos/
+traces/
+
+*-test.js
+e2e-*.js
+output/
+
+.codex-artifacts/

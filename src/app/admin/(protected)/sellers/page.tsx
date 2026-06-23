@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   Building2,
   Download,
@@ -14,12 +15,14 @@ import {
   AdminPageHeader,
   AdminEmptyState,
 } from "@/components/admin/AdminPrimitives";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellersList } from "@/features/admin-sellers/hooks/use-sellers-list";
 import { SellersListFilters, SellersListTable } from "@/features/admin-sellers/sections";
 
 export default function AdminSellersPage() {
-    const {
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
+  const {
     loading,
     error,
     searchQuery,
@@ -114,6 +117,12 @@ export default function AdminSellersPage() {
         />
       </div>
 
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
+
       {loading ? (
         <div className="overflow-hidden rounded-[2rem] border border-stone-200 bg-white/70 p-4 shadow-[0_8px_32px_rgba(15,23,42,0.04)] backdrop-blur-xl">
           <div className="space-y-4">
@@ -147,6 +156,7 @@ export default function AdminSellersPage() {
           onOpenAction={openAction}
           canApprove={canApprove}
           canSuspend={canSuspend}
+          mobileView={mobileView}
           hasMore={hasMore}
           onLoadMore={loadMore}
         />

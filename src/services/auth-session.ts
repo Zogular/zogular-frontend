@@ -35,7 +35,7 @@ function removeLegacyTokenKeys(storage: Storage): void {
   });
 }
 
-export function cleanupLegacyTokenStorageOnce(): void {
+function cleanupLegacyTokenStorageOnce(): void {
   const storage = getStorage();
   const sessionStorage = getSessionStorage();
   if (!storage || !sessionStorage) return;
@@ -62,39 +62,6 @@ function readString(key: string): string | null {
 function notifyAuthSessionChanged(): void {
   if (typeof window === "undefined") return;
   window.dispatchEvent(new Event(AUTH_SESSION_CHANGED_EVENT));
-}
-
-export function getStoredAccessToken(): string | null {
-  cleanupLegacyTokenStorageOnce();
-  return null;
-}
-
-export function getStoredRefreshToken(): string | null {
-  cleanupLegacyTokenStorageOnce();
-  return null;
-}
-
-export function storeAccessToken(token: string): void {
-  void token;
-  cleanupLegacyTokenStorageOnce();
-}
-
-export function removeStoredAccessToken(): void {
-  const storage = getStorage();
-  if (!storage) return;
-
-  removeLegacyTokenKeys(storage);
-}
-
-export function storeRefreshToken(token: string): void {
-  void token;
-  cleanupLegacyTokenStorageOnce();
-}
-
-export function removeStoredRefreshToken(): void {
-  const storage = getStorage();
-  if (!storage) return;
-  removeLegacyTokenKeys(storage);
 }
 
 export function storeLastAuthEmail(email: string): void {
@@ -137,8 +104,10 @@ export function getAuthSessionSnapshot(): string {
 
 export function storeAuthSession(session: AuthSession): void {
   cleanupLegacyTokenStorageOnce();
-  removeStoredAccessToken();
-  removeStoredRefreshToken();
+  const storage = getStorage();
+  if (storage) {
+    removeLegacyTokenKeys(storage);
+  }
   storeAuthUser(session.user);
   storeLastAuthEmail(session.user.email);
   notifyAuthSessionChanged();

@@ -16,6 +16,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminCurrency, formatAdminDate, formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { cn } from "@/lib/utils";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 import { recordAdminAudit } from "@/services/admin/audit";
 import { adminBuyersApi, type AdminBuyerRecord, type BuyerRiskLevel, type BuyerStatus } from "@/services/admin/buyers";
 import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
@@ -38,6 +40,7 @@ export default function AdminBuyersPage() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<BuyerStatus | "all">("all");
   const [riskFilter, setRiskFilter] = useState<BuyerRiskLevel | "all">("all");
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
   const [selectedBuyer, setSelectedBuyer] = useState<AdminBuyerRecord | null>(null);
   const [note, setNote] = useState("");
   const [isMutating, setIsMutating] = useState(false);
@@ -209,9 +212,75 @@ export default function AdminBuyersPage() {
         </select>
       </AdminToolbar>
 
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
+
       {lastExportedAt ? <p className="text-xs font-bold text-zinc-500">Last export: {formatAdminDateTime(lastExportedAt)}</p> : null}
 
-      <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+      <section className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3" : "overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl")}>
+        {loading ? (
+          <div className="p-10 text-center text-sm font-bold text-zinc-500">Loading buyer intelligence...</div>
+        ) : filteredBuyers.length === 0 ? (
+          <div className="p-10 text-center text-sm font-bold text-zinc-500">No buyers match this view.</div>
+        ) : mobileView === "list" ? (
+          <div className="divide-y divide-zinc-100">
+            {filteredBuyers.map((buyer) => (
+              <div key={buyer.id} className="p-3.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-[13px] font-black text-zinc-900">{buyer.name}</p>
+                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{buyer.email}</p>
+                  </div>
+                  <AdminStatusBadge tone={statusTone[buyer.status]}>{toTitleCase(buyer.status)}</AdminStatusBadge>
+                </div>
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Risk</span>
+                    <span>{buyer.riskLevel}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Orders</span>
+                    <span>{buyer.orderSummary.totalOrders}</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1">
+                    <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Spend</span>
+                    <span>{formatAdminCurrency(buyer.orderSummary.totalSpend)}</span>
+                  </span>
+                </div>
+                <div className="mt-2 flex justify-end">
+                  <Button variant="outline" onClick={() => setSelectedBuyer(buyer)} className="h-8 rounded-xl text-[10px] font-bold">View buyer</Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          filteredBuyers.map((buyer) => (
+            <article key={buyer.id} className="rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-[13px] font-black text-zinc-900">{buyer.name}</p>
+                  <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{buyer.phone}</p>
+                </div>
+                <AdminStatusBadge tone={statusTone[buyer.status]}>{toTitleCase(buyer.status)}</AdminStatusBadge>
+              </div>
+              <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
+                <MobileDetailRow label="Risk" value={`${buyer.riskLevel} risk`} />
+                <MobileDetailRow label="Orders" value={`${buyer.orderSummary.totalOrders} orders`} />
+                <MobileDetailRow label="Spend" value={formatAdminCurrency(buyer.orderSummary.totalSpend)} />
+                <MobileDetailRow label="Joined" value={formatAdminDate(buyer.joinedAt)} isLast />
+              </div>
+              <div className="mt-2.5 flex justify-end">
+                <Button variant="outline" onClick={() => setSelectedBuyer(buyer)} className="h-9 rounded-xl text-[11px] font-bold">View buyer</Button>
+              </div>
+            </article>
+          ))
+        )}
+      </section>
+
+      <section className="hidden overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl md:block">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[920px] text-left text-sm">
             <thead className="bg-zinc-950 text-[11px] uppercase tracking-wider text-zinc-300">
@@ -356,6 +425,23 @@ export default function AdminBuyersPage() {
           </div>
         ) : null}
       </AdminDetailSheet>
+    </div>
+  );
+}
+
+function MobileDetailRow({
+  label,
+  value,
+  isLast = false,
+}: {
+  label: string;
+  value: string;
+  isLast?: boolean;
+}) {
+  return (
+    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2", !isLast && "border-b border-zinc-100")}>
+      <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</span>
+      <span className="truncate text-right text-[11px] font-bold text-zinc-900">{value}</span>
     </div>
   );
 }

@@ -27,7 +27,6 @@ const AUTH_ENDPOINTS = {
   login: "/auth/login",
   logout: "/auth/logout",
   me: "/user/me",
-  refreshToken: "/auth/refresh-token",
   forgotPassword: "/auth/forgot-password",
   verifyEmail: "/auth/verify-email",
   resendVerification: "/auth/resend-verification",
@@ -194,17 +193,6 @@ function normalizeUser(payload: unknown, fallbackEmail?: string): AuthUser {
   };
 }
 
-function extractAccessToken(payload: unknown): string | undefined {
-  const records = collectCandidateRecords(payload);
-  const accessToken = getStringByKeys(records, [
-    "accessToken",
-    "access_token",
-    "token",
-    "jwt",
-  ]);
-  return accessToken;
-}
-
 function sanitizeInternalPath(path?: string | null): string | undefined {
   if (!path) return undefined;
 
@@ -288,10 +276,6 @@ export function getStoredAuthSession(): AuthSession | null {
   return { user };
 }
 
-export function isAuthenticated(): boolean {
-  return Boolean(getStoredAuthUser());
-}
-
 export async function login(input: LoginInput): Promise<AuthSession> {
   storeLastAuthEmail(input.email);
 
@@ -311,8 +295,6 @@ export async function login(input: LoginInput): Promise<AuthSession> {
     );
   }
 
-  const accessToken = extractAccessToken(payload);
-
   let user: AuthUser;
   try {
     user = normalizeUser(payload, input.email);
@@ -324,11 +306,7 @@ export async function login(input: LoginInput): Promise<AuthSession> {
       throw error;
     }
   }
-
-  const session: AuthSession = {
-    user,
-    accessToken,
-  };
+  const session: AuthSession = { user };
 
   storeAuthSession(session);
   return session;
@@ -387,33 +365,6 @@ export async function getCurrentUser(): Promise<AuthUser> {
   storeAuthUser(user);
   storeLastAuthEmail(user.email);
   return user;
-}
-
-export async function refreshAccessToken(): Promise<string> {
-  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.refreshToken, {
-    method: "POST",
-    authMode: "omit",
-    skipAuthRefresh: true,
-    csrf: true,
-  });
-
-  const accessToken = extractAccessToken(payload);
-  if (!accessToken) {
-    throw new ApiError("Backend did not return a refreshed access token.", 500, payload);
-  }
-
-  // Refresh response now carries data.user — update stored metadata so
-  // phoneVerifiedAt persists across the access-token window without a
-  // separate /user/me round-trip.
-  try {
-    const fallbackEmail = getStoredAuthUser()?.email;
-    const refreshedUser = normalizeUser(payload, fallbackEmail);
-    storeAuthUser(refreshedUser);
-  } catch {
-    // Non-fatal: stored user metadata may be slightly stale until next /user/me.
-  }
-
-  return accessToken;
 }
 
 function normalizePhoneOtpPayload(phone: string, code?: string) {

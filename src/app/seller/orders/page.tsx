@@ -17,6 +17,7 @@ import {
   ActionMenuTrigger,
 } from "@/components/ui/action-menu";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 import {
   sellerOrdersApi,
   type SellerOrderStatus,
@@ -195,6 +196,7 @@ export default function SellerOrdersPage() {
   
   const [searchQuery, setSearchQuery] = useState("");
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
 
   const handleCancelOrder = useCallback(async (orderId: string) => {
     const target = orders.find((order) => order.id === orderId);
@@ -382,8 +384,14 @@ export default function SellerOrdersPage() {
         </div>
       </div>
 
+      <CollectionViewToggle
+        value={mobileView}
+        onChange={setMobileView}
+        className="md:hidden"
+      />
+
       {/* 3. UNIFIED KANBAN VIEW (Desktop & Mobile) */}
-      <div className="flex-1 flex items-start gap-4 md:gap-6 overflow-x-auto px-4 md:px-2 pb-4 pt-2 -mx-4 md:-mx-2 hide-scrollbar snap-x snap-mandatory">
+      <div className="hidden flex-1 items-start gap-4 overflow-x-auto px-4 pb-4 pt-2 -mx-4 hide-scrollbar snap-x snap-mandatory md:flex md:gap-6 md:px-2 md:-mx-2">
         {STATUS_COLUMNS.map((column) => {
           const columnOrders = filteredOrders.filter(o => o.status === column.id);
           const Icon = column.icon;
@@ -412,6 +420,97 @@ export default function SellerOrdersPage() {
             </div>
           );
         })}
+      </div>
+
+      <div className="md:hidden">
+        {mobileView === "list" ? (
+          filteredOrders.length === 0 ? (
+            <div className="rounded-3xl border border-dashed border-zinc-200 bg-white/60 p-10 text-center">
+              <p className="text-sm font-bold text-zinc-500">No orders match this view.</p>
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-3xl border border-zinc-200/70 bg-white shadow-[0_8px_28px_rgba(15,23,42,0.04)]">
+              <div className="divide-y divide-zinc-100">
+                {filteredOrders.map((order) => {
+                  const statusMeta = STATUS_COLUMNS.find((c) => c.id === order.status);
+                  return (
+                    <div key={order.id} className="p-3.5">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="text-[13px] font-black text-zinc-900">{order.customer}</p>
+                          <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{order.id}</p>
+                        </div>
+                        {statusMeta ? (
+                          <span className={`inline-flex items-center rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider ${statusMeta.bg} ${statusMeta.color} ${statusMeta.border}`}>
+                            {statusMeta.title}
+                          </span>
+                        ) : null}
+                      </div>
+
+                      <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Items</span>
+                          <span>{order.items}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Phone</span>
+                          <span>{order.phone}</span>
+                        </span>
+                        <span className="inline-flex items-center gap-1">
+                          <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Time</span>
+                          <span suppressHydrationWarning>{formatRelativeTime(order.createdAt)}</span>
+                        </span>
+                      </div>
+
+                      <div className="mt-2 flex items-center justify-between gap-2">
+                        <span className="text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</span>
+                        <div className="flex items-center gap-2">
+                          <Link href={`/seller/orders/${order.id}`}>
+                            <Button size="sm" className="h-8 rounded-xl bg-zinc-900 px-3 text-[10px] font-bold text-white hover:bg-zinc-800">
+                              Manage
+                            </Button>
+                          </Link>
+                          <OrderActionMenu order={order} onCancelOrder={handleCancelOrder} />
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )
+        ) : (
+          <div className="flex items-start gap-4 overflow-x-auto px-4 pb-4 pt-2 -mx-4 hide-scrollbar snap-x snap-mandatory">
+            {STATUS_COLUMNS.map((column) => {
+              const columnOrders = filteredOrders.filter((o) => o.status === column.id);
+              const Icon = column.icon;
+              return (
+                <div key={column.id} className="flex w-[85vw] max-w-[320px] min-w-[280px] flex-col gap-4 snap-center shrink-0">
+                  <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-[#f4fbf6] pb-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${column.bg} ${column.color}`}>
+                        <Icon className="h-4 w-4" />
+                      </div>
+                      <h2 className="truncate text-sm font-black text-zinc-900">{column.title}</h2>
+                    </div>
+                    <span className="rounded-lg bg-zinc-100 px-2.5 py-1 text-xs font-bold text-zinc-500">{columnOrders.length}</span>
+                  </div>
+
+                  <div className="flex flex-col gap-3">
+                    {columnOrders.map((order) => (
+                      <OrderCard key={order.id} order={order} onCancelOrder={handleCancelOrder} />
+                    ))}
+                    {columnOrders.length === 0 ? (
+                      <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-white/50 p-6 text-center">
+                        <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Empty</p>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
 
     </div>

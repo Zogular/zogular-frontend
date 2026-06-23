@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams, useRouter } from "next/navigation";
+import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ShieldAlert } from "lucide-react";
@@ -15,7 +15,6 @@ import type { ProductModerationAction } from "@/services/product-moderation";
 
 export default function AdminProductModerationPage() {
   const params = useParams<{ id: string }>();
-  const router = useRouter();
   const productId = decodeURIComponent(params.id);
   const [product, setProduct] = useState<SellerProductListing | null>(null);
   const [loading, setLoading] = useState(true);

@@ -16,7 +16,7 @@ import { ProductImagesSection } from "./ProductImagesSection";
 import { fieldError, GlassSection, inputErrorClass, InputField, ProductListingMobileActions, ProductListingStudioHeader, ToggleSwitch } from "./ProductListingStudioPrimitives";
 import { useProductImages } from "../_hooks/useProductImages";
 import { categoryAttributesToDetailGroup, getCategoryDetailGroup, type CategoryDetailField } from "../_lib/category-detail-fields";
-import { buildSelectionFromLegacy, flattenCategoryNodes, makeCategorySelection, staticSellerTreeAsNodes, type CategorySelection, type PickerSelection } from "../_lib/category-selection";
+import { buildSelectionFromLegacy, flattenCategoryNodes, makeCategorySelection, type CategorySelection, type PickerSelection } from "../_lib/category-selection";
 import {
   buildSku,
   buildVariants,
@@ -104,7 +104,7 @@ export function ProductListingStudioForm({
   const [sku, setSku] = useState(initialProduct?.sku ?? "");
   const [lowStockThreshold, setLowStockThreshold] = useState(initialProduct ? String(initialProduct.lowStockThreshold) : "5");
 
-  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>(() => staticSellerTreeAsNodes());
+  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
   const [categorySearch, setCategorySearch] = useState("");
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [browsePath, setBrowsePath] = useState<CategoryNode[]>([]);
@@ -152,7 +152,10 @@ export function ProductListingStudioForm({
   }, [categorySearch, flatCategoryNodes]);
   const selectedPickerCategory = pickerSelection ? makeCategorySelection(pickerSelection) : null;
   const canSubmitCategory = Boolean(
-    pickerSelection && (pickerSelection.isOther || !pickerSelection.path[pickerSelection.path.length - 1].children?.length),
+    pickerSelection &&
+      (pickerSelection.isOther
+        ? pickerSelection.path.length > 0
+        : !pickerSelection.path[pickerSelection.path.length - 1].children?.length),
   );
   const variantValues = useMemo(
     () => (hasVariants ? splitVariantValues(variantOptions.colors || variantOptions.sizes) : []),
@@ -172,7 +175,7 @@ export function ProductListingStudioForm({
   useEffect(() => {
     let isMounted = true;
     fetchCategoryTree().then((categories) => {
-      if (isMounted && categories.length) setCategoryTree(categories);
+      if (isMounted) setCategoryTree(categories);
     });
     return () => {
       isMounted = false;

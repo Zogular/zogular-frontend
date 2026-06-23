@@ -5,7 +5,6 @@ import type {
   NotificationPreferences,
 } from "@/types/account";
 import type { Address } from "@/types/address";
-import type { OrderSummary } from "@/types/order";
 import { getStoredAuthUser } from "@/services/auth-session";
 import { changePassword, getCurrentUser, logout, updateMe } from "@/services/auth";
 import { getMyOrders } from "@/services/orders";
@@ -37,10 +36,6 @@ export async function getAccountOverview(): Promise<AccountOverview> {
     defaultAddress: null,
     recentlyViewed: [],
   };
-}
-
-export async function getAccountOrdersPreview(): Promise<OrderSummary[]> {
-  return getMyOrders();
 }
 
 export async function getSavedAddresses(): Promise<Address[]> {

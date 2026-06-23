@@ -2,7 +2,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ExternalLink, LogOut } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { sellerSidebarItems } from "../data/seller-onboarding.mock";
+import { sellerSidebarItems } from "../constants/seller-sidebar-items";
 import type { SellerOnboardingViewModel } from "../types/seller-onboarding.types";
 import { cn } from "@/lib/utils";
 import { logout } from "@/services/auth";

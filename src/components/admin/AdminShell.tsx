@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LayoutDashboard, Users, Store, Package, ShoppingCart, AlertOctagon,
-  Wallet, LifeBuoy, Megaphone, Settings, ShieldAlert, LogOut, Menu, X, Sparkles, BarChart3,
+  Wallet, LifeBuoy, Megaphone, Settings, ShieldAlert, LogOut, Menu, X, Sparkles, BarChart3, FolderTree,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -27,6 +27,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
   { name: "Buyers CRM", href: "/admin/buyers", icon: Users, permission: "view_buyers" },
   { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
+  { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
   { name: "Order Logistics", href: "/admin/orders", icon: ShoppingCart, permission: "view_orders" },
   { name: "Dispute Queue", href: "/admin/disputes", icon: AlertOctagon, permission: "manage_disputes" },
   { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "manage_support" },

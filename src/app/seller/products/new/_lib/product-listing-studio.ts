@@ -52,8 +52,9 @@ export const getDefaultWeight = (subcategory: string) => {
 
 export function buildSku(subcategory: string, title: string) {
   const prefix = slugifySellerValue(subcategory).slice(0, 3).toUpperCase() || "ZMY";
-  const suffix = slugifySellerValue(title).slice(0, 5).toUpperCase() || Date.now().toString().slice(-5);
-  return `ZM-${prefix}-${suffix}`;
+  const titleSegment = slugifySellerValue(title).replace(/-/g, "").slice(0, 10).toUpperCase() || "ITEM";
+  const uniqueSegment = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`.slice(-6).toUpperCase();
+  return `ZM-${prefix}-${titleSegment}-${uniqueSegment}`;
 }
 
 export function buildVariants(

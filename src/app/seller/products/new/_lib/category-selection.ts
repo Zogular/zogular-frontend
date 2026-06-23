@@ -2,7 +2,6 @@ import { type CategoryNode } from "@/services/categories-api";
 import {
   getCategoryMetaByName,
   getSubcategoryMeta,
-  SELLER_CATEGORY_TREE,
   slugifySellerValue,
 } from "@/services/seller-catalog";
 
@@ -26,30 +25,6 @@ export type PickerSelection = {
   isOther: boolean;
 };
 
-export function staticSellerTreeAsNodes(): CategoryNode[] {
-  return Object.entries(SELLER_CATEGORY_TREE).map(([name, children], parentIndex) => ({
-    id: `static-${slugifySellerValue(name)}`,
-    name,
-    slug: slugifySellerValue(name),
-    description: null,
-    icon: null,
-    parentId: null,
-    isActive: true,
-    sortOrder: parentIndex,
-    children: children.map((child, childIndex) => ({
-      id: `static-${slugifySellerValue(name)}-${slugifySellerValue(child)}`,
-      name: child,
-      slug: slugifySellerValue(child),
-      description: null,
-      icon: null,
-      parentId: `static-${slugifySellerValue(name)}`,
-      isActive: true,
-      sortOrder: childIndex,
-      children: [],
-    })),
-  }));
-}
-
 export function flattenCategoryNodes(nodes: CategoryNode[]) {
   const results: Array<{ node: CategoryNode; path: CategoryNode[] }> = [];
   const walk = (items: CategoryNode[], path: CategoryNode[]) => {
@@ -64,22 +39,6 @@ export function flattenCategoryNodes(nodes: CategoryNode[]) {
 }
 
 export function makeCategorySelection(selection: PickerSelection): CategorySelection | null {
-  if (!selection.path.length && selection.isOther) {
-    return {
-      path: ["Other"],
-      categoryId: "other",
-      categoryName: "Other",
-      categorySlug: "other",
-      subcategoryId: "other",
-      subcategoryName: "Other",
-      subcategorySlug: "other",
-      leafId: "other",
-      leafName: "Other",
-      leafSlug: "other",
-      isOther: true,
-      isBackendCategory: false,
-    };
-  }
   if (!selection.path.length) return null;
 
   const top = selection.path[0];

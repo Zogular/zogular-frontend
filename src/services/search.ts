@@ -1,4 +1,4 @@
-import { getSearchableProducts } from "@/services/products";
+import { searchProducts } from "@/services/products";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
 import { getProductTitle } from "@/lib/normalizers/product";
 import type { SearchCategoryResult, SearchIndex, SearchResults } from "@/types/search";
@@ -35,10 +35,7 @@ function scoreCategory(category: SearchCategoryResult, query: string): number {
 }
 
 export async function getSearchIndex(): Promise<SearchIndex> {
-  const [products, categoryDirectory] = await Promise.all([
-    getSearchableProducts(),
-    getCategoryDirectory(),
-  ]);
+  const categoryDirectory = await getCategoryDirectory();
 
   const categories: SearchCategoryResult[] = categoryDirectory.flatMap((category) => [
     {
@@ -58,7 +55,7 @@ export async function getSearchIndex(): Promise<SearchIndex> {
     })),
   ]);
 
-  return { products, categories };
+  return { products: [], categories };
 }
 
 export function searchFromIndex(
@@ -100,6 +97,19 @@ export async function searchCatalog(
   query: string,
   options?: { productLimit?: number; categoryLimit?: number },
 ): Promise<SearchResults> {
-  const index = await getSearchIndex();
-  return searchFromIndex(index, query, options);
+  const productLimit = options?.productLimit ?? 6;
+  const [products, index] = await Promise.all([
+    searchProducts(query, productLimit),
+    getSearchIndex(),
+  ]);
+  const categoryResults = searchFromIndex(index, query, {
+    productLimit: 0,
+    categoryLimit: options?.categoryLimit,
+  });
+
+  return {
+    products,
+    categories: categoryResults.categories,
+    totalCount: products.length + categoryResults.categories.length,
+  };
 }
