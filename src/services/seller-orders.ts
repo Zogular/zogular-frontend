@@ -55,11 +55,21 @@ interface BackendOrdersResponse {
   }
 }
 
+interface BackendShippingAddress {
+  street?: string;
+  area?: string;
+  city?: string;
+}
+
+interface BackendProductImage {
+  url?: string;
+}
+
 interface BackendOrder {
   id: string;
   orderNumber: string;
   totalAmount: number;
-  shippingAddress: any;
+  shippingAddress: BackendShippingAddress | null;
   deliveryMethod: string;
   status: string;
   createdAt: string;
@@ -77,7 +87,7 @@ interface BackendOrder {
     product: {
       id: string;
       title: string;
-      images: any[];
+      images: BackendProductImage[];
       category: string;
     }
   }>;
