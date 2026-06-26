@@ -11,6 +11,9 @@ import { Separator } from "@/components/ui/separator";
 import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { PurchaseProgress, type PurchaseProgressStep } from "@/components/checkout/PurchaseProgress";
 import { useCart } from "@/hooks/use-cart";
+import { getStoredAuthUser } from "@/services/auth-session";
+import { getSavedAddresses } from "@/services/account";
+import type { Address } from "@/types/address";
 import {
   CHECKOUT_DELIVERY_FEE,
   CHECKOUT_DELIVERY_FEE_NOTICE,
@@ -38,6 +41,13 @@ function isDeliveryComplete(delivery: CheckoutDelivery) {
 export default function CheckoutPage() {
   const router = useRouter();
   const { hasHydrated, items, itemCount, totalAmount, clearCart, syncWithBackend } = useCart();
+  
+  const [authUser, setAuthUser] = React.useState<ReturnType<typeof getStoredAuthUser>>(null);
+  const [savedAddresses, setSavedAddresses] = React.useState<Address[]>([]);
+  const [isLoadingAddresses, setIsLoadingAddresses] = React.useState(true);
+  const [addressLoadError, setAddressLoadError] = React.useState(false);
+  const [selectedAddressId, setSelectedAddressId] = React.useState<string | null>(null);
+
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [contact, setContact] = React.useState<CheckoutContact>({
@@ -54,11 +64,50 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("mobile-money");
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
 
+  const loadAddresses = React.useCallback(async () => {
+    setIsLoadingAddresses(true);
+    setAddressLoadError(false);
+    try {
+      const addresses = await getSavedAddresses();
+      setSavedAddresses(addresses);
+      if (addresses.length > 0) {
+        const def = addresses.find((a) => a.isDefault) || addresses[0];
+        setSelectedAddressId(def.id);
+      }
+    } catch (error) {
+      if (error && typeof error === "object" && "status" in error && error.status === 401) {
+        setAuthUser(null);
+        setSavedAddresses([]);
+        setSelectedAddressId(null);
+        setAddressLoadError(false);
+      } else {
+        setAddressLoadError(true);
+      }
+    } finally {
+      setIsLoadingAddresses(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    if (hasHydrated) {
+      const user = getStoredAuthUser();
+      setAuthUser(user);
+
+      if (user) {
+        void loadAddresses();
+      } else {
+        setIsLoadingAddresses(false);
+      }
+    }
+  }, [hasHydrated, loadAddresses]);
+
   const deliveryFee = itemCount > 0 ? CHECKOUT_DELIVERY_FEE : 0;
   const total = totalAmount + deliveryFee;
-  const contactComplete = isContactComplete(contact);
-  const deliveryComplete = isDeliveryComplete(delivery);
-  const canSubmit = hasHydrated && items.length > 0 && contactComplete && deliveryComplete && !submitting;
+  
+  const isGuest = !authUser;
+  const contactComplete = isGuest ? isContactComplete(contact) : selectedAddressId !== null;
+  const deliveryComplete = isGuest ? isDeliveryComplete(delivery) : selectedAddressId !== null;
+  const canSubmit = hasHydrated && items.length > 0 && contactComplete && deliveryComplete && !submitting && (!authUser || !isLoadingAddresses);
   const detailsComplete = contactComplete && deliveryComplete;
 
   const updateContact = (field: keyof CheckoutContact) => (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -81,21 +130,44 @@ export default function CheckoutPage() {
       return;
     }
 
+    let submitContact = contact;
+    let submitDelivery = delivery;
+
+    if (authUser) {
+      const selected = savedAddresses.find((a) => a.id === selectedAddressId);
+      if (!selected) {
+        setSubmitError("Please select a delivery address.");
+        setCheckoutStage("details");
+        return;
+      }
+      submitContact = {
+        firstName: selected.name,
+        lastName: "",
+        email: authUser.email,
+        phone: selected.phone,
+      };
+      submitDelivery = {
+        street: selected.street,
+        area: selected.area,
+        instructions: "",
+      };
+    }
+
     setSubmitting(true);
     try {
       await syncWithBackend();
       const order = await createCheckoutOrder({
         items,
         contact: {
-          firstName: contact.firstName.trim(),
-          lastName: contact.lastName.trim(),
-          email: contact.email.trim(),
-          phone: contact.phone.trim(),
+          firstName: submitContact.firstName.trim(),
+          lastName: submitContact.lastName.trim(),
+          email: submitContact.email.trim(),
+          phone: submitContact.phone.trim(),
         },
         delivery: {
-          street: delivery.street.trim(),
-          area: delivery.area.trim(),
-          instructions: delivery.instructions?.trim(),
+          street: submitDelivery.street.trim(),
+          area: submitDelivery.area.trim(),
+          instructions: submitDelivery.instructions?.trim(),
         },
         paymentMethod,
       });
@@ -160,68 +232,154 @@ export default function CheckoutPage() {
 
         <div className="flex flex-col gap-8 xl:gap-12 lg:flex-row">
           <div className="flex-1 space-y-6">
-            <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
-              <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
-                Contact Information
-              </h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                <label className="space-y-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">First Name</span>
-                  <Input value={contact.firstName} onChange={updateContact("firstName")} placeholder="e.g. John" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                </label>
-                <label className="space-y-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Last Name</span>
-                  <Input value={contact.lastName} onChange={updateContact("lastName")} placeholder="e.g. Banda" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                </label>
-                <label className="space-y-1.5 md:col-span-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Email Address</span>
-                  <Input value={contact.email} onChange={updateContact("email")} type="email" placeholder="john@example.com" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                </label>
-                <label className="space-y-1.5 md:col-span-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Phone Number</span>
-                  <Input value={contact.phone} onChange={updateContact("phone")} type="tel" placeholder="+260 97 1234567" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                </label>
-              </div>
-            </section>
+            
+            {authUser ? (
+              isLoadingAddresses ? (
+                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
+                  <div className="flex h-32 items-center justify-center">
+                    <p className="text-sm font-medium text-zinc-500">Loading delivery addresses...</p>
+                  </div>
+                </section>
+              ) : addressLoadError ? (
+                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
+                  <div className="flex h-32 flex-col items-center justify-center gap-3">
+                    <p className="text-sm font-medium text-red-500">Failed to load delivery addresses.</p>
+                    <Button type="button" onClick={() => loadAddresses()} variant="outline">Retry</Button>
+                  </div>
+                </section>
+              ) : (
+                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
+                  <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
+                    Delivery Address
+                  </h2>
+                  {savedAddresses.length === 0 ? (
+                    <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 py-10 text-center">
+                      <p className="mb-4 text-sm font-semibold text-zinc-900">Add a delivery address before checkout.</p>
+                      <Link href="/account/addresses">
+                        <Button type="button" className="rounded-xl bg-zinc-900 px-6 font-bold text-white hover:bg-zinc-800">
+                          Manage Addresses
+                        </Button>
+                      </Link>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                        {savedAddresses.map((addr) => (
+                          <label
+                            key={addr.id}
+                            className={`relative flex cursor-pointer flex-col gap-2 rounded-2xl border-2 p-5 text-left transition-all hover:shadow-md ${
+                              selectedAddressId === addr.id ? "border-[#009E49] bg-[#009E49]/5" : "border-zinc-200 bg-white hover:border-zinc-300"
+                            }`}
+                          >
+                            <input
+                              type="radio"
+                              name="saved-address"
+                              className="sr-only"
+                              checked={selectedAddressId === addr.id}
+                              onChange={() => setSelectedAddressId(addr.id)}
+                            />
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-zinc-900">{addr.name}</span>
+                              {addr.isDefault && (
+                                <span className="rounded bg-zinc-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-600">
+                                  Default
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-xs text-zinc-500">
+                              <p>{addr.street}</p>
+                              <p>{addr.area}, {addr.city}</p>
+                              <p className="mt-1 font-medium">{addr.phone}</p>
+                            </div>
+                          </label>
+                        ))}
+                      </div>
+                      <div className="mt-4 text-right">
+                        <Link href="/account/addresses" className="text-xs font-bold text-[#009E49] hover:underline">
+                          Manage Addresses
+                        </Link>
+                      </div>
+                    </>
+                  )}
+                  <Button
+                    type="button"
+                    disabled={!detailsComplete}
+                    onClick={() => setCheckoutStage("payment")}
+                    className="mt-6 h-12 w-full rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d] disabled:opacity-50 md:hidden"
+                  >
+                    Continue to Payment
+                  </Button>
+                </section>
+              )
+            ) : (
+              <>
+                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
+                  <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
+                    Contact Information
+                  </h2>
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">First Name</span>
+                      <Input value={contact.firstName} onChange={updateContact("firstName")} placeholder="e.g. John" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Last Name</span>
+                      <Input value={contact.lastName} onChange={updateContact("lastName")} placeholder="e.g. Banda" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
+                    </label>
+                    <label className="space-y-1.5 md:col-span-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Email Address</span>
+                      <Input value={contact.email} onChange={updateContact("email")} type="email" placeholder="john@example.com" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
+                    </label>
+                    <label className="space-y-1.5 md:col-span-2">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Phone Number</span>
+                      <Input value={contact.phone} onChange={updateContact("phone")} type="tel" placeholder="+260 97 1234567" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
+                    </label>
+                  </div>
+                </section>
 
-            <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
-              <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">2</span>
-                Delivery Details
-              </h2>
-              <div className="grid grid-cols-1 gap-4">
-                <label className="space-y-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Street Address</span>
-                  <Input value={delivery.street} onChange={updateDelivery("street")} placeholder="e.g. 123 Independence Ave" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                </label>
-                <label className="space-y-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Area / Neighborhood</span>
-                  <select aria-label="Delivery area" value={delivery.area} onChange={updateDelivery("area")} className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#009E49]" required>
-                    <option value="">Select your area...</option>
-                    {areaOptions.map((area) => (
-                      <option key={area} value={area}>{area}</option>
-                    ))}
-                  </select>
-                </label>
-                <label className="space-y-1.5">
-                  <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Additional Instructions</span>
-                  <Input value={delivery.instructions ?? ""} onChange={updateDelivery("instructions")} placeholder="e.g. House with the green gate" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" />
-                </label>
-              </div>
-              <Button
-                type="button"
-                disabled={!detailsComplete}
-                onClick={() => setCheckoutStage("payment")}
-                className="mt-6 h-12 w-full rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d] disabled:opacity-50 md:hidden"
-              >
-                Continue to Payment
-              </Button>
-            </section>
+                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
+                  <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">2</span>
+                    Delivery Details
+                  </h2>
+                  <div className="grid grid-cols-1 gap-4">
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Street Address</span>
+                      <Input value={delivery.street} onChange={updateDelivery("street")} placeholder="e.g. 123 Independence Ave" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Area / Neighborhood</span>
+                      <select aria-label="Delivery area" value={delivery.area} onChange={updateDelivery("area")} className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#009E49]" required>
+                        <option value="">Select your area...</option>
+                        {areaOptions.map((area) => (
+                          <option key={area} value={area}>{area}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="space-y-1.5">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Additional Instructions</span>
+                      <Input value={delivery.instructions ?? ""} onChange={updateDelivery("instructions")} placeholder="e.g. House with the green gate" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" />
+                    </label>
+                  </div>
+                  <Button
+                    type="button"
+                    disabled={!detailsComplete}
+                    onClick={() => setCheckoutStage("payment")}
+                    className="mt-6 h-12 w-full rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d] disabled:opacity-50 md:hidden"
+                  >
+                    Continue to Payment
+                  </Button>
+                </section>
+              </>
+            )}
 
             <section className={`${checkoutStage === "payment" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
               <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">3</span>
+                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">
+                  {authUser ? "2" : "3"}
+                </span>
                 Payment Method
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
