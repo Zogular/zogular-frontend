@@ -5,6 +5,7 @@ import { migrateLocalStorageValue } from "@/lib/persisted-storage";
 
 import { getStoredAuthUser } from "@/services/auth-session";
 import { getWishlistItems, addWishlistItem as apiAddWishlistItem, removeWishlistItem as apiRemoveWishlistItem } from "@/services/wishlist-api";
+import { getBackendProductImage } from "@/types/backend-order";
 
 export type WishlistItem = Product;
 
@@ -51,9 +52,15 @@ export const useWishlist = create<WishlistStore>()(
         if (!user) return;
         try {
           const remoteItems = await getWishlistItems();
-          const items = remoteItems.map((ri) => ({
-            ...(ri.product as unknown as WishlistItem),
-            image: ri.product.images?.[0] || ri.product.image || "/placeholder.png",
+          const items: WishlistItem[] = remoteItems.map((ri) => ({
+            id: ri.product.id || ri.productId,
+            slug: typeof ri.product.slug === "string" ? ri.product.slug : String(ri.product.id || ri.productId),
+            title: ri.product.title || ri.product.name,
+            name: ri.product.name || ri.product.title,
+            price: typeof ri.product.price === "number" ? ri.product.price : 0,
+            rating: typeof ri.product.rating === "number" ? ri.product.rating : 0,
+            reviews: typeof ri.product.reviews === "number" ? ri.product.reviews : (typeof ri.product.reviewCount === "number" ? ri.product.reviewCount : 0),
+            image: getBackendProductImage(ri.product),
           }));
           const remoteItemIds: Record<string, string> = {};
           remoteItems.forEach((ri) => {

@@ -1,7 +1,7 @@
 import { apiClient } from "@/services/api";
 import { getStoredAuthUser } from "@/services/auth-session";
 import type { Invoice, OrderSummary, OrderStatus } from "@/types/order";
-import type { BackendOrder, BackendOrderStatus } from "@/types/backend-order";
+import { type BackendOrder, type BackendOrderStatus, type BackendOrderItem, getBackendProductImage } from "@/types/backend-order";
 
 function mapBackendStatusToFrontend(status: BackendOrderStatus): OrderStatus {
   switch (status) {
@@ -40,8 +40,8 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
         : "Pending",
       items: order.items.map((item) => ({
         name: item.product?.title || item.product?.name || "Unknown Product",
-        image: item.product?.images?.[0] || "/placeholder.png",
-        qty: item.quantity,
+        image: getBackendProductImage(item.product),
+        qty: item.quantity || 1,
       })),
     };
   });
@@ -62,13 +62,16 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
        shippingAddressStr = order.shippingAddress;
     } else if (typeof order.shippingAddress === 'object') {
        const addr = order.shippingAddress as Record<string, string>;
-       shippingAddressStr = addr.address || addr.street || "N/A";
-       shippingArea = addr.area || "N/A";
+       shippingAddressStr = addr.address || addr.addressLine || addr.street || "N/A";
+       shippingArea = addr.area || addr.district || "N/A";
        shippingCity = addr.city || "N/A";
     }
   }
 
-  const subtotal = order.items.reduce((acc, item) => acc + item.lineTotal, 0);
+  const getOrderItemLineTotal = (item: BackendOrderItem) => 
+    typeof item.lineTotal === "number" ? item.lineTotal : (item.price || 0) * (item.quantity || 1);
+
+  const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
 
   return {
     id: order.id,
@@ -91,8 +94,8 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
     paymentMethod: "Not specified",
     items: order.items.map((item) => ({
       name: item.product?.title || item.product?.name || "Unknown Product",
-      qty: item.quantity,
-      price: item.price,
+      qty: item.quantity || 1,
+      price: item.price || 0,
     })),
     subtotal: subtotal,
     // Temporary derived display fallback until backend exposes explicit shipping/fee breakdown

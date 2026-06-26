@@ -4,8 +4,22 @@ export interface BackendProduct {
   name?: string;
   images?: string[];
   image?: string;
-  price?: number;
   [key: string]: unknown;
+}
+
+export function getBackendProductImage(product: BackendProduct | undefined | null): string {
+  if (!product) return "/placeholder.png";
+  if (product.images && Array.isArray(product.images) && product.images.length > 0) {
+    const first = product.images[0];
+    if (typeof first === "string") return first;
+    if (typeof first === "object" && first !== null && "url" in first && typeof (first as Record<string, unknown>).url === "string") {
+      return (first as Record<string, unknown>).url as string;
+    }
+  }
+  if (typeof product.image === "string" && product.image) {
+    return product.image;
+  }
+  return "/placeholder.png";
 }
 
 export type BackendOrderStatus = 
