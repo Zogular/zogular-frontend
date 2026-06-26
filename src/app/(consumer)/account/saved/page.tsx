@@ -10,8 +10,14 @@ import { FeedbackState } from "@/components/states/FeedbackState";
 import { useWishlist } from "@/hooks/use-wishlist";
 
 export default function SavedItemsPage() {
-  const { items, hasHydrated } = useWishlist();
+  const { items, hasHydrated, syncBackend } = useWishlist();
   const [search, setSearch] = React.useState("");
+
+  React.useEffect(() => {
+    if (hasHydrated) {
+      void syncBackend();
+    }
+  }, [hasHydrated, syncBackend]);
 
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLowerCase();
