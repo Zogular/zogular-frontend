@@ -22,6 +22,8 @@ interface WishlistStore {
   syncBackend: () => Promise<void>;
 }
 
+const normalizeWishlistId = (id: string | number) => String(id);
+
 function buildWishlistState(items: WishlistItem[], remoteItemIds: Record<string, string>) {
   return {
     items,
@@ -55,7 +57,7 @@ export const useWishlist = create<WishlistStore>()(
           }));
           const remoteItemIds: Record<string, string> = {};
           remoteItems.forEach((ri) => {
-            remoteItemIds[ri.productId] = ri.id;
+            remoteItemIds[normalizeWishlistId(ri.productId)] = ri.id;
           });
           set(buildWishlistState(items, remoteItemIds));
         } catch (e) {
@@ -64,8 +66,9 @@ export const useWishlist = create<WishlistStore>()(
       },
 
       addItem: async (item) => {
+        const normalizedId = normalizeWishlistId(item.id);
         const currentItems = get().items;
-        const exists = currentItems.some((wishlistItem) => wishlistItem.id === item.id);
+        const exists = currentItems.some((wishlistItem) => normalizeWishlistId(wishlistItem.id) === normalizedId);
         if (exists) return;
 
         const currentRemoteItemIds = get().remoteItemIds;
@@ -74,38 +77,39 @@ export const useWishlist = create<WishlistStore>()(
         const user = getStoredAuthUser();
         if (user) {
           try {
-            const added = await apiAddWishlistItem(String(item.id));
+            const added = await apiAddWishlistItem(normalizedId);
             set(
               buildWishlistState([...currentItems, item], {
                 ...get().remoteItemIds,
-                [item.id]: added.id,
+                [normalizedId]: added.id,
               })
             );
           } catch (e) {
             console.error("Failed to add to remote wishlist", e);
-            const rolledBackItems = get().items.filter((i) => i.id !== item.id);
+            const rolledBackItems = get().items.filter((i) => normalizeWishlistId(i.id) !== normalizedId);
             set(buildWishlistState(rolledBackItems, get().remoteItemIds));
           }
         }
       },
 
       removeItem: async (id) => {
+        const normalizedId = normalizeWishlistId(id);
         const currentItems = get().items;
-        const itemToRemove = currentItems.find((i) => i.id === id);
+        const itemToRemove = currentItems.find((i) => normalizeWishlistId(i.id) === normalizedId);
         if (!itemToRemove) return;
 
         const currentRemoteItemIds = get().remoteItemIds;
-        const nextItems = currentItems.filter((item) => item.id !== id);
+        const nextItems = currentItems.filter((item) => normalizeWishlistId(item.id) !== normalizedId);
         set(buildWishlistState(nextItems, currentRemoteItemIds));
 
         const user = getStoredAuthUser();
         if (user) {
           try {
-            const remoteId = currentRemoteItemIds[String(id)];
+            const remoteId = currentRemoteItemIds[normalizedId];
             if (remoteId) {
               await apiRemoveWishlistItem(remoteId);
               const nextRemoteIds = { ...get().remoteItemIds };
-              delete nextRemoteIds[String(id)];
+              delete nextRemoteIds[normalizedId];
               set(buildWishlistState(get().items, nextRemoteIds));
             }
           } catch (e) {
@@ -117,7 +121,8 @@ export const useWishlist = create<WishlistStore>()(
       },
 
       toggleItem: (item) => {
-        const exists = get().items.some((wishlistItem) => wishlistItem.id === item.id);
+        const normalizedId = normalizeWishlistId(item.id);
+        const exists = get().items.some((wishlistItem) => normalizeWishlistId(wishlistItem.id) === normalizedId);
         if (exists) {
           void get().removeItem(item.id);
           return;
@@ -125,7 +130,10 @@ export const useWishlist = create<WishlistStore>()(
         void get().addItem(item);
       },
 
-      hasItem: (id) => get().items.some((item) => item.id === id),
+      hasItem: (id) => {
+        const normalizedId = normalizeWishlistId(id);
+        return get().items.some((item) => normalizeWishlistId(item.id) === normalizedId);
+      },
 
       clearWishlist: () => set(buildWishlistState([], {})),
     }),

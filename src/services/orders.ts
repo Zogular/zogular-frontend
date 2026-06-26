@@ -88,14 +88,15 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       area: shippingArea,
       city: shippingCity,
     },
-    paymentMethod: "Mobile Money", // Assuming fixed for now, as backend doesn't return payment method in order model
+    paymentMethod: "Not specified",
     items: order.items.map((item) => ({
       name: item.product?.title || item.product?.name || "Unknown Product",
       qty: item.quantity,
       price: item.price,
     })),
     subtotal: subtotal,
-    shippingFee: order.totalAmount - subtotal, // Deriving shipping fee if any
+    // Temporary derived display fallback until backend exposes explicit shipping/fee breakdown
+    shippingFee: Math.max(order.totalAmount - subtotal, 0),
     discount: 0,
     total: order.totalAmount,
   };
