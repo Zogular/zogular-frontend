@@ -3,12 +3,36 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, MapPin, Printer } from "lucide-react";
+import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
+
+const STATUS_CONFIG = {
+  processing: {
+    label: "Processing",
+    icon: Clock,
+    className: "bg-amber-100 text-amber-700",
+  },
+  shipped: {
+    label: "In Transit",
+    icon: Truck,
+    className: "bg-blue-100 text-blue-700",
+  },
+  delivered: {
+    label: "Delivered",
+    icon: CheckCircle2,
+    className: "bg-[#009E49]/10 text-[#009E49]",
+  },
+  cancelled: {
+    label: "Cancelled",
+    icon: XCircle,
+    className: "bg-red-100 text-red-700",
+  },
+} as const;
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
@@ -54,15 +78,17 @@ export default function InvoicePage({
         title="Failed to load invoice"
         description={error}
         action={
-          <div className="flex gap-3">
-            <Link href="/account/orders">
-              <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
+          <div className="flex flex-col justify-center gap-3 md:flex-row">
+            <Link href="/account/orders" className="w-full md:w-auto">
+              <Button variant="outline" className="h-11 w-full rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
                 Back to Orders
               </Button>
             </Link>
-            <Button onClick={loadInvoice} className="bg-red-600 text-white hover:bg-red-700">
-              Try Again
-            </Button>
+            <Link href="/categories" className="w-full md:w-auto">
+              <Button className="h-11 w-full rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
+                Continue Shopping
+              </Button>
+            </Link>
           </div>
         }
       />
@@ -100,6 +126,19 @@ export default function InvoicePage({
             <h1 className="text-2xl font-black text-zinc-900">INVOICE</h1>
             <p className="mt-1 text-sm font-bold text-zinc-700">#{invoice.id}</p>
             <p className="text-sm text-zinc-500">Issued: {invoice.date}</p>
+            
+            {(() => {
+              const config = STATUS_CONFIG[invoice.status];
+              const Icon = config.icon;
+              return (
+                <div className="mt-3 sm:flex sm:justify-end">
+                  <Badge className={`flex w-fit items-center gap-1.5 border-none px-3 py-1 text-xs shadow-none ${config.className}`}>
+                    <Icon className="h-3.5 w-3.5" />
+                    {config.label}
+                  </Badge>
+                </div>
+              );
+            })()}
           </div>
         </div>
 

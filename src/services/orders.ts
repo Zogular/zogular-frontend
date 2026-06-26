@@ -27,7 +27,7 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
   
   return orders.map((order) => {
     return {
-      id: order.id,
+      id: order.orderNumber || order.id,
       date: new Date(order.createdAt).toLocaleDateString("en-US", {
         year: "numeric",
         month: "short",
@@ -74,7 +74,7 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
   const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
 
   return {
-    id: order.id,
+    id: order.orderNumber || order.id,
     date: new Date(order.createdAt).toLocaleDateString("en-US", {
       year: "numeric",
       month: "short",

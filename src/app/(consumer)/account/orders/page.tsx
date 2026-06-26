@@ -158,7 +158,13 @@ export default function OrdersPage() {
               <Button onClick={() => setSearch("")} variant="outline" className="rounded-xl">
                 Clear Search
               </Button>
-            ) : undefined
+            ) : (
+              <Link href="/categories">
+                <Button className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
+                  Browse Categories
+                </Button>
+              </Link>
+            )
           }
         />
       ) : (
