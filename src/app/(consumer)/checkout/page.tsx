@@ -64,32 +64,42 @@ export default function CheckoutPage() {
   const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("mobile-money");
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
 
+  const loadAddresses = React.useCallback(async () => {
+    setIsLoadingAddresses(true);
+    setAddressLoadError(false);
+    try {
+      const addresses = await getSavedAddresses();
+      setSavedAddresses(addresses);
+      if (addresses.length > 0) {
+        const def = addresses.find((a) => a.isDefault) || addresses[0];
+        setSelectedAddressId(def.id);
+      }
+    } catch (error) {
+      if (error && typeof error === "object" && "status" in error && error.status === 401) {
+        setAuthUser(null);
+        setSavedAddresses([]);
+        setSelectedAddressId(null);
+        setAddressLoadError(false);
+      } else {
+        setAddressLoadError(true);
+      }
+    } finally {
+      setIsLoadingAddresses(false);
+    }
+  }, []);
+
   React.useEffect(() => {
     if (hasHydrated) {
       const user = getStoredAuthUser();
       setAuthUser(user);
 
       if (user) {
-        setIsLoadingAddresses(true);
-        getSavedAddresses()
-          .then((addresses) => {
-            setSavedAddresses(addresses);
-            if (addresses.length > 0) {
-              const def = addresses.find((a) => a.isDefault) || addresses[0];
-              setSelectedAddressId(def.id);
-            }
-          })
-          .catch(() => {
-            setAddressLoadError(true);
-          })
-          .finally(() => {
-            setIsLoadingAddresses(false);
-          });
+        void loadAddresses();
       } else {
         setIsLoadingAddresses(false);
       }
     }
-  }, [hasHydrated]);
+  }, [hasHydrated, loadAddresses]);
 
   const deliveryFee = itemCount > 0 ? CHECKOUT_DELIVERY_FEE : 0;
   const total = totalAmount + deliveryFee;
@@ -234,7 +244,7 @@ export default function CheckoutPage() {
                 <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
                   <div className="flex h-32 flex-col items-center justify-center gap-3">
                     <p className="text-sm font-medium text-red-500">Failed to load delivery addresses.</p>
-                    <Button type="button" onClick={() => window.location.reload()} variant="outline">Retry</Button>
+                    <Button type="button" onClick={() => loadAddresses()} variant="outline">Retry</Button>
                   </div>
                 </section>
               ) : (
