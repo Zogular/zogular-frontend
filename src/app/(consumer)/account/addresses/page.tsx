@@ -73,13 +73,10 @@ export default function AddressesPage() {
   }, [loadAddresses]);
 
   const handleDelete = async (id: string) => {
-    const addressToDelete = addresses.find((address) => address.id === id);
-    if (addressToDelete?.isDefault) return;
-
     try {
       setSavingId(id);
       await deleteAddress(id);
-      setAddresses(addresses.filter((address) => address.id !== id));
+      await loadAddresses();
     } catch (err) {
       console.error(err);
       setError("Failed to delete address.");
@@ -293,13 +290,9 @@ export default function AddressesPage() {
                 <Button
                   variant="ghost"
                   onClick={() => void handleDelete(address.id)}
-                  disabled={address.isDefault || savingId === address.id}
-                  title={address.isDefault ? "You cannot delete your default address" : "Delete address"}
-                  className={`h-9 w-9 rounded-xl p-0 transition-colors ${
-                    address.isDefault
-                      ? "cursor-not-allowed text-zinc-300 opacity-60 hover:bg-transparent hover:text-zinc-300"
-                      : "text-zinc-400 hover:bg-red-50 hover:text-red-500"
-                  }`}
+                  disabled={savingId === address.id}
+                  title="Delete address"
+                  className="h-9 w-9 rounded-xl p-0 transition-colors text-zinc-400 hover:bg-red-50 hover:text-red-500"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>

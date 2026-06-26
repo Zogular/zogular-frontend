@@ -54,27 +54,23 @@ interface BackendAddressResponse {
 }
 
 export async function getSavedAddresses(): Promise<Address[]> {
-  try {
-    const response = await apiClient<{ data: { addresses: BackendAddressResponse[] } }>("/user/addresses");
-    return response.data.addresses.map((addr) => ({
-      id: addr.id,
-      name: addr.fullName,
-      type: addr.title,
-      street: addr.addressLine,
-      area: addr.district || "",
-      city: addr.city,
-      phone: addr.phone,
-      isDefault: addr.isDefault,
-    }));
-  } catch (err) {
-    console.error("Failed to fetch addresses", err);
-    return [];
-  }
+  const response = await apiClient<{ data: { addresses: BackendAddressResponse[] } }>("/user/addresses");
+  return response.data.addresses.map((addr) => ({
+    id: addr.id,
+    name: addr.fullName,
+    type: addr.title,
+    street: addr.addressLine,
+    area: addr.district || "",
+    city: addr.city,
+    phone: addr.phone,
+    isDefault: addr.isDefault,
+  }));
 }
 
 export async function createAddress(address: Omit<Address, "id">): Promise<Address> {
   const response = await apiClient<{ data: { address: BackendAddressResponse } }>("/user/addresses", {
     method: "POST",
+    csrf: true,
     body: JSON.stringify({
       title: address.type,
       fullName: address.name,
@@ -102,6 +98,7 @@ export async function createAddress(address: Omit<Address, "id">): Promise<Addre
 export async function updateAddress(address: Address): Promise<Address> {
   const response = await apiClient<{ data: { address: BackendAddressResponse } }>(`/user/addresses/${address.id}`, {
     method: "PATCH",
+    csrf: true,
     body: JSON.stringify({
       title: address.type,
       fullName: address.name,
@@ -127,11 +124,11 @@ export async function updateAddress(address: Address): Promise<Address> {
 }
 
 export async function deleteAddress(id: string): Promise<void> {
-  await apiClient(`/user/addresses/${id}`, { method: "DELETE" });
+  await apiClient(`/user/addresses/${id}`, { method: "DELETE", csrf: true });
 }
 
 export async function setDefaultAddress(id: string): Promise<void> {
-  await apiClient(`/user/addresses/${id}/default`, { method: "PATCH" });
+  await apiClient(`/user/addresses/${id}/default`, { method: "PATCH", csrf: true });
 }
 
 export function getAccountUserProfile(): AccountUserProfile {
