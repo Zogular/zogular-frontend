@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { getInvoiceById } from "@/services/orders";
+import { getStoredAuthUser } from "@/services/auth-session";
 import type { Invoice } from "@/types/order";
 
 function formatCurrency(value: number) {
@@ -103,11 +104,19 @@ function SuccessContent() {
               Your order may have been placed successfully, but we are having trouble retrieving the details right now.
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 md:flex-row">
-              <Link href="/account/orders" className="w-full md:w-auto">
-                <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white hover:bg-zinc-800">
-                  Check My Orders
-                </Button>
-              </Link>
+              {getStoredAuthUser() ? (
+                <Link href="/account/orders" className="w-full md:w-auto">
+                  <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white hover:bg-zinc-800">
+                    Check My Orders
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/categories" className="w-full md:w-auto">
+                  <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white hover:bg-zinc-800">
+                    Continue Shopping
+                  </Button>
+                </Link>
+              )}
               <Button onClick={() => window.location.reload()} variant="outline" className="h-12 w-full rounded-xl border-zinc-200 px-8 font-bold text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 md:w-auto">
                 Refresh Page
               </Button>
@@ -225,7 +234,7 @@ function SuccessContent() {
               </li>
               <li className="flex items-start gap-2">
                 <span className="mt-0.5 block h-1.5 w-1.5 rounded-full bg-zinc-300" />
-                <span><strong className="text-zinc-800">Payment:</strong> Payment flow is pending current checkout behavior.</span>
+                <span><strong className="text-zinc-800">Payment:</strong> Payment confirmation will be handled through the current checkout process.</span>
               </li>
             </ul>
           </div>
