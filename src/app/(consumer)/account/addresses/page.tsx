@@ -349,15 +349,25 @@ export default function AddressesPage() {
               </label>
             </div>
 
-            <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-bold text-zinc-700">
-              <input
-                type="checkbox"
-                checked={addressForm.isDefault}
-                onChange={updateAddressForm("isDefault")}
-                className="h-4 w-4 accent-[#009E49]"
-              />
-              Make this my default delivery address
-            </label>
+            <div className="space-y-1.5">
+              <label className={`flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-bold text-zinc-700 ${
+                editingAddressId && addresses.find(a => a.id === editingAddressId)?.isDefault ? "cursor-not-allowed opacity-70" : ""
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={addressForm.isDefault}
+                  onChange={updateAddressForm("isDefault")}
+                  disabled={Boolean(editingAddressId && addresses.find(a => a.id === editingAddressId)?.isDefault)}
+                  className="h-4 w-4 accent-[#009E49] disabled:cursor-not-allowed"
+                />
+                Make this my default delivery address
+              </label>
+              {editingAddressId && addresses.find(a => a.id === editingAddressId)?.isDefault ? (
+                <p className="px-1 text-xs font-medium text-zinc-500">
+                  Choose another address as default before changing this.
+                </p>
+              ) : null}
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl border-zinc-200 font-bold">
