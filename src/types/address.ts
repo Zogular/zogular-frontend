@@ -1,7 +1,7 @@
 export type AddressType = "Home" | "Work";
 
 export interface Address {
-  id: number;
+  id: string;
   name: string;
   type: AddressType;
   street: string;

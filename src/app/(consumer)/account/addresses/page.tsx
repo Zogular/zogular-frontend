@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
-import { getSavedAddresses, saveAddresses } from "@/services/account";
+import { getSavedAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from "@/services/account";
 import type { Address, AddressType } from "@/types/address";
 
 interface AddressFormState {
@@ -50,9 +50,9 @@ export default function AddressesPage() {
   const [addresses, setAddresses] = React.useState<Address[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [savingId, setSavingId] = React.useState<number | null>(null);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingAddressId, setEditingAddressId] = React.useState<number | null>(null);
+  const [editingAddressId, setEditingAddressId] = React.useState<string | null>(null);
   const [addressForm, setAddressForm] = React.useState<AddressFormState>(emptyAddressForm);
 
   const loadAddresses = React.useCallback(async () => {
@@ -72,30 +72,30 @@ export default function AddressesPage() {
     loadAddresses();
   }, [loadAddresses]);
 
-  const handleDelete = async (id: number) => {
-    const addressToDelete = addresses.find((address) => address.id === id);
-    if (addressToDelete?.isDefault) return;
-    const nextAddresses = addresses.filter((address) => address.id !== id);
-
+  const handleDelete = async (id: string) => {
     try {
       setSavingId(id);
-      const saved = await saveAddresses(nextAddresses);
-      setAddresses(saved);
+      await deleteAddress(id);
+      await loadAddresses();
+    } catch (err) {
+      console.error(err);
+      setError("Failed to delete address.");
     } finally {
       setSavingId(null);
     }
   };
 
-  const handleSetDefault = async (id: number) => {
-    const nextAddresses = addresses.map((address) => ({
-      ...address,
-      isDefault: address.id === id,
-    }));
-
+  const handleSetDefault = async (id: string) => {
     try {
       setSavingId(id);
-      const saved = await saveAddresses(nextAddresses);
-      setAddresses(saved);
+      await setDefaultAddress(id);
+      setAddresses(addresses.map((address) => ({
+        ...address,
+        isDefault: address.id === id,
+      })));
+    } catch (err) {
+      console.error(err);
+      setError("Failed to set default address.");
     } finally {
       setSavingId(null);
     }
@@ -142,29 +142,38 @@ export default function AddressesPage() {
     event.preventDefault();
     if (!formIsValid) return;
 
-    const normalizedAddress: Address = {
-      id: editingAddressId ?? Date.now(),
-      name: addressForm.name.trim(),
-      type: addressForm.type,
-      street: addressForm.street.trim(),
-      area: addressForm.area.trim(),
-      city: addressForm.city.trim(),
-      phone: addressForm.phone.trim(),
-      isDefault: addressForm.isDefault || addresses.length === 0,
-    };
-
-    const nextAddresses = editingAddressId
-      ? addresses.map((address) => (address.id === editingAddressId ? normalizedAddress : address))
-      : [...addresses, normalizedAddress];
-    const normalizedList = normalizedAddress.isDefault
-      ? nextAddresses.map((address) => ({ ...address, isDefault: address.id === normalizedAddress.id }))
-      : nextAddresses;
-
     try {
-      setSavingId(normalizedAddress.id);
-      const saved = await saveAddresses(normalizedList);
-      setAddresses(saved);
+      setSavingId(editingAddressId ?? "new");
+      if (editingAddressId) {
+        const updated = await updateAddress({
+          id: editingAddressId,
+          name: addressForm.name.trim(),
+          type: addressForm.type,
+          street: addressForm.street.trim(),
+          area: addressForm.area.trim(),
+          city: addressForm.city.trim(),
+          phone: addressForm.phone.trim(),
+          isDefault: addressForm.isDefault,
+        });
+        setAddresses(addresses.map(a => a.id === editingAddressId ? updated : (updated.isDefault ? { ...a, isDefault: false } : a)));
+      } else {
+        const created = await createAddress({
+          name: addressForm.name.trim(),
+          type: addressForm.type,
+          street: addressForm.street.trim(),
+          area: addressForm.area.trim(),
+          city: addressForm.city.trim(),
+          phone: addressForm.phone.trim(),
+          isDefault: addressForm.isDefault || addresses.length === 0,
+        });
+        setAddresses(created.isDefault 
+          ? [...addresses.map(a => ({ ...a, isDefault: false })), created]
+          : [...addresses, created]);
+      }
       setDialogOpen(false);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to save address.");
     } finally {
       setSavingId(null);
     }
@@ -281,13 +290,9 @@ export default function AddressesPage() {
                 <Button
                   variant="ghost"
                   onClick={() => void handleDelete(address.id)}
-                  disabled={address.isDefault || savingId === address.id}
-                  title={address.isDefault ? "You cannot delete your default address" : "Delete address"}
-                  className={`h-9 w-9 rounded-xl p-0 transition-colors ${
-                    address.isDefault
-                      ? "cursor-not-allowed text-zinc-300 opacity-60 hover:bg-transparent hover:text-zinc-300"
-                      : "text-zinc-400 hover:bg-red-50 hover:text-red-500"
-                  }`}
+                  disabled={savingId === address.id}
+                  title="Delete address"
+                  className="h-9 w-9 rounded-xl p-0 transition-colors text-zinc-400 hover:bg-red-50 hover:text-red-500"
                 >
                   <Trash2 className="h-4 w-4" />
                 </Button>
@@ -344,15 +349,25 @@ export default function AddressesPage() {
               </label>
             </div>
 
-            <label className="flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-bold text-zinc-700">
-              <input
-                type="checkbox"
-                checked={addressForm.isDefault}
-                onChange={updateAddressForm("isDefault")}
-                className="h-4 w-4 accent-[#009E49]"
-              />
-              Make this my default delivery address
-            </label>
+            <div className="space-y-1.5">
+              <label className={`flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-bold text-zinc-700 ${
+                editingAddressId && addresses.find(a => a.id === editingAddressId)?.isDefault ? "cursor-not-allowed opacity-70" : ""
+              }`}>
+                <input
+                  type="checkbox"
+                  checked={addressForm.isDefault}
+                  onChange={updateAddressForm("isDefault")}
+                  disabled={Boolean(editingAddressId && addresses.find(a => a.id === editingAddressId)?.isDefault)}
+                  className="h-4 w-4 accent-[#009E49] disabled:cursor-not-allowed"
+                />
+                Make this my default delivery address
+              </label>
+              {editingAddressId && addresses.find(a => a.id === editingAddressId)?.isDefault ? (
+                <p className="px-1 text-xs font-medium text-zinc-500">
+                  Choose another address as default before changing this.
+                </p>
+              ) : null}
+            </div>
 
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setDialogOpen(false)} className="rounded-xl border-zinc-200 font-bold">
