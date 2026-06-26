@@ -4,10 +4,11 @@ import type {
   AccountUserProfile,
   NotificationPreferences,
 } from "@/types/account";
-import type { Address } from "@/types/address";
+import type { Address, AddressType } from "@/types/address";
 import { getStoredAuthUser } from "@/services/auth-session";
 import { changePassword, getCurrentUser, logout, updateMe } from "@/services/auth";
 import { getMyOrders } from "@/services/orders";
+import { apiClient } from "@/services/api";
 
 const NOTIFICATION_PREFERENCES: NotificationPreferences = {
   orders: false,
@@ -23,23 +24,114 @@ const EMPTY_ACCOUNT_USER: AccountUserProfile = {
 };
 
 export async function getAccountOverview(): Promise<AccountOverview> {
-  const [currentUser, recentOrders] = await Promise.all([
+  const [currentUser, recentOrders, addresses] = await Promise.all([
     getCurrentUser(),
     getMyOrders(),
+    getSavedAddresses(),
   ]);
+
+  const defaultAddress = addresses.find(a => a.isDefault) || null;
 
   return {
     user: toAccountUser(currentUser),
     activeOrdersCount: recentOrders.filter((order) => order.status === "processing" || order.status === "shipped").length,
     recentOrders: recentOrders.slice(0, 3),
     notifications: [],
-    defaultAddress: null,
+    defaultAddress: defaultAddress,
     recentlyViewed: [],
   };
 }
 
+interface BackendAddressResponse {
+  id: string;
+  fullName: string;
+  title: AddressType;
+  addressLine: string;
+  district?: string;
+  city: string;
+  phone: string;
+  isDefault: boolean;
+}
+
 export async function getSavedAddresses(): Promise<Address[]> {
-  return [];
+  try {
+    const response = await apiClient<{ data: { addresses: BackendAddressResponse[] } }>("/user/addresses");
+    return response.data.addresses.map((addr) => ({
+      id: addr.id,
+      name: addr.fullName,
+      type: addr.title,
+      street: addr.addressLine,
+      area: addr.district || "",
+      city: addr.city,
+      phone: addr.phone,
+      isDefault: addr.isDefault,
+    }));
+  } catch (err) {
+    console.error("Failed to fetch addresses", err);
+    return [];
+  }
+}
+
+export async function createAddress(address: Omit<Address, "id">): Promise<Address> {
+  const response = await apiClient<{ data: { address: BackendAddressResponse } }>("/user/addresses", {
+    method: "POST",
+    body: JSON.stringify({
+      title: address.type,
+      fullName: address.name,
+      phone: address.phone,
+      addressLine: address.street,
+      district: address.area,
+      city: address.city,
+      isDefault: address.isDefault,
+    }),
+  });
+  
+  const addr = response.data.address;
+  return {
+    id: addr.id,
+    name: addr.fullName,
+    type: addr.title,
+    street: addr.addressLine,
+    area: addr.district || "",
+    city: addr.city,
+    phone: addr.phone,
+    isDefault: addr.isDefault,
+  };
+}
+
+export async function updateAddress(address: Address): Promise<Address> {
+  const response = await apiClient<{ data: { address: BackendAddressResponse } }>(`/user/addresses/${address.id}`, {
+    method: "PATCH",
+    body: JSON.stringify({
+      title: address.type,
+      fullName: address.name,
+      phone: address.phone,
+      addressLine: address.street,
+      district: address.area,
+      city: address.city,
+      isDefault: address.isDefault,
+    }),
+  });
+  
+  const addr = response.data.address;
+  return {
+    id: addr.id,
+    name: addr.fullName,
+    type: addr.title,
+    street: addr.addressLine,
+    area: addr.district || "",
+    city: addr.city,
+    phone: addr.phone,
+    isDefault: addr.isDefault,
+  };
+}
+
+export async function deleteAddress(id: string): Promise<void> {
+  await apiClient(`/user/addresses/${id}`, { method: "DELETE" });
+}
+
+export async function setDefaultAddress(id: string): Promise<void> {
+  await apiClient(`/user/addresses/${id}/default`, { method: "PATCH" });
 }
 
 export function getAccountUserProfile(): AccountUserProfile {
@@ -121,6 +213,7 @@ export async function deletePaymentMethod(id: number): Promise<{ deletedId: numb
 }
 
 export async function saveAddresses(addresses: Address[]): Promise<Address[]> {
+  // Mock function no longer used directly, replaced by specific CRUD functions
   return addresses;
 }
 

@@ -23,7 +23,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
-import { getSavedAddresses, saveAddresses } from "@/services/account";
+import { getSavedAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from "@/services/account";
 import type { Address, AddressType } from "@/types/address";
 
 interface AddressFormState {
@@ -50,9 +50,9 @@ export default function AddressesPage() {
   const [addresses, setAddresses] = React.useState<Address[]>([]);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [savingId, setSavingId] = React.useState<number | null>(null);
+  const [savingId, setSavingId] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
-  const [editingAddressId, setEditingAddressId] = React.useState<number | null>(null);
+  const [editingAddressId, setEditingAddressId] = React.useState<string | null>(null);
   const [addressForm, setAddressForm] = React.useState<AddressFormState>(emptyAddressForm);
 
   const loadAddresses = React.useCallback(async () => {
@@ -72,30 +72,33 @@ export default function AddressesPage() {
     loadAddresses();
   }, [loadAddresses]);
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (id: string) => {
     const addressToDelete = addresses.find((address) => address.id === id);
     if (addressToDelete?.isDefault) return;
-    const nextAddresses = addresses.filter((address) => address.id !== id);
 
     try {
       setSavingId(id);
-      const saved = await saveAddresses(nextAddresses);
-      setAddresses(saved);
+      await deleteAddress(id);
+      setAddresses(addresses.filter((address) => address.id !== id));
+    } catch (err) {
+      console.error(err);
+      setError("Failed to delete address.");
     } finally {
       setSavingId(null);
     }
   };
 
-  const handleSetDefault = async (id: number) => {
-    const nextAddresses = addresses.map((address) => ({
-      ...address,
-      isDefault: address.id === id,
-    }));
-
+  const handleSetDefault = async (id: string) => {
     try {
       setSavingId(id);
-      const saved = await saveAddresses(nextAddresses);
-      setAddresses(saved);
+      await setDefaultAddress(id);
+      setAddresses(addresses.map((address) => ({
+        ...address,
+        isDefault: address.id === id,
+      })));
+    } catch (err) {
+      console.error(err);
+      setError("Failed to set default address.");
     } finally {
       setSavingId(null);
     }
@@ -142,29 +145,38 @@ export default function AddressesPage() {
     event.preventDefault();
     if (!formIsValid) return;
 
-    const normalizedAddress: Address = {
-      id: editingAddressId ?? Date.now(),
-      name: addressForm.name.trim(),
-      type: addressForm.type,
-      street: addressForm.street.trim(),
-      area: addressForm.area.trim(),
-      city: addressForm.city.trim(),
-      phone: addressForm.phone.trim(),
-      isDefault: addressForm.isDefault || addresses.length === 0,
-    };
-
-    const nextAddresses = editingAddressId
-      ? addresses.map((address) => (address.id === editingAddressId ? normalizedAddress : address))
-      : [...addresses, normalizedAddress];
-    const normalizedList = normalizedAddress.isDefault
-      ? nextAddresses.map((address) => ({ ...address, isDefault: address.id === normalizedAddress.id }))
-      : nextAddresses;
-
     try {
-      setSavingId(normalizedAddress.id);
-      const saved = await saveAddresses(normalizedList);
-      setAddresses(saved);
+      setSavingId(editingAddressId ?? "new");
+      if (editingAddressId) {
+        const updated = await updateAddress({
+          id: editingAddressId,
+          name: addressForm.name.trim(),
+          type: addressForm.type,
+          street: addressForm.street.trim(),
+          area: addressForm.area.trim(),
+          city: addressForm.city.trim(),
+          phone: addressForm.phone.trim(),
+          isDefault: addressForm.isDefault,
+        });
+        setAddresses(addresses.map(a => a.id === editingAddressId ? updated : (updated.isDefault ? { ...a, isDefault: false } : a)));
+      } else {
+        const created = await createAddress({
+          name: addressForm.name.trim(),
+          type: addressForm.type,
+          street: addressForm.street.trim(),
+          area: addressForm.area.trim(),
+          city: addressForm.city.trim(),
+          phone: addressForm.phone.trim(),
+          isDefault: addressForm.isDefault || addresses.length === 0,
+        });
+        setAddresses(created.isDefault 
+          ? [...addresses.map(a => ({ ...a, isDefault: false })), created]
+          : [...addresses, created]);
+      }
       setDialogOpen(false);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to save address.");
     } finally {
       setSavingId(null);
     }
