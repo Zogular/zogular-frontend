@@ -35,6 +35,7 @@ export interface CheckoutOrderItem {
 
 export interface CheckoutOrder {
   id: string;
+  orderNumber?: string;
   createdAt: string;
   status: CheckoutOrderStatus;
   contact: CheckoutContact;
@@ -192,7 +193,8 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     : buildEstimatedDeliveryDate();
 
   const checkoutOrder: CheckoutOrder = {
-    id: backendOrder.orderNumber,
+    id: backendOrder.id,
+    orderNumber: backendOrder.orderNumber,
     createdAt: backendOrder.createdAt,
     status: "processing",
     contact: input.contact,

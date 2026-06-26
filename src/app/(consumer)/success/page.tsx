@@ -153,7 +153,7 @@ function SuccessContent() {
                 <Package className="h-4 w-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Order Number</span>
               </div>
-              <p className="text-lg font-black text-zinc-900">{orderId}</p>
+              <p className="text-lg font-black text-zinc-900">{order?.orderNumber || orderId}</p>
             </div>
             
             {order && (

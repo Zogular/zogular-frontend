@@ -83,6 +83,7 @@ export default function OrdersPage() {
     const query = search.toLowerCase();
     const matchSearch =
       order.id.toLowerCase().includes(query) ||
+      (order.orderNumber && order.orderNumber.toLowerCase().includes(query)) ||
       order.items.some((item) => item.name.toLowerCase().includes(query));
     return matchTab && matchSearch;
   });
@@ -187,7 +188,7 @@ export default function OrdersPage() {
                     </div>
                     <div>
                       <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Order ID</p>
-                      <p className="text-sm font-bold text-zinc-900">{order.id}</p>
+                      <p className="text-sm font-bold text-zinc-900">{order.orderNumber || order.id}</p>
                     </div>
                   </div>
 

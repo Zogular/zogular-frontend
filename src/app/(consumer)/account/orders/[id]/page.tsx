@@ -124,7 +124,7 @@ export default function InvoicePage({
 
           <div className="sm:text-right">
             <h1 className="text-2xl font-black text-zinc-900">INVOICE</h1>
-            <p className="mt-1 text-sm font-bold text-zinc-700">#{invoice.id}</p>
+            <p className="mt-1 text-sm font-bold text-zinc-700">#{invoice.orderNumber || invoice.id}</p>
             <p className="text-sm text-zinc-500">Issued: {invoice.date}</p>
             
             {(() => {
