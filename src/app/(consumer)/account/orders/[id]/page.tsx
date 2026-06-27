@@ -3,13 +3,16 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle } from "lucide-react";
+import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
+import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
+import { useCart } from "@/hooks/use-cart";
+import { useRouter } from "next/navigation";
 
 const STATUS_CONFIG = {
   processing: {
@@ -44,6 +47,10 @@ export default function InvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const router = useRouter();
+  const { addItem } = useCart();
+  const [isOrderingAgain, setIsOrderingAgain] = React.useState(false);
+  const [orderAgainError, setOrderAgainError] = React.useState<string | null>(null);
 
   const [invoice, setInvoice] = React.useState<Invoice | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -107,6 +114,42 @@ export default function InvoicePage({
 
   if (!invoice) return null;
 
+  const handleOrderAgain = async () => {
+    if (!invoice) return;
+    try {
+      setIsOrderingAgain(true);
+      setOrderAgainError(null);
+      // Validate all items have product IDs
+      const invalidItems = invoice.items.filter(item => !item.productId);
+      if (invalidItems.length > 0) {
+        setOrderAgainError("Some items from this order are no longer available for reordering.");
+        return;
+      }
+      
+      for (const item of invoice.items) {
+        // Prevent adding if already in cart to simplify UX or just add quantity. 
+        // Our cart allows adding same product to increase qty, which is fine.
+        addItem({
+          id: item.productId,
+          name: item.name,
+          slug: item.productId, // Fallback slug
+          price: item.price,
+          quantity: item.qty,
+          image: "/placeholder.png", // We don't have images in InvoiceItem right now
+        });
+      }
+      router.push("/cart");
+    } catch {
+      setOrderAgainError("Failed to add items to cart.");
+    } finally {
+      setIsOrderingAgain(false);
+    }
+  };
+
+  const whatsappLink = SUPPORT_WHATSAPP_NUMBER
+    ? `https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}?text=${encodeURIComponent(`Hi Zogular, I need help with Order #${invoice.orderNumber || invoice.id}`)}`
+    : null;
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex justify-between print:hidden">
@@ -117,7 +160,7 @@ export default function InvoicePage({
         </Link>
 
         <Button onClick={() => window.print()} className="bg-zinc-900 text-white hover:bg-zinc-800">
-          <Printer className="mr-2 h-4 w-4" /> Print Invoice
+          <Printer className="mr-2 h-4 w-4" /> View / Print Receipt
         </Button>
       </div>
 
@@ -133,7 +176,7 @@ export default function InvoicePage({
           </div>
 
           <div className="sm:text-right">
-            <h1 className="text-2xl font-black text-zinc-900">INVOICE</h1>
+            <h1 className="text-2xl font-black text-zinc-900">RECEIPT</h1>
             <p className="mt-1 text-sm font-bold text-zinc-700">#{invoice.orderNumber || invoice.id}</p>
             <p className="text-sm text-zinc-500">Issued: {invoice.date}</p>
             
@@ -151,6 +194,52 @@ export default function InvoicePage({
             })()}
           </div>
         </div>
+
+        {invoice.status !== "cancelled" ? (
+          <div className="mb-8 rounded-2xl bg-zinc-50 p-4 sm:p-6 print:hidden">
+            <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-400">Order Tracker</h3>
+            <div className="flex items-center justify-between">
+              {["processing", "shipped", "delivered"].map((step, index, arr) => {
+                const isActive = invoice.status === step || (invoice.status === "delivered" && index < 2) || (invoice.status === "shipped" && step === "processing");
+                const config = STATUS_CONFIG[step as keyof typeof STATUS_CONFIG];
+                const StepIcon = config.icon;
+                
+                return (
+                  <div key={step} className="flex flex-1 flex-col items-center gap-2 relative">
+                    <div className={`z-10 flex h-10 w-10 items-center justify-center rounded-full border-4 border-zinc-50 transition-colors ${isActive ? config.className : "bg-zinc-200 text-zinc-400"}`}>
+                      <StepIcon className="h-4 w-4" />
+                    </div>
+                    <p className={`text-xs font-bold ${isActive ? "text-zinc-900" : "text-zinc-400"}`}>
+                      {config.label}
+                    </p>
+                    {index < arr.length - 1 && (
+                      <div className={`absolute left-[50%] top-5 -z-0 h-1 w-full -translate-y-1/2 transition-colors ${
+                        (invoice.status === "delivered") || (invoice.status === "shipped" && step === "processing") ? "bg-[#009E49]" : "bg-zinc-200"
+                      }`} />
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+            {invoice.status === "shipped" && (
+              <p className="mt-4 text-center text-sm font-medium text-blue-700">
+                Rider contact will appear here once assigned.
+              </p>
+            )}
+          </div>
+        ) : (
+          <div className="mb-8 rounded-2xl bg-red-50 p-4 sm:p-6 print:hidden">
+            <div className="flex items-start gap-3">
+              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+              <div>
+                <h3 className="text-sm font-bold text-red-900">Order Cancelled</h3>
+                <p className="mt-1 text-sm text-red-700">
+                  Refund status will appear here when a cancelled order has a recorded refund.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         <Separator className="bg-zinc-100" />
 
@@ -172,9 +261,14 @@ export default function InvoicePage({
                 {invoice.shipping.area}, {invoice.shipping.city}
               </span>
             </div>
-            <p className="mt-2 text-sm text-zinc-600">
-              <span className="font-medium text-zinc-500">Payment:</span> {invoice.paymentMethod}
-            </p>
+            <div className="mt-3 rounded-lg border border-zinc-200 p-3 bg-zinc-50">
+              <p className="text-sm text-zinc-600">
+                <span className="font-bold text-zinc-700">Payment:</span> {invoice.paymentMethod}
+              </p>
+              <p className="mt-1 text-xs text-zinc-500">
+                Payment confirmation is handled during order processing.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -198,7 +292,41 @@ export default function InvoicePage({
           </div>
         </div>
 
-        <div className="mt-8 flex justify-end border-t border-zinc-200 pt-6">
+        <div className="mt-8 flex flex-col justify-between border-t border-zinc-200 pt-6 sm:flex-row">
+          <div className="mb-6 space-y-4 sm:mb-0 print:hidden">
+            <div className="flex flex-col gap-3 sm:flex-row">
+              {whatsappLink && (
+                <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
+                  <Button variant="outline" className="h-11 w-full rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10 sm:w-auto">
+                    <MessageCircle className="mr-2 h-4 w-4" />
+                    WhatsApp Support
+                  </Button>
+                </a>
+              )}
+              {SUPPORT_CALL_NUMBER && (
+                <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
+                  <Button variant="outline" className="h-11 w-full rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50 sm:w-auto">
+                    <Phone className="mr-2 h-4 w-4" />
+                    Call Support
+                  </Button>
+                </a>
+              )}
+            </div>
+            <div className="space-y-2">
+              <Button 
+                onClick={handleOrderAgain} 
+                disabled={isOrderingAgain}
+                className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto"
+              >
+                <RefreshCw className={`mr-2 h-4 w-4 ${isOrderingAgain ? 'animate-spin' : ''}`} />
+                {isOrderingAgain ? "Adding to Cart..." : "Order Again"}
+              </Button>
+              {orderAgainError ? (
+                <p className="text-xs font-medium text-red-600">{orderAgainError}</p>
+              ) : null}
+            </div>
+          </div>
+
           <div className="w-full space-y-3 sm:w-72">
             <div className="flex justify-between text-sm">
               <span className="text-zinc-500">Subtotal</span>

@@ -95,6 +95,7 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
     },
     paymentMethod: "Not specified",
     items: order.items.map((item) => ({
+      productId: item.productId || "",
       name: item.product?.title || item.product?.name || "Unknown Product",
       qty: item.quantity || 1,
       price: item.price || 0,
