@@ -13,6 +13,9 @@ import {
   ShoppingBag,
   Truck,
   User,
+  HeadphonesIcon,
+  MessageCircle,
+  Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +26,7 @@ import { useCart } from "@/hooks/use-cart";
 import { useHydratedValue } from "@/hooks/use-hydrated-value";
 import { getAccountOverview } from "@/services/account";
 import type { AccountOverview } from "@/types/account";
+import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 
 export default function AccountOverviewPage() {
   const [data, setData] = React.useState<AccountOverview | null>(null);
@@ -258,6 +262,38 @@ export default function AccountOverviewPage() {
                 </Link>
               </div>
             )}
+          </div>
+
+          <div className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-black text-zinc-900">
+              <HeadphonesIcon className="h-5 w-5 text-zinc-400" /> Support
+            </h2>
+            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
+              {(!SUPPORT_WHATSAPP_NUMBER && !SUPPORT_CALL_NUMBER) ? (
+                <p className="text-sm font-medium text-zinc-600">
+                  Support contact will be available before launch.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {SUPPORT_WHATSAPP_NUMBER && (
+                    <a href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10">
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        WhatsApp Support
+                      </Button>
+                    </a>
+                  )}
+                  {SUPPORT_CALL_NUMBER && (
+                    <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
+                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
+                        <Phone className="mr-2 h-4 w-4" />
+                        Call Support
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>

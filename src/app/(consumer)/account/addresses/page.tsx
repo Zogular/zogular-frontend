@@ -354,7 +354,9 @@ export default function AddressesPage() {
               </label>
 
               <label className="space-y-1.5 md:col-span-2">
-                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">Street Address</span>
+                <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Street Address <span className="text-[10px] font-normal lowercase opacity-70">(include landmarks if any)</span>
+                </span>
                 <Input value={addressForm.street} onChange={updateAddressForm("street")} className="h-11 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
               </label>
 

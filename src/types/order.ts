@@ -17,6 +17,7 @@ export interface OrderSummary {
 }
 
 export interface InvoiceItem {
+  productId: string;
   name: string;
   qty: number;
   price: number;
