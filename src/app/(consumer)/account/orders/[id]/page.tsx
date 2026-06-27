@@ -283,27 +283,49 @@ export default function InvoicePage({
                   Browse Products
                 </Button>
               </Link>
-              <Button
-                variant="outline"
-                className="h-11 w-full rounded-xl border-zinc-200 font-bold text-zinc-900 hover:bg-zinc-50 sm:w-auto"
-                onClick={() => {
-                  const cart = useCart.getState();
-                  invoice.items.forEach((item) => {
-                    if (item.productId && item.slug && item.image) {
-                      cart.addItem({
-                        id: item.productId,
-                        slug: item.slug,
-                        image: item.image,
-                        name: item.name,
-                        price: item.price,
-                        quantity: item.qty,
-                      });
-                    }
-                  });
-                }}
-              >
-                Order Again
-              </Button>
+              {(() => {
+                const canReorderAll = invoice.items.every(
+                  (item) =>
+                    Boolean(item.productId) &&
+                    Boolean(item.slug) &&
+                    Boolean(item.image) &&
+                    Boolean(item.name) &&
+                    typeof item.price === "number" &&
+                    typeof item.qty === "number" &&
+                    item.qty > 0
+                );
+
+                return (
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full rounded-xl border-zinc-200 font-bold text-zinc-900 hover:bg-zinc-50 sm:w-auto"
+                      disabled={!canReorderAll}
+                      onClick={() => {
+                        if (!canReorderAll) return;
+                        const cart = useCart.getState();
+                        invoice.items.forEach((item) => {
+                          cart.addItem({
+                            id: item.productId as string,
+                            slug: item.slug as string,
+                            image: item.image as string,
+                            name: item.name as string,
+                            price: item.price,
+                            quantity: item.qty,
+                          });
+                        });
+                      }}
+                    >
+                      Order Again
+                    </Button>
+                    {!canReorderAll && (
+                      <p className="text-xs font-medium text-red-600 sm:max-w-[200px]">
+                        Some items are missing product details. Please browse products instead.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 
