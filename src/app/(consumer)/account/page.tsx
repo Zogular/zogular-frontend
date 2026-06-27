@@ -43,7 +43,11 @@ export default function AccountOverviewPage() {
       const result = await getAccountOverview();
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error occurred");
+      if (err && typeof err === "object" && "status" in err && err.status === 401) {
+        setError("Your session expired. Please sign in again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Unknown error occurred");
+      }
     } finally {
       setLoading(false);
     }
@@ -65,9 +69,17 @@ export default function AccountOverviewPage() {
         title="Failed to load dashboard"
         description={error ?? "We couldn't load your account overview right now."}
         action={
-          <Button onClick={loadData} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-            Try Again
-          </Button>
+          error === "Your session expired. Please sign in again." ? (
+            <Link href="/auth/login?next=/account">
+              <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
+                Sign In
+              </Button>
+            </Link>
+          ) : (
+            <Button onClick={loadData} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
+              Try Again
+            </Button>
+          )
         }
       />
     );

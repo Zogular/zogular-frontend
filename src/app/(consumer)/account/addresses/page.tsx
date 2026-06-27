@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import {
   Building2,
   CheckCircle2,
@@ -62,7 +63,11 @@ export default function AddressesPage() {
       const data = await getSavedAddresses();
       setAddresses(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load addresses.");
+      if (err && typeof err === "object" && "status" in err && err.status === 401) {
+        setError("Your session expired. Please sign in again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Failed to load addresses.");
+      }
     } finally {
       setLoading(false);
     }
@@ -191,10 +196,12 @@ export default function AddressesPage() {
           </p>
         </div>
 
-        <Button onClick={openCreateDialog} className="flex h-11 items-center gap-2 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-md shadow-[#009E49]/20 hover:bg-[#00853d]">
-          <Plus className="h-4 w-4" />
-          Add New Address
-        </Button>
+        {!loading && !error && (
+          <Button onClick={openCreateDialog} className="flex h-11 items-center gap-2 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-md shadow-[#009E49]/20 hover:bg-[#00853d]">
+            <Plus className="h-4 w-4" />
+            Add New Address
+          </Button>
+        )}
       </div>
 
       {loading ? (
@@ -208,9 +215,17 @@ export default function AddressesPage() {
           title="Failed to load addresses"
           description={error}
           action={
-            <Button onClick={loadAddresses} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-              Try Again
-            </Button>
+            error === "Your session expired. Please sign in again." ? (
+              <Link href="/auth/login?next=/account/addresses">
+                <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
+                  Sign In
+                </Button>
+              </Link>
+            ) : (
+              <Button onClick={loadAddresses} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
+                Try Again
+              </Button>
+            )
           }
         />
       ) : addresses.length === 0 ? (
@@ -218,6 +233,11 @@ export default function AddressesPage() {
           icon={MapPin}
           title="No saved addresses"
           description="Add your first delivery address to get started."
+          action={
+            <Button onClick={openCreateDialog} className="bg-zinc-900 text-white hover:bg-zinc-800">
+              Add Address
+            </Button>
+          }
         />
       ) : (
         <div className="grid grid-cols-1 gap-4 pt-2 md:grid-cols-2 md:gap-6">
