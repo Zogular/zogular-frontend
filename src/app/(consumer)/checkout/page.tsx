@@ -309,6 +309,14 @@ export default function CheckoutPage() {
                         Continue Shopping
                       </Button>
                     </Link>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      onClick={() => setCheckoutStage("review")}
+                      className="h-12 w-full rounded-xl font-bold text-[#009E49] hover:text-[#00853d] hover:bg-[#009E49]/10 md:hidden"
+                    >
+                      View Order Summary
+                    </Button>
                   </div>
                 </div>
               </section>
@@ -420,10 +428,10 @@ export default function CheckoutPage() {
               <Button
                 type="button"
                 variant="outline"
-                onClick={() => setCheckoutStage("payment")}
+                onClick={() => setCheckoutStage(isGuest ? "details" : "payment")}
                 className="mb-3 h-11 w-full rounded-xl border-zinc-200 font-bold md:hidden"
               >
-                Back to Payment
+                {isGuest ? "Back to Sign In" : "Back to Payment"}
               </Button>
               {isGuest ? (
                 <Link href="/auth/login?next=/checkout" className="w-full block">
