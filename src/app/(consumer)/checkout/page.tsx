@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ChevronRight, CreditCard, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Separator } from "@/components/ui/separator";
 import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { PurchaseProgress, type PurchaseProgressStep } from "@/components/checkout/PurchaseProgress";
@@ -18,24 +17,13 @@ import {
   CHECKOUT_DELIVERY_FEE,
   CHECKOUT_DELIVERY_FEE_NOTICE,
   createCheckoutOrder,
-  type CheckoutContact,
-  type CheckoutDelivery,
   type CheckoutPaymentMethod,
 } from "@/services/checkout";
 
-const areaOptions = ["Kabulonga", "Woodlands", "Chelston", "Matero", "Roma", "Avondale", "Ibex Hill"];
 type CheckoutStage = Extract<PurchaseProgressStep, "details" | "payment" | "review">;
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
-}
-
-function isContactComplete(contact: CheckoutContact) {
-  return Boolean(contact.firstName.trim() && contact.lastName.trim() && contact.email.trim() && contact.phone.trim());
-}
-
-function isDeliveryComplete(delivery: CheckoutDelivery) {
-  return Boolean(delivery.street.trim() && delivery.area.trim());
 }
 
 export default function CheckoutPage() {
@@ -50,17 +38,6 @@ export default function CheckoutPage() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
-  const [contact, setContact] = React.useState<CheckoutContact>({
-    firstName: "",
-    lastName: "",
-    email: "",
-    phone: "",
-  });
-  const [delivery, setDelivery] = React.useState<CheckoutDelivery>({
-    street: "",
-    area: "",
-    instructions: "",
-  });
   const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("mobile-money");
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
 
@@ -105,53 +82,42 @@ export default function CheckoutPage() {
   const total = totalAmount + deliveryFee;
   
   const isGuest = !authUser;
-  const contactComplete = isGuest ? isContactComplete(contact) : selectedAddressId !== null;
-  const deliveryComplete = isGuest ? isDeliveryComplete(delivery) : selectedAddressId !== null;
-  const canSubmit = hasHydrated && items.length > 0 && contactComplete && deliveryComplete && !submitting && (!authUser || !isLoadingAddresses);
-  const detailsComplete = contactComplete && deliveryComplete;
-
-  const updateContact = (field: keyof CheckoutContact) => (event: React.ChangeEvent<HTMLInputElement>) => {
-    setContact((current) => ({ ...current, [field]: event.target.value }));
-  };
-
-  const updateDelivery = (field: keyof CheckoutDelivery) => (
-    event: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>,
-  ) => {
-    setDelivery((current) => ({ ...current, [field]: event.target.value }));
-  };
+  const detailsComplete = selectedAddressId !== null;
+  const canSubmit = hasHydrated && items.length > 0 && detailsComplete && !submitting && !isGuest && !isLoadingAddresses;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setSubmitError(null);
 
-    if (!canSubmit) {
-      setCheckoutStage("details");
-      setSubmitError("Complete your contact and delivery details before placing the order.");
+    if (isGuest) {
+      setSubmitError("Please sign in to place your order.");
       return;
     }
 
-    let submitContact = contact;
-    let submitDelivery = delivery;
-
-    if (authUser) {
-      const selected = savedAddresses.find((a) => a.id === selectedAddressId);
-      if (!selected) {
-        setSubmitError("Please select a delivery address.");
-        setCheckoutStage("details");
-        return;
-      }
-      submitContact = {
-        firstName: selected.name,
-        lastName: "",
-        email: authUser.email,
-        phone: selected.phone,
-      };
-      submitDelivery = {
-        street: selected.street,
-        area: selected.area,
-        instructions: "",
-      };
+    if (!canSubmit) {
+      setCheckoutStage("details");
+      setSubmitError("Please select a delivery address before placing the order.");
+      return;
     }
+
+    const selected = savedAddresses.find((a) => a.id === selectedAddressId);
+    if (!selected) {
+      setSubmitError("Please select a delivery address.");
+      setCheckoutStage("details");
+      return;
+    }
+
+    const submitContact = {
+      firstName: selected.name,
+      lastName: "",
+      email: authUser.email,
+      phone: selected.phone,
+    };
+    const submitDelivery = {
+      street: selected.street,
+      area: selected.area,
+      instructions: "",
+    };
 
     setSubmitting(true);
     try {
@@ -175,7 +141,12 @@ export default function CheckoutPage() {
       clearCart();
       router.push(`/success?orderId=${encodeURIComponent(order.id)}`);
     } catch (error) {
-      setSubmitError(error instanceof Error ? error.message : "Could not place your order.");
+      if (error && typeof error === "object" && "status" in error && error.status === 401) {
+        setSubmitError("Your session expired. Please sign in again.");
+        setAuthUser(null);
+      } else {
+        setSubmitError(error instanceof Error ? error.message : "Could not place your order.");
+      }
       setSubmitting(false);
     }
   };
@@ -313,73 +284,42 @@ export default function CheckoutPage() {
                 </section>
               )
             ) : (
-              <>
-                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
-                  <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
-                    Contact Information
-                  </h2>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">First Name</span>
-                      <Input value={contact.firstName} onChange={updateContact("firstName")} placeholder="e.g. John" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                    </label>
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Last Name</span>
-                      <Input value={contact.lastName} onChange={updateContact("lastName")} placeholder="e.g. Banda" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                    </label>
-                    <label className="space-y-1.5 md:col-span-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Email Address</span>
-                      <Input value={contact.email} onChange={updateContact("email")} type="email" placeholder="john@example.com" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                    </label>
-                    <label className="space-y-1.5 md:col-span-2">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Phone Number</span>
-                      <Input value={contact.phone} onChange={updateContact("phone")} type="tel" placeholder="+260 97 1234567" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                    </label>
+              <section className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:p-8">
+                <div className="flex flex-col items-center justify-center text-center py-6">
+                  <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-[#009E49]/10">
+                    <Lock className="h-8 w-8 text-[#009E49]" />
                   </div>
-                </section>
-
-                <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
-                  <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">2</span>
-                    Delivery Details
-                  </h2>
-                  <div className="grid grid-cols-1 gap-4">
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Street Address</span>
-                      <Input value={delivery.street} onChange={updateDelivery("street")} placeholder="e.g. 123 Independence Ave" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
-                    </label>
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Area / Neighborhood</span>
-                      <select aria-label="Delivery area" value={delivery.area} onChange={updateDelivery("area")} className="h-12 w-full rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm focus:border-transparent focus:outline-none focus:ring-2 focus:ring-[#009E49]" required>
-                        <option value="">Select your area...</option>
-                        {areaOptions.map((area) => (
-                          <option key={area} value={area}>{area}</option>
-                        ))}
-                      </select>
-                    </label>
-                    <label className="space-y-1.5">
-                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-600">Additional Instructions</span>
-                      <Input value={delivery.instructions ?? ""} onChange={updateDelivery("instructions")} placeholder="e.g. House with the green gate" className="h-12 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" />
-                    </label>
+                  <h2 className="mb-2 text-2xl font-black text-zinc-900">Sign in to continue</h2>
+                  <p className="mb-8 text-sm font-medium text-zinc-500">
+                    Sign in or create an account to place your order.
+                  </p>
+                  <div className="flex w-full max-w-sm flex-col gap-3">
+                    <Link href="/auth/login?next=/checkout" className="w-full">
+                      <Button type="button" className="h-12 w-full rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d]">
+                        Sign In
+                      </Button>
+                    </Link>
+                    <Link href="/auth/register?next=/checkout" className="w-full">
+                      <Button type="button" variant="outline" className="h-12 w-full rounded-xl border-zinc-200 font-bold">
+                        Create Account
+                      </Button>
+                    </Link>
+                    <Link href="/categories" className="w-full">
+                      <Button type="button" variant="ghost" className="h-12 w-full rounded-xl font-bold text-zinc-500 hover:text-zinc-900">
+                        Continue Shopping
+                      </Button>
+                    </Link>
                   </div>
-                  <Button
-                    type="button"
-                    disabled={!detailsComplete}
-                    onClick={() => setCheckoutStage("payment")}
-                    className="mt-6 h-12 w-full rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d] disabled:opacity-50 md:hidden"
-                  >
-                    Continue to Payment
-                  </Button>
-                </section>
-              </>
+                </div>
+              </section>
             )}
 
-            <section className={`${checkoutStage === "payment" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
-              <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
-                <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">
-                  {authUser ? "2" : "3"}
-                </span>
+            {!isGuest && (
+              <section className={`${checkoutStage === "payment" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
+                <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
+                  <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">
+                    2
+                  </span>
                 Payment Method
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -428,6 +368,7 @@ export default function CheckoutPage() {
                 </Button>
               </div>
             </section>
+            )}
           </div>
 
           <div className={`${checkoutStage === "review" ? "block" : "hidden"} w-full shrink-0 md:block lg:w-100 xl:w-112.5`}>
@@ -484,9 +425,17 @@ export default function CheckoutPage() {
               >
                 Back to Payment
               </Button>
-              <Button disabled={!canSubmit} className="h-14 w-full rounded-xl bg-[#009E49] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d] disabled:cursor-not-allowed disabled:opacity-60">
-                {submitting ? "Placing Order..." : "Place Order Now"}
-              </Button>
+              {isGuest ? (
+                <Link href="/auth/login?next=/checkout" className="w-full block">
+                  <Button type="button" className="h-14 w-full rounded-xl bg-[#009E49] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d]">
+                    Sign in to Place Order
+                  </Button>
+                </Link>
+              ) : (
+                <Button disabled={!canSubmit} className="h-14 w-full rounded-xl bg-[#009E49] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d] disabled:cursor-not-allowed disabled:opacity-60">
+                  {submitting ? "Placing Order..." : "Place Order Now"}
+                </Button>
+              )}
 
               <div className="mt-6 flex flex-col items-center gap-3">
                 <div className="flex items-center gap-1.5 rounded-lg bg-[#009E49]/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#009E49]">
