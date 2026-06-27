@@ -4,7 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, CreditCard, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
+import { ChevronRight, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
@@ -332,8 +332,7 @@ export default function CheckoutPage() {
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {[
-                  { id: "mobile-money" as const, label: "Mobile Money", description: "Pay instantly via MTN or Airtel Mobile Money.", Icon: Smartphone },
-                  { id: "bank-card" as const, label: "Bank Card", description: "Visa or Mastercard supported securely.", Icon: CreditCard },
+                  { id: "mobile-money" as const, label: "Mobile Money", description: "Mobile Money payment will be confirmed during order processing.", Icon: Smartphone },
                 ].map(({ id, label, description, Icon }) => {
                   const isSelected = paymentMethod === id;
 
