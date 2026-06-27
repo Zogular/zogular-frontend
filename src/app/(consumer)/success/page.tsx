@@ -9,6 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { getInvoiceById } from "@/services/orders";
 import { getStoredAuthUser } from "@/services/auth-session";
+import { getStoredCheckoutOrder } from "@/services/checkout";
 import type { Invoice } from "@/types/order";
 
 function formatCurrency(value: number) {
@@ -23,11 +24,17 @@ function SuccessContent() {
   const [isGuest, setIsGuest] = React.useState(false);
   const [isError, setIsError] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  const [storedOrderRef, setStoredOrderRef] = React.useState<string | null>(null);
 
   React.useEffect(() => {
     if (!orderId) {
       setLoaded(true);
       return;
+    }
+
+    const storedCheckoutOrder = getStoredCheckoutOrder(orderId);
+    if (storedCheckoutOrder?.orderNumber) {
+      setStoredOrderRef(storedCheckoutOrder.orderNumber);
     }
 
     getInvoiceById(orderId)
@@ -127,6 +134,8 @@ function SuccessContent() {
     );
   }
 
+  const displayOrderNumber = order?.orderNumber || storedOrderRef || orderId;
+
   return (
     <main className="min-h-screen bg-[#f4fbf6] px-4 py-12">
       <div className="mx-auto w-full max-w-2xl animate-in fade-in zoom-in-95 duration-500">
@@ -153,7 +162,7 @@ function SuccessContent() {
                 <Package className="h-4 w-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Order Number</span>
               </div>
-              <p className="text-lg font-black text-zinc-900">{orderId}</p>
+              <p className="text-lg font-black text-zinc-900">{displayOrderNumber}</p>
             </div>
             
             {order && (

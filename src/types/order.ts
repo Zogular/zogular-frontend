@@ -8,6 +8,7 @@ export interface OrderLineItem {
 
 export interface OrderSummary {
   id: string;
+  orderNumber?: string;
   date: string;
   total: number;
   status: OrderStatus;
@@ -23,6 +24,7 @@ export interface InvoiceItem {
 
 export interface Invoice {
   id: string;
+  orderNumber?: string;
   date: string;
   status: OrderStatus;
   customer: {
