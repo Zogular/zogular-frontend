@@ -196,10 +196,12 @@ export default function AddressesPage() {
           </p>
         </div>
 
-        <Button onClick={openCreateDialog} className="flex h-11 items-center gap-2 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-md shadow-[#009E49]/20 hover:bg-[#00853d]">
-          <Plus className="h-4 w-4" />
-          Add New Address
-        </Button>
+        {!loading && !error && (
+          <Button onClick={openCreateDialog} className="flex h-11 items-center gap-2 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-md shadow-[#009E49]/20 hover:bg-[#00853d]">
+            <Plus className="h-4 w-4" />
+            Add New Address
+          </Button>
+        )}
       </div>
 
       {loading ? (
