@@ -1,15 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import {
   Store,
   Briefcase,
   Truck,
   Settings2,
   Wallet,
-  Save,
   AlertCircle,
-  RefreshCcw,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -25,7 +22,6 @@ export default function SellerSettingsPage() {
     settings,
     loading,
     error,
-    isSaving,
     activeTab,
     setActiveTab,
     isSeoOpen,
@@ -79,11 +75,11 @@ export default function SellerSettingsPage() {
         </div>
         <Button
           onClick={() => void saveSettings()}
-          disabled={isSaving}
-          className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95"
+          disabled={true}
+          className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md md:w-auto transition-all disabled:opacity-90 disabled:bg-zinc-200 disabled:text-zinc-500 disabled:cursor-not-allowed"
+          title="Backend integration pending"
         >
-          {isSaving ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          {isSaving ? "Saving..." : "Save Changes"}
+          Backend integration pending
         </Button>
       </div>
 
@@ -118,22 +114,7 @@ export default function SellerSettingsPage() {
               <h3 className="text-xs font-black uppercase tracking-wider text-zinc-900">Payouts</h3>
             </div>
 
-            <p className="mb-3 text-xs font-medium text-zinc-500">Where your store earnings will be sent.</p>
-
-            <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Active Payout Method</p>
-              <p className="mt-1 text-sm font-bold text-zinc-900">MTN Mobile Money</p>
-              <p className="text-xs font-medium text-zinc-500">Zogular Store • ******1111</p>
-            </div>
-
-            <Link href="/seller/payouts">
-              <Button
-                variant="outline"
-                className="mt-3 h-9 w-full rounded-lg border-zinc-200 bg-white text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-100 hover:text-zinc-900"
-              >
-                Manage Payouts
-              </Button>
-            </Link>
+            <p className="mb-3 text-xs font-medium text-zinc-500">Payout settings are not connected yet. Zogular operations will handle seller payouts manually during MVP.</p>
           </div>
         </div>
 

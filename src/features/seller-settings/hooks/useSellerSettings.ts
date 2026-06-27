@@ -56,8 +56,8 @@ export function useSellerSettings() {
       const updated = await settingsApi.updateSettings(settings);
       setSettings(updated);
       toast.success("Settings saved successfully.");
-    } catch {
-      toast.error("Failed to save settings. Please try again.");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to save settings. Please try again.");
     } finally {
       setIsSaving(false);
     }

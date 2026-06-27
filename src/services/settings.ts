@@ -92,11 +92,14 @@ const EMPTY_SETTINGS: StoreSettings = {
   }
 };
 
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export const settingsApi = {
   async fetchSettings(): Promise<StoreSettings> {
     return structuredClone(EMPTY_SETTINGS);
   },
   async updateSettings(payload: StoreSettings): Promise<StoreSettings> {
-    return structuredClone(payload);
+    void payload;
+    throwBackendPendingFeature("Seller settings");
   }
 };

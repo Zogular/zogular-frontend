@@ -393,9 +393,12 @@ export default function SellerDashboard() {
           </div>
 
           <div className="mt-4 rounded-2xl border border-[#009E49]/20 bg-[#009E49]/5 p-3">
-            <div className="mb-2 flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-[#009E49]" />
-              <p className="text-xs font-black text-zinc-900">Payout Snapshot</p>
+            <div className="mb-2 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Wallet className="h-4 w-4 text-[#009E49]" />
+                <p className="text-xs font-black text-zinc-900">Payout Snapshot</p>
+              </div>
+              <span className="rounded-md bg-[#009E49]/10 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#009E49]">Backend pending</span>
             </div>
             <div className="grid grid-cols-2 gap-2">
               <div className="rounded-xl bg-white p-3 border border-zinc-100 shadow-sm">
