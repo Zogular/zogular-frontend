@@ -34,6 +34,7 @@ interface AddressFormState {
   area: string;
   city: string;
   phone: string;
+  deliveryInstructions: string;
   isDefault: boolean;
 }
 
@@ -44,6 +45,7 @@ const emptyAddressForm: AddressFormState = {
   area: "",
   city: "Lusaka",
   phone: "",
+  deliveryInstructions: "",
   isDefault: false,
 };
 
@@ -121,6 +123,7 @@ export default function AddressesPage() {
       area: address.area,
       city: address.city,
       phone: address.phone,
+      deliveryInstructions: address.deliveryInstructions || "",
       isDefault: address.isDefault,
     });
     setDialogOpen(true);
@@ -158,6 +161,7 @@ export default function AddressesPage() {
           area: addressForm.area.trim(),
           city: addressForm.city.trim(),
           phone: addressForm.phone.trim(),
+          deliveryInstructions: addressForm.deliveryInstructions.trim() || undefined,
           isDefault: addressForm.isDefault,
         });
         setAddresses(addresses.map(a => a.id === editingAddressId ? updated : (updated.isDefault ? { ...a, isDefault: false } : a)));
@@ -169,6 +173,7 @@ export default function AddressesPage() {
           area: addressForm.area.trim(),
           city: addressForm.city.trim(),
           phone: addressForm.phone.trim(),
+          deliveryInstructions: addressForm.deliveryInstructions.trim() || undefined,
           isDefault: addressForm.isDefault || addresses.length === 0,
         });
         setAddresses(created.isDefault 
@@ -282,6 +287,14 @@ export default function AddressesPage() {
                     {address.area}, {address.city}
                   </span>
                 </div>
+                {address.deliveryInstructions ? (
+                  <div className="flex items-start gap-2 text-sm text-zinc-500 mt-1">
+                    <span className="w-4" />
+                    <span className="italic text-xs border-l-2 border-zinc-200 pl-2">
+                      {address.deliveryInstructions}
+                    </span>
+                  </div>
+                ) : null}
 
                 <p className="pt-1 text-sm font-medium text-zinc-500">{address.phone}</p>
               </div>
@@ -354,10 +367,17 @@ export default function AddressesPage() {
               </label>
 
               <label className="space-y-1.5 md:col-span-2">
-                <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500">
-                  Street Address <span className="text-[10px] font-normal lowercase opacity-70">(include landmarks if any)</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Street Address
                 </span>
                 <Input value={addressForm.street} onChange={updateAddressForm("street")} className="h-11 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
+              </label>
+
+              <label className="space-y-1.5 md:col-span-2">
+                <span className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-zinc-500">
+                  Delivery Landmark / Instructions <span className="text-[10px] font-normal lowercase opacity-70">(optional)</span>
+                </span>
+                <Input value={addressForm.deliveryInstructions} onChange={updateAddressForm("deliveryInstructions")} className="h-11 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" />
               </label>
 
               <label className="space-y-1.5">

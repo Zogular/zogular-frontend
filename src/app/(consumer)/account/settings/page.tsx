@@ -163,15 +163,28 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-500">
-                <span>Phone Number</span>
-                <span className="text-[10px] font-medium text-[#009E49] bg-[#009E49]/10 px-2 py-0.5 rounded-md">Primary Contact / MoMo</span>
+              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+                Primary Phone Number
               </label>
               <Input
                 type="tel"
                 value={settings.profile.phone}
                 onChange={(event) => handleProfileChange("phone", event.target.value)}
                 className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-[#009E49]"
+              />
+            </div>
+
+            <div className="space-y-1.5">
+              <label className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-500">
+                <span>Preferred MoMo Number</span>
+                <span className="text-[10px] font-medium text-[#009E49] bg-[#009E49]/10 px-2 py-0.5 rounded-md">Optional</span>
+              </label>
+              <Input
+                type="tel"
+                value={settings.profile.preferredMoMoNumber || ""}
+                onChange={(event) => handleProfileChange("preferredMoMoNumber", event.target.value)}
+                className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-[#009E49]"
+                placeholder="09XXXXXXXX"
               />
             </div>
 

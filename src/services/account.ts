@@ -50,6 +50,7 @@ interface BackendAddressResponse {
   district?: string;
   city: string;
   phone: string;
+  deliveryInstructions?: string | null;
   isDefault: boolean;
 }
 
@@ -63,6 +64,7 @@ export async function getSavedAddresses(): Promise<Address[]> {
     area: addr.district || "",
     city: addr.city,
     phone: addr.phone,
+    deliveryInstructions: addr.deliveryInstructions,
     isDefault: addr.isDefault,
   }));
 }
@@ -78,6 +80,7 @@ export async function createAddress(address: Omit<Address, "id">): Promise<Addre
       addressLine: address.street,
       district: address.area,
       city: address.city,
+      deliveryInstructions: address.deliveryInstructions,
       isDefault: address.isDefault,
     }),
   });
@@ -91,6 +94,7 @@ export async function createAddress(address: Omit<Address, "id">): Promise<Addre
     area: addr.district || "",
     city: addr.city,
     phone: addr.phone,
+    deliveryInstructions: addr.deliveryInstructions,
     isDefault: addr.isDefault,
   };
 }
@@ -106,6 +110,7 @@ export async function updateAddress(address: Address): Promise<Address> {
       addressLine: address.street,
       district: address.area,
       city: address.city,
+      deliveryInstructions: address.deliveryInstructions,
       isDefault: address.isDefault,
     }),
   });
@@ -119,6 +124,7 @@ export async function updateAddress(address: Address): Promise<Address> {
     area: addr.district || "",
     city: addr.city,
     phone: addr.phone,
+    deliveryInstructions: addr.deliveryInstructions,
     isDefault: addr.isDefault,
   };
 }

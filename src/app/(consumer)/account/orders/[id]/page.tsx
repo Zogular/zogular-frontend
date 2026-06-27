@@ -11,6 +11,7 @@ import { FeedbackState } from "@/components/states/FeedbackState";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
+import { useCart } from "@/hooks/use-cart";
 
 const STATUS_CONFIG = {
   processing: {
@@ -282,6 +283,27 @@ export default function InvoicePage({
                   Browse Products
                 </Button>
               </Link>
+              <Button
+                variant="outline"
+                className="h-11 w-full rounded-xl border-zinc-200 font-bold text-zinc-900 hover:bg-zinc-50 sm:w-auto"
+                onClick={() => {
+                  const cart = useCart.getState();
+                  invoice.items.forEach((item) => {
+                    if (item.productId && item.slug && item.image) {
+                      cart.addItem({
+                        id: item.productId,
+                        slug: item.slug,
+                        image: item.image,
+                        name: item.name,
+                        price: item.price,
+                        quantity: item.qty,
+                      });
+                    }
+                  });
+                }}
+              >
+                Order Again
+              </Button>
             </div>
           </div>
 
