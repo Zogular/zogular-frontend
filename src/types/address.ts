@@ -8,5 +8,6 @@ export interface Address {
   area: string;
   city: string;
   phone: string;
+  deliveryInstructions?: string | null;
   isDefault: boolean;
 }

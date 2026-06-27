@@ -11,6 +11,7 @@ import { FeedbackState } from "@/components/states/FeedbackState";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
+import { useCart } from "@/hooks/use-cart";
 
 const STATUS_CONFIG = {
   processing: {
@@ -282,6 +283,49 @@ export default function InvoicePage({
                   Browse Products
                 </Button>
               </Link>
+              {(() => {
+                const canReorderAll = invoice.items.every(
+                  (item) =>
+                    Boolean(item.productId) &&
+                    Boolean(item.slug) &&
+                    Boolean(item.image) &&
+                    Boolean(item.name) &&
+                    typeof item.price === "number" &&
+                    typeof item.qty === "number" &&
+                    item.qty > 0
+                );
+
+                return (
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant="outline"
+                      className="h-11 w-full rounded-xl border-zinc-200 font-bold text-zinc-900 hover:bg-zinc-50 sm:w-auto"
+                      disabled={!canReorderAll}
+                      onClick={() => {
+                        if (!canReorderAll) return;
+                        const cart = useCart.getState();
+                        invoice.items.forEach((item) => {
+                          cart.addItem({
+                            id: item.productId as string,
+                            slug: item.slug as string,
+                            image: item.image as string,
+                            name: item.name as string,
+                            price: item.price,
+                            quantity: item.qty,
+                          });
+                        });
+                      }}
+                    >
+                      Order Again
+                    </Button>
+                    {!canReorderAll && (
+                      <p className="text-xs font-medium text-red-600 sm:max-w-[200px]">
+                        Some items are missing product details. Please browse products instead.
+                      </p>
+                    )}
+                  </div>
+                );
+              })()}
             </div>
           </div>
 

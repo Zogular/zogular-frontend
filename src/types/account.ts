@@ -46,6 +46,7 @@ export interface AccountSettings {
     lastName: string;
     email: string;
     phone: string;
+    preferredMoMoNumber?: string;
   };
   payments: PaymentMethod[];
   notifications: NotificationPreferences;
