@@ -4,7 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, CreditCard, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
+import { ChevronRight, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
