@@ -3,7 +3,7 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone, RefreshCw } from "lucide-react";
+import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -11,8 +11,6 @@ import { FeedbackState } from "@/components/states/FeedbackState";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
-import { useCart } from "@/hooks/use-cart";
-import { useRouter } from "next/navigation";
 
 const STATUS_CONFIG = {
   processing: {
@@ -47,10 +45,6 @@ export default function InvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
-  const router = useRouter();
-  const { addItem } = useCart();
-  const [isOrderingAgain, setIsOrderingAgain] = React.useState(false);
-  const [orderAgainError, setOrderAgainError] = React.useState<string | null>(null);
 
   const [invoice, setInvoice] = React.useState<Invoice | null>(null);
   const [loading, setLoading] = React.useState(true);
@@ -113,38 +107,6 @@ export default function InvoicePage({
   }
 
   if (!invoice) return null;
-
-  const handleOrderAgain = async () => {
-    if (!invoice) return;
-    try {
-      setIsOrderingAgain(true);
-      setOrderAgainError(null);
-      // Validate all items have product IDs
-      const invalidItems = invoice.items.filter(item => !item.productId);
-      if (invalidItems.length > 0) {
-        setOrderAgainError("Some items from this order are no longer available for reordering.");
-        return;
-      }
-      
-      for (const item of invoice.items) {
-        // Prevent adding if already in cart to simplify UX or just add quantity. 
-        // Our cart allows adding same product to increase qty, which is fine.
-        addItem({
-          id: item.productId,
-          name: item.name,
-          slug: item.productId, // Fallback slug
-          price: item.price,
-          quantity: item.qty,
-          image: "/placeholder.png", // We don't have images in InvoiceItem right now
-        });
-      }
-      router.push("/cart");
-    } catch {
-      setOrderAgainError("Failed to add items to cart.");
-    } finally {
-      setIsOrderingAgain(false);
-    }
-  };
 
   const whatsappLink = SUPPORT_WHATSAPP_NUMBER
     ? `https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}?text=${encodeURIComponent(`Hi Zogular, I need help with Order #${invoice.orderNumber || invoice.id}`)}`
@@ -313,17 +275,13 @@ export default function InvoicePage({
               )}
             </div>
             <div className="space-y-2">
-              <Button 
-                onClick={handleOrderAgain} 
-                disabled={isOrderingAgain}
-                className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto"
-              >
-                <RefreshCw className={`mr-2 h-4 w-4 ${isOrderingAgain ? 'animate-spin' : ''}`} />
-                {isOrderingAgain ? "Adding to Cart..." : "Order Again"}
-              </Button>
-              {orderAgainError ? (
-                <p className="text-xs font-medium text-red-600">{orderAgainError}</p>
-              ) : null}
+              <Link href="/categories">
+                <Button 
+                  className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto"
+                >
+                  Browse Products
+                </Button>
+              </Link>
             </div>
           </div>
 
