@@ -39,6 +39,11 @@ export default function AccountLayout({
   const router = useRouter();
   const user = getAccountUserProfile();
   const [isSigningOut, setIsSigningOut] = React.useState(false);
+  const [mounted, setMounted] = React.useState(false);
+
+  React.useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const handleSignOut = React.useCallback(async () => {
     try {
@@ -92,19 +97,31 @@ export default function AccountLayout({
 
             {/* USER CARD */}
             <div className="mb-4 rounded-3xl border border-zinc-200/60 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-              <div className="mb-1 flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-full bg-[#009E49]/10 text-xl font-black text-[#009E49]">
-                  {user.name.charAt(0)}
+              {mounted ? (
+                <div className="mb-1 flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#009E49]/10 text-xl font-black text-[#009E49]">
+                    {user.name.charAt(0)}
+                  </div>
+                  <div className="flex-1 overflow-hidden">
+                    <h2 className="truncate text-sm font-black text-zinc-900">
+                      {user.name}
+                    </h2>
+                    <p className="truncate text-xs font-medium text-zinc-500">
+                      {user.email}
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h2 className="text-sm font-black text-zinc-900">
-                    {user.name}
-                  </h2>
-                  <p className="text-xs font-medium text-zinc-500">
-                    {user.email}
-                  </p>
+              ) : (
+                <div className="mb-1 flex items-center gap-3">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100">
+                    <User className="h-5 w-5 text-zinc-400" />
+                  </div>
+                  <div className="flex flex-1 flex-col gap-2">
+                    <div className="h-4 w-24 rounded bg-zinc-100" />
+                    <div className="h-3 w-32 rounded bg-zinc-100" />
+                  </div>
                 </div>
-              </div>
+              )}
             </div>
 
             {/* NAV LINKS */}
