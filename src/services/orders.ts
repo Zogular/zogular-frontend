@@ -49,6 +49,13 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
   });
 }
 
+function formatPaymentMethod(method?: string): string {
+  if (!method) return "Pending Configuration";
+  if (method === "cash_on_delivery") return "Cash on Delivery";
+  if (method === "mobile_money") return "Mobile Money";
+  return method;
+}
+
 export async function getInvoiceById(id: string): Promise<Invoice> {
   const response = await apiClient<{ data: { order: BackendOrder } }>(`/orders/${id}`);
   const order = response.data.order;
@@ -74,8 +81,9 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
     typeof item.lineTotal === "number" ? item.lineTotal : (item.price || 0) * (item.quantity || 1);
 
   const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
-  const paymentMethodStr = (order as unknown as Record<string, unknown>).paymentMethod as string || "cash_on_delivery";
-  const isCod = paymentMethodStr === "cash_on_delivery" || paymentMethodStr.toLowerCase().includes("cash");
+  
+  const rawPaymentMethod = (order as unknown as Record<string, unknown>).paymentMethod as string | undefined;
+  const isCod = rawPaymentMethod === "cash_on_delivery";
 
   return {
     id: order.id,
@@ -96,7 +104,7 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       area: shippingArea,
       city: shippingCity,
     },
-    paymentMethod: paymentMethodStr,
+    paymentMethod: formatPaymentMethod(rawPaymentMethod),
     paymentCollectionMode: isCod ? PAYMENT_COLLECTION_MODE : undefined,
     commitmentFeeAmount: isCod ? order.totalAmount * COD_COMMITMENT_FEE_RATE : undefined,
     cashDueOnDelivery: isCod ? order.totalAmount - (order.totalAmount * COD_COMMITMENT_FEE_RATE) : undefined,

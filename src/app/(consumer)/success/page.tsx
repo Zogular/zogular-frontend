@@ -227,17 +227,22 @@ function SuccessContent() {
                 </div>
                 
                 {typeof order.commitmentFeeAmount === "number" && typeof order.cashDueOnDelivery === "number" && (
-                  <>
-                    <Separator className="my-3 border-dashed bg-transparent border-t border-zinc-200" />
-                    <div className="flex justify-between font-bold text-zinc-700">
-                      <span>Commitment Fee (Pending)</span>
-                      <span className="text-[#FF6B00]">{formatCurrency(order.commitmentFeeAmount)}</span>
+                  <div className="mt-4 rounded-xl bg-orange-50 p-3 text-sm text-left print:bg-transparent print:p-0">
+                    <Separator className="mb-3 border-dashed bg-transparent border-t border-orange-200" />
+                    <div className="space-y-2">
+                      <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
+                        <span>Commitment Fee (Pending)</span>
+                        <span className="text-[#FF6B00]">{formatCurrency(order.commitmentFeeAmount)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-zinc-900">
+                        <span>Cash Due on Delivery</span>
+                        <span>{formatCurrency(order.cashDueOnDelivery)}</span>
+                      </div>
+                      <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
+                        * Estimated MVP breakdown. Official payment status is pending.
+                      </p>
                     </div>
-                    <div className="flex justify-between font-bold text-zinc-900">
-                      <span>Cash Due on Delivery</span>
-                      <span>{formatCurrency(order.cashDueOnDelivery)}</span>
-                    </div>
-                  </>
+                  </div>
                 )}
               </div>
             </div>
