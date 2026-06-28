@@ -19,6 +19,7 @@ import {
   createCheckoutOrder,
   type CheckoutPaymentMethod,
 } from "@/services/checkout";
+import { COD_COMMITMENT_FEE_RATE } from "@/config/checkout";
 
 type CheckoutStage = Extract<PurchaseProgressStep, "details" | "payment" | "review">;
 
@@ -38,7 +39,7 @@ export default function CheckoutPage() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("mobile-money");
+  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("cash_on_delivery");
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
 
   const loadAddresses = React.useCallback(async () => {
@@ -332,7 +333,7 @@ export default function CheckoutPage() {
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {[
-                  { id: "mobile-money" as const, label: "Mobile Money", description: "Mobile Money payment will be confirmed during order processing.", Icon: Smartphone },
+                  { id: "cash_on_delivery" as const, label: "Cash on Delivery", description: "Pay a small commitment fee now to confirm the order. Pay the remaining balance in cash when your delivery arrives. Online collection is not connected yet. Zogular will confirm payment instructions during order processing.", Icon: Smartphone },
                 ].map(({ id, label, description, Icon }) => {
                   const isSelected = paymentMethod === id;
 
@@ -418,8 +419,16 @@ export default function CheckoutPage() {
                 />
                 <Separator className="bg-zinc-200" />
                 <div className="flex items-center justify-between">
-                  <span className="text-base font-bold text-zinc-900">Total to Pay</span>
-                  <span className="text-2xl font-black text-[#FF6B00]">{formatCurrency(total)}</span>
+                  <span className="text-base font-bold text-zinc-900">Order Total</span>
+                  <span className="text-xl font-black text-zinc-900">{formatCurrency(total)}</span>
+                </div>
+                <div className="mt-2 flex items-center justify-between border-t border-dashed border-zinc-200 pt-3">
+                  <span className="text-sm font-bold text-zinc-700">Commitment Fee (Due Now)</span>
+                  <span className="text-lg font-black text-[#FF6B00]">{formatCurrency(total * COD_COMMITMENT_FEE_RATE)}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-sm font-bold text-zinc-700">Cash Due on Delivery</span>
+                  <span className="text-lg font-black text-zinc-900">{formatCurrency(total - (total * COD_COMMITMENT_FEE_RATE))}</span>
                 </div>
               </div>
 

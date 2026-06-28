@@ -1,13 +1,14 @@
 import type { CartItem } from "@/types/cart";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { apiClient } from "@/services/api";
+import { COD_COMMITMENT_FEE_RATE, PAYMENT_COLLECTION_MODE } from "@/config/checkout";
 
 // Temporary frontend-only delivery estimate. Replace with a backend delivery quote before production pricing.
 export const CHECKOUT_DELIVERY_FEE = 50;
 export const CHECKOUT_DELIVERY_FEE_NOTICE =
   "Temporary delivery estimate. Backend delivery quote pending.";
 
-export type CheckoutPaymentMethod = "mobile-money" | "bank-card";
+export type CheckoutPaymentMethod = "cash_on_delivery" | "mobile_money";
 export type CheckoutOrderStatus = "processing";
 
 export interface CheckoutContact {
@@ -41,6 +42,10 @@ export interface CheckoutOrder {
   contact: CheckoutContact;
   delivery: CheckoutDelivery;
   paymentMethod: CheckoutPaymentMethod;
+  paymentCollectionMode?: string;
+  commitmentFeeAmount?: number;
+  cashDueOnDelivery?: number;
+  commitmentFeeStatus?: string;
   items: CheckoutOrderItem[];
   subtotal: number;
   deliveryFee: number;
@@ -192,6 +197,10 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
       })
     : buildEstimatedDeliveryDate();
 
+  const total = backendOrder.totalAmount + CHECKOUT_DELIVERY_FEE;
+  const commitmentFeeAmount = total * COD_COMMITMENT_FEE_RATE;
+  const cashDueOnDelivery = total - commitmentFeeAmount;
+
   const checkoutOrder: CheckoutOrder = {
     id: backendOrder.id,
     orderNumber: backendOrder.orderNumber,
@@ -200,10 +209,14 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     contact: input.contact,
     delivery: input.delivery,
     paymentMethod: input.paymentMethod,
+    paymentCollectionMode: PAYMENT_COLLECTION_MODE,
+    commitmentFeeAmount,
+    cashDueOnDelivery,
+    commitmentFeeStatus: "pending",
     items: normalizedItems,
     subtotal: backendOrder.totalAmount,
     deliveryFee: CHECKOUT_DELIVERY_FEE,
-    total: backendOrder.totalAmount + CHECKOUT_DELIVERY_FEE,
+    total,
     estimatedDelivery: estimatedDeliveryDate,
   };
 
