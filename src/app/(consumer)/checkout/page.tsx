@@ -19,7 +19,6 @@ import {
   createCheckoutOrder,
   type CheckoutPaymentMethod,
 } from "@/services/checkout";
-import { COD_COMMITMENT_FEE_RATE } from "@/config/checkout";
 
 type CheckoutStage = Extract<PurchaseProgressStep, "details" | "payment" | "review">;
 
@@ -333,7 +332,7 @@ export default function CheckoutPage() {
               </h2>
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 {[
-                  { id: "cash_on_delivery" as const, label: "Cash on Delivery", description: "Pay a small commitment fee now to confirm the order. Pay the remaining balance in cash when your delivery arrives. Online collection is not connected yet. Zogular will confirm payment instructions during order processing.", Icon: Smartphone },
+                  { id: "cash_on_delivery" as const, label: "Cash on Delivery", description: "Pay the delivery fee now before dispatch. Pay the product amount in cash on delivery. Online collection is not connected yet. Zogular will confirm payment instructions during order processing.", Icon: Smartphone },
                 ].map(({ id, label, description, Icon }) => {
                   const isSelected = paymentMethod === id;
 
@@ -423,12 +422,12 @@ export default function CheckoutPage() {
                   <span className="text-xl font-black text-zinc-900">{formatCurrency(total)}</span>
                 </div>
                 <div className="mt-2 flex items-center justify-between border-t border-dashed border-zinc-200 pt-3">
-                  <span className="text-sm font-bold text-zinc-700">Commitment Fee (Due Now)</span>
-                  <span className="text-lg font-black text-[#FF6B00]">{formatCurrency(total * COD_COMMITMENT_FEE_RATE)}</span>
+                  <span className="text-sm font-bold text-zinc-700">Delivery Fee (Due Now)</span>
+                  <span className="text-lg font-black text-[#FF6B00]">{formatCurrency(deliveryFee)}</span>
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-zinc-700">Cash Due on Delivery</span>
-                  <span className="text-lg font-black text-zinc-900">{formatCurrency(total - (total * COD_COMMITMENT_FEE_RATE))}</span>
+                  <span className="text-lg font-black text-zinc-900">{formatCurrency(totalAmount)}</span>
                 </div>
               </div>
 

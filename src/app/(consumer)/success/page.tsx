@@ -231,7 +231,7 @@ function SuccessContent() {
                     <Separator className="mb-3 border-dashed bg-transparent border-t border-orange-200" />
                     <div className="space-y-2">
                       <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
-                        <span>Commitment Fee (Pending)</span>
+                        <span>Delivery Fee (Due Now)</span>
                         <span className="text-[#FF6B00]">{formatCurrency(order.commitmentFeeAmount)}</span>
                       </div>
                       <div className="flex justify-between font-bold text-zinc-900">

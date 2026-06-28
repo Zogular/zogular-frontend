@@ -2,7 +2,7 @@ import { apiClient } from "@/services/api";
 import { getStoredAuthUser } from "@/services/auth-session";
 import type { Invoice, OrderSummary, OrderStatus } from "@/types/order";
 import { type BackendOrder, type BackendOrderStatus, type BackendOrderItem, getBackendProductImage } from "@/types/backend-order";
-import { COD_COMMITMENT_FEE_RATE, PAYMENT_COLLECTION_MODE } from "@/config/checkout";
+import { PAYMENT_COLLECTION_MODE } from "@/config/checkout";
 
 function mapBackendStatusToFrontend(status: BackendOrderStatus): OrderStatus {
   switch (status) {
@@ -106,9 +106,9 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
     },
     paymentMethod: formatPaymentMethod(rawPaymentMethod),
     paymentCollectionMode: isCod ? PAYMENT_COLLECTION_MODE : undefined,
-    commitmentFeeAmount: isCod ? order.totalAmount * COD_COMMITMENT_FEE_RATE : undefined,
-    cashDueOnDelivery: isCod ? order.totalAmount - (order.totalAmount * COD_COMMITMENT_FEE_RATE) : undefined,
-    commitmentFeeStatus: isCod ? "pending" : undefined,
+    commitmentFeeAmount: isCod && typeof (order as BackendOrder & { commitmentFeeAmount?: number }).commitmentFeeAmount === "number" ? (order as BackendOrder & { commitmentFeeAmount?: number }).commitmentFeeAmount : undefined,
+    cashDueOnDelivery: isCod && typeof (order as BackendOrder & { cashDueOnDelivery?: number }).cashDueOnDelivery === "number" ? (order as BackendOrder & { cashDueOnDelivery?: number }).cashDueOnDelivery : undefined,
+    commitmentFeeStatus: isCod && typeof (order as BackendOrder & { commitmentFeeStatus?: string }).commitmentFeeStatus === "string" ? (order as BackendOrder & { commitmentFeeStatus?: string }).commitmentFeeStatus : undefined,
     items: order.items.map((item) => ({
       productId: item.productId || "",
       slug: (item.product?.slug as string) || "",
