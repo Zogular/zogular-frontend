@@ -223,8 +223,22 @@ function SuccessContent() {
                 </div>
                 <div className="flex justify-between text-base font-black text-zinc-900">
                   <span>Total</span>
-                  <span className="text-[#FF6B00]">{formatCurrency(order.total)}</span>
+                  <span className="text-[#009E49]">{formatCurrency(order.total)}</span>
                 </div>
+                
+                {typeof order.commitmentFeeAmount === "number" && typeof order.cashDueOnDelivery === "number" && (
+                  <>
+                    <Separator className="my-3 border-dashed bg-transparent border-t border-zinc-200" />
+                    <div className="flex justify-between font-bold text-zinc-700">
+                      <span>Commitment Fee (Pending)</span>
+                      <span className="text-[#FF6B00]">{formatCurrency(order.commitmentFeeAmount)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-zinc-900">
+                      <span>Cash Due on Delivery</span>
+                      <span>{formatCurrency(order.cashDueOnDelivery)}</span>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
           )}
