@@ -41,6 +41,10 @@ export interface Invoice {
     city: string;
   };
   paymentMethod: string;
+  paymentCollectionMode?: string;
+  commitmentFeeAmount?: number;
+  cashDueOnDelivery?: number;
+  commitmentFeeStatus?: string;
   items: InvoiceItem[];
   subtotal: number;
   shippingFee: number;

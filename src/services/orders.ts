@@ -93,7 +93,7 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       area: shippingArea,
       city: shippingCity,
     },
-    paymentMethod: "Not specified",
+    paymentMethod: (order as unknown as Record<string, unknown>).paymentMethod as string || "Cash on Delivery (with Commitment Fee)",
     items: order.items.map((item) => ({
       productId: item.productId || "",
       slug: (item.product?.slug as string) || "",
