@@ -1,7 +1,7 @@
 import type { CartItem } from "@/types/cart";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { apiClient } from "@/services/api";
-import { COD_COMMITMENT_FEE_RATE, PAYMENT_COLLECTION_MODE } from "@/config/checkout";
+import { PAYMENT_COLLECTION_MODE } from "@/config/checkout";
 
 // Temporary frontend-only delivery estimate. Replace with a backend delivery quote before production pricing.
 export const CHECKOUT_DELIVERY_FEE = 50;
@@ -198,8 +198,8 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     : buildEstimatedDeliveryDate();
 
   const total = backendOrder.totalAmount + CHECKOUT_DELIVERY_FEE;
-  const commitmentFeeAmount = total * COD_COMMITMENT_FEE_RATE;
-  const cashDueOnDelivery = total - commitmentFeeAmount;
+  const commitmentFeeAmount = CHECKOUT_DELIVERY_FEE;
+  const cashDueOnDelivery = backendOrder.totalAmount;
 
   const checkoutOrder: CheckoutOrder = {
     id: backendOrder.id,

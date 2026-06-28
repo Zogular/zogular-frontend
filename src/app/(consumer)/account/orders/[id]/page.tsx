@@ -358,7 +358,7 @@ export default function InvoicePage({
             {typeof invoice.commitmentFeeAmount === "number" && typeof invoice.cashDueOnDelivery === "number" && (
               <div className="mt-3 space-y-2 rounded-xl bg-orange-50 p-3 text-sm print:bg-transparent print:p-0 print:border print:border-zinc-200">
                 <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
-                  <span>Commitment Fee (Pending)</span>
+                  <span>Delivery Fee (Due Now)</span>
                   <span>{formatCurrency(invoice.commitmentFeeAmount)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-zinc-900">
