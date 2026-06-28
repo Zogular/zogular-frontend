@@ -2,6 +2,7 @@ import { apiClient } from "@/services/api";
 import { getStoredAuthUser } from "@/services/auth-session";
 import type { Invoice, OrderSummary, OrderStatus } from "@/types/order";
 import { type BackendOrder, type BackendOrderStatus, type BackendOrderItem, getBackendProductImage } from "@/types/backend-order";
+import { COD_COMMITMENT_FEE_RATE, PAYMENT_COLLECTION_MODE } from "@/config/checkout";
 
 function mapBackendStatusToFrontend(status: BackendOrderStatus): OrderStatus {
   switch (status) {
@@ -73,6 +74,8 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
     typeof item.lineTotal === "number" ? item.lineTotal : (item.price || 0) * (item.quantity || 1);
 
   const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
+  const paymentMethodStr = (order as unknown as Record<string, unknown>).paymentMethod as string || "cash_on_delivery";
+  const isCod = paymentMethodStr === "cash_on_delivery" || paymentMethodStr.toLowerCase().includes("cash");
 
   return {
     id: order.id,
@@ -93,7 +96,11 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       area: shippingArea,
       city: shippingCity,
     },
-    paymentMethod: (order as unknown as Record<string, unknown>).paymentMethod as string || "Cash on Delivery (with Commitment Fee)",
+    paymentMethod: paymentMethodStr,
+    paymentCollectionMode: isCod ? PAYMENT_COLLECTION_MODE : undefined,
+    commitmentFeeAmount: isCod ? order.totalAmount * COD_COMMITMENT_FEE_RATE : undefined,
+    cashDueOnDelivery: isCod ? order.totalAmount - (order.totalAmount * COD_COMMITMENT_FEE_RATE) : undefined,
+    commitmentFeeStatus: isCod ? "pending" : undefined,
     items: order.items.map((item) => ({
       productId: item.productId || "",
       slug: (item.product?.slug as string) || "",
