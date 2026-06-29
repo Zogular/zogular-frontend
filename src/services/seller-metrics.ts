@@ -59,6 +59,8 @@ export interface SellerDashboardData {
   kpis: {
     pendingOrders: number;
     activeProducts: number;
+    payoutAvailable: number;
+    payoutPending: number;
   };
 }
 
@@ -165,6 +167,8 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
     kpis: {
       pendingOrders: orders.filter((order) => order.status === "new" || order.status === "processing").length,
       activeProducts: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
+      payoutAvailable: 0,
+      payoutPending: 0,
     },
   };
 }
