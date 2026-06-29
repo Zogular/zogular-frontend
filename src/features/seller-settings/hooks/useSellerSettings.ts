@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { toast } from "sonner";
-import { settingsApi, StoreSettings } from "@/services/settings";
+import {
+  settingsApi,
+  StoreSettings,
+} from "@/services/settings";
 
 export type TabType = "profile" | "business" | "fulfillment" | "operations";
 
 export function useSellerSettings() {
+  const isBackendPending = true;
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<TabType>("profile");
   const [isSeoOpen, setIsSeoOpen] = useState(false);
   const [logoFileLabel, setLogoFileLabel] = useState<string | null>(null);
@@ -37,36 +39,6 @@ export function useSellerSettings() {
   useEffect(() => {
     loadSettings();
   }, [loadSettings]);
-
-  const saveSettings = useCallback(async () => {
-    if (!settings) return;
-
-    if (!settings.profile.name.trim() || !settings.business.supportEmail.trim()) {
-      toast.error("Store Name and Support Email are required.");
-      return;
-    }
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(settings.business.supportEmail)) {
-      toast.error("Please enter a valid email address.");
-      return;
-    }
-
-    setIsSaving(true);
-    try {
-      const updated = await settingsApi.updateSettings(settings);
-      setSettings(updated);
-      toast.success("Settings saved successfully.");
-    } catch {
-      toast.error("Failed to save settings. Please try again.");
-    } finally {
-      setIsSaving(false);
-    }
-  }, [settings]);
-
-  const handleFormSubmit = (event: React.FormEvent) => {
-    event.preventDefault();
-    void saveSettings();
-  };
 
   const handleAssetUpload = useCallback((field: "logo" | "banner", file: File | null) => {
     if (!file) return;
@@ -110,9 +82,9 @@ export function useSellerSettings() {
 
   return {
     settings,
+    isBackendPending,
     loading,
     error,
-    isSaving,
     activeTab,
     setActiveTab,
     isSeoOpen,
@@ -122,8 +94,6 @@ export function useSellerSettings() {
     logoInputRef,
     bannerInputRef,
     loadSettings,
-    saveSettings,
-    handleFormSubmit,
     handleAssetUpload,
     updateSetting,
   };

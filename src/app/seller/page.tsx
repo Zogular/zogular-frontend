@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useMemo, useState, useEffect, useCallback } from "react";
 import {
-  AlertCircle, ArrowUpRight, Box, Clock3,
+  AlertCircle, Box, Clock3,
   Package, Plus, ShoppingCart, TrendingUp, Wallet, Bell, Eye,
 } from "lucide-react";
 import {
@@ -41,6 +41,15 @@ function getStatusPillClass(status: SellerRecentOrder["status"]) {
   return "bg-red-50 text-red-700 border-red-200";
 }
 
+function getStatusPillLabel(status: SellerRecentOrder["status"]) {
+  if (status === "refund") return "Refund Review";
+  if (status === "new") return "New";
+  if (status === "processing") return "Processing";
+  if (status === "shipped") return "Shipped";
+  if (status === "delivered") return "Delivered";
+  return "Cancelled";
+}
+
 function getActivityDotClass(tone: SellerActivityItem["tone"]) {
   if (tone === "warning") return "bg-[#FF6B00]";
   if (tone === "success") return "bg-[#009E49]";
@@ -52,7 +61,7 @@ function getOrderStatusDotClass(name: SellerOrderStatusPoint["name"]) {
   if (name === "Processing") return "bg-amber-500";
   if (name === "Shipped") return "bg-indigo-500";
   if (name === "Delivered") return "bg-[#009E49]";
-  if (name === "Refunded") return "bg-orange-500";
+  if (name === "Refund Review") return "bg-orange-500";
   return "bg-red-500";
 }
 
@@ -112,12 +121,6 @@ export default function SellerDashboard() {
     return data?.orderStatusData.reduce((sum, item) => sum + item.value, 0) || 0;
   }, [data]);
   
-  const rangeGrowthLabel = useMemo(() => {
-    if (range === "7d") return "+14.5% vs previous 7 days";
-    if (range === "30d") return "+9.2% vs previous 30 days";
-    return "+18.1% vs previous period";
-  }, [range]);
-
   // --- SYSTEM STATES ---
   if (loading) return <SellerPageLoading variant="dashboard" />;
 
@@ -170,7 +173,7 @@ export default function SellerDashboard() {
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
             <h2 className="text-xl font-black tracking-tight text-zinc-900">Performance Analytics</h2>
-            <p className="mt-1 text-sm font-medium text-zinc-500">Track sales, orders, and stock.</p>
+            <p className="mt-1 text-sm font-medium text-zinc-500">Review seller-visible order revenue, order states, and stock signals while finance automation remains pending.</p>
           </div>
           <div className="rounded-xl bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-600 self-start md:self-auto">
             Today: {getTodayLabel()}
@@ -181,20 +184,17 @@ export default function SellerDashboard() {
       {/* KPI HERO CARDS */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         
-        {/* Total Revenue (Zogular Gradient v4) */}
+        {/* Seller Revenue Snapshot */}
         <div className="relative overflow-hidden rounded-3xl border border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] p-4 text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)] md:p-5">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10 blur-xl" />
-          <div className="mb-3 flex items-center justify-between">
+          <div className="mb-3 flex items-center">
             <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm">
               <TrendingUp className="h-4 w-4 text-white" />
             </div>
-            <span className="flex items-center rounded-md bg-white/20 px-2 py-0.5 text-[10px] font-bold backdrop-blur-sm">
-              <ArrowUpRight className="mr-0.5 h-3 w-3" /> +14.5%
-            </span>
           </div>
-          <p className="text-xs font-bold uppercase tracking-wider text-[#99e6bc]">Total Revenue</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#99e6bc]">Seller Revenue Snapshot</p>
           <h3 className="mt-0.5 text-xl font-black md:text-2xl">{formatCurrency(totalRevenue)}</h3>
-          <p className="mt-1 text-[10px] md:text-[11px] font-semibold text-white/80">{rangeGrowthLabel}</p>
+          <p className="mt-1 text-[10px] md:text-[11px] font-semibold text-white/80">Derived from seller-visible order items in the selected range.</p>
         </div>
 
         <div className="rounded-3xl border border-zinc-200/80 bg-white p-4 shadow-sm md:p-5">
@@ -213,7 +213,7 @@ export default function SellerDashboard() {
               <Package className="h-4 w-4" />
             </div>
           </div>
-          <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Active Products</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Buyer Visible Products</p>
           <h3 className="mt-0.5 text-xl font-black text-zinc-900 md:text-2xl">{data.kpis.activeProducts}</h3>
         </div>
 
@@ -243,7 +243,7 @@ export default function SellerDashboard() {
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
               <h2 className="text-base font-black text-zinc-900">Revenue Overview</h2>
-              <p className="mt-1 text-xs font-medium text-zinc-500">{formatCurrency(totalRevenue)} in the selected period</p>
+              <p className="mt-1 text-xs font-medium text-zinc-500">{formatCurrency(totalRevenue)} from seller-visible order items in the selected period</p>
             </div>
             
             <select
@@ -356,7 +356,7 @@ export default function SellerDashboard() {
                   <p className="truncate text-xs font-medium text-zinc-500">{order.customer}</p>
                 </div>
                 <span className={`rounded-lg border px-2 py-1 text-[10px] font-bold uppercase tracking-wider ${getStatusPillClass(order.status)}`}>
-                  {order.status}
+                  {getStatusPillLabel(order.status)}
                 </span>
                 <div className="flex items-center gap-2">
                   <p className="text-xs font-black text-zinc-900">{formatCurrency(order.total)}</p>
@@ -371,7 +371,7 @@ export default function SellerDashboard() {
           </div>
         </div>
 
-        {/* Activity & Payouts */}
+        {/* Activity & Readiness */}
         <div className="rounded-3xl border border-zinc-200/80 bg-white p-4 shadow-sm md:p-5">
           <div className="mb-3 flex items-center justify-between">
             <h2 className="flex items-center gap-1.5 text-base font-black text-zinc-900"><Bell className="h-4 w-4 text-[#009E49]" /> Recent Activity</h2>
@@ -392,21 +392,17 @@ export default function SellerDashboard() {
             ))}
           </div>
 
-          <div className="mt-4 rounded-2xl border border-[#009E49]/20 bg-[#009E49]/5 p-3">
+          <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50/80 p-3">
             <div className="mb-2 flex items-center gap-2">
-              <Wallet className="h-4 w-4 text-[#009E49]" />
-              <p className="text-xs font-black text-zinc-900">Payout Snapshot</p>
+              <Wallet className="h-4 w-4 text-amber-700" />
+              <p className="text-xs font-black text-zinc-900">Finance Readiness</p>
             </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-xl bg-white p-3 border border-zinc-100 shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Available</p>
-                <p className="mt-1 text-sm font-black text-zinc-900">{formatCurrency(data.kpis.payoutAvailable)}</p>
-              </div>
-              <div className="rounded-xl bg-white p-3 border border-zinc-100 shadow-sm">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Pending</p>
-                <p className="mt-1 text-sm font-black text-zinc-900">{formatCurrency(data.kpis.payoutPending)}</p>
-              </div>
-            </div>
+            <p className="text-xs font-medium leading-5 text-amber-900/90">
+              Wallet balances, payout releases, refund settlement, and payout execution remain pending backend ledger and escrow support.
+            </p>
+            <p className="mt-2 text-[11px] font-bold text-amber-900">
+              Use the payouts page for readiness guidance, not live money movement truth.
+            </p>
           </div>
         </div>
 

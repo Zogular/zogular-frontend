@@ -4,10 +4,8 @@ import Link from "next/link";
 import {
   TrendingUp,
   ShoppingCart,
-  Users,
   AlertTriangle,
   Receipt,
-  Target,
   Package,
   Download,
   AlertCircle,
@@ -15,10 +13,17 @@ import {
   RefreshCcw,
   Box,
   Tag,
+  ShieldAlert,
+  Eye,
+  Truck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import {
+  BackendPendingBadge,
+  FeaturePendingNotice,
+} from "@/components/shared/FeaturePendingNotice";
 
 import { useSellerAnalytics } from "@/features/seller-analytics/hooks/useSellerAnalytics";
 import { StatCard, ProgressBar } from "@/features/seller-analytics/components/AnalyticsSummaryCards";
@@ -65,8 +70,11 @@ export default function SellerAnalyticsPage() {
     <div className="mx-auto min-w-0 max-w-350 animate-in space-y-6 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:pb-12">
       <div className="shrink-0 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Analytics</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Make data-driven decisions for your store.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Analytics</h1>
+            <BackendPendingBadge />
+          </div>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Review a seller-visible order and catalog snapshot while finance, customer, and conversion analytics remain backend-dependent.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -99,47 +107,42 @@ export default function SellerAnalyticsPage() {
           </select>
           <Button variant="outline" onClick={handleExport} className="h-10 rounded-xl border-zinc-200 bg-white px-4 font-bold text-zinc-700 shadow-sm hover:bg-zinc-50">
             <Download className="mr-2 h-4 w-4" />
-            <span className="hidden sm:inline">Export</span>
+            <span className="hidden sm:inline">Export Snapshot</span>
           </Button>
         </div>
       </div>
 
+      <FeaturePendingNotice
+        compact
+        title="Only seller-visible order and catalog data are shown"
+        description="Commission, payout, settlement, repeat-customer, and conversion reporting stay hidden until backend analytics and finance endpoints expose them directly."
+      />
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <StatCard title="Total Revenue" value={data.summary.totalRevenue} growth={data.summary.revenueGrowth} icon={TrendingUp} isCurrency colorClass="border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)]" />
-        <StatCard title="Total Orders" value={data.summary.totalOrders} growth={data.summary.orderGrowth} icon={ShoppingCart} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
+        <StatCard title="Seller Revenue" value={data.summary.sellerVisibleRevenue} icon={TrendingUp} isCurrency colorClass="border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)]" />
+        <StatCard title="Seller Orders" value={data.summary.sellerVisibleOrders} icon={ShoppingCart} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
         <StatCard title="Avg Order Value" value={data.summary.avgOrderValue} icon={Receipt} isCurrency colorClass="bg-purple-50/50 border-purple-100 text-purple-950" />
-        <StatCard title="Customers" value={data.summary.totalCustomers} growth={data.summary.customerGrowth} icon={Users} colorClass="bg-indigo-50/50 border-indigo-100 text-indigo-950" />
-        <StatCard title="Conversion Rate" value={data.summary.conversionRate} icon={Target} colorClass="bg-teal-50/50 border-teal-100 text-teal-950" />
-        <StatCard title="Refund Rate" value={data.summary.refundRate} growth={0.5} icon={AlertTriangle} inverseGrowth colorClass="bg-red-50/50 border-red-100 text-red-950" />
+        <StatCard title="Delivered Orders" value={data.summary.deliveredOrders} icon={Truck} colorClass="bg-teal-50/50 border-teal-100 text-teal-950" />
+        <StatCard title="Buyer Visible Products" value={data.summary.buyerVisibleProducts} icon={Eye} colorClass="bg-indigo-50/50 border-indigo-100 text-indigo-950" />
+        <StatCard title="Low Stock Products" value={data.summary.lowStockProducts} icon={AlertTriangle} colorClass="bg-red-50/50 border-red-100 text-red-950" />
       </div>
 
       <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
         <AnalyticsCharts data={data.trends} chartMetric={chartMetric} setChartMetric={setChartMetric} />
 
         <div className="flex flex-col gap-6">
-          <div className="flex-1 rounded-3xl border border-indigo-100 bg-indigo-50/30 p-5 shadow-sm md:p-6">
-            <h2 className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-indigo-950">
-              <Users className="h-4 w-4 text-indigo-400" />
-              Customers
+          <div className="flex-1 rounded-3xl border border-amber-200 bg-amber-50/60 p-5 shadow-sm md:p-6">
+            <h2 className="mb-4 flex items-center gap-2 text-sm font-black uppercase tracking-wider text-amber-950">
+              <ShieldAlert className="h-4 w-4 text-amber-500" />
+              Analytics Still Pending
             </h2>
-            <div className="mb-5 grid grid-cols-2 gap-4">
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">New</p>
-                <p className="text-xl font-black text-indigo-950">{formatNumber(data.customerStats.new)}</p>
-              </div>
-              <div>
-                <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-400">Returning</p>
-                <p className="text-xl font-black text-indigo-950">{formatNumber(data.customerStats.returning)}</p>
-              </div>
-            </div>
-            <div className="rounded-xl border border-indigo-100 bg-white p-4 shadow-sm">
-              <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-zinc-400">Return Rate</p>
-              <div className="flex items-end gap-2">
-                <span className="text-2xl font-black text-indigo-600">{data.customerStats.returningRate.toFixed(1)}%</span>
-                <span className="mb-1 text-xs font-medium text-zinc-500">of total buyers</span>
-              </div>
-              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-zinc-100">
-                <div className={cn("h-full rounded-full bg-indigo-500", widthClass(Math.round(data.customerStats.returningRate)))} />
+            <div className="space-y-3 text-sm">
+              <p className="font-bold text-amber-950">Customer cohorts, conversion, commission, and payout analytics are not shown yet.</p>
+              <p className="font-medium leading-relaxed text-amber-900/80">
+                This page currently limits itself to seller-visible orders, product statuses, and stock signals that can be derived from backend-backed seller data.
+              </p>
+              <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-xs font-bold text-amber-900 shadow-sm">
+                Treat this as an operational snapshot, not a finance or growth report.
               </div>
             </div>
           </div>
@@ -149,6 +152,7 @@ export default function SellerAnalyticsPage() {
             <div className="space-y-3">
               <ProgressBar label="Delivered" value={data.orderStats.delivered} total={data.orderStats.total} colorClass="bg-[#009E49]" />
               <ProgressBar label="Processing" value={data.orderStats.processing} total={data.orderStats.total} colorClass="bg-blue-500" />
+              <ProgressBar label="Refund Status" value={data.orderStats.refunded} total={data.orderStats.total} colorClass="bg-amber-500" />
             </div>
           </div>
         </div>
@@ -197,7 +201,7 @@ export default function SellerAnalyticsPage() {
           </h2>
           <div className="space-y-4">
             {filteredCategoryPerformance.map((cat) => {
-              const percentage = Math.max(5, Math.round((cat.revenue / data.summary.totalRevenue) * 100));
+              const percentage = Math.max(5, Math.round((cat.revenue / Math.max(data.summary.sellerVisibleRevenue, 1)) * 100));
               return (
                 <div key={cat.slug} className="flex items-center justify-between">
                   <div className="flex-1">
@@ -252,10 +256,9 @@ export default function SellerAnalyticsPage() {
           <div className="space-y-4">
             {data.recentActivity.map((activity) => (
               <div key={activity.id} className="flex items-start gap-3">
-                <div className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full", activity.type === "order" ? "bg-[#009E49]/10 text-[#009E49]" : activity.type === "refund" ? "bg-red-100 text-red-600" : activity.type === "payout" ? "bg-blue-100 text-blue-600" : "bg-amber-100 text-amber-600")}>
+                <div className={cn("mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full", activity.type === "order" ? "bg-[#009E49]/10 text-[#009E49]" : activity.type === "refund" ? "bg-red-100 text-red-600" : "bg-amber-100 text-amber-600")}>
                   {activity.type === "order" && <ShoppingCart className="h-3 w-3" />}
                   {activity.type === "refund" && <RefreshCcw className="h-3 w-3" />}
-                  {activity.type === "payout" && <Receipt className="h-3 w-3" />}
                   {activity.type === "stock" && <Box className="h-3 w-3" />}
                 </div>
                 <div className="min-w-0 flex-1">
