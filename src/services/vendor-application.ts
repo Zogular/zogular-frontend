@@ -248,6 +248,43 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
   }
 }
 
+export function getSellerStatusCapabilitySummary(status: SellerApplicationStatus) {
+  const availableNow: string[] = [];
+  const blockedOrPending: string[] = [];
+
+  if (hasSellerCapability(status, "canAccessSellerShell")) {
+    availableNow.push("Seller Portal");
+  } else {
+    blockedOrPending.push("Seller Portal");
+  }
+
+  if (hasSellerCapability(status, "canCreateDraftProduct")) {
+    availableNow.push("Draft Products");
+  } else {
+    blockedOrPending.push("Draft Products");
+  }
+
+  if (hasSellerCapability(status, "canSubmitProductForReview")) {
+    availableNow.push("Publish Products");
+  } else {
+    blockedOrPending.push("Publish Products");
+  }
+
+  if (hasSellerCapability(status, "canReceiveOrders")) {
+    availableNow.push("Receive Orders");
+  } else {
+    blockedOrPending.push("Receive Orders");
+  }
+
+  if (hasSellerCapability(status, "canAccessPayouts")) {
+    availableNow.push("Receive Payouts");
+  } else {
+    blockedOrPending.push("Receive Payouts");
+  }
+
+  return { availableNow, blockedOrPending };
+}
+
 export function getEmptyVendorApplication(
   sellerType: SellerType = "INDIVIDUAL",
 ): VendorApplicationInput {
