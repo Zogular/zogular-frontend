@@ -214,7 +214,7 @@ export default function SellerDashboard() {
             </div>
           </div>
           <p className="text-xs font-bold uppercase tracking-wider text-zinc-400">Buyer Visible Products</p>
-          <h3 className="mt-0.5 text-xl font-black text-zinc-900 md:text-2xl">{data.kpis.buyerVisibleProducts}</h3>
+          <h3 className="mt-0.5 text-xl font-black text-zinc-900 md:text-2xl">{data.kpis.activeProducts}</h3>
         </div>
 
         <div className="rounded-3xl border border-red-100 bg-red-50/50 p-4 shadow-sm md:p-5">
