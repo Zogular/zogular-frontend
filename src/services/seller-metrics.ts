@@ -58,7 +58,7 @@ export interface SellerDashboardData {
   recentActivity: SellerActivityItem[];
   kpis: {
     pendingOrders: number;
-    buyerVisibleProducts: number;
+    activeProducts: number;
   };
 }
 
@@ -164,7 +164,7 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
     recentActivity: buildDashboardActivity(orders, lowStockItems),
     kpis: {
       pendingOrders: orders.filter((order) => order.status === "new" || order.status === "processing").length,
-      buyerVisibleProducts: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
+      activeProducts: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
     },
   };
 }
