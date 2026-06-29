@@ -37,7 +37,7 @@ export function HubQuickActions({ application }: { application: VendorApplicatio
         <div className="mb-2 flex h-10 w-10 items-center justify-center rounded-full bg-amber-50 text-amber-600">
           <Search className="h-5 w-5" />
         </div>
-        <p className="text-xs font-black text-zinc-900">Review Status</p>
+        <p className="text-xs font-black text-zinc-900">Seller Status</p>
       </Link>
 
       <Link href="/" className="flex flex-col items-center justify-center rounded-2xl border border-zinc-200 bg-white p-4 text-center shadow-sm transition-all hover:border-zinc-300 hover:shadow">
