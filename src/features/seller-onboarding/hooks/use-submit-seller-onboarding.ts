@@ -79,7 +79,7 @@ export function useSubmitSellerOnboarding(viewModel?: SellerOnboardingViewModel 
           user: current?.user ?? null,
         }),
       );
-      toast.success("Your application has been sent.");
+      toast.success("Your application has been submitted for review.");
     },
     onError: (error) => {
       if (error instanceof ApiError && error.status === 400) {

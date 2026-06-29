@@ -4,10 +4,10 @@ import { cn } from "@/lib/utils";
 import type { UploadTileStatus } from "../../types/seller-onboarding.types";
 import { StatusBadge } from "./status-badge";
 
-const uploadStatusMap: Record<UploadTileStatus, "draft" | "pending" | "verified" | "missing"> = {
+const uploadStatusMap: Record<UploadTileStatus, "draft" | "pending" | "ready" | "missing"> = {
   empty: "draft",
   pending: "pending",
-  uploaded: "verified",
+  uploaded: "ready",
   rejected: "missing",
 };
 
@@ -60,7 +60,7 @@ export function UploadTile({
         <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-white bg-[#FFFCF8] text-[#0B3425] shadow-sm">
           <FileUp className="h-4 w-4" />
         </div>
-        <StatusBadge status={uploadStatusMap[resolvedStatus]} label={uploading ? "Uploading" : resolvedStatus === "empty" ? "Missing" : undefined} />
+        <StatusBadge status={uploadStatusMap[resolvedStatus]} label={uploading ? "Uploading" : resolvedStatus === "empty" ? "Missing" : resolvedStatus === "uploaded" ? "Uploaded" : undefined} />
       </div>
       <h3 className="mt-4 text-sm font-black text-[#1F1A14]">{title}</h3>
       <p className="mt-1 text-xs font-medium leading-5 text-[#6F6A62]">{description}</p>

@@ -10,6 +10,11 @@ import type {
 
 const VENDOR_APPLICATION_ENDPOINT = "/vendor/applications";
 
+export type SellerStatusCapabilitySummary = {
+  availableNow: string[];
+  blockedOrPending: string[];
+};
+
 const SELLER_CAPABILITY_MATRIX: Record<SellerCapability, SellerApplicationStatus[]> = {
   canAccessSellerShell: [
     "DRAFT",
@@ -167,9 +172,9 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "SUBMITTED":
       return {
         eyebrow: "Under Review",
-        title: "Your application is under review. We’ll notify you when there’s an update.",
+        title: "Your seller application is under review.",
         description:
-          "Your account is in the queue for trust and compliance checks. You can monitor progress from the seller hub while review is in progress.",
+          "ZOGULAR is reviewing your identity, business, and payout details. Seller tools stay locked until review moves to NEEDS_INFO, PROVISIONAL, or APPROVED.",
         tone: "neutral",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -177,9 +182,9 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "NEEDS_INFO":
       return {
         eyebrow: "Action Needed",
-        title: "Admin requested updates. Please fix these details before resubmitting.",
+        title: "More information is required before review can continue.",
         description:
-          "Update the requested identity or business details, then resubmit so review can continue.",
+          "Open your application, fix the requested identity or business details, and resubmit. Draft products, orders, and payouts remain blocked until your status changes.",
         tone: "warning",
         ctaLabel: "Update application",
         ctaHref: "/seller/onboarding",
@@ -187,19 +192,19 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "PROVISIONAL":
       return {
         eyebrow: "Provisional Access",
-        title: "You have provisional access. You can create draft products, but product review submission is locked until full approval.",
+        title: "Provisional seller access is active.",
         description:
-          "Draft creation is open, but orders and payouts stay locked until your seller approval becomes APPROVED.",
+          "You can prepare your storefront and create draft products now. Product review submission, orders, payouts, and live selling stay blocked until full approval.",
         tone: "warning",
-        ctaLabel: "Manage products",
-        ctaHref: "/seller/products",
+        ctaLabel: "Create draft products",
+        ctaHref: "/seller/products/new",
       };
     case "APPROVED":
       return {
         eyebrow: "Approved",
-        title: "Your seller account is approved. You can now create products and manage your shop.",
+        title: "Your seller account is approved.",
         description:
-          "You can now manage listings, submit products for review, receive orders, and access payouts as those features become available in the seller portal.",
+          "You can create draft products, submit listings for review, and receive orders once products are approved. Payout processing and support ticket actions use pending fallback flows until backend services are fully available.",
         tone: "success",
         ctaLabel: "Open dashboard",
         ctaHref: "/seller",
@@ -207,9 +212,9 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "RESTRICTED":
       return {
         eyebrow: "Restricted",
-        title: "Your seller account has restrictions. Some actions are temporarily unavailable.",
+        title: "Your seller account is restricted.",
         description:
-          "Seller shell access remains available, but core selling actions are currently limited. Review the status details and wait for further guidance from the ZOGULAR team.",
+          "Only limited status visibility is available right now. Product, order, analytics, payout, and settings actions stay blocked until ZOGULAR lifts the restriction.",
         tone: "warning",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -217,9 +222,9 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
     case "SUSPENDED":
       return {
         eyebrow: "Suspended",
-        title: "Your seller account is suspended. Contact support for help.",
+        title: "Your seller account is suspended.",
         description:
-          "Selling actions are blocked while the ZOGULAR team reviews the account. Check the latest notes and wait for further communication before attempting seller actions.",
+          "Selling access is suspended while ZOGULAR reviews the account. Seller tools stay blocked; use the status notes and direct support contact for the next step.",
         tone: "danger",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -229,7 +234,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
         eyebrow: "Rejected",
         title: "Your seller application was rejected.",
         description:
-          "Review the rejection reason before contacting support or starting a new seller application path with corrected information.",
+          "Selling access is blocked. Review the rejection details first, then contact support or restart onboarding only if ZOGULAR allows a new application.",
         tone: "danger",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -240,10 +245,67 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
         eyebrow: "Onboarding",
         title: "Finish your seller application to unlock the seller hub.",
         description:
-          "You have started seller onboarding, but trust and business details still need to be completed before selling capabilities open up.",
+          "Complete your identity, business, and payout details so the application can be submitted for review. Seller dashboard tools stay locked until your status advances.",
         tone: "neutral",
         ctaLabel: "Continue application",
         ctaHref: "/seller/onboarding",
+      };
+  }
+}
+
+export function getSellerStatusCapabilitySummary(
+  status: SellerApplicationStatus,
+): SellerStatusCapabilitySummary {
+  switch (status) {
+    case "SUBMITTED":
+      return {
+        availableNow: ["Track review status"],
+        blockedOrPending: [
+          "Application edits until more info is requested",
+          "Product drafts",
+          "Orders and analytics",
+          "Payout access",
+        ],
+      };
+    case "NEEDS_INFO":
+      return {
+        availableNow: ["Edit requested application details", "Resubmit for review"],
+        blockedOrPending: ["Product drafts", "Orders and analytics", "Payout access"],
+      };
+    case "PROVISIONAL":
+      return {
+        availableNow: ["Seller dashboard access", "Create draft products", "Review store settings preview"],
+        blockedOrPending: ["Submit products for review", "Receive orders", "Payout access"],
+      };
+    case "APPROVED":
+      return {
+        availableNow: [
+          "Create draft products",
+          "Submit products for review",
+          "Receive orders after product approval",
+        ],
+        blockedOrPending: ["Ledger-backed payouts", "In-app support ticket actions"],
+      };
+    case "RESTRICTED":
+      return {
+        availableNow: ["Read seller status updates"],
+        blockedOrPending: ["Product management", "Orders and analytics", "Payout access"],
+      };
+    case "SUSPENDED":
+      return {
+        availableNow: ["Read suspension status", "Use direct support contact"],
+        blockedOrPending: ["Product management", "Orders and analytics", "Payout access"],
+      };
+    case "REJECTED":
+      return {
+        availableNow: ["Read rejection details", "Use direct support contact"],
+        blockedOrPending: ["Seller dashboard tools", "Product drafts", "Orders and payout access"],
+      };
+    case "DRAFT":
+    default:
+      return {
+        availableNow: ["Continue onboarding"],
+        blockedOrPending: ["Product drafts", "Orders and analytics", "Payout access"],
       };
   }
 }
