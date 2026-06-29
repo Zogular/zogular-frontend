@@ -185,7 +185,7 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
       payoutAvailable: wallet.balances.availableBalance,
       payoutPending: wallet.balances.pendingBalance,
       salesRevenue: sumRevenue(revenueOrders),
-      zogularCommission: roundMoney(revenueOrders.reduce((sum, order) => sum + order.earnings.commission, 0)),
+      zogularCommission: roundMoney(revenueOrders.reduce((sum, order) => sum + (order.earnings.commission || 0), 0)),
       withdrawalFees: wallet.balances.totalPayoutFeesPaid,
     },
   };
