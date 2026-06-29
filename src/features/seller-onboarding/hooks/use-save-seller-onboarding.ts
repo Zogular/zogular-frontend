@@ -50,7 +50,7 @@ export function useStartSellerOnboarding() {
           user: current?.user ?? null,
         }),
       );
-      toast.success("Your application is ready.");
+      toast.success("Your onboarding draft has started.");
     },
     onError: (error) => {
       toast.error(getFriendlyError(error));

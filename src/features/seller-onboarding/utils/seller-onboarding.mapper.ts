@@ -63,11 +63,11 @@ function getInitials(name: string) {
 function statusLabel(status: SellerApplicationStatus | "NOT_STARTED") {
   switch (status) {
     case "SUBMITTED":
-      return "Sent";
+      return "Under review";
     case "NEEDS_INFO":
       return "Needs updates";
     case "PROVISIONAL":
-      return "Almost ready";
+      return "Provisional";
     case "APPROVED":
       return "Approved";
     case "RESTRICTED":
@@ -90,13 +90,13 @@ function statusMessage(
 ) {
   switch (status) {
     case "SUBMITTED":
-      return "Your application has been sent.";
+      return "Your application is under review.";
     case "NEEDS_INFO":
       return needsInfoReason?.trim()
         ? needsInfoReason.trim()
         : "Please update the requested details and resubmit your application.";
     case "PROVISIONAL":
-      return "Your shop is almost ready.";
+      return "Your shop has provisional access.";
     case "APPROVED":
       return "Your seller account is approved.";
     case "RESTRICTED":
@@ -385,11 +385,11 @@ export function mapSellerOnboardingToViewModel(
         label: "ID documents",
         description:
           complianceReady
-            ? "Your files are uploaded."
+            ? "Your files are uploaded and ready for review."
             : status === "SUBMITTED"
               ? "Under review. Admin must request updates before changes."
               : "Upload your required files.",
-        status: complianceReady ? "verified" : "pending",
+        status: complianceReady ? "ready" : "pending",
       },
     ],
     missingItems,
@@ -478,7 +478,7 @@ function getSubmitDisabledReason(
   if (status === "SUBMITTED" || status === "PROVISIONAL") {
     return missingItems.length > 0
       ? "Your application is under review. If documents are missing, an admin must request more info before you can edit again."
-      : "Your application has already been sent.";
+      : "Your application is currently under review.";
   }
   if (status === "APPROVED") return "Your seller account is already approved.";
   if (status === "RESTRICTED" || status === "SUSPENDED" || status === "REJECTED") {
