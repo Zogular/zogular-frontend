@@ -5,7 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
 import {
   Bell, CircleHelp, LayoutDashboard, LogOut, Package,
-  Plus, Settings, ShoppingCart, Store, TrendingUp, Wallet, Boxes, PanelLeftClose, PanelLeftOpen, MoreHorizontal, X,
+  Plus, Settings, ShoppingCart, Store, TrendingUp, Wallet, Boxes, PanelLeftClose, PanelLeftOpen, MoreHorizontal, X, FileCheck2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -19,7 +19,7 @@ import {
   getMyVendorApplication,
   hasSellerCapability,
 } from "@/services/vendor-application";
-import type { SellerApplicationStatus, VendorApplication } from "@/types/seller";
+import type { SellerApplicationStatus, SellerCapability, VendorApplication } from "@/types/seller";
 
 // --- TYPES & NAV DATA ---
 type SellerNavItem = {
@@ -27,33 +27,36 @@ type SellerNavItem = {
   href: string;
   icon: ComponentType<{ className?: string }>;
   match?: "exact" | "startsWith";
+  capability?: SellerCapability;
+  allowedStatuses?: SellerApplicationStatus[];
+  disabledReason: string;
 };
 
 const SELLER_NAV_ITEMS: SellerNavItem[] = [
-  { label: "Dashboard", href: "/seller", icon: LayoutDashboard, match: "exact" },
-  { label: "Products", href: "/seller/products", icon: Package, match: "startsWith" },
-  { label: "Inventory", href: "/seller/inventory", icon: Boxes, match: "startsWith" },
-  { label: "Orders", href: "/seller/orders", icon: ShoppingCart, match: "startsWith" },
-  { label: "Analytics", href: "/seller/analytics", icon: TrendingUp, match: "startsWith" },
-  { label: "Payouts", href: "/seller/payouts", icon: Wallet, match: "startsWith" },
-  { label: "Notifications", href: "/seller/notifications", icon: Bell, match: "startsWith" },
-  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith" },
-  { label: "Settings", href: "/seller/settings", icon: Settings, match: "startsWith" },
+  { label: "Dashboard", href: "/seller", icon: LayoutDashboard, match: "exact", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "Available after provisional or approved seller status." },
+  { label: "Products", href: "/seller/products", icon: Package, match: "startsWith", capability: "canCreateDraftProduct", disabledReason: "Draft products open after provisional seller access." },
+  { label: "Inventory", href: "/seller/inventory", icon: Boxes, match: "startsWith", capability: "canCreateDraftProduct", disabledReason: "Inventory tools open after provisional seller access." },
+  { label: "Orders", href: "/seller/orders", icon: ShoppingCart, match: "startsWith", capability: "canReceiveOrders", disabledReason: "Order management opens only after full approval and live order access." },
+  { label: "Analytics", href: "/seller/analytics", icon: TrendingUp, match: "startsWith", capability: "canReceiveOrders", disabledReason: "Analytics open only after full approval and live order access." },
+  { label: "Payouts", href: "/seller/payouts", icon: Wallet, match: "startsWith", capability: "canAccessPayouts", disabledReason: "Payout access is limited to approved sellers and still depends on backend payout rollout." },
+  { label: "Notifications", href: "/seller/notifications", icon: Bell, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "Notifications open after seller dashboard access is unlocked." },
+  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "In-app support opens after seller dashboard access is unlocked." },
+  { label: "Settings", href: "/seller/settings", icon: Settings, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "Store settings open after seller dashboard access is unlocked." },
 ];
 
 const MOBILE_NAV_ITEMS = [
-  { label: "Home", href: "/seller", icon: LayoutDashboard, match: "exact" as const },
-  { label: "Products", href: "/seller/products", icon: Package, match: "startsWith" as const },
-  { label: "Orders", href: "/seller/orders", icon: ShoppingCart, match: "startsWith" as const },
-  { label: "Payouts", href: "/seller/payouts", icon: Wallet, match: "startsWith" as const },
+  { label: "Home", href: "/seller", icon: LayoutDashboard, match: "exact" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "Available after provisional or approved seller status." },
+  { label: "Products", href: "/seller/products", icon: Package, match: "startsWith" as const, capability: "canCreateDraftProduct" as SellerCapability, disabledReason: "Draft products open after provisional seller access." },
+  { label: "Orders", href: "/seller/orders", icon: ShoppingCart, match: "startsWith" as const, capability: "canReceiveOrders" as SellerCapability, disabledReason: "Order management opens only after full approval and live order access." },
+  { label: "Payouts", href: "/seller/payouts", icon: Wallet, match: "startsWith" as const, capability: "canAccessPayouts" as SellerCapability, disabledReason: "Payout access is limited to approved sellers and still depends on backend payout rollout." },
 ];
 
 const MOBILE_MORE_ITEMS = [
-  { label: "Inventory", href: "/seller/inventory", icon: Boxes, match: "startsWith" as const },
-  { label: "Analytics", href: "/seller/analytics", icon: TrendingUp, match: "startsWith" as const },
-  { label: "Notifications", href: "/seller/notifications", icon: Bell, match: "startsWith" as const },
-  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith" as const },
-  { label: "Settings", href: "/seller/settings", icon: Settings, match: "startsWith" as const },
+  { label: "Inventory", href: "/seller/inventory", icon: Boxes, match: "startsWith" as const, capability: "canCreateDraftProduct" as SellerCapability, disabledReason: "Inventory tools open after provisional seller access." },
+  { label: "Analytics", href: "/seller/analytics", icon: TrendingUp, match: "startsWith" as const, capability: "canReceiveOrders" as SellerCapability, disabledReason: "Analytics open only after full approval and live order access." },
+  { label: "Notifications", href: "/seller/notifications", icon: Bell, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "Notifications open after seller dashboard access is unlocked." },
+  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "In-app support opens after seller dashboard access is unlocked." },
+  { label: "Settings", href: "/seller/settings", icon: Settings, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "Store settings open after seller dashboard access is unlocked." },
 ];
 
 // --- LOGIC HELPERS ---
@@ -63,6 +66,10 @@ function isRouteActive(pathname: string, href: string, match: "exact" | "startsW
 }
 
 function getPageTitle(pathname: string) {
+  if (pathname.startsWith("/seller/onboarding")) return "Seller Onboarding";
+  if (pathname.startsWith("/seller/status")) return "Seller Status";
+  if (pathname.startsWith("/seller/verify-phone")) return "Phone Verification";
+
   const matched = [...SELLER_NAV_ITEMS]
     .sort((a, b) => b.href.length - a.href.length)
     .find((item) => isRouteActive(pathname, item.href, item.match));
@@ -84,18 +91,44 @@ type NavLinkProps = {
   Icon: ComponentType<{ className?: string }>;
   isActive: boolean;
   collapsed?: boolean;
+  disabled?: boolean;
+  disabledReason?: string;
 };
 
 // --- EXTRACTED NAV COMPONENTS ---
-function NavLink({ href, label, Icon, isActive, collapsed = false }: NavLinkProps) {
+function NavLink({ href, label, Icon, isActive, collapsed = false, disabled = false, disabledReason }: NavLinkProps) {
+  const sharedClasses = cn(
+    "group flex h-10 items-center rounded-xl text-sm font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A1A10]",
+    collapsed ? "justify-center px-0" : "gap-3 px-3",
+  );
+
+  if (disabled) {
+    return (
+      <div
+        aria-disabled="true"
+        title={disabledReason ? `${label}: ${disabledReason}` : label}
+        className={cn(sharedClasses, "cursor-not-allowed text-[#466451] opacity-55")}
+      >
+        <Icon className="h-4 w-4 text-[#466451]" />
+        <span
+          className={cn(
+            "overflow-hidden whitespace-nowrap transition-all duration-300",
+            collapsed ? "w-0 opacity-0" : "w-36 opacity-100",
+          )}
+        >
+          {label}
+        </span>
+      </div>
+    );
+  }
+
   return (
     <Link
       href={href}
       aria-label={label}
       title={collapsed ? label : undefined}
       className={cn(
-        "group flex h-10 items-center rounded-xl text-sm font-bold transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A1A10]",
-        collapsed ? "justify-center px-0" : "gap-3 px-3",
+        sharedClasses,
         isActive
           ? "bg-[#009E49] text-white shadow-[0_4px_15px_rgba(0,158,73,0.3)]"
           : "text-[#80b898] hover:bg-[#112E1C] hover:text-white",
@@ -114,7 +147,18 @@ function NavLink({ href, label, Icon, isActive, collapsed = false }: NavLinkProp
   );
 }
 
-function MobileNavLink({ href, label, Icon, isActive }: NavLinkProps) {
+function MobileNavLink({ href, label, Icon, isActive, disabled = false, disabledReason }: NavLinkProps) {
+  if (disabled) {
+    return (
+      <div aria-disabled="true" title={disabledReason} className="flex h-14 flex-1 flex-col items-center justify-center opacity-45">
+        <div className="mb-1 flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100">
+          <Icon className="h-5 w-5 text-zinc-400" />
+        </div>
+        <span className="text-[9px] font-bold text-zinc-400">{label}</span>
+      </div>
+    );
+  }
+
   return (
     <Link href={href} className="flex h-14 flex-1 flex-col items-center justify-center">
       <div className={`mb-1 flex h-8 w-8 items-center justify-center rounded-full transition-colors ${isActive ? "bg-[#009E49]/10" : ""}`}>
@@ -144,6 +188,16 @@ function getSellerInitials(name: string) {
   return initials || "ZS";
 }
 
+function isSellerNavItemEnabled(
+  item: Pick<SellerNavItem, "capability" | "allowedStatuses">,
+  status: SellerApplicationStatus | null,
+) {
+  if (!status) return false;
+  if (item.capability) return hasSellerCapability(status, item.capability);
+  if (item.allowedStatuses) return item.allowedStatuses.includes(status);
+  return true;
+}
+
 function getSellerDisplayName(application: VendorApplication | null) {
   return (
     application?.storeName?.trim() ||
@@ -156,7 +210,12 @@ function getSellerDisplayName(application: VendorApplication | null) {
 function getSellerDisplayRole(application: VendorApplication | null) {
   if (!application) return "Seller";
   if (application.status === "APPROVED") return "Approved seller";
-  if (application.status === "PROVISIONAL") return "Provisional seller";
+  if (application.status === "PROVISIONAL") return "Provisional access";
+  if (application.status === "SUBMITTED") return "Under review";
+  if (application.status === "NEEDS_INFO") return "Updates required";
+  if (application.status === "RESTRICTED") return "Restricted seller";
+  if (application.status === "SUSPENDED") return "Suspended seller";
+  if (application.status === "REJECTED") return "Rejected application";
   return "Seller applicant";
 }
 
@@ -181,13 +240,19 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   const sellerDisplayName = getSellerDisplayName(application);
   const sellerDisplayRole = getSellerDisplayRole(application);
   const sellerInitials = getSellerInitials(sellerDisplayName);
-  const addProductHref = !application
-    ? "/seller/onboarding?start=1"
-    : canCreateDraftProduct
-      ? "/seller/products/new"
-      : application.status === "DRAFT" || application.status === "NEEDS_INFO"
-        ? "/seller/onboarding"
-        : "/seller/status";
+  const primaryAction =
+    !application
+      ? { href: "/seller/onboarding?start=1", label: "Start onboarding", icon: FileCheck2 }
+      : canCreateDraftProduct
+        ? {
+            href: "/seller/products/new",
+            label: application.status === "PROVISIONAL" ? "Create draft" : "Add Product",
+            icon: Plus,
+          }
+        : application.status === "DRAFT" || application.status === "NEEDS_INFO"
+          ? { href: "/seller/onboarding", label: "Continue application", icon: FileCheck2 }
+          : { href: "/seller/status", label: "View status", icon: FileCheck2 };
+  const PrimaryActionIcon = primaryAction.icon;
 
   const refreshApplication = useCallback(async () => {
     if (isAuthRoute) return; // auth pages handle their own auth
@@ -327,9 +392,9 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link href={addProductHref}>
-            <Button aria-label="Add product" size="icon" className="h-8 w-8 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
-              <Plus className="h-4 w-4" />
+          <Link href={primaryAction.href}>
+            <Button aria-label={primaryAction.label} size="icon" className="h-8 w-8 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
+              <PrimaryActionIcon className="h-4 w-4" />
             </Button>
           </Link>
           <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex h-8 w-8 items-center justify-center rounded-full text-[#80b898] transition-colors hover:bg-white/5 hover:text-white">
@@ -369,16 +434,21 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         <nav className={cn("flex-1 overflow-y-auto py-6 custom-scrollbar", sidebarCollapsed ? "px-3" : "px-4")}>
           <p className={cn("mb-3 overflow-hidden px-2 text-[10px] font-bold uppercase tracking-widest text-[#457a5b] transition-all duration-300", sidebarCollapsed ? "h-0 opacity-0" : "h-4 opacity-100")}>Menu</p>
           <div className="flex flex-col gap-1">
-            {SELLER_NAV_ITEMS.map((item) => (
-              <NavLink 
-                key={item.href} 
-                href={item.href}
-                label={item.label}
-                Icon={item.icon}
-                isActive={isRouteActive(pathname, item.href, item.match)} 
-                collapsed={sidebarCollapsed}
-              />
-            ))}
+            {SELLER_NAV_ITEMS.map((item) => {
+              const enabled = isSellerNavItemEnabled(item, sellerStatus);
+              return (
+                <NavLink 
+                  key={item.href} 
+                  href={item.href}
+                  label={item.label}
+                  Icon={item.icon}
+                  isActive={enabled && isRouteActive(pathname, item.href, item.match)} 
+                  collapsed={sidebarCollapsed}
+                  disabled={!enabled}
+                  disabledReason={item.disabledReason}
+                />
+              );
+            })}
           </div>
         </nav>
 
@@ -436,9 +506,9 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex items-center gap-4 shrink-0">
-            <Link href={addProductHref}>
+            <Link href={primaryAction.href}>
               <Button className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d]">
-                <Plus className="mr-2 h-4 w-4" /> Add Product
+                <PrimaryActionIcon className="mr-2 h-4 w-4" /> {primaryAction.label}
               </Button>
             </Link>
 
@@ -501,7 +571,21 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
             <div className="grid grid-cols-2 gap-2">
               {MOBILE_MORE_ITEMS.map((item) => {
                 const Icon = item.icon;
-                const active = isRouteActive(pathname, item.href, item.match);
+                const enabled = isSellerNavItemEnabled(item, sellerStatus);
+                const active = enabled && isRouteActive(pathname, item.href, item.match);
+                if (!enabled) {
+                  return (
+                    <div
+                      key={item.href}
+                      aria-disabled="true"
+                      title={item.disabledReason}
+                      className="flex items-center gap-3 rounded-2xl border border-zinc-100 bg-zinc-50 p-3 text-sm font-bold text-zinc-400 opacity-60"
+                    >
+                      <Icon className="h-4 w-4" />
+                      {item.label}
+                    </div>
+                  );
+                }
                 return (
                   <Link
                     key={item.href}
@@ -522,15 +606,20 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         </div>
       ) : null}
       <div className="fixed bottom-0 left-0 z-40 flex w-full justify-between border-t border-zinc-200 bg-white px-2 pt-2 pb-6 shadow-[0_-10px_20px_rgba(0,0,0,0.03)] md:hidden">
-        {MOBILE_NAV_ITEMS.map((item) => (
-          <MobileNavLink 
-            key={item.href} 
-            href={item.href}
-            label={item.label}
-            Icon={item.icon}
-            isActive={isRouteActive(pathname, item.href, item.match)} 
-          />
-        ))}
+        {MOBILE_NAV_ITEMS.map((item) => {
+          const enabled = isSellerNavItemEnabled(item, sellerStatus);
+          return (
+            <MobileNavLink 
+              key={item.href} 
+              href={item.href}
+              label={item.label}
+              Icon={item.icon}
+              isActive={enabled && isRouteActive(pathname, item.href, item.match)}
+              disabled={!enabled}
+              disabledReason={item.disabledReason}
+            />
+          );
+        })}
         <button
           type="button"
           aria-label="Open more seller tools"

@@ -58,11 +58,15 @@ export function useSellerAnalytics() {
     if (!data) return;
     const reportRows = [
       ["Metric", "Value"],
+      ["Snapshot Type", "Seller-visible order and catalog snapshot"],
       ["Range", range],
       ["Category Filter", categoryFilter],
-      ["Total Revenue", String(Math.round(data.summary.totalRevenue))],
-      ["Total Orders", String(data.summary.totalOrders)],
-      ["Customers", String(data.summary.totalCustomers)],
+      ["Seller-visible Revenue", String(Math.round(data.summary.sellerVisibleRevenue))],
+      ["Seller-visible Orders", String(data.summary.sellerVisibleOrders)],
+      ["Average Visible Order Value", String(Math.round(data.summary.avgOrderValue))],
+      ["Delivered Orders", String(data.summary.deliveredOrders)],
+      ["Buyer-visible Products", String(data.summary.buyerVisibleProducts)],
+      ["Low-stock Products", String(data.summary.lowStockProducts)],
       [""],
       ["Top Products", ""],
       ["Product", "Sales", "Revenue"],
@@ -85,12 +89,12 @@ export function useSellerAnalytics() {
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `zogular-analytics-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `zogular-seller-snapshot-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
     URL.revokeObjectURL(url);
-    toast.success("Analytics report exported.");
+    toast.success("Seller snapshot exported.");
   };
 
   return {

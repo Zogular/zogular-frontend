@@ -10,15 +10,22 @@ type TrustItem = {
 };
 
 export function TrustPassport({ application }: { application: VendorApplication }) {
+  const isApproved = application.status === "APPROVED";
+
   const items: TrustItem[] = [
-    { label: "Email verified", status: application.businessEmail ? "complete" : "pending" },
-    { label: "Phone verified", status: application.businessPhone ? "complete" : "pending" },
-    { label: "Identity (NRC) uploaded", status: application.nrcFrontUrl ? "complete" : "pending" },
-    { label: "Shop photo uploaded", status: application.shopPhotoUrl ? "complete" : "pending" },
-    { label: "Payout info present", status: application.payoutProvider ? "complete" : "pending" },
+    { label: "Email on file", status: application.businessEmail ? "complete" : "pending" },
+    { label: "Phone on file", status: application.businessPhone ? "complete" : "pending" },
+    { label: "Identity document", status: application.nrcFrontUrl ? (isApproved ? "complete" : "review") : "pending" },
+    { label: "Shop/business photo", status: application.shopPhotoUrl ? (isApproved ? "complete" : "review") : "pending" },
+    { label: "Payout details provided", status: application.payoutProvider ? "complete" : "pending" },
     {
-      label: "Admin approval status",
-      status: application.status === "APPROVED" ? "complete" : application.status === "PROVISIONAL" ? "complete" : application.status === "SUBMITTED" ? "review" : "pending",
+      label: "Seller account approval",
+      status:
+        isApproved
+          ? "complete"
+          : application.status === "PROVISIONAL" || application.status === "SUBMITTED"
+            ? "review"
+            : "pending",
     },
   ];
 

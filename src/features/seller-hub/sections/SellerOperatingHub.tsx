@@ -12,6 +12,16 @@ import { hasSellerCapability } from "@/services/vendor-application";
 export function SellerOperatingHub({ application }: { application: VendorApplication }) {
   const [hasProducts, setHasProducts] = useState(false);
   const canCreateDraft = hasSellerCapability(application.status, "canCreateDraftProduct");
+  let introCopy = "Complete your seller application to unlock the marketplace hub.";
+  if (application.status === "APPROVED") {
+    introCopy = "Manage products and orders from here. Payouts and support use pending flows until backend services are fully available.";
+  } else if (application.status === "PROVISIONAL") {
+    introCopy = "Create draft products and prepare your storefront. Product submission, orders, payouts, and live selling remain blocked until full approval.";
+  } else if (application.status === "SUBMITTED" || application.status === "NEEDS_INFO") {
+    introCopy = "Your application is currently under review or needs information. Full seller tools remain locked.";
+  } else if (application.status === "RESTRICTED" || application.status === "SUSPENDED" || application.status === "REJECTED") {
+    introCopy = "Your selling capabilities are currently restricted or blocked. Check your status for details.";
+  }
 
   useEffect(() => {
     async function checkProducts() {
@@ -38,7 +48,7 @@ export function SellerOperatingHub({ application }: { application: VendorApplica
             Welcome, {application.storeName || application.legalBusinessName || "Seller"}
           </h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Manage your store operations and track your growth.
+            {introCopy}
           </p>
         </div>
         

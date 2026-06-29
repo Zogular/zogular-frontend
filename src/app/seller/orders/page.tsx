@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/action-menu";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import {
   sellerOrdersApi,
   type SellerOrderStatus,
@@ -47,6 +48,15 @@ const PAYMENT_STYLES: Record<SellerPaymentStatus, string> = {
   cod: "bg-zinc-100 text-zinc-700 border-zinc-200",
   refunded: "bg-orange-50 text-orange-700 border-orange-200",
   failed: "bg-red-50 text-red-700 border-red-200",
+  unavailable: "bg-amber-50 text-amber-800 border-amber-200",
+};
+
+const PAYMENT_LABELS: Record<SellerPaymentStatus, string> = {
+  paid: "Paid",
+  cod: "COD",
+  refunded: "Refunded",
+  failed: "Failed",
+  unavailable: "Pending backend",
 };
 
 function formatRelativeTime(value: string): string {
@@ -158,7 +168,7 @@ function OrderCard({
         <div className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-zinc-400 shrink-0" /> {order.phone}</div>
         <div className="flex items-center">
           <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${PAYMENT_STYLES[order.paymentStatus]}`}>
-            <CreditCard className="mr-1 h-3 w-3 shrink-0" /> {order.paymentStatus === 'cod' ? 'COD' : order.paymentStatus}
+            <CreditCard className="mr-1 h-3 w-3 shrink-0" /> {PAYMENT_LABELS[order.paymentStatus]}
           </span>
         </div>
       </div>
@@ -168,6 +178,7 @@ function OrderCard({
           <p suppressHydrationWarning className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
             {formatRelativeTime(order.createdAt)}
           </p>
+          <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Visible Items Total</p>
           <p className="mt-0.5 text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</p>
         </div>
 
@@ -214,7 +225,7 @@ export default function SellerOrdersPage() {
       await sellerOrdersApi.cancelOrder(orderId);
       setOrders((prev) =>
         prev.map((order) =>
-          order.id === orderId ? { ...order, status: "cancelled", paymentStatus: "failed" } : order,
+          order.id === orderId ? { ...order, status: "cancelled" } : order,
         ),
       );
       toast.success(`Order ${orderId} cancelled.`);
@@ -254,7 +265,7 @@ export default function SellerOrdersPage() {
 
   // --- CSV EXPORT ENGINE ---
   const handleExportCSV = () => {
-    const headers = ["Order ID", "Customer", "Phone", "Location", "Items", "Total (Kwacha)", "Status", "Payment", "Date"];
+    const headers = ["Order ID", "Customer", "Phone", "Location", "Items", "Visible Items Total (Kwacha)", "Status", "Payment", "Date"];
     
     const csvRows = filteredOrders.map(order => [
       order.id,
@@ -264,7 +275,7 @@ export default function SellerOrdersPage() {
       order.items,
       order.total,
       order.status.toUpperCase(),
-      order.paymentStatus.toUpperCase(),
+      PAYMENT_LABELS[order.paymentStatus].toUpperCase(),
       new Date(order.createdAt).toLocaleDateString()
     ]);
 
@@ -321,6 +332,12 @@ export default function SellerOrdersPage() {
           <Download className="mr-2 h-4 w-4" /> Export CSV
         </Button>
       </div>
+
+      <FeaturePendingNotice
+        compact
+        title="Payment and settlement fields are limited"
+        description="Totals on this page cover only the seller-visible line items. Payment method, payment status, commission, and seller net stay hidden or marked pending until seller finance endpoints return them."
+      />
 
       {/* 2. FILTERS & SEARCH */}
       <div className="relative z-40 flex shrink-0 flex-col gap-3 rounded-2xl border border-zinc-200/60 bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] md:flex-row">
@@ -463,7 +480,10 @@ export default function SellerOrdersPage() {
                       </div>
 
                       <div className="mt-2 flex items-center justify-between gap-2">
-                        <span className="text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</span>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Visible Items Total</p>
+                          <span className="text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Link href={`/seller/orders/${order.id}`}>
                             <Button size="sm" className="h-8 rounded-xl bg-zinc-900 px-3 text-[10px] font-bold text-white hover:bg-zinc-800">

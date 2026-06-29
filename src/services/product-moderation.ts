@@ -49,3 +49,34 @@ export function getModerationActionTargetStatus(
   if (action === "reject") return "rejected";
   return "needs_changes";
 }
+
+export function getSellerProductModerationStatusLabel(
+  status: ProductModerationStatus,
+): string {
+  if (status === "rejected") return "Needs Changes";
+  return getProductModerationStatusLabel(status);
+}
+
+export function isSellerProductNeedsChangesStatus(
+  status: ProductModerationStatus,
+): boolean {
+  return status === "needs_changes" || status === "rejected";
+}
+
+export function isSellerProductApprovedStatus(
+  status: ProductModerationStatus,
+): boolean {
+  return status === "approved";
+}
+
+export function isSellerProductPublishedStatus(
+  status: ProductModerationStatus,
+): boolean {
+  return status === "published";
+}
+
+export function isSellerProductBuyerVisibleStatus(
+  status: ProductModerationStatus,
+): boolean {
+  return status === "approved" || status === "published";
+}
