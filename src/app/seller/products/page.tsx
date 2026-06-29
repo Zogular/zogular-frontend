@@ -32,7 +32,11 @@ import {
   type SellerProductListing,
   type SellerProductStatus,
 } from "@/services/seller-catalog";
-import { getProductModerationStatusLabel } from "@/services/product-moderation";
+import {
+  getSellerProductModerationStatusLabel,
+  isSellerProductBuyerVisibleStatus,
+  isSellerProductNeedsChangesStatus,
+} from "@/services/product-moderation";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import { hasSellerCapability } from "@/services/vendor-application";
 
@@ -46,7 +50,6 @@ type ProductTab =
   | "pending_review"
   | "approved"
   | "needs_changes"
-  | "rejected"
   | "paused"
   | "suspended"
   | "low-stock"
@@ -59,7 +62,6 @@ const PRODUCT_TABS: Array<{ id: ProductTab; label: string }> = [
   { id: "pending_review", label: "Pending Review" },
   { id: "approved", label: "Approved" },
   { id: "needs_changes", label: "Needs Changes" },
-  { id: "rejected", label: "Rejected" },
   { id: "paused", label: "Paused" },
   { id: "suspended", label: "Suspended" },
   { id: "low-stock", label: "Low Stock" },
@@ -79,6 +81,17 @@ function getStockState(product: SellerProductListing) {
   return "in-stock";
 }
 
+function matchesSellerProductTab(product: SellerProductListing, tab: ProductTab) {
+  const stockState = getStockState(product);
+
+  if (tab === "all") return true;
+  if (tab === "low-stock") return stockState === "low-stock";
+  if (tab === "out-of-stock") return stockState === "out-of-stock";
+  if (tab === "needs_changes") return isSellerProductNeedsChangesStatus(product.status);
+
+  return product.status === tab;
+}
+
 // ============================================================================
 // 4. SUBCOMPONENTS
 // ============================================================================
@@ -96,7 +109,7 @@ function ListingStatusBadge({ status }: { status: SellerProductStatus }) {
 
   return (
     <span className={`inline-flex rounded-md border px-2 py-1 text-[10px] font-black uppercase tracking-wider ${styles[status]}`}>
-      {getProductModerationStatusLabel(status)}
+      {getSellerProductModerationStatusLabel(status)}
     </span>
   );
 }
@@ -180,7 +193,7 @@ function ProductActionMenu({
   onDuplicate,
   onSubmitForReview,
   onWithdrawReview,
-  onUnpublish,
+  onPauseListing,
   onRemove,
 }: {
   product: SellerProductListing;
@@ -189,12 +202,12 @@ function ProductActionMenu({
   onDuplicate: (product: SellerProductListing) => void;
   onSubmitForReview: (productId: string) => void;
   onWithdrawReview: (productId: string) => void;
-  onUnpublish: (productId: string) => void;
+  onPauseListing: (productId: string) => void;
   onRemove: (productId: string) => void;
 }) {
   const [open, setOpen] = useState(false);
-  const isRejectedFamily = product.status === "rejected" || product.status === "needs_changes";
-  const isPublishedFamily = product.status === "published" || product.status === "approved";
+  const isRejectedFamily = isSellerProductNeedsChangesStatus(product.status);
+  const isBuyerVisibleFamily = isSellerProductBuyerVisibleStatus(product.status);
   const isPausedFamily = product.status === "paused";
 
   const closeAfter = (action: () => void) => {
@@ -256,21 +269,16 @@ function ProductActionMenu({
           <>
             <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
               <Eye className="h-3.5 w-3.5" />
-              View Reason / Preview
+              View Feedback
             </ActionMenuItem>
             <ActionMenuItem onClick={() => closeAfter(() => onEdit(product))}>
               <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </ActionMenuItem>
-            <ActionMenuSeparator />
-            <ActionMenuItem onClick={() => closeAfter(() => onSubmitForReview(product.id))} className="text-[#009E49] hover:bg-emerald-50">
-              <Send className="h-3.5 w-3.5" />
-              Resubmit
+              Edit After Feedback
             </ActionMenuItem>
           </>
         ) : null}
 
-        {isPublishedFamily ? (
+        {isBuyerVisibleFamily ? (
           <>
             <ActionMenuItem onClick={() => closeAfter(() => onView(product))}>
               <Eye className="h-3.5 w-3.5" />
@@ -280,9 +288,9 @@ function ProductActionMenu({
               <Pencil className="h-3.5 w-3.5" />
               Edit
             </ActionMenuItem>
-            <ActionMenuItem onClick={() => closeAfter(() => onUnpublish(product.id))} className="text-amber-700 hover:bg-amber-50">
+            <ActionMenuItem onClick={() => closeAfter(() => onPauseListing(product.id))} className="text-amber-700 hover:bg-amber-50">
               <PauseCircle className="h-3.5 w-3.5" />
-              Pause/Unpublish
+              Pause Listing
             </ActionMenuItem>
             <ActionMenuSeparator />
             <ActionMenuItem onClick={() => closeAfter(() => onDuplicate(product))}>
@@ -417,9 +425,9 @@ export default function SellerProductsPage() {
     try {
       const updated = await unpublishSellerProductRequest(productId);
       setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
-      toast.success("Product unpublished and moved to paused.");
+      toast.success("Listing paused and removed from buyer visibility.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to unpublish product.");
+      toast.error(error instanceof Error ? error.message : "Failed to pause listing.");
     }
   }, [actionFallbackHref, canCreateDraftProduct, router]);
 
@@ -464,7 +472,7 @@ export default function SellerProductsPage() {
   const summary = useMemo(() => {
     return {
       total: products.length,
-      published: products.filter((p) => p.status === "published" || p.status === "approved").length,
+      buyerVisible: products.filter((p) => isSellerProductBuyerVisibleStatus(p.status)).length,
       draft: products.filter((p) => p.status === "draft").length,
       pendingReview: products.filter((p) => p.status === "pending_review").length,
       lowStock: products.filter((p) => getStockState(p) === "low-stock").length,
@@ -477,8 +485,7 @@ export default function SellerProductsPage() {
     return products.filter((product) => {
       const matchesSearch = !query || product.title.toLowerCase().includes(query) || product.id.toLowerCase().includes(query) || product.brand.toLowerCase().includes(query);
       const matchesCategory = categoryFilter === "all" || product.categoryName === categoryFilter;
-      const stockState = getStockState(product);
-      const matchesTab = activeTab === "all" || (activeTab === "low-stock" && stockState === "low-stock") || (activeTab === "out-of-stock" && stockState === "out-of-stock") || product.status === activeTab;
+      const matchesTab = matchesSellerProductTab(product, activeTab);
       
       return matchesSearch && matchesCategory && matchesTab;
     });
@@ -486,13 +493,7 @@ export default function SellerProductsPage() {
 
   const tabCounts = useMemo(() => {
     return PRODUCT_TABS.reduce<Record<ProductTab, number>>((acc, tab) => {
-      acc[tab.id] = products.filter((product) => {
-        const stockState = getStockState(product);
-        if (tab.id === "all") return true;
-        if (tab.id === "low-stock") return stockState === "low-stock";
-        if (tab.id === "out-of-stock") return stockState === "out-of-stock";
-        return product.status === tab.id;
-      }).length;
+      acc[tab.id] = products.filter((product) => matchesSellerProductTab(product, tab.id)).length;
       return acc;
     }, {} as Record<ProductTab, number>);
   }, [products]);
@@ -539,7 +540,7 @@ export default function SellerProductsPage() {
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-center">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Products</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage inventory, pricing, visibility, and product review status.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Manage drafts, review states, and current buyer visibility without bypassing moderation.</p>
         </div>
         <Link href={canCreateDraftProduct ? "/seller/products/new" : actionFallbackHref}>
           <Button className="h-11 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:bg-[#00853d] active:scale-95 md:w-auto">
@@ -568,12 +569,12 @@ export default function SellerProductsPage() {
         
         <div className="relative overflow-hidden rounded-2xl border border-[#009E49]/20 bg-[#009E49]/5 p-4 shadow-sm transition-all hover:shadow-md">
           <div className="mb-2 flex items-center justify-between">
-            <p className="text-[10px] font-bold uppercase tracking-wider text-[#009E49]">Published</p>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-[#009E49]">Buyer Visible</p>
             <div className="flex h-6 w-6 items-center justify-center rounded-md bg-[#009E49]/10 text-[#009E49]">
               <CheckCircle2 className="h-3.5 w-3.5" />
             </div>
           </div>
-          <p className="text-2xl font-black text-zinc-900">{summary.published}</p>
+          <p className="text-2xl font-black text-zinc-900">{summary.buyerVisible}</p>
         </div>
         
         <div className="relative overflow-hidden rounded-2xl border border-blue-100 bg-blue-50/60 p-4 shadow-sm transition-all hover:shadow-md">
@@ -708,7 +709,7 @@ export default function SellerProductsPage() {
                     onDuplicate={duplicateProduct}
                     onSubmitForReview={submitProductForReview}
                     onWithdrawReview={withdrawProductReview}
-                    onUnpublish={unpublishProduct}
+                    onPauseListing={unpublishProduct}
                     onRemove={removeProduct}
                   />
                 </div>
@@ -723,7 +724,7 @@ export default function SellerProductsPage() {
                         onDuplicate={duplicateProduct}
                         onSubmitForReview={submitProductForReview}
                         onWithdrawReview={withdrawProductReview}
-                        onUnpublish={unpublishProduct}
+                        onPauseListing={unpublishProduct}
                         onRemove={removeProduct}
                       />
                     </div>
@@ -786,7 +787,7 @@ export default function SellerProductsPage() {
                           onDuplicate={duplicateProduct}
                           onSubmitForReview={submitProductForReview}
                           onWithdrawReview={withdrawProductReview}
-                          onUnpublish={unpublishProduct}
+                          onPauseListing={unpublishProduct}
                           onRemove={removeProduct}
                         />
                       </div>

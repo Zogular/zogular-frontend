@@ -100,10 +100,15 @@ export function ProductListingStudioHeader({
         <Button type="button" variant="outline" onClick={(event) => onSave(event, "draft")} disabled={isSubmitting} className="h-10 rounded-xl border-white/70 bg-white/80 px-4 font-bold text-zinc-700 shadow-sm hover:bg-white">
           {isEditMode ? "Save Changes" : "Save Draft"}
         </Button>
-        {revealDetails ? (
+        {revealDetails && canSubmitForReview ? (
           <Button type="submit" disabled={isSubmitting || !canSubmitForReview} className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_10px_25px_rgba(0,158,73,0.22)] hover:bg-[#00853d] disabled:bg-zinc-300">
             {isSubmitting ? "Submitting..." : submitLabel}
           </Button>
+        ) : null}
+        {revealDetails && !canSubmitForReview ? (
+          <p className="max-w-56 text-right text-xs font-bold leading-5 text-amber-700">
+            Draft-only mode until seller approval unlocks review submission.
+          </p>
         ) : null}
       </div>
     </div>
@@ -127,13 +132,20 @@ export function ProductListingMobileActions({
 }) {
   return (
     <div className="fixed inset-x-3 bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-white/70 bg-white/92 p-3 shadow-[0_-10px_28px_rgba(15,23,42,0.12)] backdrop-blur-2xl md:hidden">
-      <div className="grid grid-cols-2 gap-3">
+      {!canSubmitForReview ? (
+        <p className="mb-3 text-center text-xs font-bold leading-5 text-amber-700">
+          Draft-only mode until seller approval unlocks review submission.
+        </p>
+      ) : null}
+      <div className={`grid gap-3 ${canSubmitForReview ? "grid-cols-2" : "grid-cols-1"}`}>
         <Button type="button" variant="outline" onClick={(event) => onSave(event, "draft")} disabled={isSubmitting} className="h-12 rounded-xl border-zinc-200 bg-white font-bold text-zinc-700">
           {isEditMode ? "Save" : "Save Draft"}
         </Button>
-        <Button type="button" onClick={(event) => onSave(event, "pending_review")} disabled={isSubmitting || !revealDetails || !canSubmitForReview} className="h-12 rounded-xl bg-[#009E49] font-extrabold text-white shadow-[0_4px_15px_rgba(0,158,73,0.3)] transition-all active:scale-95 hover:bg-[#00853d] disabled:bg-zinc-300 disabled:shadow-none">
-          {isSubmitting ? "Submitting..." : submitLabel}
-        </Button>
+        {canSubmitForReview ? (
+          <Button type="button" onClick={(event) => onSave(event, "pending_review")} disabled={isSubmitting || !revealDetails || !canSubmitForReview} className="h-12 rounded-xl bg-[#009E49] font-extrabold text-white shadow-[0_4px_15px_rgba(0,158,73,0.3)] transition-all active:scale-95 hover:bg-[#00853d] disabled:bg-zinc-300 disabled:shadow-none">
+            {isSubmitting ? "Submitting..." : submitLabel}
+          </Button>
+        ) : null}
       </div>
     </div>
   );
