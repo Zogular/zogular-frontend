@@ -1,5 +1,7 @@
 // src/services/settings.ts
 
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export interface StoreProfile {
   name: string;
   slug: string;
@@ -51,6 +53,9 @@ export interface StoreSettings {
   seo: SeoSettings;
 }
 
+export const SELLER_SETTINGS_BACKEND_PENDING_NOTICE =
+  "Seller settings are shown as preview and readiness fields until backend persistence for store settings is implemented.";
+
 const EMPTY_SETTINGS: StoreSettings = {
   profile: {
     name: "",
@@ -97,6 +102,7 @@ export const settingsApi = {
     return structuredClone(EMPTY_SETTINGS);
   },
   async updateSettings(payload: StoreSettings): Promise<StoreSettings> {
-    return structuredClone(payload);
-  }
+    void payload;
+    throwBackendPendingFeature("Seller settings persistence");
+  },
 };

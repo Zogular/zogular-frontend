@@ -7,25 +7,29 @@ import {
   Truck,
   Settings2,
   Wallet,
-  Save,
   AlertCircle,
-  RefreshCcw,
+  LockKeyhole,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import {
+  BackendPendingBadge,
+  FeaturePendingNotice,
+} from "@/components/shared/FeaturePendingNotice";
 
 import { useSellerSettings, type TabType } from "@/features/seller-settings/hooks/useSellerSettings";
 import { StoreProfileForm } from "@/features/seller-settings/components/StoreProfileForm";
 import { BusinessInfoForm } from "@/features/seller-settings/components/BusinessInfoForm";
 import { FulfillmentSettings } from "@/features/seller-settings/components/FulfillmentSettings";
 import { OperationsSettings } from "@/features/seller-settings/components/OperationsSettings";
+import { SELLER_SETTINGS_BACKEND_PENDING_NOTICE } from "@/services/settings";
 
 export default function SellerSettingsPage() {
   const {
     settings,
+    isBackendPending,
     loading,
     error,
-    isSaving,
     activeTab,
     setActiveTab,
     isSeoOpen,
@@ -35,8 +39,6 @@ export default function SellerSettingsPage() {
     logoInputRef,
     bannerInputRef,
     loadSettings,
-    saveSettings,
-    handleFormSubmit,
     handleAssetUpload,
     updateSetting,
   } = useSellerSettings();
@@ -74,18 +76,27 @@ export default function SellerSettingsPage() {
       {/* 1. HEADER */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Store Settings</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Configure your storefront, fulfillment, and business details.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Store Profile & Settings</h1>
+            <BackendPendingBadge />
+          </div>
+          <p className="mt-1 text-sm font-medium text-zinc-500">
+            Review your seller-facing profile and setup preferences while backend persistence and operational controls are still pending.
+          </p>
         </div>
         <Button
-          onClick={() => void saveSettings()}
-          disabled={isSaving}
+          disabled
           className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95"
         >
-          {isSaving ? <RefreshCcw className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
-          {isSaving ? "Saving..." : "Save Changes"}
+          <LockKeyhole className="mr-2 h-4 w-4" />
+          Read-only while backend is pending
         </Button>
       </div>
+
+      <FeaturePendingNotice
+        title="Settings are preview-only for now"
+        description={SELLER_SETTINGS_BACKEND_PENDING_NOTICE}
+      />
 
       <div className="flex flex-col gap-6 md:flex-row items-start">
         {/* 2. NAVIGATION (Desktop Sidebar / Mobile Scroll) */}
@@ -118,30 +129,33 @@ export default function SellerSettingsPage() {
               <h3 className="text-xs font-black uppercase tracking-wider text-zinc-900">Payouts</h3>
             </div>
 
-            <p className="mb-3 text-xs font-medium text-zinc-500">Where your store earnings will be sent.</p>
+              <p className="mb-3 text-xs font-medium text-zinc-500">
+                Payout setup stays backend-owned. This page links to readiness details only until wallet, review, and disbursement endpoints are live.
+              </p>
 
-            <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Active Payout Method</p>
-              <p className="mt-1 text-sm font-bold text-zinc-900">MTN Mobile Money</p>
-              <p className="text-xs font-medium text-zinc-500">Zogular Store • ******1111</p>
-            </div>
+              <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
+                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Payout Readiness</p>
+                <p className="mt-1 text-sm font-bold text-zinc-900">Pending backend</p>
+                <p className="text-xs font-medium text-zinc-500">Onboarding payout details will surface here after backend rollout.</p>
+              </div>
 
             <Link href="/seller/payouts">
               <Button
                 variant="outline"
                 className="mt-3 h-9 w-full rounded-lg border-zinc-200 bg-white text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-100 hover:text-zinc-900"
               >
-                Manage Payouts
+                View payout readiness
               </Button>
             </Link>
           </div>
         </div>
 
         {/* 3. SETTINGS FORMS */}
-        <form onSubmit={handleFormSubmit} className="flex-1 min-w-0 w-full space-y-6">
+        <form className="flex-1 min-w-0 w-full space-y-6">
           {activeTab === "profile" && (
             <StoreProfileForm
               settings={settings}
+              disabled={isBackendPending}
               updateSetting={updateSetting}
               logoInputRef={logoInputRef}
               bannerInputRef={bannerInputRef}
@@ -154,15 +168,15 @@ export default function SellerSettingsPage() {
           )}
 
           {activeTab === "business" && (
-            <BusinessInfoForm settings={settings} updateSetting={updateSetting} />
+            <BusinessInfoForm settings={settings} disabled={isBackendPending} updateSetting={updateSetting} />
           )}
 
           {activeTab === "fulfillment" && (
-            <FulfillmentSettings settings={settings} updateSetting={updateSetting} />
+            <FulfillmentSettings settings={settings} disabled={isBackendPending} updateSetting={updateSetting} />
           )}
 
           {activeTab === "operations" && (
-            <OperationsSettings settings={settings} updateSetting={updateSetting} />
+            <OperationsSettings settings={settings} disabled={isBackendPending} updateSetting={updateSetting} />
           )}
         </form>
       </div>

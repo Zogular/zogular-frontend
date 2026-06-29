@@ -29,7 +29,7 @@ export interface SupportStats {
   open: number;
   awaitingSeller: number;
   resolved: number;
-  avgResponseHrs: number;
+  avgResponseHrs: number | null;
 }
 
 export const supportApi = {

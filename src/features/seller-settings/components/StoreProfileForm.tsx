@@ -1,10 +1,12 @@
 import { Search, Image as ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { BRAND } from "@/config/brand";
+import { cn } from "@/lib/utils";
 import type { StoreSettings } from "@/services/settings";
 
 export function StoreProfileForm({
   settings,
+  disabled = false,
   updateSetting,
   logoInputRef,
   bannerInputRef,
@@ -15,6 +17,7 @@ export function StoreProfileForm({
   setIsSeoOpen,
 }: {
   settings: StoreSettings;
+  disabled?: boolean;
   updateSetting: <K extends keyof StoreSettings, F extends keyof StoreSettings[K]>(
     section: K,
     field: F,
@@ -31,7 +34,12 @@ export function StoreProfileForm({
   return (
     <div className="animate-in fade-in slide-in-from-right-4 duration-300 space-y-6">
       <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-7">
-        <h2 className="mb-5 text-sm font-black uppercase tracking-wider text-zinc-900">Public Profile</h2>
+        <div className="mb-5 space-y-1">
+          <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Storefront Profile Preview</h2>
+          <p className="text-xs font-medium text-zinc-500">
+            Review how seller-facing store details can map in the future. This page does not publish or persist storefront changes yet.
+          </p>
+        </div>
         <div className="space-y-5">
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-1.5">
@@ -41,10 +49,11 @@ export function StoreProfileForm({
                 onChange={(e) => updateSetting("profile", "name", e.target.value)}
                 placeholder="e.g. Zogular Electronics"
                 className="h-11 rounded-xl bg-zinc-50 text-sm font-medium shadow-inner focus-visible:ring-[#009E49]"
+                disabled={disabled}
               />
             </div>
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store URL Slug</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store URL Preview</label>
               <div className="relative flex items-center">
                 <span aria-hidden="true" className="absolute left-3 text-sm font-medium text-zinc-400">
                   {BRAND.domain}/
@@ -53,8 +62,10 @@ export function StoreProfileForm({
                   value={settings.profile.slug}
                   onChange={(e) => updateSetting("profile", "slug", e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, "-"))}
                   className="h-11 rounded-xl bg-zinc-50 pl-26 text-sm font-bold text-zinc-900 shadow-inner focus-visible:ring-[#009E49]"
+                  disabled={disabled}
                 />
               </div>
+              <p className="text-[11px] font-medium text-zinc-500">A public storefront path is not activated from this page yet.</p>
             </div>
           </div>
 
@@ -68,15 +79,23 @@ export function StoreProfileForm({
               onChange={(e) => updateSetting("profile", "description", e.target.value)}
               placeholder="What does your store sell?"
               className="min-h-24 w-full resize-y rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
+              disabled={disabled}
             />
           </div>
 
           <div className="flex gap-4 pt-2 border-t border-zinc-100">
             <div className="space-y-1.5 flex-1">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store Logo</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store Logo Preview</label>
               <div
-                onClick={() => logoInputRef.current?.click()}
-                className="flex h-20 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 transition-colors hover:bg-zinc-100"
+                onClick={() => {
+                  if (!disabled) logoInputRef.current?.click();
+                }}
+                className={cn(
+                  "flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 transition-colors",
+                  disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:bg-zinc-100",
+                )}
+                role="button"
+                aria-disabled={disabled}
               >
                 {settings.profile.logo ? (
                   <div
@@ -90,7 +109,7 @@ export function StoreProfileForm({
                 ) : (
                   <div className="flex items-center gap-2 text-zinc-500">
                     <ImageIcon className="h-4 w-4" />
-                    <span className="text-xs font-bold">Upload Logo</span>
+                    <span className="text-xs font-bold">{disabled ? "Upload support pending" : "Upload Logo"}</span>
                   </div>
                 )}
               </div>
@@ -100,13 +119,21 @@ export function StoreProfileForm({
                 accept="image/*"
                 className="hidden"
                 onChange={(event) => handleAssetUpload("logo", event.target.files?.[0] ?? null)}
+                disabled={disabled}
               />
             </div>
             <div className="space-y-1.5 flex-1">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Cover Banner</label>
+              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Cover Banner Preview</label>
               <div
-                onClick={() => bannerInputRef.current?.click()}
-                className="flex h-20 cursor-pointer items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 transition-colors hover:bg-zinc-100"
+                onClick={() => {
+                  if (!disabled) bannerInputRef.current?.click();
+                }}
+                className={cn(
+                  "flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 transition-colors",
+                  disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:bg-zinc-100",
+                )}
+                role="button"
+                aria-disabled={disabled}
               >
                 {settings.profile.banner ? (
                   <div
@@ -120,7 +147,7 @@ export function StoreProfileForm({
                 ) : (
                   <div className="flex items-center gap-2 text-zinc-500">
                     <ImageIcon className="h-4 w-4" />
-                    <span className="text-xs font-bold">Upload Banner</span>
+                    <span className="text-xs font-bold">{disabled ? "Upload support pending" : "Upload Banner"}</span>
                   </div>
                 )}
               </div>
@@ -130,6 +157,7 @@ export function StoreProfileForm({
                 accept="image/*"
                 className="hidden"
                 onChange={(event) => handleAssetUpload("banner", event.target.files?.[0] ?? null)}
+                disabled={disabled}
               />
             </div>
           </div>
@@ -144,9 +172,9 @@ export function StoreProfileForm({
         >
           <div>
             <h2 className="flex items-center gap-2 text-sm font-black uppercase tracking-wider text-zinc-900">
-              <Search className="h-4 w-4 text-zinc-400" /> Discoverability & SEO
+              <Search className="h-4 w-4 text-zinc-400" /> Discoverability Preview
             </h2>
-            <p className="mt-1 text-xs font-medium text-zinc-500">Optimize how your store appears on Google.</p>
+            <p className="mt-1 text-xs font-medium text-zinc-500">Search snippet copy is shown for planning only and is not published from this page yet.</p>
           </div>
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-500">
             {isSeoOpen ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
@@ -164,7 +192,9 @@ export function StoreProfileForm({
                 onChange={(e) => updateSetting("seo", "metaDescription", e.target.value)}
                 placeholder="Short summary for search engines..."
                 className="min-h-20 w-full resize-none rounded-xl border border-zinc-200 bg-white p-3 text-sm shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
+                disabled={disabled}
               />
+              <p className="text-[11px] font-medium text-zinc-500">Useful as future search copy once backend publishing support is added.</p>
             </div>
           </div>
         )}
