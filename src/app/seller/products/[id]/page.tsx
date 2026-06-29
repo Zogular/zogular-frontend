@@ -17,6 +17,7 @@ import {
 import { SellerProductPreview } from "./_components/SellerProductPreview";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import { hasSellerCapability } from "@/services/vendor-application";
+import { isSellerProductBuyerVisibleStatus, isSellerProductNeedsChangesStatus } from "@/services/product-moderation";
 
 export default function SellerProductPreviewPage() {
   const params = useParams<{ id: string }>();
@@ -109,6 +110,10 @@ export default function SellerProductPreviewPage() {
     }
   }, [canCreateDraftProduct, product, router]);
 
+  const pauseListingLabel = product && isSellerProductBuyerVisibleStatus(product.status)
+    ? "Listing paused and removed from buyer visibility."
+    : "Listing moved to paused.";
+
   if (!application || !canCreateDraftProduct) {
     return (
       <div className="mx-auto max-w-xl rounded-3xl border border-amber-200 bg-amber-50/90 p-6 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
@@ -150,10 +155,14 @@ export default function SellerProductPreviewPage() {
           toast.error("Seller approval is required before editing products.");
           return;
         }
+        if (product && isSellerProductNeedsChangesStatus(product.status)) {
+          router.push(`/seller/products/${product.id}/edit`);
+          return;
+        }
         router.push(`/seller/products/${product.id}/edit`);
       }}
       onSubmit={() => handleSubmit("Product submitted for review.")}
-      onUnpublish={() => handleUnpublish("Product unpublished and moved to paused.")}
+      onUnpublish={() => handleUnpublish(pauseListingLabel)}
       onWithdraw={() => handleWithdraw("Review withdrawn. Product moved back to drafts.")}
     />
   );

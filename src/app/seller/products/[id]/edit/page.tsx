@@ -13,6 +13,7 @@ import {
   type CreateSellerProductInput,
   type SellerProductListing,
 } from "@/services/seller-catalog";
+import { isSellerProductNeedsChangesStatus } from "@/services/product-moderation";
 import { ProductListingStudioForm } from "../../new/_components/ProductListingStudioForm";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import { hasSellerCapability } from "@/services/vendor-application";
@@ -103,16 +104,23 @@ export default function EditSellerProductPage() {
   }
 
   return (
-    <ProductListingStudioForm
-      backHref={`/seller/products/${product.id}`}
-      initialProduct={product}
-      mode="edit"
-      canSubmitForReview={canSubmitProductForReview}
-      submitLabel={canSubmitProductForReview ? "Submit for Review" : "Seller Approval Required"}
-      onPersist={async (payload: CreateSellerProductInput) => {
-        const updated = await updateSellerCatalogProduct(product.id, payload);
-        setProduct(updated);
-      }}
-    />
+    <div className="space-y-4">
+      {isSellerProductNeedsChangesStatus(product.status) ? (
+        <div className="rounded-2xl border border-red-200 bg-red-50/90 p-4 text-sm font-semibold leading-6 text-red-800 shadow-sm">
+          Admin feedback requires edits before review can continue. Update the listing, then submit it for review again when ready.
+        </div>
+      ) : null}
+      <ProductListingStudioForm
+        backHref={`/seller/products/${product.id}`}
+        initialProduct={product}
+        mode="edit"
+        canSubmitForReview={canSubmitProductForReview}
+        submitLabel="Submit for Review"
+        onPersist={async (payload: CreateSellerProductInput) => {
+          const updated = await updateSellerCatalogProduct(product.id, payload);
+          setProduct(updated);
+        }}
+      />
+    </div>
   );
 }

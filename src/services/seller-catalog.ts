@@ -807,7 +807,7 @@ function normalizeModerationStateFromBackend(
   const submittedAt =
     status === "draft"
       ? null
-      : enrichment?.submittedAt || product.updatedAt || product.createdAt;
+      : enrichment?.submittedAt || null;
 
   let reviewedAt: string | null = enrichment?.reviewedAt || null;
   if (!reviewedAt) {
@@ -816,9 +816,7 @@ function normalizeModerationStateFromBackend(
       status === "published" ||
       status === "paused"
     ) {
-      reviewedAt = product.approvedAt || product.updatedAt;
-    } else if (status === "needs_changes" || status === "suspended") {
-      reviewedAt = product.updatedAt;
+      reviewedAt = product.approvedAt || null;
     }
   }
 
