@@ -8,8 +8,6 @@ import {
   type SellerOrderDetail,
   type SellerOrderStatus,
 } from "@/services/seller-orders";
-import { isSellerProductBuyerVisibleStatus } from "@/services/product-moderation";
-
 export type SellerDashboardRange = "7d" | "30d" | "12m";
 export type SellerAnalyticsTimeRange = "24h" | SellerDashboardRange;
 export type SellerAnalyticsCategoryFilter = "all" | string;
@@ -457,4 +455,8 @@ function toTitleCase(value: string): string {
 
 function roundMoney(value: number): number {
   return Math.round(value * 100) / 100;
+}
+
+function isSellerProductBuyerVisibleStatus(status: string): boolean {
+  return status === "approved" || status === "published";
 }
