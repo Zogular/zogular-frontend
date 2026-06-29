@@ -1,8 +1,15 @@
 import { apiClient } from "@/services/api";
-import { type SellerOrderEarnings } from "@/services/platform-finance";
 
 export type SellerOrderStatus = "new" | "processing" | "shipped" | "delivered" | "cancelled" | "refund";
-export type SellerPaymentStatus = "paid" | "cod" | "refunded" | "failed";
+export type SellerPaymentStatus = "paid" | "cod" | "refunded" | "failed" | "unavailable";
+
+export interface SellerOrderEarningsPreview {
+  productSubtotal: number;
+  commission: number | null;
+  sellerBorneAdjustments: number | null;
+  sellerNet: number | null;
+  backendConfirmed: boolean;
+}
 
 export interface SellerOrderItem {
   id: string;
@@ -31,12 +38,12 @@ export interface SellerOrderDetail {
   status: SellerOrderStatus;
   createdAt: string;
   paymentStatus: SellerPaymentStatus;
-  paymentMethod: string;
+  paymentMethod: string | null;
   customer: { name: string; phone: string; email: string };
-  shipping: { address: string; area: string; city: string; instructions?: string; method: string; fee: number };
+  shipping: { address: string; area: string; city: string; instructions?: string; method: string; fee: number | null };
   items: SellerOrderItem[];
-  totals: { subtotal: number; shipping: number; discount: number; total: number };
-  earnings: SellerOrderEarnings;
+  totals: { subtotal: number; shipping: number | null; discount: number | null; total: number };
+  earnings: SellerOrderEarningsPreview;
 }
 
 // Backend Response Types
@@ -69,6 +76,10 @@ interface BackendOrder {
   id: string;
   orderNumber: string;
   totalAmount: number;
+  paymentMethod?: string | null;
+  paymentStatus?: string | null;
+  sellerCommissionAmount?: number | null;
+  sellerNetAmount?: number | null;
   shippingAddress: BackendShippingAddress | null;
   deliveryMethod: string;
   status: string;
@@ -91,6 +102,38 @@ interface BackendOrder {
       category: string;
     }
   }>;
+}
+
+function getSellerVisibleItemsTotal(items: BackendOrder["items"]): number {
+  return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+}
+
+function mapPaymentStatus(status?: string | null): SellerPaymentStatus {
+  const normalized = status?.trim().toUpperCase();
+  if (normalized === "PAID" || normalized === "SUCCESSFUL" || normalized === "COMPLETED") return "paid";
+  if (normalized === "COD" || normalized === "CASH_ON_DELIVERY") return "cod";
+  if (normalized === "REFUNDED") return "refunded";
+  if (normalized === "FAILED") return "failed";
+  return "unavailable";
+}
+
+function normalizePaymentMethod(value?: string | null): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+function mapSettlementPreview(order: BackendOrder, subtotal: number, categorySlug?: string): SellerOrderEarningsPreview {
+  void categorySlug;
+  const hasCommission = typeof order.sellerCommissionAmount === "number";
+  const hasSellerNet = typeof order.sellerNetAmount === "number";
+
+  return {
+    productSubtotal: subtotal,
+    commission: hasCommission ? order.sellerCommissionAmount ?? null : null,
+    sellerBorneAdjustments: null,
+    sellerNet: hasSellerNet ? order.sellerNetAmount ?? null : null,
+    backendConfirmed: hasCommission || hasSellerNet,
+  };
 }
 
 function mapVendorStatus(status: string): SellerOrderStatus {
@@ -116,7 +159,7 @@ function mapToBackendVendorStatus(status: SellerOrderStatus): string {
 
 function mapOrderToSummary(order: BackendOrder): SellerOrderSummary {
   const itemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  const total = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const total = getSellerVisibleItemsTotal(order.items);
   
   // A vendor order might have multiple items with different statuses. We'll take the lowest status, or just the first item's status.
   const status = mapVendorStatus(order.items[0]?.vendorStatus || "PENDING");
@@ -128,22 +171,23 @@ function mapOrderToSummary(order: BackendOrder): SellerOrderSummary {
     items: itemsCount,
     total,
     status,
-    paymentStatus: "paid", // Assuming paid for now
+    paymentStatus: mapPaymentStatus(order.paymentStatus),
     location: order.shippingAddress?.city || "Unknown",
     createdAt: order.createdAt,
   };
 }
 
 function mapOrderToDetail(order: BackendOrder): SellerOrderDetail {
-  const subtotal = order.items.reduce((sum, item) => sum + (item.price * item.quantity), 0);
+  const subtotal = getSellerVisibleItemsTotal(order.items);
   const status = mapVendorStatus(order.items[0]?.vendorStatus || "PENDING");
+  const primaryCategorySlug = order.items[0]?.product.category;
 
   return {
     id: order.id,
     status,
     createdAt: order.createdAt,
-    paymentStatus: "paid",
-    paymentMethod: "Online",
+    paymentStatus: mapPaymentStatus(order.paymentStatus),
+    paymentMethod: normalizePaymentMethod(order.paymentMethod),
     customer: { 
       name: `${order.user?.firstName || "Guest"} ${order.user?.lastName || ""}`.trim(), 
       phone: order.user?.phone || "N/A", 
@@ -154,7 +198,7 @@ function mapOrderToDetail(order: BackendOrder): SellerOrderDetail {
       area: order.shippingAddress?.area || "N/A", 
       city: order.shippingAddress?.city || "Unknown", 
       method: order.deliveryMethod || "Standard", 
-      fee: 0 // Zogular might handle shipping fee centrally, vendors only see their subtotal
+      fee: null,
     },
     items: order.items.map(item => ({
       id: item.id, // Using the orderItem id
@@ -165,18 +209,13 @@ function mapOrderToDetail(order: BackendOrder): SellerOrderDetail {
       image: item.product.images?.[0]?.url || null,
       categorySlug: item.product.category || "others"
     })),
-    totals: { 
-      subtotal, 
-      shipping: 0, 
-      discount: 0, 
-      total: subtotal 
+    totals: {
+      subtotal,
+      shipping: null,
+      discount: null,
+      total: subtotal,
     },
-    earnings: {
-      productSubtotal: subtotal,
-      commission: subtotal * 0.1, // Mock 10%
-      sellerBorneAdjustments: 0,
-      sellerNet: subtotal * 0.9,
-    }
+    earnings: mapSettlementPreview(order, subtotal, primaryCategorySlug),
   };
 }
 

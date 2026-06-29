@@ -28,7 +28,7 @@ export default function AddProductPage() {
     <ProductListingStudioForm
       mode="create"
       canSubmitForReview={canSubmitProductForReview}
-      submitLabel={canSubmitProductForReview ? "Submit for Review" : "Seller Approval Required"}
+      submitLabel="Submit for Review"
     />
   );
 }
