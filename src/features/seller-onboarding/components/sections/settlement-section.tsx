@@ -37,8 +37,8 @@ export function SettlementSection({
           <div className="md:col-span-1">
             <OptionCard
               title="Mobile Money"
-            description="Mobile Money is available now. Add your provider and payout phone."
-              statusLabel="Active"
+              description="Provide your details for future payouts."
+              statusLabel="Selected"
               state="selected"
               icon={<Smartphone className="h-4 w-4" />}
             />
@@ -61,7 +61,7 @@ export function SettlementSection({
 
         <div className="flex flex-wrap gap-2">
           {providers.map((provider, index) => (
-            <StatusBadge key={provider} status={index === 0 ? "active" : "draft"} label={provider} />
+            <StatusBadge key={provider} status={index === 0 ? "selected" : "draft"} label={provider} />
           ))}
         </div>
 
