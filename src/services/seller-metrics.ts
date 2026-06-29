@@ -8,7 +8,7 @@ import {
   type SellerOrderDetail,
   type SellerOrderStatus,
 } from "@/services/seller-orders";
-import { sellerWalletApi } from "@/services/seller-wallet";
+import { isSellerProductBuyerVisibleStatus } from "@/services/product-moderation";
 
 export type SellerDashboardRange = "7d" | "30d" | "12m";
 export type SellerAnalyticsTimeRange = "24h" | SellerDashboardRange;
@@ -60,12 +60,7 @@ export interface SellerDashboardData {
   recentActivity: SellerActivityItem[];
   kpis: {
     pendingOrders: number;
-    activeProducts: number;
-    payoutAvailable: number;
-    payoutPending: number;
-    salesRevenue: number;
-    zogularCommission: number;
-    withdrawalFees: number;
+    buyerVisibleProducts: number;
   };
 }
 
@@ -95,7 +90,7 @@ export interface SellerLowPerformer {
 
 export interface SellerAnalyticsActivityEvent {
   id: string;
-  type: "order" | "refund" | "payout" | "stock";
+  type: "order" | "refund" | "stock";
   message: string;
   amount?: number;
   time: string;
@@ -103,15 +98,12 @@ export interface SellerAnalyticsActivityEvent {
 
 export interface SellerAnalyticsData {
   summary: {
-    totalRevenue: number;
-    revenueGrowth: number;
-    totalOrders: number;
-    orderGrowth: number;
-    totalCustomers: number;
-    customerGrowth: number;
+    sellerVisibleRevenue: number;
+    sellerVisibleOrders: number;
     avgOrderValue: number;
-    refundRate: number;
-    conversionRate: number;
+    deliveredOrders: number;
+    buyerVisibleProducts: number;
+    lowStockProducts: number;
   };
   trends: SellerTrendPoint[];
   orderStats: {
@@ -124,12 +116,6 @@ export interface SellerAnalyticsData {
   topProducts: SellerProductPerformance[];
   categoryPerformance: SellerCategoryPerformance[];
   lowPerformers: SellerLowPerformer[];
-  customerStats: {
-    total: number;
-    new: number;
-    returning: number;
-    returningRate: number;
-  };
   recentActivity: SellerAnalyticsActivityEvent[];
 }
 
@@ -148,14 +134,13 @@ const ORDER_STATUS_LABELS: Record<SellerOrderStatus, string> = {
   shipped: "Shipped",
   delivered: "Delivered",
   cancelled: "Cancelled",
-  refund: "Refunded",
+  refund: "Refund Review",
 };
 
 export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
-  const [orders, products, wallet] = await Promise.all([
+  const [orders, products] = await Promise.all([
     fetchSellerOrderDetails(),
     fetchSellerCatalogProducts(),
-    sellerWalletApi.fetchDashboard(),
   ]);
   const revenueOrders = orders.filter(isRevenueOrder);
   const lowStockItems = getLowStockItems(products);
@@ -178,51 +163,42 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
         total: order.totals.total,
         status: order.status,
       })),
-    recentActivity: buildDashboardActivity(orders, lowStockItems, wallet.history),
+    recentActivity: buildDashboardActivity(orders, lowStockItems),
     kpis: {
       pendingOrders: orders.filter((order) => order.status === "new" || order.status === "processing").length,
-      activeProducts: products.filter((product) => product.status === "published").length,
-      payoutAvailable: wallet.balances.availableBalance,
-      payoutPending: wallet.balances.pendingBalance,
-      salesRevenue: sumRevenue(revenueOrders),
-      zogularCommission: roundMoney(revenueOrders.reduce((sum, order) => sum + order.earnings.commission, 0)),
-      withdrawalFees: wallet.balances.totalPayoutFeesPaid,
+      buyerVisibleProducts: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
     },
   };
 }
 
 export async function fetchSellerAnalyticsData(range: SellerAnalyticsTimeRange): Promise<SellerAnalyticsData> {
-  const [orders, products, wallet] = await Promise.all([
+  const [orders, products] = await Promise.all([
     fetchSellerOrderDetails(),
     fetchSellerCatalogProducts(),
-    sellerWalletApi.fetchDashboard(),
   ]);
   const revenueOrders = orders.filter(isRevenueOrder);
-  const refundOrders = orders.filter((order) => order.status === "refund" || order.paymentStatus === "refunded");
+  const refundOrders = orders.filter((order) => order.status === "refund");
   const salesRevenue = sumRevenue(revenueOrders);
   const totalOrders = revenueOrders.length;
-  const totalCustomers = new Set(revenueOrders.map((order) => order.customer.phone)).size;
-  const returningCustomers = Math.max(0, totalOrders - totalCustomers);
-  const newCustomers = Math.max(0, totalCustomers - returningCustomers);
   const topProducts = buildProductPerformance(revenueOrders, products);
   const categoryPerformance = buildCategoryPerformance(revenueOrders);
+  const buyerVisibleProducts = products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length;
+  const lowStockProducts = products.filter((product) => product.stock <= product.lowStockThreshold).length;
+  const deliveredOrders = orders.filter((order) => order.status === "delivered").length;
 
   return {
     summary: {
-      totalRevenue: salesRevenue,
-      revenueGrowth: calculateGrowth(salesRevenue, salesRevenue * 0.92),
-      totalOrders,
-      orderGrowth: calculateGrowth(totalOrders, Math.max(1, totalOrders - 1)),
-      totalCustomers,
-      customerGrowth: calculateGrowth(totalCustomers, Math.max(1, totalCustomers - 1)),
+      sellerVisibleRevenue: salesRevenue,
+      sellerVisibleOrders: totalOrders,
       avgOrderValue: totalOrders ? roundMoney(salesRevenue / totalOrders) : 0,
-      refundRate: roundMoney((refundOrders.length / Math.max(1, orders.length)) * 100),
-      conversionRate: roundMoney((totalOrders / Math.max(totalOrders * 24, 1)) * 100),
+      deliveredOrders,
+      buyerVisibleProducts,
+      lowStockProducts,
     },
     trends: buildTrendPoints(revenueOrders, range),
     orderStats: {
       total: orders.length,
-      delivered: orders.filter((order) => order.status === "delivered").length,
+      delivered: deliveredOrders,
       processing: orders.filter((order) => order.status === "new" || order.status === "processing").length,
       cancelled: orders.filter((order) => order.status === "cancelled").length,
       refunded: refundOrders.length,
@@ -230,13 +206,7 @@ export async function fetchSellerAnalyticsData(range: SellerAnalyticsTimeRange):
     topProducts,
     categoryPerformance,
     lowPerformers: buildLowPerformers(products, topProducts),
-    customerStats: {
-      total: totalCustomers,
-      new: newCustomers,
-      returning: returningCustomers,
-      returningRate: roundMoney((returningCustomers / Math.max(totalCustomers, 1)) * 100),
-    },
-    recentActivity: buildAnalyticsActivity(orders, products, wallet.history),
+    recentActivity: buildAnalyticsActivity(orders, products),
   };
 }
 
@@ -246,7 +216,7 @@ async function fetchSellerOrderDetails(): Promise<SellerOrderDetail[]> {
 }
 
 function isRevenueOrder(order: SellerOrderDetail): boolean {
-  return order.status !== "cancelled" && order.status !== "refund" && order.paymentStatus !== "failed" && order.paymentStatus !== "refunded";
+  return order.status !== "cancelled" && order.status !== "refund";
 }
 
 function buildRevenuePoints(orders: SellerOrderDetail[], range: SellerDashboardRange): SellerRevenuePoint[] {
@@ -380,7 +350,7 @@ function buildLowPerformers(
       return;
     }
 
-    if (product.status === "published" && !soldProductIds.has(product.id)) {
+    if (isSellerProductBuyerVisibleStatus(product.status) && !soldProductIds.has(product.id)) {
       rows.push({
         id: product.id,
         name: product.title,
@@ -397,18 +367,19 @@ function buildLowPerformers(
 function buildDashboardActivity(
   orders: SellerOrderDetail[],
   lowStockItems: SellerLowStockItem[],
-  payouts: Array<{ id: string; status: string; requestedAt: string; requestedAmount: number }>,
 ): SellerActivityItem[] {
   const recentOrder = orders.slice().sort(sortByCreatedAtDesc)[0];
-  const recentPayout = payouts.slice().sort((a, b) => new Date(b.requestedAt).getTime() - new Date(a.requestedAt).getTime())[0];
   const activity: SellerActivityItem[] = [];
 
   if (recentOrder) {
+    const refundReview = recentOrder.status === "refund";
     activity.push({
       id: `order-${recentOrder.id}`,
-      text: `New order activity from ${recentOrder.customer.name}.`,
+      text: refundReview
+        ? `Order ${recentOrder.id} is in refund review.`
+        : `Order activity from ${recentOrder.customer.name}.`,
       time: formatRelativeTime(recentOrder.createdAt),
-      tone: "info",
+      tone: refundReview ? "warning" : "info",
     });
   }
 
@@ -421,31 +392,24 @@ function buildDashboardActivity(
     });
   });
 
-  if (recentPayout) {
-    activity.push({
-      id: `payout-${recentPayout.id}`,
-      text: `Payout ${recentPayout.id} is ${recentPayout.status}.`,
-      time: formatRelativeTime(recentPayout.requestedAt),
-      tone: recentPayout.status === "successful" ? "success" : "info",
-    });
-  }
-
   return activity.slice(0, 5);
 }
 
 function buildAnalyticsActivity(
   orders: SellerOrderDetail[],
   products: SellerProductListing[],
-  payouts: Array<{ id: string; status: string; requestedAt: string; requestedAmount: number }>,
 ): SellerAnalyticsActivityEvent[] {
   const events: SellerAnalyticsActivityEvent[] = [];
 
   orders.slice().sort(sortByCreatedAtDesc).slice(0, 3).forEach((order) => {
+    const isRefundStatus = order.status === "refund";
     events.push({
       id: `order-${order.id}`,
-      type: order.status === "refund" ? "refund" : "order",
-      message: order.status === "refund" ? `Refund recorded for ${order.id}` : `Order ${order.id} placed by ${order.customer.name}`,
-      amount: order.status === "refund" ? order.totals.subtotal : order.earnings.productSubtotal,
+      type: isRefundStatus ? "refund" : "order",
+      message: isRefundStatus
+        ? `Order ${order.id} moved into refund review status.`
+        : `Order ${order.id} placed by ${order.customer.name}`,
+      amount: isRefundStatus ? undefined : order.earnings.productSubtotal,
       time: formatRelativeTime(order.createdAt),
     });
   });
@@ -462,26 +426,11 @@ function buildAnalyticsActivity(
       });
     });
 
-  payouts.slice(0, 2).forEach((payout) => {
-    events.push({
-      id: `payout-${payout.id}`,
-      type: "payout",
-      message: `Payout ${payout.id} ${payout.status}`,
-      amount: payout.requestedAmount,
-      time: formatRelativeTime(payout.requestedAt),
-    });
-  });
-
   return events.slice(0, 7);
 }
 
 function sumRevenue(orders: SellerOrderDetail[]): number {
   return roundMoney(orders.reduce((sum, order) => sum + order.earnings.productSubtotal, 0));
-}
-
-function calculateGrowth(current: number, previous: number): number {
-  if (previous <= 0) return current > 0 ? 100 : 0;
-  return roundMoney(((current - previous) / previous) * 100);
 }
 
 function sortByCreatedAtDesc(a: SellerOrderDetail, b: SellerOrderDetail): number {

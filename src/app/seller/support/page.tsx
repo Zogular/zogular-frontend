@@ -3,19 +3,18 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   LifeBuoy, Search, Filter, MessageSquare, Clock, CheckCircle2,
-  AlertCircle, ArrowLeft, Send, AlertTriangle, Info, ShieldAlert,
+  AlertCircle, ArrowLeft, AlertTriangle, Info, ShieldAlert,
   Inbox
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { BackendPendingBadge, FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
+import { BRAND } from "@/config/brand";
 
 // Import from our new service layer
 import { supportApi, SupportTicket, SupportStats, TicketStatus, TicketPriority } from "@/services/support";
-import { CreateTicketModal } from "@/app/seller/CreateTicketModal";
-import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending";
+import { ContactSupportModal } from "@/app/seller/ContactSupportModal";
 
 // ============================================================================
 // LOGIC HELPERS & UI MAPS
@@ -38,8 +37,6 @@ const PRIORITY_UI: Record<TicketPriority, { icon: React.ComponentType<{ classNam
   "high": { icon: AlertTriangle, color: "text-amber-500" },
   "urgent": { icon: ShieldAlert, color: "text-red-500" },
 };
-
-const SELLER_SUPPORT_BACKEND_PENDING = true;
 
 // ============================================================================
 // SUBCOMPONENTS
@@ -71,9 +68,7 @@ export default function SellerSupportPage() {
 
   // Thread & Modal State
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
-  const [replyText, setReplyText] = useState("");
-  const [isReplying, setIsReplying] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
 
   // --- 1. DATA FETCHING ---
   const loadTickets = useCallback(async () => {
@@ -105,48 +100,10 @@ export default function SellerSupportPage() {
     const open = tickets.filter(t => t.status === "open" || t.status === "waiting-support").length;
     const waiting = tickets.filter(t => t.status === "waiting-seller").length;
     const resolved = tickets.filter(t => t.status === "resolved" || t.status === "closed").length;
-    return { open, awaitingSeller: waiting, resolved, avgResponseHrs: 2.4 };
+    return { open, awaitingSeller: waiting, resolved, avgResponseHrs: null };
   }, [tickets]);
 
   const selectedTicket = useMemo(() => tickets.find(t => t.id === selectedTicketId) || null, [tickets, selectedTicketId]);
-
-  // --- 3. MUTATION HANDLERS ---
-  const handleSendReply = async () => {
-    if (!selectedTicketId || !replyText.trim()) return;
-
-    setIsReplying(true);
-    try {
-      const newMsg = await supportApi.replyToTicket(selectedTicketId, replyText);
-      setTickets(prev => prev.map(t => {
-        if (t.id === selectedTicketId) {
-          return {
-            ...t,
-            status: "waiting-support", 
-            updatedAt: newMsg.createdAt,
-            messages: [...t.messages, newMsg]
-          };
-        }
-        return t;
-      }));
-      setReplyText("");
-      toast.success("Reply sent successfully.");
-    } catch {
-      toast.error("Failed to send reply. Try again.");
-    } finally {
-      setIsReplying(false);
-    }
-  };
-
-  const handleMarkResolved = async () => {
-    if (!selectedTicketId) return;
-    try {
-      await supportApi.resolveTicket(selectedTicketId);
-      setTickets(prev => prev.map(t => t.id === selectedTicketId ? { ...t, status: "resolved", updatedAt: new Date().toISOString() } : t));
-      toast.success("Ticket marked as resolved.");
-    } catch {
-      toast.error("Failed to resolve ticket.");
-    }
-  };
 
   // --- SYSTEM STATES ---
   if (loading) return (
@@ -177,24 +134,41 @@ export default function SellerSupportPage() {
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
             <BackendPendingBadge />
           </div>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Operations-only preview for seller support workflows.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Support history is not connected yet. Use the direct contact fallback until seller ticket APIs are live.</p>
         </div>
-        <Button disabled={SELLER_SUPPORT_BACKEND_PENDING} onClick={() => setIsCreateModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
-          Backend integration pending
+        <Button onClick={() => setIsContactModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
+          Contact Support
         </Button>
       </div>
 
       <FeaturePendingNotice
         title="Support actions unavailable"
-        description="Seller support tickets are not available in MVP yet. Ticket creation, replies, and resolution stay disabled until backend support is implemented."
+        description="In-app support messaging and history are pending backend rollout. Use the contact fallback for real support requests."
       />
+
+      <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
+            <p className="mt-1 text-sm font-medium text-zinc-600">
+              Send seller support issues through the configured support inbox while the backend system is pending.
+            </p>
+          </div>
+          <a
+            href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
+          >
+            {BRAND.supportEmail}
+          </a>
+        </div>
+      </div>
 
       {/* 2. SUMMARY CARDS */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 shrink-0">
         <StatCard title="Open Tickets" value={stats.open} icon={LifeBuoy} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
         <StatCard title="Action Needed" value={stats.awaitingSeller} icon={AlertCircle} colorClass="border-amber-200 bg-amber-50/50 text-amber-950" />
         <StatCard title="Resolved" value={stats.resolved} icon={CheckCircle2} colorClass="bg-[#009E49]/5 border-[#009E49]/20 text-[#007a38]" />
-        <StatCard title="Avg Response" value={`${stats.avgResponseHrs}h`} icon={Clock} colorClass="bg-zinc-50 border-zinc-200/80 text-zinc-900" />
+        <StatCard title="Avg Response" value={stats.avgResponseHrs === null ? "Pending backend" : `${stats.avgResponseHrs}h`} icon={Clock} colorClass="bg-zinc-50 border-zinc-200/80 text-zinc-900" />
       </div>
 
       {/* 3. FILTERS TOOLBAR */}
@@ -229,11 +203,11 @@ export default function SellerSupportPage() {
         {/* LEFT COLUMN: TICKET LIST */}
         <div className={cn("w-full md:w-95 shrink-0 flex-col gap-3 overflow-y-auto hide-scrollbar", selectedTicketId ? "hidden md:flex" : "flex")}>
           {filteredTickets.length === 0 ? (
-             <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-200 bg-white py-16 text-center shadow-sm">
-                <Inbox className="mb-3 h-8 w-8 text-zinc-300" />
-                <h3 className="text-sm font-bold text-zinc-900">No tickets found</h3>
-                <p className="text-xs text-zinc-500">Adjust filters or create a new ticket.</p>
-             </div>
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-200 bg-white py-16 text-center shadow-sm">
+                 <Inbox className="mb-3 h-8 w-8 text-zinc-300" />
+                 <h3 className="text-sm font-bold text-zinc-900">No tickets found</h3>
+                 <p className="text-xs text-zinc-500">Ticket history will appear here once seller support endpoints are connected.</p>
+              </div>
           ) : (
             filteredTickets.map(ticket => {
               const statUI = STATUS_UI[ticket.status];
@@ -267,16 +241,17 @@ export default function SellerSupportPage() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: ACTIVE THREAD */}
+        {/* RIGHT COLUMN: READ-ONLY TICKET DETAIL */}
         <div className={cn("flex-1 min-w-0 flex-col rounded-3xl border border-zinc-200/80 bg-white shadow-sm overflow-hidden", selectedTicketId ? "flex" : "hidden md:flex md:items-center md:justify-center md:bg-zinc-50/50")}>
           {!selectedTicket ? (
             <div className="text-center p-8">
               <MessageSquare className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
-              <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view the conversation</h3>
+              <h3 className="text-sm font-bold text-zinc-500">Ticket conversations are pending backend rollout</h3>
+              <p className="mt-2 text-xs font-medium text-zinc-400">Use the contact fallback above for seller support issues right now.</p>
             </div>
           ) : (
             <>
-              {/* Thread Header */}
+              {/* Ticket Header */}
               <div className="border-b border-zinc-100 bg-white p-4 md:p-6 shrink-0">
                 <Button variant="ghost" size="sm" className="mb-3 h-8 -ml-2 text-xs font-bold text-zinc-500 md:hidden" onClick={() => setSelectedTicketId(null)}>
                   <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to list
@@ -290,15 +265,17 @@ export default function SellerSupportPage() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicket.category}</span>
                     </div>
                   </div>
-                  {selectedTicket.status !== "resolved" && selectedTicket.status !== "closed" && (
-                    <Button variant="outline" size="sm" disabled={SELLER_SUPPORT_BACKEND_PENDING} onClick={handleMarkResolved} className="h-9 shrink-0 rounded-xl border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50 hidden sm:flex">
-                      <CheckCircle2 className="mr-1.5 h-4 w-4" /> Backend pending
-                    </Button>
-                  )}
+                  <span className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-500 sm:inline-flex">
+                    Read-only history
+                  </span>
                 </div>
               </div>
 
-              {/* Thread Messages */}
+              <div className="border-b border-zinc-100 bg-amber-50/70 px-4 py-3 text-xs font-medium text-amber-950 md:px-6">
+                This history is visible for reference only. Seller replies and ticket resolution still happen through direct contact while the backend support system is pending.
+              </div>
+
+              {/* Ticket Messages */}
               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-zinc-50/30">
                 {selectedTicket.messages.map((msg) => {
                   const isSeller = msg.senderType === "seller";
@@ -325,49 +302,15 @@ export default function SellerSupportPage() {
                   );
                 })}
               </div>
-
-              {/* Thread Reply Input */}
-              {selectedTicket.status !== "resolved" && selectedTicket.status !== "closed" ? (
-                <div className="border-t border-zinc-200 bg-white p-4 shrink-0">
-                  <div className="relative">
-                    <textarea 
-                      aria-label="Reply message"
-                      value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder={BACKEND_INTEGRATION_PENDING_MESSAGE}
-                      disabled={SELLER_SUPPORT_BACKEND_PENDING}
-                      className="min-h-20 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-14 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
-                    />
-                    <Button 
-                      aria-label="Send reply"
-                      size="icon" 
-                      onClick={handleSendReply}
-                      disabled={SELLER_SUPPORT_BACKEND_PENDING || !replyText.trim() || isReplying}
-                      className="absolute bottom-3 right-3 h-8 w-8 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400"
-                    >
-                      <Send className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="border-t border-zinc-100 bg-zinc-50 p-4 text-center shrink-0">
-                  <p className="text-xs font-bold text-zinc-500">This ticket is {selectedTicket.status}. Replies are disabled.</p>
-                </div>
-              )}
             </>
           )}
         </div>
       </div>
 
-      {/* 5. CREATE TICKET MODAL */}
-      <CreateTicketModal 
-        isOpen={isCreateModalOpen} 
-        onClose={() => setIsCreateModalOpen(false)} 
-        onSuccess={(newTicket) => {
-          setTickets(prev => [newTicket, ...prev]);
-          setSelectedTicketId(newTicket.id);
-          setIsCreateModalOpen(false);
-        }} 
+      {/* 5. CONTACT SUPPORT MODAL */}
+      <ContactSupportModal 
+        isOpen={isContactModalOpen} 
+        onClose={() => setIsContactModalOpen(false)} 
       />
     </div>
   );
