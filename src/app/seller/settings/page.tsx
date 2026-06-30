@@ -13,7 +13,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
-  BackendPendingBadge,
   FeaturePendingNotice,
 } from "@/components/shared/FeaturePendingNotice";
 
@@ -27,7 +26,7 @@ import { SELLER_SETTINGS_BACKEND_PENDING_NOTICE } from "@/services/settings";
 export default function SellerSettingsPage() {
   const {
     settings,
-    isBackendPending,
+    isWritePending,
     loading,
     error,
     activeTab,
@@ -78,10 +77,9 @@ export default function SellerSettingsPage() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Store Profile & Settings</h1>
-            <BackendPendingBadge />
           </div>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Review your seller-facing profile and setup preferences while backend persistence and operational controls are still pending.
+            Review your live store configuration and setup preferences. Saving updates remains pending.
           </p>
         </div>
         <Button
@@ -89,12 +87,12 @@ export default function SellerSettingsPage() {
           className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95"
         >
           <LockKeyhole className="mr-2 h-4 w-4" />
-          Read-only while backend is pending
+          {isWritePending ? "Saving is pending backend" : "Save Changes"}
         </Button>
       </div>
 
       <FeaturePendingNotice
-        title="Settings are preview-only for now"
+        title="Settings are read-only for now"
         description={SELLER_SETTINGS_BACKEND_PENDING_NOTICE}
       />
 
@@ -155,7 +153,7 @@ export default function SellerSettingsPage() {
           {activeTab === "profile" && (
             <StoreProfileForm
               settings={settings}
-              disabled={isBackendPending}
+              disabled={isWritePending}
               updateSetting={updateSetting}
               logoInputRef={logoInputRef}
               bannerInputRef={bannerInputRef}
@@ -168,15 +166,15 @@ export default function SellerSettingsPage() {
           )}
 
           {activeTab === "business" && (
-            <BusinessInfoForm settings={settings} disabled={isBackendPending} updateSetting={updateSetting} />
+            <BusinessInfoForm settings={settings} disabled={isWritePending} updateSetting={updateSetting} />
           )}
 
           {activeTab === "fulfillment" && (
-            <FulfillmentSettings settings={settings} disabled={isBackendPending} updateSetting={updateSetting} />
+            <FulfillmentSettings settings={settings} disabled={isWritePending} updateSetting={updateSetting} />
           )}
 
           {activeTab === "operations" && (
-            <OperationsSettings settings={settings} disabled={isBackendPending} updateSetting={updateSetting} />
+            <OperationsSettings settings={settings} disabled={isWritePending} updateSetting={updateSetting} />
           )}
         </form>
       </div>

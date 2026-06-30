@@ -7,7 +7,8 @@ import {
 export type TabType = "profile" | "business" | "fulfillment" | "operations";
 
 export function useSellerSettings() {
-  const isBackendPending = true;
+  const isReadConnected = true;
+  const isWritePending = true;
   const [settings, setSettings] = useState<StoreSettings | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -82,7 +83,8 @@ export function useSellerSettings() {
 
   return {
     settings,
-    isBackendPending,
+    isReadConnected,
+    isWritePending,
     loading,
     error,
     activeTab,

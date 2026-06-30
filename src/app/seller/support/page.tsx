@@ -9,7 +9,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
-import { BackendPendingBadge, FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { BRAND } from "@/config/brand";
 
 // Import from our new service layer
@@ -60,6 +59,7 @@ export default function SellerSupportPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,18 +69,23 @@ export default function SellerSupportPage() {
   // Thread & Modal State
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [selectedTicketData, setSelectedTicketData] = useState<SupportTicket | null>(null);
+  const [loadingTicket, setLoadingTicket] = useState(false);
+  const [replyText, setReplyText] = useState("");
+  const [replying, setReplying] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   // --- 1. DATA FETCHING ---
-  const loadTickets = useCallback(async () => {
+  const loadTickets = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!silent) setLoading(true);
+      if (!silent) setError(null);
       const data = await supportApi.fetchTickets();
       setTickets(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
+      if (!silent) setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -103,7 +108,61 @@ export default function SellerSupportPage() {
     return { open, awaitingSeller: waiting, resolved, avgResponseHrs: null };
   }, [tickets]);
 
-  const selectedTicket = useMemo(() => tickets.find(t => t.id === selectedTicketId) || null, [tickets, selectedTicketId]);
+  useEffect(() => {
+    if (!selectedTicketId) {
+      setSelectedTicketData(null);
+      setDetailError(null);
+      return;
+    }
+    let isMounted = true;
+    const fetchDetail = async () => {
+      setLoadingTicket(true);
+      setDetailError(null);
+      try {
+        const detail = await supportApi.getTicket(selectedTicketId);
+        if (isMounted) setSelectedTicketData(detail);
+      } catch (err) {
+        if (isMounted) setDetailError(err instanceof Error ? err.message : "Failed to load ticket.");
+      } finally {
+        if (isMounted) setLoadingTicket(false);
+      }
+    };
+    fetchDetail();
+    return () => { isMounted = false; };
+  }, [selectedTicketId]);
+
+  const handleReply = async () => {
+    if (!selectedTicketId || !replyText.trim()) return;
+    try {
+      setReplying(true);
+      setDetailError(null);
+      await supportApi.replyToTicket(selectedTicketId, replyText);
+      setReplyText("");
+      const updatedTicket = await supportApi.getTicket(selectedTicketId);
+      setSelectedTicketData(updatedTicket);
+      loadTickets(true);
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Failed to send reply.");
+    } finally {
+      setReplying(false);
+    }
+  };
+
+  const handleResolve = async () => {
+    if (!selectedTicketId) return;
+    try {
+      setResolving(true);
+      setDetailError(null);
+      await supportApi.resolveTicket(selectedTicketId);
+      const updatedTicket = await supportApi.getTicket(selectedTicketId);
+      setSelectedTicketData(updatedTicket);
+      loadTickets(true);
+    } catch (err) {
+      setDetailError(err instanceof Error ? err.message : "Failed to resolve ticket.");
+    } finally {
+      setResolving(false);
+    }
+  };
 
   // --- SYSTEM STATES ---
   if (loading) return (
@@ -120,7 +179,7 @@ export default function SellerSupportPage() {
       <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
       <h3 className="text-base font-bold text-red-900">System Error</h3>
       <p className="mt-1 text-sm text-red-700">{error}</p>
-      <Button onClick={loadTickets} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">Try Again</Button>
+      <Button onClick={() => loadTickets()} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">Try Again</Button>
     </div>
   );
 
@@ -132,26 +191,20 @@ export default function SellerSupportPage() {
         <div>
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
-            <BackendPendingBadge />
           </div>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Support history is not connected yet. Use the direct contact fallback until seller ticket APIs are live.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Manage your support tickets and communication directly with ZOGULAR operations.</p>
         </div>
-        <Button onClick={() => setIsContactModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
+        <Button onClick={() => setIsContactModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95">
           Contact Support
         </Button>
       </div>
-
-      <FeaturePendingNotice
-        title="Support actions unavailable"
-        description="In-app support messaging and history are pending backend rollout. Use the contact fallback for real support requests."
-      />
 
       <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
             <p className="mt-1 text-sm font-medium text-zinc-600">
-              Send seller support issues through the configured support inbox while the backend system is pending.
+              You can also email support directly if you are unable to open a ticket.
             </p>
           </div>
           <a
@@ -190,7 +243,8 @@ export default function SellerSupportPage() {
           </div>
           <select aria-label="Filter by Priority" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as TicketPriority | "all")} className="h-11 appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer">
             <option value="all">All Priority</option>
-            <option value="high">High & Urgent</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
@@ -206,7 +260,7 @@ export default function SellerSupportPage() {
               <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-200 bg-white py-16 text-center shadow-sm">
                  <Inbox className="mb-3 h-8 w-8 text-zinc-300" />
                  <h3 className="text-sm font-bold text-zinc-900">No tickets found</h3>
-                 <p className="text-xs text-zinc-500">Ticket history will appear here once seller support endpoints are connected.</p>
+                 <p className="text-xs text-zinc-500">You don&apos;t have any support tickets yet.</p>
               </div>
           ) : (
             filteredTickets.map(ticket => {
@@ -243,11 +297,20 @@ export default function SellerSupportPage() {
 
         {/* RIGHT COLUMN: READ-ONLY TICKET DETAIL */}
         <div className={cn("flex-1 min-w-0 flex-col rounded-3xl border border-zinc-200/80 bg-white shadow-sm overflow-hidden", selectedTicketId ? "flex" : "hidden md:flex md:items-center md:justify-center md:bg-zinc-50/50")}>
-          {!selectedTicket ? (
+          {loadingTicket ? (
+            <div className="flex flex-col items-center justify-center p-8 h-full">
+               <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
+            </div>
+          ) : detailError ? (
+            <div className="flex flex-col items-center justify-center p-8 h-full text-center">
+              <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
+              <h3 className="text-sm font-bold text-red-900">Failed to load ticket</h3>
+              <p className="mt-1 text-xs text-red-700">{detailError}</p>
+            </div>
+          ) : !selectedTicketData ? (
             <div className="text-center p-8">
               <MessageSquare className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
-              <h3 className="text-sm font-bold text-zinc-500">Ticket conversations are pending backend rollout</h3>
-              <p className="mt-2 text-xs font-medium text-zinc-400">Use the contact fallback above for seller support issues right now.</p>
+              <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view conversation</h3>
             </div>
           ) : (
             <>
@@ -258,26 +321,30 @@ export default function SellerSupportPage() {
                 </Button>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-base font-black text-zinc-900 md:text-lg leading-tight">{selectedTicket.subject}</h2>
+                    <h2 className="text-base font-black text-zinc-900 md:text-lg leading-tight">{selectedTicketData.subject}</h2>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicket.id}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicketData.id}</span>
                       <span className="h-1 w-1 rounded-full bg-zinc-300" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicket.category}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicketData.category}</span>
                     </div>
                   </div>
-                  <span className="hidden rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-zinc-500 sm:inline-flex">
-                    Read-only history
-                  </span>
+                  {selectedTicketData.status !== "resolved" && selectedTicketData.status !== "closed" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleResolve}
+                      disabled={resolving}
+                      className="rounded-xl border-zinc-200 bg-zinc-50 text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      {resolving ? "Resolving..." : "Mark as Resolved"}
+                    </Button>
+                  )}
                 </div>
-              </div>
-
-              <div className="border-b border-zinc-100 bg-amber-50/70 px-4 py-3 text-xs font-medium text-amber-950 md:px-6">
-                This history is visible for reference only. Seller replies and ticket resolution still happen through direct contact while the backend support system is pending.
               </div>
 
               {/* Ticket Messages */}
               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-zinc-50/30">
-                {selectedTicket.messages.map((msg) => {
+                {selectedTicketData.messages.map((msg) => {
                   const isSeller = msg.senderType === "seller";
                   const isSystem = msg.senderType === "system";
 
@@ -302,6 +369,27 @@ export default function SellerSupportPage() {
                   );
                 })}
               </div>
+
+              {/* Reply Area */}
+              {selectedTicketData.status !== "resolved" && selectedTicketData.status !== "closed" && (
+                <div className="border-t border-zinc-100 bg-white p-4 md:p-6 shrink-0">
+                  <div className="flex items-end gap-3">
+                    <textarea
+                      value={replyText}
+                      onChange={(e) => setReplyText(e.target.value)}
+                      placeholder="Type your reply..."
+                      className="h-20 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
+                    />
+                    <Button
+                      onClick={handleReply}
+                      disabled={replying || !replyText.trim()}
+                      className="h-11 rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95"
+                    >
+                      {replying ? "Sending..." : "Send"}
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
         </div>
@@ -310,7 +398,12 @@ export default function SellerSupportPage() {
       {/* 5. CONTACT SUPPORT MODAL */}
       <ContactSupportModal 
         isOpen={isContactModalOpen} 
-        onClose={() => setIsContactModalOpen(false)} 
+        onClose={() => setIsContactModalOpen(false)}
+        onSuccess={(ticketId) => {
+          setIsContactModalOpen(false);
+          loadTickets(true);
+          setSelectedTicketId(ticketId);
+        }}
       />
     </div>
   );
