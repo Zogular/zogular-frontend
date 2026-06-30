@@ -67,10 +67,11 @@ export function FulfillmentSettings({
               </label>
               <Input
                 type="number"
-                value={settings.fulfillment.freeDeliveryThreshold}
-                onChange={(e) => updateSetting("fulfillment", "freeDeliveryThreshold", Number(e.target.value))}
+                value={settings.fulfillment.freeDeliveryThreshold ?? ""}
+                onChange={(e) => updateSetting("fulfillment", "freeDeliveryThreshold", e.target.value === "" ? null : Number(e.target.value))}
                 className="h-11 rounded-xl bg-zinc-50 text-sm font-bold shadow-inner focus-visible:ring-[#009E49]"
                 disabled={disabled}
+                placeholder="Not configured"
               />
             </div>
             <div className="space-y-1.5 md:col-span-2">
