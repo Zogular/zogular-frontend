@@ -89,12 +89,13 @@ function asRecord(val: unknown): Record<string, unknown> | null {
 function normalizeStoreSettings(payload: unknown): StoreSettings {
   const root = asRecord(payload);
   const data = root?.data ? asRecord(root?.data) : root;
+  const settings = data?.settings ? asRecord(data.settings) : data;
   
-  const profile = asRecord(data?.profile);
-  const business = asRecord(data?.business);
-  const fulfillment = asRecord(data?.fulfillment);
-  const operations = asRecord(data?.operations);
-  const seo = asRecord(data?.seo);
+  const profile = asRecord(settings?.profile);
+  const business = asRecord(settings?.business);
+  const fulfillment = asRecord(settings?.fulfillment);
+  const operations = asRecord(settings?.operations);
+  const seo = asRecord(settings?.seo);
 
   return {
     profile: {

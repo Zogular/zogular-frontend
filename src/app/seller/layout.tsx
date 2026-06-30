@@ -40,7 +40,7 @@ const SELLER_NAV_ITEMS: SellerNavItem[] = [
   { label: "Analytics", href: "/seller/analytics", icon: TrendingUp, match: "startsWith", capability: "canReceiveOrders", disabledReason: "Analytics open only after full approval and live order access." },
   { label: "Payouts", href: "/seller/payouts", icon: Wallet, match: "startsWith", capability: "canAccessPayouts", disabledReason: "Payout access is limited to approved sellers and still depends on backend payout rollout." },
   { label: "Notifications", href: "/seller/notifications", icon: Bell, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "Notifications open after seller dashboard access is unlocked." },
-  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "In-app support opens after seller dashboard access is unlocked." },
+  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED", "RESTRICTED", "SUSPENDED", "REJECTED"], disabledReason: "In-app support is available for provisional, approved, restricted, suspended, and rejected seller statuses." },
   { label: "Settings", href: "/seller/settings", icon: Settings, match: "startsWith", allowedStatuses: ["PROVISIONAL", "APPROVED"], disabledReason: "Store settings open after seller dashboard access is unlocked." },
 ];
 
@@ -55,7 +55,7 @@ const MOBILE_MORE_ITEMS = [
   { label: "Inventory", href: "/seller/inventory", icon: Boxes, match: "startsWith" as const, capability: "canCreateDraftProduct" as SellerCapability, disabledReason: "Inventory tools open after provisional seller access." },
   { label: "Analytics", href: "/seller/analytics", icon: TrendingUp, match: "startsWith" as const, capability: "canReceiveOrders" as SellerCapability, disabledReason: "Analytics open only after full approval and live order access." },
   { label: "Notifications", href: "/seller/notifications", icon: Bell, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "Notifications open after seller dashboard access is unlocked." },
-  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "In-app support opens after seller dashboard access is unlocked." },
+  { label: "Support", href: "/seller/support", icon: CircleHelp, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED", "RESTRICTED", "SUSPENDED", "REJECTED"] as SellerApplicationStatus[], disabledReason: "In-app support is available for provisional, approved, restricted, suspended, and rejected seller statuses." },
   { label: "Settings", href: "/seller/settings", icon: Settings, match: "startsWith" as const, allowedStatuses: ["PROVISIONAL", "APPROVED"] as SellerApplicationStatus[], disabledReason: "Store settings open after seller dashboard access is unlocked." },
 ];
 
@@ -313,14 +313,23 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       return;
     }
 
-    // 2. SUBMITTED, RESTRICTED, SUSPENDED, REJECTED -> Status page
+    // 2. SUBMITTED -> Status page
+    const isSubmittedStatus = status === "SUBMITTED";
+
+    if (isSubmittedStatus && !isStatusRoute && !isVerifyPhoneRoute) {
+      router.replace("/seller/status");
+      return;
+    }
+
+    // 3. RESTRICTED, SUSPENDED, REJECTED -> Status page (allow support)
     const isRestrictedStatus =
-      status === "SUBMITTED" ||
       status === "RESTRICTED" ||
       status === "SUSPENDED" ||
       status === "REJECTED";
+      
+    const isSupportRoute = pathname.startsWith("/seller/support");
 
-    if (isRestrictedStatus && !isStatusRoute && !isVerifyPhoneRoute) {
+    if (isRestrictedStatus && !isStatusRoute && !isVerifyPhoneRoute && !isSupportRoute) {
       router.replace("/seller/status");
       return;
     }

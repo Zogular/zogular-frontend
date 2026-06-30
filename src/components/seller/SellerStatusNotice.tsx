@@ -9,7 +9,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { BRAND } from "@/config/brand";
 import type { VendorApplication } from "@/types/seller";
 import {
   getSellerStatusCapabilitySummary,
@@ -120,12 +119,12 @@ export function SellerStatusNotice({
                 </Button>
               </Link>
               {showSupportFallback ? (
-                <a
-                  href={`mailto:${BRAND.supportEmail}?subject=Seller%20status%20support`}
+                <Link
+                  href="/seller/support"
                   className="inline-flex h-10 items-center justify-center rounded-xl border border-white/70 bg-white/80 px-4 text-sm font-bold text-zinc-800 shadow-sm transition-colors hover:bg-white"
                 >
                   Contact support
-                </a>
+                </Link>
               ) : null}
             </div>
           ) : null}
