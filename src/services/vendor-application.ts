@@ -204,7 +204,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
         eyebrow: "Approved",
         title: "Your seller account is approved.",
         description:
-          "You can create draft products, submit listings for review, and receive orders once products are approved. Payout processing and support ticket actions use pending fallback flows until backend services are fully available.",
+          "You can create draft products, submit listings for review, and receive orders once products are approved. Payout processing uses a pending fallback flow until backend ledger services are fully available. In-app support is active, and store settings are available in read-only mode while saving remains pending.",
         tone: "success",
         ctaLabel: "Open dashboard",
         ctaHref: "/seller",
@@ -214,7 +214,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
         eyebrow: "Restricted",
         title: "Your seller account is restricted.",
         description:
-          "Only limited status visibility is available right now. Product, order, analytics, payout, and settings actions stay blocked until ZOGULAR lifts the restriction.",
+          "Selling tools, payouts, and settings remain blocked until ZOGULAR lifts the restriction. In-app support tickets remain available.",
         tone: "warning",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -224,7 +224,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
         eyebrow: "Suspended",
         title: "Your seller account is suspended.",
         description:
-          "Selling access is suspended while ZOGULAR reviews the account. Seller tools stay blocked; use the status notes and direct support contact for the next step.",
+          "Selling access is suspended while ZOGULAR reviews the account. Selling tools and settings stay blocked. Open an in-app support ticket for the next step.",
         tone: "danger",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -234,7 +234,7 @@ export function getSellerStatusMeta(status: SellerApplicationStatus): SellerStat
         eyebrow: "Rejected",
         title: "Your seller application was rejected.",
         description:
-          "Selling access is blocked. Review the rejection details first, then contact support or restart onboarding only if ZOGULAR allows a new application.",
+          "Selling access and settings are blocked. Review the rejection details first, then open an in-app support ticket or restart onboarding if allowed.",
         tone: "danger",
         ctaLabel: "View status",
         ctaHref: "/seller/status",
@@ -274,7 +274,7 @@ export function getSellerStatusCapabilitySummary(
       };
     case "PROVISIONAL":
       return {
-        availableNow: ["Seller dashboard access", "Create draft products", "Review store settings preview"],
+        availableNow: ["Seller dashboard access", "Create draft products", "Review store settings preview", "In-app support tickets"],
         blockedOrPending: ["Submit products for review", "Receive orders", "Payout access"],
       };
     case "APPROVED":
@@ -283,23 +283,24 @@ export function getSellerStatusCapabilitySummary(
           "Create draft products",
           "Submit products for review",
           "Receive orders after product approval",
+          "In-app support tickets",
         ],
-        blockedOrPending: ["Ledger-backed payouts", "In-app support ticket actions"],
+        blockedOrPending: ["Ledger-backed payouts"],
       };
     case "RESTRICTED":
       return {
-        availableNow: ["Read seller status updates"],
-        blockedOrPending: ["Product management", "Orders and analytics", "Payout access"],
+        availableNow: ["Read seller status updates", "In-app support tickets"],
+        blockedOrPending: ["Product management", "Orders and analytics", "Payout access", "Store settings"],
       };
     case "SUSPENDED":
       return {
-        availableNow: ["Read suspension status", "Use direct support contact"],
-        blockedOrPending: ["Product management", "Orders and analytics", "Payout access"],
+        availableNow: ["Read suspension status", "In-app support tickets"],
+        blockedOrPending: ["Product management", "Orders and analytics", "Payout access", "Store settings"],
       };
     case "REJECTED":
       return {
-        availableNow: ["Read rejection details", "Use direct support contact"],
-        blockedOrPending: ["Seller dashboard tools", "Product drafts", "Orders and payout access"],
+        availableNow: ["Read rejection details", "In-app support tickets"],
+        blockedOrPending: ["Seller dashboard tools", "Product drafts", "Orders and payout access", "Store settings"],
       };
     case "DRAFT":
     default:

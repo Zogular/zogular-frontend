@@ -103,10 +103,11 @@ function normalizeTicket(val: unknown): SupportTicket {
 function normalizeTicketsList(payload: unknown): SupportTicket[] {
   const root = payload as Record<string, unknown> | null;
   const data = root?.data ?? root;
-  if (!Array.isArray(data)) {
+  const tickets = (data as Record<string, unknown>)?.tickets ?? data;
+  if (!Array.isArray(tickets)) {
     throw new Error("Invalid payload: expected an array of tickets");
   }
-  return data.map(normalizeTicket);
+  return tickets.map(normalizeTicket);
 }
 
 export const supportApi = {
@@ -117,7 +118,9 @@ export const supportApi = {
   async getTicket(ticketId: string): Promise<SupportTicket> {
     const payload = await apiClient<unknown>(`/vendor/support/tickets/${ticketId}`, { method: "GET" });
     const root = payload as Record<string, unknown> | null;
-    return normalizeTicket(root?.data ?? root);
+    const data = root?.data ?? root;
+    const ticket = (data as Record<string, unknown>)?.ticket ?? data;
+    return normalizeTicket(ticket);
   },
   async createTicket(subject: string, category: TicketCategory, priority: TicketPriority, message: string): Promise<SupportTicket> {
     const payload = await apiClient<unknown>("/vendor/support/tickets", {
@@ -126,7 +129,9 @@ export const supportApi = {
       body: JSON.stringify({ subject, category, priority, message })
     });
     const root = payload as Record<string, unknown> | null;
-    return normalizeTicket(root?.data ?? root);
+    const data = root?.data ?? root;
+    const ticket = (data as Record<string, unknown>)?.ticket ?? data;
+    return normalizeTicket(ticket);
   },
   async replyToTicket(ticketId: string, message: string): Promise<SupportMessage> {
     const payload = await apiClient<unknown>(`/vendor/support/tickets/${ticketId}/messages`, {
@@ -135,7 +140,9 @@ export const supportApi = {
       body: JSON.stringify({ message })
     });
     const root = payload as Record<string, unknown> | null;
-    return normalizeMessage(root?.data ?? root);
+    const data = root?.data ?? root;
+    const messageObj = (data as Record<string, unknown>)?.message ?? data;
+    return normalizeMessage(messageObj);
   },
   async resolveTicket(ticketId: string): Promise<void> {
     await apiClient<unknown>(`/vendor/support/tickets/${ticketId}/resolve`, {
