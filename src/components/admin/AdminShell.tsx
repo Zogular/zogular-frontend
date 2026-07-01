@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
@@ -18,6 +18,12 @@ import {
 } from "@/services/admin/session";
 import { logoutAdmin } from "@/services/admin/auth";
 
+export const AdminIdentityContext = createContext<AdminIdentity | null>(null);
+
+export function useAdminIdentity() {
+  return useContext(AdminIdentityContext);
+}
+
 type NavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }>; permission: Permission; };
 
 const NAV_ITEMS: NavItem[] = [
@@ -30,7 +36,7 @@ const NAV_ITEMS: NavItem[] = [
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
   { name: "Order Logistics", href: "/admin/orders", icon: ShoppingCart, permission: "view_orders" },
   { name: "Dispute Queue", href: "/admin/disputes", icon: AlertOctagon, permission: "manage_disputes" },
-  { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "manage_support" },
+  { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
   { name: "Content & Promo", href: "/admin/content", icon: Megaphone, permission: "manage_content" },
   { name: "Platform Settings", href: "/admin/system", icon: Settings, permission: "configure_platform" },
   { name: "Access Control", href: "/admin/access", icon: ShieldAlert, permission: "manage_admins" },
@@ -155,7 +161,9 @@ export default function AdminShell({
 
         {/* Page Injection */}
         <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 lg:p-8">
-          {children}
+          <AdminIdentityContext.Provider value={identity}>
+            {children}
+          </AdminIdentityContext.Provider>
         </div>
       </main>
 

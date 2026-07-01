@@ -22,7 +22,7 @@ export type Permission =
   // Finance
   | "view_treasury" | "approve_payouts" | "manage_refunds"
   // Platform
-  | "manage_support" | "manage_content"
+  | "view_support_tickets" | "reply_support_tickets" | "manage_support_tickets" | "manage_content"
   // System
   | "view_system_logs" | "configure_platform" | "manage_admins";
 
@@ -36,7 +36,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     "view_orders", "override_orders",
     "manage_disputes",
     "view_treasury", "approve_payouts", "manage_refunds",
-    "manage_support", "manage_content",
+    "view_support_tickets", "reply_support_tickets", "manage_support_tickets", "manage_content",
     "view_system_logs", "configure_platform", "manage_admins"
   ],
   executive_admin: [
@@ -47,7 +47,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     "view_orders", "override_orders",
     "manage_disputes",
     "view_treasury", "approve_payouts",
-    "manage_support", "manage_content"
+    "view_support_tickets", "manage_content"
   ],
   ops_manager: [
     "view_dashboard",
@@ -56,7 +56,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     "view_products", "moderate_products",
     "view_orders", "override_orders",
     "manage_disputes",
-    "manage_support", "manage_content"
+    "view_support_tickets", "reply_support_tickets", "manage_support_tickets", "manage_content"
   ],
   finance_admin: [
     "view_dashboard", "view_financial_reports", "export_reports",
@@ -70,7 +70,7 @@ export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
     "view_buyers",
     "view_orders",
     "manage_disputes",
-    "manage_support"
+    "view_support_tickets", "reply_support_tickets", "manage_support_tickets"
   ],
   content_admin: [
     "view_dashboard",
