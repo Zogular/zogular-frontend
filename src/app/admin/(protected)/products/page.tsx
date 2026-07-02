@@ -12,7 +12,8 @@ import {
   type AdminProductRecord,
 } from "@/services/admin/products";
 import { recordAdminAudit } from "@/services/admin/audit";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 import {
   getProductModerationStatusLabel,
   type ProductModerationAction,
@@ -53,7 +54,8 @@ export default function AdminProductsPage() {
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
   const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
 
-  const canModerate = adminHasPermission("moderate_products");
+  const identity = useAdminIdentity()!;
+  const canModerate = adminIdentityHasPermission(identity, "moderate_products");
 
   useEffect(() => {
     let ignore = false;
@@ -157,7 +159,7 @@ export default function AdminProductsPage() {
 
       const refreshedProducts = await adminProductsApi.fetchProducts();
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: `product_bulk_${action}`,
         target: `${eligibleProducts.length} products`,
         severity: "warning",
@@ -176,7 +178,7 @@ export default function AdminProductsPage() {
   async function handleCategoryOverride(product: AdminProductRecord, value: string) {
     setCategoryOverrides((current) => ({ ...current, [product.sellerProductId]: value }));
     await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
+      actorId: identity.id,
       action: "product_category_override_drafted",
       target: product.sellerProductId,
       note: value,
@@ -190,7 +192,7 @@ export default function AdminProductsPage() {
       setIsSubmitting(true);
       const updated = await adminProductsApi.updateProductStatus(product.sellerProductId, status);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: `product_${status}`,
         target: product.sellerProductId,
         severity: status === "suspended" ? "critical" : "warning",
