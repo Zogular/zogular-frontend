@@ -4,8 +4,8 @@ import { useState, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, Users, Store, Package, ShoppingCart,
-  LifeBuoy, ShieldAlert, LogOut, Menu, X, Sparkles, BarChart3, FolderTree,
+  Store, Package,
+  LifeBuoy, LogOut, Menu, X, Sparkles, FolderTree,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -27,15 +27,10 @@ export function useAdminIdentity() {
 type NavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }>; permission: Permission; };
 
 const NAV_ITEMS: NavItem[] = [
-  { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
-  { name: "Reports", href: "/admin/reports", icon: BarChart3, permission: "view_financial_reports" },
   { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
-  { name: "Buyers CRM", href: "/admin/buyers", icon: Users, permission: "view_buyers" },
   { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
-  { name: "Order Logistics", href: "/admin/orders", icon: ShoppingCart, permission: "view_orders" },
   { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
-  { name: "Access Control", href: "/admin/access", icon: ShieldAlert, permission: "manage_admins" },
 ];
 
 export default function AdminShell({
