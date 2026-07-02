@@ -1,12 +1,6 @@
 import type { CartItem } from "@/types/cart";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { apiClient } from "@/services/api";
-import { PAYMENT_COLLECTION_MODE } from "@/config/checkout";
-
-// Temporary frontend-only delivery estimate. Replace with a backend delivery quote before production pricing.
-export const CHECKOUT_DELIVERY_FEE = 50;
-export const CHECKOUT_DELIVERY_FEE_NOTICE =
-  "Temporary delivery estimate. Backend delivery quote pending.";
 
 export type CheckoutPaymentMethod = "cash_on_delivery" | "mobile_money";
 export type CheckoutOrderStatus = "processing";
@@ -34,23 +28,14 @@ export interface CheckoutOrderItem {
   variant?: string | null;
 }
 
-export interface CheckoutOrder {
-  id: string;
-  orderNumber?: string;
-  createdAt: string;
-  status: CheckoutOrderStatus;
-  contact: CheckoutContact;
-  delivery: CheckoutDelivery;
-  paymentMethod: CheckoutPaymentMethod;
-  paymentCollectionMode?: string;
-  commitmentFeeAmount?: number;
-  cashDueOnDelivery?: number;
-  commitmentFeeStatus?: string;
-  items: CheckoutOrderItem[];
-  subtotal: number;
-  deliveryFee: number;
-  total: number;
-  estimatedDelivery: string;
+export interface CheckoutQuote {
+  itemSubtotal: number;
+  deliveryFeeAmount: number;
+  cashDueOnDelivery: number;
+  grandTotalAmount: number;
+  paymentMethod: string;
+  paymentCollectionMode: string;
+  commitmentFeeStatus: string;
 }
 
 interface CreateCheckoutOrderInput {
@@ -69,26 +54,11 @@ function getStorage() {
   return window.localStorage;
 }
 
-function readOrders(): Record<string, CheckoutOrder> {
-  const storage = getStorage();
-  if (!storage) return {};
-
-  try {
-    const stored = localStorage.getItem(ordersKey);
-    return stored ? (JSON.parse(stored) as Record<string, CheckoutOrder>) : {};
-  } catch {
-    return {};
-  }
-}
-
-function writeOrder(order: CheckoutOrder) {
+function writeOrderId(orderId: string) {
   const storage = getStorage();
   if (!storage) return;
 
-  const orders = readOrders();
-  orders[order.id] = order;
-  storage.setItem(ordersKey, JSON.stringify(orders));
-  storage.setItem(latestOrderKey, order.id);
+  storage.setItem(latestOrderKey, orderId);
 }
 
 function buildEstimatedDeliveryDate(): string {
@@ -101,33 +71,7 @@ function buildEstimatedDeliveryDate(): string {
   });
 }
 
-function resolveProductImage(images: unknown): string {
-  if (Array.isArray(images) && typeof images[0] === "string") {
-    return images[0];
-  }
-
-  if (typeof images === "string") {
-    try {
-      const parsed = JSON.parse(images) as unknown;
-      if (Array.isArray(parsed) && typeof parsed[0] === "string") {
-        return parsed[0];
-      }
-    } catch {
-      return images;
-    }
-  }
-
-  if (images && typeof images === "object" && "0" in images) {
-    const firstImage = (images as Record<string, unknown>)["0"];
-    if (typeof firstImage === "string") {
-      return firstImage;
-    }
-  }
-
-  return "/brand/zogular-icon-rounded-dark.png";
-}
-
-export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Promise<CheckoutOrder> {
+export async function quoteCheckoutOrder(input: CreateCheckoutOrderInput): Promise<CheckoutQuote> {
   const orderItems = input.items.map((item) => ({
     productId: String(item.id),
     quantity: item.quantity,
@@ -146,6 +90,41 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
     items: orderItems,
     shippingAddress,
     deliveryMethod: "standard",
+    paymentMethod: "CASH_ON_DELIVERY", // MVP enforcement
+  };
+
+  const response = await apiClient<{
+    status: string;
+    data: { quote: CheckoutQuote };
+  }>("/orders/quote", {
+    method: "POST",
+    csrf: true,
+    body: JSON.stringify(payload),
+  });
+
+  return response.data.quote;
+}
+
+export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Promise<{ id: string }> {
+  const orderItems = input.items.map((item) => ({
+    productId: String(item.id),
+    quantity: item.quantity,
+  }));
+
+  const shippingAddress = {
+    fullName: `${input.contact.firstName} ${input.contact.lastName}`.trim(),
+    phone: input.contact.phone.trim(),
+    addressLine: input.delivery.street.trim(),
+    city: "Lusaka",
+    district: input.delivery.area.trim(),
+    country: "Zambia",
+  };
+
+  const payload = {
+    items: orderItems,
+    shippingAddress,
+    deliveryMethod: "standard",
+    paymentMethod: "CASH_ON_DELIVERY", // MVP enforcement
     notes: input.delivery.instructions?.trim() || undefined,
   };
 
@@ -178,58 +157,14 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
   });
 
   const backendOrder = response.data.order;
-
-  const normalizedItems = backendOrder.items.map((item) => ({
-      id: item.productId,
-      slug: item.product.slug,
-      name: item.product.title,
-      image: resolveProductImage(item.product.images),
-      price: item.price,
-      quantity: item.quantity,
-      variant: null,
-    }));
-
-  const estimatedDeliveryDate = backendOrder.estimatedDelivery
-    ? new Date(backendOrder.estimatedDelivery).toLocaleDateString("en-ZM", {
-        weekday: "short",
-        month: "short",
-        day: "numeric",
-      })
-    : buildEstimatedDeliveryDate();
-
-  const total = backendOrder.totalAmount + CHECKOUT_DELIVERY_FEE;
-  const commitmentFeeAmount = CHECKOUT_DELIVERY_FEE;
-  const cashDueOnDelivery = backendOrder.totalAmount;
-
-  const checkoutOrder: CheckoutOrder = {
-    id: backendOrder.id,
-    orderNumber: backendOrder.orderNumber,
-    createdAt: backendOrder.createdAt,
-    status: "processing",
-    contact: input.contact,
-    delivery: input.delivery,
-    paymentMethod: input.paymentMethod,
-    paymentCollectionMode: PAYMENT_COLLECTION_MODE,
-    commitmentFeeAmount,
-    cashDueOnDelivery,
-    commitmentFeeStatus: "pending",
-    items: normalizedItems,
-    subtotal: backendOrder.totalAmount,
-    deliveryFee: CHECKOUT_DELIVERY_FEE,
-    total,
-    estimatedDelivery: estimatedDeliveryDate,
-  };
-
-  writeOrder(checkoutOrder);
-  return checkoutOrder;
+  writeOrderId(backendOrder.id);
+  
+  return { id: backendOrder.id };
 }
 
-export function getStoredCheckoutOrder(orderId?: string | null): CheckoutOrder | null {
+export function getStoredCheckoutOrderId(): string | null {
   const storage = getStorage();
   if (!storage) return null;
 
-  const resolvedOrderId = orderId || readLocalStorageValue(latestOrderKey, legacyLatestOrderKeys);
-  if (!resolvedOrderId) return null;
-
-  return readOrders()[resolvedOrderId] ?? null;
+  return readLocalStorageValue(latestOrderKey, legacyLatestOrderKeys);
 }

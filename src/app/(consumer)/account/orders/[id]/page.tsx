@@ -366,7 +366,7 @@ export default function InvoicePage({
                   <span>{formatCurrency(invoice.cashDueOnDelivery)}</span>
                 </div>
                 <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
-                  * Estimated MVP breakdown. Official payment status is pending.
+                  * Official payment status is pending.
                 </p>
               </div>
             )}

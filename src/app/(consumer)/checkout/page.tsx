@@ -14,9 +14,9 @@ import { getStoredAuthUser } from "@/services/auth-session";
 import { getSavedAddresses } from "@/services/account";
 import type { Address } from "@/types/address";
 import {
-  CHECKOUT_DELIVERY_FEE,
-  CHECKOUT_DELIVERY_FEE_NOTICE,
   createCheckoutOrder,
+  quoteCheckoutOrder,
+  type CheckoutQuote,
   type CheckoutPaymentMethod,
 } from "@/services/checkout";
 
@@ -40,6 +40,12 @@ export default function CheckoutPage() {
   const [submitError, setSubmitError] = React.useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("cash_on_delivery");
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
+
+  const [orderQuote, setOrderQuote] = React.useState<CheckoutQuote | null>(null);
+  const [isLoadingQuote, setIsLoadingQuote] = React.useState(false);
+  const [quoteError, setQuoteError] = React.useState<string | null>(null);
+
+  const selectedAddress = React.useMemo(() => savedAddresses.find((a) => a.id === selectedAddressId), [savedAddresses, selectedAddressId]);
 
   const loadAddresses = React.useCallback(async () => {
     setIsLoadingAddresses(true);
@@ -78,12 +84,65 @@ export default function CheckoutPage() {
     }
   }, [hasHydrated, loadAddresses]);
 
-  const deliveryFee = itemCount > 0 ? CHECKOUT_DELIVERY_FEE : 0;
-  const total = totalAmount + deliveryFee;
+  React.useEffect(() => {
+    if (!hasHydrated || items.length === 0 || !selectedAddress || !authUser) {
+      setOrderQuote(null);
+      return;
+    }
+
+    let isMounted = true;
+    const fetchQuote = async () => {
+      setIsLoadingQuote(true);
+      setQuoteError(null);
+      try {
+        const submitContact = {
+          firstName: selectedAddress.name,
+          lastName: "",
+          email: authUser.email,
+          phone: selectedAddress.phone,
+        };
+        const submitDelivery = {
+          street: selectedAddress.street,
+          area: selectedAddress.area,
+          instructions: "",
+        };
+
+        const quote = await quoteCheckoutOrder({
+          items,
+          contact: submitContact,
+          delivery: submitDelivery,
+          paymentMethod: "cash_on_delivery",
+        });
+
+        if (isMounted) {
+          setOrderQuote(quote);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setQuoteError("Failed to calculate order quote.");
+        }
+      } finally {
+        if (isMounted) {
+          setIsLoadingQuote(false);
+        }
+      }
+    };
+
+    fetchQuote();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [hasHydrated, items, selectedAddress, authUser]);
+
+  const deliveryFee = orderQuote?.deliveryFeeAmount;
+  const displayedSubtotal = orderQuote?.itemSubtotal ?? totalAmount;
+  const total = orderQuote?.grandTotalAmount ?? totalAmount;
+  const cashDue = orderQuote?.cashDueOnDelivery ?? totalAmount;
   
   const isGuest = !authUser;
   const detailsComplete = selectedAddressId !== null;
-  const canSubmit = hasHydrated && items.length > 0 && detailsComplete && !submitting && !isGuest && !isLoadingAddresses;
+  const canSubmit = hasHydrated && items.length > 0 && detailsComplete && !submitting && !isGuest && !isLoadingAddresses && !isLoadingQuote && !!orderQuote;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -405,29 +464,47 @@ export default function CheckoutPage() {
               <div className="mb-8 space-y-3">
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
                   <span>Subtotal ({itemCount} items)</span>
-                  <span className="font-bold text-zinc-900">{formatCurrency(totalAmount)}</span>
+                  <span className="font-bold text-zinc-900">{formatCurrency(displayedSubtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
                   <span className="flex items-center gap-1"><Truck className="h-4 w-4" /> Delivery</span>
-                  <span className="font-bold text-zinc-900">{formatCurrency(deliveryFee)}</span>
+                  {isLoadingQuote ? (
+                    <span className="font-medium text-zinc-400">Calculating...</span>
+                  ) : quoteError ? (
+                    <span className="font-medium text-red-500">Error</span>
+                  ) : deliveryFee !== undefined ? (
+                    <span className="font-bold text-zinc-900">{formatCurrency(deliveryFee)}</span>
+                  ) : (
+                    <span className="font-medium text-zinc-400">Calculated after address</span>
+                  )}
                 </div>
-                <FeaturePendingNotice
-                  compact
-                  title="Delivery quote pending"
-                  description={CHECKOUT_DELIVERY_FEE_NOTICE}
-                />
+                
                 <Separator className="bg-zinc-200" />
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-zinc-900">Order Total</span>
-                  <span className="text-xl font-black text-zinc-900">{formatCurrency(total)}</span>
+                  {isLoadingQuote ? (
+                    <span className="text-xl font-black text-zinc-400">...</span>
+                  ) : (
+                    <span className="text-xl font-black text-zinc-900">{formatCurrency(total)}</span>
+                  )}
                 </div>
                 <div className="mt-2 flex items-center justify-between border-t border-dashed border-zinc-200 pt-3">
                   <span className="text-sm font-bold text-zinc-700">Delivery Fee (Due Now)</span>
-                  <span className="text-lg font-black text-[#FF6B00]">{formatCurrency(deliveryFee)}</span>
+                  {isLoadingQuote ? (
+                    <span className="text-lg font-black text-[#FF6B00]">...</span>
+                  ) : deliveryFee !== undefined ? (
+                    <span className="text-lg font-black text-[#FF6B00]">{formatCurrency(deliveryFee)}</span>
+                  ) : (
+                    <span className="text-lg font-black text-zinc-400">Pending</span>
+                  )}
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-zinc-700">Cash Due on Delivery</span>
-                  <span className="text-lg font-black text-zinc-900">{formatCurrency(totalAmount)}</span>
+                  {isLoadingQuote ? (
+                    <span className="text-lg font-black text-zinc-900">...</span>
+                  ) : (
+                    <span className="text-lg font-black text-zinc-900">{formatCurrency(cashDue)}</span>
+                  )}
                 </div>
               </div>
 

@@ -47,7 +47,13 @@ export interface BackendOrder {
   orderNumber: string;
   userId: string;
   status: BackendOrderStatus;
-  totalAmount: number;
+  totalAmount: number; // Item subtotal
+  paymentMethod: string;
+  paymentCollectionMode: string;
+  deliveryFeeAmount: number;
+  cashDueOnDelivery: number;
+  grandTotalAmount: number;
+  commitmentFeeStatus: string;
   shippingAddress: Record<string, unknown> | string;
   deliveryMethod: string;
   notes?: string;
