@@ -18,7 +18,8 @@ import { BACKEND_INTEGRATION_PENDING_MESSAGE } from "@/services/backend-pending"
 // Architecture Imports
 import { adminOrdersApi, AdminOrderRecord, OrderStatus } from "@/services/admin/orders";
 import { recordAdminAudit } from "@/services/admin/audit";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 // ============================================================================
 // LOGIC HELPERS & UI MAPS
@@ -64,8 +65,9 @@ export default function AdminOrdersPage() {
   const [createdDisputes, setCreatedDisputes] = useState<Record<string, string>>({});
 
   // RBAC Action-Level Guards
-  const canOverride = adminHasPermission("override_orders");
-  const canCreateDispute = adminHasPermission("manage_disputes");
+  const identity = useAdminIdentity()!;
+  const canOverride = adminIdentityHasPermission(identity, "override_orders");
+  const canCreateDispute = adminIdentityHasPermission(identity, "manage_disputes");
 
   const loadOrders = useCallback(async () => {
     try {
@@ -101,7 +103,7 @@ export default function AdminOrdersPage() {
     try {
       await adminOrdersApi.overrideOrderStatus(selectedOrder.id, newStatus);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: "order_status_override",
         target: selectedOrder.id,
         severity: "critical",
@@ -124,7 +126,7 @@ export default function AdminOrdersPage() {
     try {
       await adminOrdersApi.processRefund(selectedOrder.id);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: "order_refund_forced",
         target: selectedOrder.id,
         severity: "critical",
@@ -145,7 +147,7 @@ export default function AdminOrdersPage() {
   const handleSaveOrderNote = async () => {
     if (!selectedOrder || !adminNote.trim()) return toast.error("Add an admin note first.");
     await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
+      actorId: identity.id,
       action: "order_admin_note_added",
       target: selectedOrder.id,
       note: adminNote.trim(),
@@ -160,7 +162,7 @@ export default function AdminOrdersPage() {
     if (!canCreateDispute) return toast.error("You do not have permission to create disputes.");
     const disputeId = `DSP-${Math.floor(1000 + Math.random() * 9000)}`;
     await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
+      actorId: identity.id,
       action: "order_dispute_created",
       target: selectedOrder.id,
       severity: "warning",

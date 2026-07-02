@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import { AdminProductModerationView } from "./_components/AdminProductModerationView";
 import { adminProductsApi } from "@/services/admin/products";
 import { recordAdminAudit } from "@/services/admin/audit";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 import type { SellerProductListing } from "@/services/seller-catalog";
 import type { ProductModerationAction } from "@/services/product-moderation";
 
@@ -21,7 +22,8 @@ export default function AdminProductModerationPage() {
   const [moderationNote, setModerationNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const canModerate = adminHasPermission("moderate_products");
+  const identity = useAdminIdentity()!;
+  const canModerate = adminIdentityHasPermission(identity, "moderate_products");
 
   useEffect(() => {
     let mounted = true;
@@ -55,7 +57,7 @@ export default function AdminProductModerationPage() {
         note,
       });
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: `product_${action}`,
         target: product.id,
         severity: action === "approve" ? "info" : "warning",

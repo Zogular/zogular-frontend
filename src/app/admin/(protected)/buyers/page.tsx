@@ -20,7 +20,8 @@ import { cn } from "@/lib/utils";
 import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 import { recordAdminAudit } from "@/services/admin/audit";
 import { adminBuyersApi, type AdminBuyerRecord, type BuyerRiskLevel, type BuyerStatus } from "@/services/admin/buyers";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 const statusTone: Record<BuyerStatus, AdminTone> = {
   active: "emerald",
@@ -46,8 +47,9 @@ export default function AdminBuyersPage() {
   const [isMutating, setIsMutating] = useState(false);
   const [lastExportedAt, setLastExportedAt] = useState<string | null>(null);
 
-  const canBanBuyers = adminHasPermission("ban_buyers");
-  const canViewBuyers = adminHasPermission("view_buyers");
+  const identity = useAdminIdentity()!;
+  const canBanBuyers = adminIdentityHasPermission(identity, "ban_buyers");
+  const canViewBuyers = adminIdentityHasPermission(identity, "view_buyers");
 
   const loadBuyers = useCallback(async () => {
     try {
@@ -96,7 +98,7 @@ export default function AdminBuyersPage() {
       setIsMutating(true);
       await adminBuyersApi.updateBuyerStatus(buyer.id, status, actionNote);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: `buyer_${status}`,
         target: buyer.id,
         severity: status === "banned" ? "critical" : "warning",
@@ -132,7 +134,7 @@ export default function AdminBuyersPage() {
       setIsMutating(true);
       await adminBuyersApi.addBuyerNote(selectedBuyer.id, note.trim());
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: "buyer_note_added",
         target: selectedBuyer.id,
         note: note.trim(),

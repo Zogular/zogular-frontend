@@ -14,7 +14,8 @@ import { cn } from "@/lib/utils";
 // Architecture Imports
 import { adminAccessApi, AdminUserRecord, AdminStatus } from "@/services/admin/access";
 import { recordAdminAudit } from "@/services/admin/audit";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 import { AdminRole, ROLE_PERMISSIONS } from "@/services/rbac";
 
 // ============================================================================
@@ -63,7 +64,8 @@ export default function AdminAccessPage() {
   const [securityEvents, setSecurityEvents] = useState<Record<string, string[]>>({});
 
   // RBAC Action-Level Guards
-  const canManageAdmins = adminHasPermission("manage_admins");
+  const identity = useAdminIdentity()!;
+  const canManageAdmins = adminIdentityHasPermission(identity, "manage_admins");
 
   const loadAdmins = useCallback(async () => {
     try {
@@ -97,7 +99,7 @@ export default function AdminAccessPage() {
     try {
       const newAdmin = await adminAccessApi.inviteAdmin(newAdminName, newAdminEmail, newAdminRole);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: "admin_invited",
         target: newAdmin.id,
         severity: "critical",
@@ -118,20 +120,20 @@ export default function AdminAccessPage() {
 
   const handleToggleAccess = async (adminId: string, currentStatus: AdminStatus) => {
     if (!canManageAdmins) return toast.error("Unauthorized action.");
-    if (adminId === CURRENT_ADMIN_IDENTITY.id) return toast.error("You cannot revoke your own access.");
+    if (adminId === identity.id) return toast.error("You cannot revoke your own access.");
 
     const isRevoking = currentStatus === "active" || currentStatus === "invited";
     
     try {
       if (isRevoking) {
         await adminAccessApi.revokeAccess(adminId);
-        await recordAdminAudit({ actorId: CURRENT_ADMIN_IDENTITY.id, action: "admin_access_revoked", target: adminId, severity: "critical" });
+        await recordAdminAudit({ actorId: identity.id, action: "admin_access_revoked", target: adminId, severity: "critical" });
         setAdmins(prev => prev.map(a => a.id === adminId ? { ...a, status: "revoked" } : a));
         setSecurityEvents(prev => ({ ...prev, [adminId]: ["Access revoked by current admin.", ...(prev[adminId] ?? [])] }));
         toast.success("Access securely revoked.");
       } else {
         await adminAccessApi.restoreAccess(adminId);
-        await recordAdminAudit({ actorId: CURRENT_ADMIN_IDENTITY.id, action: "admin_access_restored", target: adminId, severity: "critical" });
+        await recordAdminAudit({ actorId: identity.id, action: "admin_access_restored", target: adminId, severity: "critical" });
         setAdmins(prev => prev.map(a => a.id === adminId ? { ...a, status: "active" } : a));
         setSecurityEvents(prev => ({ ...prev, [adminId]: ["Access restored by current admin.", ...(prev[adminId] ?? [])] }));
         toast.success("Access restored.");
@@ -148,10 +150,10 @@ export default function AdminAccessPage() {
 
   const handleSaveRole = async () => {
     if (!selectedAdmin || editedRole === selectedAdmin.role) return;
-    if (selectedAdmin.id === CURRENT_ADMIN_IDENTITY.id) return toast.error("You cannot change your own role in-session.");
+    if (selectedAdmin.id === identity.id) return toast.error("You cannot change your own role in-session.");
 
     await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
+      actorId: identity.id,
       action: "admin_role_updated",
       target: selectedAdmin.id,
       severity: "critical",
@@ -167,7 +169,7 @@ export default function AdminAccessPage() {
   const handleSecurityAction = async (action: "mfa_reset" | "sessions_revoked") => {
     if (!selectedAdmin) return;
     await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
+      actorId: identity.id,
       action: `admin_${action}`,
       target: selectedAdmin.id,
       severity: "critical",
@@ -187,7 +189,7 @@ export default function AdminAccessPage() {
           <ShieldAlert className="h-8 w-8 text-rose-600" />
         </div>
         <h2 className="text-2xl font-black text-zinc-900">Access Restricted</h2>
-        <p className="mt-2 text-sm font-medium text-zinc-500 max-w-md">Your current role ({CURRENT_ADMIN_IDENTITY.claims.role.replace(/_/g, " ")}) does not have clearance to view or modify platform access controls.</p>
+        <p className="mt-2 text-sm font-medium text-zinc-500 max-w-md">Your current role ({identity.claims.role.replace(/_/g, " ")}) does not have clearance to view or modify platform access controls.</p>
       </div>
     );
   }
@@ -261,7 +263,7 @@ export default function AdminAccessPage() {
                 filteredAdmins.map((admin) => {
                   const statUI = STATUS_UI[admin.status];
                   const roleUI = ROLE_UI[admin.role];
-                  const isSelf = admin.id === CURRENT_ADMIN_IDENTITY.id;
+                  const isSelf = admin.id === identity.id;
 
                   return (
                     <tr key={admin.id} className="group transition-colors hover:bg-indigo-50/35">
@@ -412,10 +414,10 @@ export default function AdminAccessPage() {
                 <h3 className="text-sm font-black text-zinc-950">Role detail</h3>
                 <p className="mt-1 text-xs font-bold text-zinc-500">Current role: {ROLE_UI[selectedAdmin.role].label}</p>
                 <div className="mt-3 flex gap-2">
-                  <select value={editedRole} onChange={(event) => setEditedRole(event.target.value as AdminRole)} disabled={selectedAdmin.id === CURRENT_ADMIN_IDENTITY.id} className="h-11 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm font-bold text-zinc-700 shadow-inner">
+                  <select value={editedRole} onChange={(event) => setEditedRole(event.target.value as AdminRole)} disabled={selectedAdmin.id === identity.id} className="h-11 flex-1 rounded-xl border border-zinc-200 bg-zinc-50 px-3 text-sm font-bold text-zinc-700 shadow-inner">
                     {Object.entries(ROLE_UI).map(([role, ui]) => <option key={role} value={role}>{ui.label}</option>)}
                   </select>
-                  <Button onClick={handleSaveRole} disabled={editedRole === selectedAdmin.role || selectedAdmin.id === CURRENT_ADMIN_IDENTITY.id} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Save</Button>
+                  <Button onClick={handleSaveRole} disabled={editedRole === selectedAdmin.role || selectedAdmin.id === identity.id} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Save</Button>
                 </div>
               </section>
 

@@ -30,7 +30,8 @@ import {
   type ReportFormat,
   type ReportPreset,
 } from "@/services/admin/reports";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 type ExportJob = {
   id: string;
@@ -82,8 +83,9 @@ export default function AdminReportsPage() {
   const [isJobsModalOpen, setIsJobsModalOpen] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
 
-  const canViewReports = adminHasPermission("view_financial_reports");
-  const canExportReports = adminHasPermission("export_reports");
+  const identity = useAdminIdentity()!;
+  const canViewReports = adminIdentityHasPermission(identity, "view_financial_reports");
+  const canExportReports = adminIdentityHasPermission(identity, "export_reports");
 
   const loadWorkspace = useCallback(async () => {
     try {
@@ -132,7 +134,7 @@ export default function AdminReportsPage() {
       setIsMutating(true);
       const generated = await adminReportsApi.generateReport(preset.id, preset.audience, dateRange);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: "report_generated",
         target: preset.id,
         note: dateRange,
@@ -153,7 +155,7 @@ export default function AdminReportsPage() {
       setIsMutating(true);
       const preset = await adminReportsApi.savePreset(newPresetName.trim(), newPresetAudience);
       await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
+        actorId: identity.id,
         action: "report_preset_saved",
         target: preset.id,
         note: preset.name,
@@ -206,7 +208,7 @@ export default function AdminReportsPage() {
 
     setExportJobs((current) => [job, ...current]);
     void recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
+      actorId: identity.id,
       action: `report_export_${format}`,
       target: title,
       severity: "warning",

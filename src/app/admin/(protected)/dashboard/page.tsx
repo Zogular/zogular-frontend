@@ -9,7 +9,8 @@ import {
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { adminHasPermission } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 // ============================================================================
 // 1. DATA CONTRACTS & MOCK API
@@ -173,7 +174,8 @@ export default function AdminDashboardPage() {
     return () => clearTimeout(timer);
   }, []);
 
-  const canSeeFinancials = adminHasPermission("view_financial_reports");
+  const identity = useAdminIdentity()!;
+  const canSeeFinancials = adminIdentityHasPermission(identity, "view_financial_reports");
 
   if (loading) return (
     <div className="animate-pulse space-y-6">

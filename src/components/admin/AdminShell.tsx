@@ -4,8 +4,8 @@ import { useState, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  LayoutDashboard, Users, Store, Package, ShoppingCart, AlertOctagon,
-  Wallet, LifeBuoy, Megaphone, Settings, ShieldAlert, LogOut, Menu, X, Sparkles, BarChart3, FolderTree,
+  LayoutDashboard, Users, Store, Package, ShoppingCart,
+  LifeBuoy, ShieldAlert, LogOut, Menu, X, Sparkles, BarChart3, FolderTree,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -29,16 +29,12 @@ type NavItem = { name: string; href: string; icon: React.ComponentType<{ classNa
 const NAV_ITEMS: NavItem[] = [
   { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
   { name: "Reports", href: "/admin/reports", icon: BarChart3, permission: "view_financial_reports" },
-  { name: "Finance & Treasury", href: "/admin/finance", icon: Wallet, permission: "view_treasury" },
   { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
   { name: "Buyers CRM", href: "/admin/buyers", icon: Users, permission: "view_buyers" },
   { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
   { name: "Order Logistics", href: "/admin/orders", icon: ShoppingCart, permission: "view_orders" },
-  { name: "Dispute Queue", href: "/admin/disputes", icon: AlertOctagon, permission: "manage_disputes" },
   { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
-  { name: "Content & Promo", href: "/admin/content", icon: Megaphone, permission: "manage_content" },
-  { name: "Platform Settings", href: "/admin/system", icon: Settings, permission: "configure_platform" },
   { name: "Access Control", href: "/admin/access", icon: ShieldAlert, permission: "manage_admins" },
 ];
 

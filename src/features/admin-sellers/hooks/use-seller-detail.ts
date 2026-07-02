@@ -11,7 +11,8 @@ import {
   restrictVendorApplication,
   suspendVendorApplication,
 } from "@/services/admin/vendor-applications";
-import { adminHasPermission } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 import type { VendorApplication } from "@/types/seller";
 import type { VendorApplicationAdminAction } from "../types/admin-seller.types";
 
@@ -24,8 +25,9 @@ export function useSellerDetail() {
   const [activeAction, setActiveAction] = useState<VendorApplicationAdminAction | null>(null);
   const [isActionSubmitting, setIsActionSubmitting] = useState(false);
 
-  const canApprove = adminHasPermission("approve_sellers");
-  const canSuspend = adminHasPermission("suspend_sellers");
+  const identity = useAdminIdentity()!;
+  const canApprove = adminIdentityHasPermission(identity, "approve_sellers");
+  const canSuspend = adminIdentityHasPermission(identity, "suspend_sellers");
 
   const loadApplication = useCallback(async () => {
     if (!applicationId) return;
