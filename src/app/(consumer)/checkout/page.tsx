@@ -136,6 +136,7 @@ export default function CheckoutPage() {
   }, [hasHydrated, items, selectedAddress, authUser]);
 
   const deliveryFee = orderQuote?.deliveryFeeAmount;
+  const displayedSubtotal = orderQuote?.itemSubtotal ?? totalAmount;
   const total = orderQuote?.grandTotalAmount ?? totalAmount;
   const cashDue = orderQuote?.cashDueOnDelivery ?? totalAmount;
   
@@ -463,7 +464,7 @@ export default function CheckoutPage() {
               <div className="mb-8 space-y-3">
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
                   <span>Subtotal ({itemCount} items)</span>
-                  <span className="font-bold text-zinc-900">{formatCurrency(totalAmount)}</span>
+                  <span className="font-bold text-zinc-900">{formatCurrency(displayedSubtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
                   <span className="flex items-center gap-1"><Truck className="h-4 w-4" /> Delivery</span>

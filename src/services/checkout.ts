@@ -159,7 +159,7 @@ export async function createCheckoutOrder(input: CreateCheckoutOrderInput): Prom
   const backendOrder = response.data.order;
   writeOrderId(backendOrder.id);
   
-  return { id: backendOrder.id } as any;
+  return { id: backendOrder.id };
 }
 
 export function getStoredCheckoutOrderId(): string | null {

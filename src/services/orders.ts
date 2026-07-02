@@ -51,8 +51,8 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
 
 function formatPaymentMethod(method?: string): string {
   if (!method) return "Pending Configuration";
-  if (method === "cash_on_delivery") return "Cash on Delivery";
-  if (method === "mobile_money") return "Mobile Money";
+  if (method === "cash_on_delivery" || method === "CASH_ON_DELIVERY") return "Cash on Delivery";
+  if (method === "mobile_money" || method === "MOBILE_MONEY") return "Mobile Money";
   return method;
 }
 
