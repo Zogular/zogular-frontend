@@ -35,7 +35,7 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
         month: "short",
         day: "numeric",
       }),
-      total: order.totalAmount,
+      total: order.grandTotalAmount ?? order.totalAmount,
       status: mapBackendStatusToFrontend(order.status),
       estDelivery: order.estimatedDelivery 
         ? new Date(order.estimatedDelivery).toLocaleDateString("en-US", { month: "short", day: "numeric" })
@@ -82,8 +82,8 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
 
   const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
   
-  const rawPaymentMethod = (order as unknown as Record<string, unknown>).paymentMethod as string | undefined;
-  const isCod = rawPaymentMethod === "cash_on_delivery";
+  const rawPaymentMethod = order.paymentMethod || "cash_on_delivery";
+  const isCod = rawPaymentMethod === "cash_on_delivery" || rawPaymentMethod === "CASH_ON_DELIVERY";
 
   return {
     id: order.id,
@@ -105,10 +105,10 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       city: shippingCity,
     },
     paymentMethod: formatPaymentMethod(rawPaymentMethod),
-    paymentCollectionMode: isCod ? PAYMENT_COLLECTION_MODE : undefined,
-    commitmentFeeAmount: isCod && typeof (order as BackendOrder & { commitmentFeeAmount?: number }).commitmentFeeAmount === "number" ? (order as BackendOrder & { commitmentFeeAmount?: number }).commitmentFeeAmount : undefined,
-    cashDueOnDelivery: isCod && typeof (order as BackendOrder & { cashDueOnDelivery?: number }).cashDueOnDelivery === "number" ? (order as BackendOrder & { cashDueOnDelivery?: number }).cashDueOnDelivery : undefined,
-    commitmentFeeStatus: isCod && typeof (order as BackendOrder & { commitmentFeeStatus?: string }).commitmentFeeStatus === "string" ? (order as BackendOrder & { commitmentFeeStatus?: string }).commitmentFeeStatus : undefined,
+    paymentCollectionMode: order.paymentCollectionMode || (isCod ? PAYMENT_COLLECTION_MODE : undefined),
+    commitmentFeeAmount: order.deliveryFeeAmount,
+    cashDueOnDelivery: order.cashDueOnDelivery,
+    commitmentFeeStatus: order.commitmentFeeStatus,
     items: order.items.map((item) => ({
       productId: item.productId || "",
       slug: (item.product?.slug as string) || "",
@@ -118,9 +118,8 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       price: item.price || 0,
     })),
     subtotal: subtotal,
-    // Temporary derived display fallback until backend exposes explicit shipping/fee breakdown
-    shippingFee: Math.max(order.totalAmount - subtotal, 0),
+    shippingFee: order.deliveryFeeAmount ?? Math.max(order.totalAmount - subtotal, 0),
     discount: 0,
-    total: order.totalAmount,
+    total: order.grandTotalAmount ?? order.totalAmount,
   };
 }

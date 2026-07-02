@@ -9,7 +9,7 @@ import { Separator } from "@/components/ui/separator";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { getInvoiceById } from "@/services/orders";
 import { getStoredAuthUser } from "@/services/auth-session";
-import { getStoredCheckoutOrder } from "@/services/checkout";
+import { getStoredCheckoutOrderId } from "@/services/checkout";
 import type { Invoice } from "@/types/order";
 
 function formatCurrency(value: number) {
@@ -32,9 +32,10 @@ function SuccessContent() {
       return;
     }
 
-    const storedCheckoutOrder = getStoredCheckoutOrder(orderId);
-    if (storedCheckoutOrder?.orderNumber) {
-      setStoredOrderRef(storedCheckoutOrder.orderNumber);
+    const storedOrderId = getStoredCheckoutOrderId();
+    if (storedOrderId === orderId) {
+      // We don't have orderNumber in localStorage anymore, just id.
+      // The backend will provide it.
     }
 
     getInvoiceById(orderId)
@@ -239,7 +240,7 @@ function SuccessContent() {
                         <span>{formatCurrency(order.cashDueOnDelivery)}</span>
                       </div>
                       <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
-                        * Estimated MVP breakdown. Official payment status is pending.
+                        * Official payment status is pending.
                       </p>
                     </div>
                   </div>
