@@ -6,6 +6,7 @@ import { usePathname, useRouter } from "next/navigation";
 import {
   Store, Package,
   LifeBuoy, LogOut, Menu, X, Sparkles, FolderTree,
+  Truck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -29,6 +30,7 @@ type NavItem = { name: string; href: string; icon: React.ComponentType<{ classNa
 const NAV_ITEMS: NavItem[] = [
   { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
   { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
+  { name: "Order Queue", href: "/admin/orders", icon: Truck, permission: "view_orders" },
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
   { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
 ];
