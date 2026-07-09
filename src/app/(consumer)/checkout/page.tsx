@@ -7,7 +7,6 @@ import { useRouter } from "next/navigation";
 import { ChevronRight, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { PurchaseProgress, type PurchaseProgressStep } from "@/components/checkout/PurchaseProgress";
 import { useCart } from "@/hooks/use-cart";
 import { getStoredAuthUser } from "@/services/auth-session";
@@ -17,7 +16,6 @@ import {
   createCheckoutOrder,
   quoteCheckoutOrder,
   type CheckoutQuote,
-  type CheckoutPaymentMethod,
 } from "@/services/checkout";
 
 type CheckoutStage = Extract<PurchaseProgressStep, "details" | "payment" | "review">;
@@ -29,6 +27,7 @@ function formatCurrency(value: number) {
 export default function CheckoutPage() {
   const router = useRouter();
   const { hasHydrated, items, itemCount, totalAmount, clearCart, syncWithBackend } = useCart();
+  const paymentMethod = "cash_on_delivery" as const;
   
   const [authUser, setAuthUser] = React.useState<ReturnType<typeof getStoredAuthUser>>(null);
   const [savedAddresses, setSavedAddresses] = React.useState<Address[]>([]);
@@ -38,7 +37,6 @@ export default function CheckoutPage() {
 
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
-  const [paymentMethod, setPaymentMethod] = React.useState<CheckoutPaymentMethod>("cash_on_delivery");
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
 
   const [orderQuote, setOrderQuote] = React.useState<CheckoutQuote | null>(null);
@@ -117,7 +115,7 @@ export default function CheckoutPage() {
         if (isMounted) {
           setOrderQuote(quote);
         }
-      } catch (error) {
+      } catch {
         if (isMounted) {
           setQuoteError("Failed to calculate order quote.");
         }
@@ -387,53 +385,50 @@ export default function CheckoutPage() {
                   <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">
                     2
                   </span>
-                Payment Method
-              </h2>
-              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                {[
-                  { id: "cash_on_delivery" as const, label: "Cash on Delivery", description: "Pay the delivery fee now before dispatch. Pay the product amount in cash on delivery. Online collection is not connected yet. Zogular will confirm payment instructions during order processing.", Icon: Smartphone },
-                ].map(({ id, label, description, Icon }) => {
-                  const isSelected = paymentMethod === id;
-
-                  return (
-                    <button
-                      key={id}
-                      type="button"
-                      onClick={() => setPaymentMethod(id)}
-                      className={`relative flex cursor-pointer flex-col gap-3 rounded-2xl border-2 p-5 text-left transition-all hover:shadow-md ${
-                        isSelected ? "border-[#009E49] bg-[#009E49]/5" : "border-zinc-200 bg-white hover:border-zinc-300"
-                      }`}
-                    >
-                      <span className="flex items-center justify-between">
-                        <span className={`flex items-center gap-2 font-bold ${isSelected ? "text-zinc-900" : "text-zinc-600"}`}>
-                          <Icon className={`h-5 w-5 ${isSelected ? "text-[#009E49]" : ""}`} />
-                          {label}
-                        </span>
-                        <span className={`h-4 w-4 rounded-full bg-white ${isSelected ? "border-4 border-[#009E49]" : "border-2 border-zinc-300"}`} />
-                      </span>
-                      <span className="text-xs font-medium text-zinc-500">{description}</span>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-6 grid grid-cols-2 gap-3 md:hidden">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={() => setCheckoutStage("details")}
-                  className="h-12 rounded-xl border-zinc-200 font-bold"
-                >
-                  Back
-                </Button>
-                <Button
-                  type="button"
-                  onClick={() => setCheckoutStage("review")}
-                  className="h-12 rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d]"
-                >
-                  Review Order
-                </Button>
-              </div>
-            </section>
+                  Payment Method
+                </h2>
+                <div className="rounded-2xl border-2 border-[#009E49] bg-[#009E49]/5 p-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 font-bold text-zinc-900">
+                        <Smartphone className="h-5 w-5 text-[#009E49]" />
+                        <span>Cash on Delivery</span>
+                      </div>
+                      <p className="text-xs font-medium leading-relaxed text-zinc-600">
+                        Checkout currently supports Cash on Delivery only. The delivery fee is handled before dispatch,
+                        and the product amount is paid in cash on delivery.
+                      </p>
+                      <p className="text-xs font-medium leading-relaxed text-zinc-500">
+                        Other payment methods are not live on this checkout flow yet, so they are not offered here.
+                      </p>
+                    </div>
+                    <span className="rounded-full border border-[#009E49]/20 bg-white px-2.5 py-1 text-[10px] font-black uppercase tracking-wider text-[#009E49]">
+                      MVP
+                    </span>
+                  </div>
+                </div>
+                <div className="mt-4 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-xs font-medium text-amber-900">
+                  The delivery fee due now and the cash due on delivery come from the backend quote and order response,
+                  not from frontend-only calculation.
+                </div>
+                <div className="mt-6 grid grid-cols-2 gap-3 md:hidden">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => setCheckoutStage("details")}
+                    className="h-12 rounded-xl border-zinc-200 font-bold"
+                  >
+                    Back
+                  </Button>
+                  <Button
+                    type="button"
+                    onClick={() => setCheckoutStage("review")}
+                    className="h-12 rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d]"
+                  >
+                    Review Order
+                  </Button>
+                </div>
+              </section>
             )}
           </div>
 
