@@ -2,7 +2,7 @@ import type { CartItem } from "@/types/cart";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { apiClient } from "@/services/api";
 
-export type CheckoutPaymentMethod = "cash_on_delivery" | "mobile_money";
+export type CheckoutPaymentMethod = "cash_on_delivery";
 export type CheckoutOrderStatus = "processing";
 
 export interface CheckoutContact {
