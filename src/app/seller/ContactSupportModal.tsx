@@ -13,7 +13,11 @@ interface ContactSupportModalProps {
   onSuccess?: (ticketId: string) => void;
 }
 
-export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSupportModalProps) {
+export function ContactSupportModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: ContactSupportModalProps) {
   const [subject, setSubject] = useState("");
   const [category, setCategory] = useState<TicketCategory>("general");
   const [priority, setPriority] = useState<TicketPriority>("medium");
@@ -23,29 +27,41 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
 
   if (!isOpen) return null;
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const resetForm = () => {
+    setSubject("");
+    setCategory("general");
+    setPriority("medium");
+    setMessage("");
+    setError(null);
+  };
+
+  const handleSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
     if (!subject.trim() || !message.trim()) {
-      setError("Please fill out all fields.");
+      setError("Please add a subject and message before submitting.");
       return;
     }
+
     try {
       setLoading(true);
       setError(null);
-      const ticket = await supportApi.createTicket(subject, category, priority, message);
-      
-      setSubject("");
-      setCategory("general");
-      setPriority("medium");
-      setMessage("");
-      
-      if (onSuccess) {
-        onSuccess(ticket.id);
-      } else {
-        onClose();
-      }
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create ticket.");
+      const ticket = await supportApi.createTicket(
+        subject.trim(),
+        category,
+        priority,
+        message.trim(),
+      );
+
+      resetForm();
+      onSuccess?.(ticket.id);
+      onClose();
+    } catch (submitError) {
+      setError(
+        submitError instanceof Error
+          ? submitError.message
+          : "Failed to create support ticket.",
+      );
     } finally {
       setLoading(false);
     }
@@ -59,7 +75,7 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
         aria-hidden="true"
       />
 
-      <div className="relative w-full max-w-lg overflow-hidden rounded-3xl bg-white p-6 shadow-2xl flex flex-col max-h-[90vh]">
+      <div className="relative flex max-h-[90vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white p-6 shadow-2xl">
         <div className="absolute right-4 top-4">
           <Button
             aria-label="Close support contact modal"
@@ -73,24 +89,28 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
           </Button>
         </div>
 
-        <h2 className="mb-1 text-xl font-black text-zinc-900">Create Support Ticket</h2>
+        <h2 className="mb-1 text-xl font-black text-zinc-900">
+          Create Support Ticket
+        </h2>
         <p className="mb-6 text-xs font-medium text-zinc-500">
-          Describe your issue and ZOGULAR operations will respond in this thread.
+          Open a support ticket here or use email if you need an offline fallback.
         </p>
 
-        {error && (
+        {error ? (
           <div className="mb-6 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4">
             <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-500" />
-            <p className="text-sm font-bold text-red-900 leading-tight">{error}</p>
+            <p className="text-sm font-bold leading-tight text-red-900">{error}</p>
           </div>
-        )}
+        ) : null}
 
-        <form onSubmit={handleSubmit} className="overflow-y-auto pr-2 flex-1 space-y-4">
+        <form onSubmit={handleSubmit} className="flex-1 space-y-4 overflow-y-auto pr-2">
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">Subject</label>
+            <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">
+              Subject
+            </label>
             <Input
               value={subject}
-              onChange={(e) => setSubject(e.target.value)}
+              onChange={(event) => setSubject(event.target.value)}
               disabled={loading}
               placeholder="Brief summary of the issue"
               className="h-11 rounded-xl bg-zinc-50 text-sm font-bold shadow-inner focus-visible:ring-zinc-900"
@@ -99,10 +119,14 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">Category</label>
+              <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">
+                Category
+              </label>
               <select
                 value={category}
-                onChange={(e) => setCategory(e.target.value as TicketCategory)}
+                onChange={(event) =>
+                  setCategory(event.target.value as TicketCategory)
+                }
                 disabled={loading}
                 className="h-11 w-full appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
               >
@@ -114,11 +138,16 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
                 <option value="account">Account</option>
               </select>
             </div>
+
             <div>
-              <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">Priority</label>
+              <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">
+                Priority
+              </label>
               <select
                 value={priority}
-                onChange={(e) => setPriority(e.target.value as TicketPriority)}
+                onChange={(event) =>
+                  setPriority(event.target.value as TicketPriority)
+                }
                 disabled={loading}
                 className="h-11 w-full appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
               >
@@ -131,10 +160,12 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
           </div>
 
           <div>
-            <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">Message</label>
+            <label className="mb-1.5 block text-xs font-black uppercase tracking-wider text-zinc-500">
+              Message
+            </label>
             <textarea
               value={message}
-              onChange={(e) => setMessage(e.target.value)}
+              onChange={(event) => setMessage(event.target.value)}
               disabled={loading}
               placeholder="Please provide details about your issue..."
               className="h-32 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
@@ -144,15 +175,20 @@ export function ContactSupportModal({ isOpen, onClose, onSuccess }: ContactSuppo
           <Button
             type="submit"
             disabled={loading}
-            className="w-full h-11 rounded-xl bg-zinc-900 font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95"
+            className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95"
           >
             {loading ? "Creating Ticket..." : "Submit Ticket"}
           </Button>
         </form>
 
-        <div className="mt-6 pt-5 border-t border-zinc-100 flex items-center justify-between">
-          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Or email us</span>
-          <a href={`mailto:${BRAND.supportEmail}`} className="flex items-center text-xs font-bold text-zinc-500 hover:text-zinc-900 transition-colors">
+        <div className="mt-6 flex items-center justify-between border-t border-zinc-100 pt-5">
+          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+            Email fallback
+          </span>
+          <a
+            href={`mailto:${BRAND.supportEmail}`}
+            className="flex items-center text-xs font-bold text-zinc-500 transition-colors hover:text-zinc-900"
+          >
             <Mail className="mr-1.5 h-3.5 w-3.5" /> {BRAND.supportEmail}
           </a>
         </div>

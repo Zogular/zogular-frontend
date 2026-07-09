@@ -1,8 +1,8 @@
 "use client";
 
 import {
-  CreditCard,
   Headphones,
+  ReceiptText,
   ShieldCheck,
   Truck,
 } from "lucide-react";
@@ -28,16 +28,16 @@ const TRUST_ITEMS: TrustItem[] = [
   {
     id: "secure-payments",
     icon: ShieldCheck,
-    title: "Secure Payments",
-    subtitle: "100% protected transactions",
+    title: "Backend-Quoted Totals",
+    subtitle: "Checkout amounts confirmed before order",
     colorClass: "text-[#009E49]",
     bgClass: "bg-[#009E49]/10",
   },
   {
     id: "flexible-options",
-    icon: CreditCard,
-    title: "Flexible Options",
-    subtitle: "Mobile Money & Cards accepted",
+    icon: ReceiptText,
+    title: "Cash on Delivery",
+    subtitle: "COD is the live MVP payment method",
     colorClass: "text-blue-600",
     bgClass: "bg-blue-500/10",
   },

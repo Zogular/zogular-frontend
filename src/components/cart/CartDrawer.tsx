@@ -246,7 +246,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
 
               <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                 <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" />
-                100% Secure Checkout
+                Backend-quoted COD checkout
               </div>
             </SheetFooter>
           </>
