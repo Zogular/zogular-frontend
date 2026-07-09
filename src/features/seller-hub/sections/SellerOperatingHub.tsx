@@ -14,7 +14,7 @@ export function SellerOperatingHub({ application }: { application: VendorApplica
   const canCreateDraft = hasSellerCapability(application.status, "canCreateDraftProduct");
   let introCopy = "Complete your seller application to unlock the marketplace hub.";
   if (application.status === "APPROVED") {
-    introCopy = "Manage products and orders from here. Payouts and support use pending flows until backend services are fully available.";
+    introCopy = "Manage products and orders from here. In-app support is available, while payouts still depend on backend ledger services.";
   } else if (application.status === "PROVISIONAL") {
     introCopy = "Create draft products and prepare your storefront. Product submission, orders, payouts, and live selling remain blocked until full approval.";
   } else if (application.status === "SUBMITTED" || application.status === "NEEDS_INFO") {

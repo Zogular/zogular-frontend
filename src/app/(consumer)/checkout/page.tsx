@@ -228,7 +228,7 @@ export default function CheckoutPage() {
           <div className="rounded-3xl border border-dashed border-zinc-200 bg-white px-6 py-16 text-center shadow-sm">
             <h1 className="text-2xl font-black text-zinc-900">Your cart is empty</h1>
             <p className="mx-auto mt-2 max-w-md text-sm font-medium text-zinc-500">
-              Add products to your cart before starting secure checkout.
+              Add products to your cart before starting checkout.
             </p>
             <Link href="/categories" className="mt-6 inline-flex">
               <Button className="rounded-xl bg-zinc-900 px-6 font-bold text-white hover:bg-zinc-800">
@@ -251,11 +251,14 @@ export default function CheckoutPage() {
           <div className="mb-4 flex items-center gap-2 text-xs font-semibold text-zinc-500">
             <Link href="/cart" className="hover:text-[#009E49]">Cart</Link>
             <ChevronRight className="h-3 w-3" />
-            <span className="text-zinc-900">Secure Checkout</span>
+            <span className="text-zinc-900">COD Checkout</span>
           </div>
           <h1 className="flex items-center gap-3 text-2xl font-black tracking-tight text-zinc-900 md:text-4xl">
-            Secure Checkout <Lock className="h-6 w-6 text-[#009E49]" />
+            Cash on Delivery Checkout <Truck className="h-6 w-6 text-[#009E49]" />
           </h1>
+          <p className="mt-2 max-w-2xl text-sm font-medium text-zinc-500">
+            Cash on Delivery is the only live checkout method. Delivery fee and cash due are confirmed by the backend quote.
+          </p>
         </div>
 
         <div className="flex flex-col gap-8 xl:gap-12 lg:flex-row">
@@ -526,7 +529,7 @@ export default function CheckoutPage() {
 
               <div className="mt-6 flex flex-col items-center gap-3">
                 <div className="flex items-center gap-1.5 rounded-lg bg-[#009E49]/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#009E49]">
-                  <ShieldCheck className="h-4 w-4" /> 256-bit Secure Encryption
+                  <ShieldCheck className="h-4 w-4" /> Backend-quoted COD order
                 </div>
                 <p className="max-w-62.5 text-center text-[10px] font-medium leading-relaxed text-zinc-400">
                   By placing your order, you agree to Zogular&apos;s Terms of Service and Privacy Policy.

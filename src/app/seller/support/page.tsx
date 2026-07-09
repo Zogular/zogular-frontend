@@ -112,6 +112,7 @@ export default function SellerSupportPage() {
     if (!selectedTicketId) {
       setSelectedTicketData(null);
       setDetailError(null);
+      setReplyText("");
       return;
     }
     let isMounted = true;
@@ -131,18 +132,27 @@ export default function SellerSupportPage() {
     return () => { isMounted = false; };
   }, [selectedTicketId]);
 
+  const canReplyToTicket =
+    selectedTicketData?.status !== "resolved" &&
+    selectedTicketData?.status !== "closed";
+
   const handleReply = async () => {
     if (!selectedTicketId || !replyText.trim()) return;
+
     try {
       setReplying(true);
       setDetailError(null);
-      await supportApi.replyToTicket(selectedTicketId, replyText);
+      await supportApi.replyToTicket(selectedTicketId, replyText.trim());
       setReplyText("");
       const updatedTicket = await supportApi.getTicket(selectedTicketId);
       setSelectedTicketData(updatedTicket);
       loadTickets(true);
-    } catch (err) {
-      setDetailError(err instanceof Error ? err.message : "Failed to send reply.");
+    } catch (replyError) {
+      setDetailError(
+        replyError instanceof Error
+          ? replyError.message
+          : "Failed to send reply.",
+      );
     } finally {
       setReplying(false);
     }
@@ -150,6 +160,7 @@ export default function SellerSupportPage() {
 
   const handleResolve = async () => {
     if (!selectedTicketId) return;
+
     try {
       setResolving(true);
       setDetailError(null);
@@ -157,8 +168,12 @@ export default function SellerSupportPage() {
       const updatedTicket = await supportApi.getTicket(selectedTicketId);
       setSelectedTicketData(updatedTicket);
       loadTickets(true);
-    } catch (err) {
-      setDetailError(err instanceof Error ? err.message : "Failed to resolve ticket.");
+    } catch (resolveError) {
+      setDetailError(
+        resolveError instanceof Error
+          ? resolveError.message
+          : "Failed to resolve ticket.",
+      );
     } finally {
       setResolving(false);
     }
@@ -192,7 +207,7 @@ export default function SellerSupportPage() {
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
           </div>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage your support tickets and communication directly with ZOGULAR operations.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Manage your support tickets and communicate directly with ZOGULAR operations.</p>
         </div>
         <Button onClick={() => setIsContactModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95">
           Contact Support
@@ -221,7 +236,7 @@ export default function SellerSupportPage() {
         <StatCard title="Open Tickets" value={stats.open} icon={LifeBuoy} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
         <StatCard title="Action Needed" value={stats.awaitingSeller} icon={AlertCircle} colorClass="border-amber-200 bg-amber-50/50 text-amber-950" />
         <StatCard title="Resolved" value={stats.resolved} icon={CheckCircle2} colorClass="bg-[#009E49]/5 border-[#009E49]/20 text-[#007a38]" />
-        <StatCard title="Avg Response" value={stats.avgResponseHrs === null ? "Pending backend" : `${stats.avgResponseHrs}h`} icon={Clock} colorClass="bg-zinc-50 border-zinc-200/80 text-zinc-900" />
+        <StatCard title="Avg Response" value={stats.avgResponseHrs === null ? "Unavailable" : `${stats.avgResponseHrs}h`} icon={Clock} colorClass="bg-zinc-50 border-zinc-200/80 text-zinc-900" />
       </div>
 
       {/* 3. FILTERS TOOLBAR */}
@@ -260,7 +275,7 @@ export default function SellerSupportPage() {
               <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-200 bg-white py-16 text-center shadow-sm">
                  <Inbox className="mb-3 h-8 w-8 text-zinc-300" />
                  <h3 className="text-sm font-bold text-zinc-900">No tickets found</h3>
-                 <p className="text-xs text-zinc-500">You don&apos;t have any support tickets yet.</p>
+                 <p className="text-xs text-zinc-500">Open a support ticket when you need help, or use direct email as a fallback.</p>
               </div>
           ) : (
             filteredTickets.map(ticket => {
@@ -295,7 +310,7 @@ export default function SellerSupportPage() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: READ-ONLY TICKET DETAIL */}
+        {/* RIGHT COLUMN: LIVE TICKET DETAIL */}
         <div className={cn("flex-1 min-w-0 flex-col rounded-3xl border border-zinc-200/80 bg-white shadow-sm overflow-hidden", selectedTicketId ? "flex" : "hidden md:flex md:items-center md:justify-center md:bg-zinc-50/50")}>
           {loadingTicket ? (
             <div className="flex flex-col items-center justify-center p-8 h-full">
@@ -311,6 +326,15 @@ export default function SellerSupportPage() {
             <div className="text-center p-8">
               <MessageSquare className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
               <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view conversation</h3>
+              <p className="mx-auto mt-2 max-w-sm text-xs font-medium leading-relaxed text-zinc-500">
+                Ticket replies stay in-app when support is active. You can still use direct email if you need an offline fallback.
+              </p>
+              <a
+                href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
+                className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50"
+              >
+                {BRAND.supportEmail}
+              </a>
             </div>
           ) : (
             <>
@@ -328,7 +352,7 @@ export default function SellerSupportPage() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicketData.category}</span>
                     </div>
                   </div>
-                  {selectedTicketData.status !== "resolved" && selectedTicketData.status !== "closed" && (
+                  {canReplyToTicket ? (
                     <Button
                       variant="outline"
                       size="sm"
@@ -338,7 +362,7 @@ export default function SellerSupportPage() {
                     >
                       {resolving ? "Resolving..." : "Mark as Resolved"}
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
@@ -370,13 +394,12 @@ export default function SellerSupportPage() {
                 })}
               </div>
 
-              {/* Reply Area */}
-              {selectedTicketData.status !== "resolved" && selectedTicketData.status !== "closed" && (
+              {canReplyToTicket ? (
                 <div className="border-t border-zinc-100 bg-white p-4 md:p-6 shrink-0">
                   <div className="flex items-end gap-3">
                     <textarea
                       value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
+                      onChange={(event) => setReplyText(event.target.value)}
                       placeholder="Type your reply..."
                       className="h-20 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
                     />
@@ -389,19 +412,19 @@ export default function SellerSupportPage() {
                     </Button>
                   </div>
                 </div>
-              )}
+              ) : null}
             </>
           )}
         </div>
       </div>
 
       {/* 5. CONTACT SUPPORT MODAL */}
-      <ContactSupportModal 
-        isOpen={isContactModalOpen} 
+      <ContactSupportModal
+        isOpen={isContactModalOpen}
         onClose={() => setIsContactModalOpen(false)}
         onSuccess={(ticketId) => {
           setIsContactModalOpen(false);
-          loadTickets(true);
+          void loadTickets(true);
           setSelectedTicketId(ticketId);
         }}
       />

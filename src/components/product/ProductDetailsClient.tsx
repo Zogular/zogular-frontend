@@ -334,7 +334,7 @@ export function ProductDetailsClient({
 
             <div className="hidden flex-col gap-2 pt-1 md:flex">
               <div className="flex items-center gap-2 text-xs font-medium text-zinc-500">
-                <ShieldCheck className="h-4 w-4 text-[#009E49]" /> Safe & Secure Payments via Zogular
+                <ShieldCheck className="h-4 w-4 text-[#009E49]" /> COD checkout with backend-reviewed totals
               </div>
             </div>
 

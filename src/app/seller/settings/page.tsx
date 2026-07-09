@@ -79,7 +79,7 @@ export default function SellerSettingsPage() {
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Store Profile & Settings</h1>
           </div>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Review your live store configuration and setup preferences. Saving updates remains pending.
+            Review backend-read store setup context. Editing and publishing settings remain pending backend persistence.
           </p>
         </div>
         <Button
@@ -87,7 +87,7 @@ export default function SellerSettingsPage() {
           className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95"
         >
           <LockKeyhole className="mr-2 h-4 w-4" />
-          {isWritePending ? "Saving is pending backend" : "Save Changes"}
+          {isWritePending ? "Read-only until backend save is live" : "Save unavailable"}
         </Button>
       </div>
 

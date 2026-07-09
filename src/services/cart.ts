@@ -9,6 +9,7 @@ type BackendCartProduct = {
   title?: string | null;
   description?: string | null;
   price?: number | string | null;
+  salePrice?: number | string | null;
   images?: unknown;
   slug?: string | null;
   isApproved?: boolean | null;
@@ -53,6 +54,17 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
+function getEffectiveProductPrice(product: BackendCartProduct | null | undefined): number {
+  const regularPrice = toNumber(product?.price);
+  const salePrice = toNumber(product?.salePrice);
+
+  if (salePrice > 0 && salePrice < regularPrice) {
+    return salePrice;
+  }
+
+  return regularPrice;
+}
+
 function parseImages(value: unknown): string[] {
   let candidate = value;
 
@@ -85,7 +97,7 @@ function normalizeBackendCartItem(item: BackendCartItem): CartItem | null {
     serverCartItemId: asString(item.id),
     slug: asString(product?.slug) ?? productId,
     name: title,
-    price: toNumber(product?.price),
+    price: getEffectiveProductPrice(product),
     image: images[0] ?? PRODUCT_IMAGE_PLACEHOLDER,
     quantity: Math.max(1, Math.trunc(toNumber(item.quantity, 1))),
     variant: null,
