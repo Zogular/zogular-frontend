@@ -4,7 +4,7 @@ import * as React from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ChevronRight, Lock, ShieldCheck, Smartphone, Truck } from "lucide-react";
+import { ChevronRight, Lock, ShieldCheck, Smartphone, Truck, AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PurchaseProgress, type PurchaseProgressStep } from "@/components/checkout/PurchaseProgress";
@@ -92,6 +92,7 @@ export default function CheckoutPage() {
     const fetchQuote = async () => {
       setIsLoadingQuote(true);
       setQuoteError(null);
+      setOrderQuote(null);
       try {
         const submitContact = {
           firstName: selectedAddress.name,
@@ -115,9 +116,14 @@ export default function CheckoutPage() {
         if (isMounted) {
           setOrderQuote(quote);
         }
-      } catch {
+      } catch (error) {
         if (isMounted) {
-          setQuoteError("Failed to calculate order quote.");
+          setOrderQuote(null);
+          if (error && typeof error === "object" && "message" in error) {
+            setQuoteError(String(error.message));
+          } else {
+            setQuoteError("Failed to calculate order quote.");
+          }
         }
       } finally {
         if (isMounted) {
@@ -135,12 +141,12 @@ export default function CheckoutPage() {
 
   const deliveryFee = orderQuote?.deliveryFeeAmount;
   const displayedSubtotal = orderQuote?.itemSubtotal ?? totalAmount;
-  const total = orderQuote?.grandTotalAmount ?? totalAmount;
-  const cashDue = orderQuote?.cashDueOnDelivery ?? totalAmount;
+  const total = orderQuote?.grandTotalAmount;
+  const cashDue = orderQuote?.cashDueOnDelivery;
   
   const isGuest = !authUser;
   const detailsComplete = selectedAddressId !== null;
-  const canSubmit = hasHydrated && items.length > 0 && detailsComplete && !submitting && !isGuest && !isLoadingAddresses && !isLoadingQuote && !!orderQuote;
+  const canSubmit = hasHydrated && items.length > 0 && detailsComplete && !submitting && !isGuest && !isLoadingAddresses && !isLoadingQuote && !!orderQuote && !quoteError;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -280,10 +286,11 @@ export default function CheckoutPage() {
                 </section>
               ) : (
                 <section className={`${checkoutStage === "details" ? "block" : "hidden"} rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)] md:block md:p-8`}>
-                  <h2 className="mb-5 flex items-center gap-2 text-lg font-bold text-zinc-900">
+                  <h2 className="mb-1 flex items-center gap-2 text-lg font-bold text-zinc-900">
                     <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
                     Delivery Address
                   </h2>
+                  <p className="mb-5 text-xs font-medium text-zinc-500 pl-8">Pilot delivery is limited to approved Lusaka areas.</p>
                   {savedAddresses.length === 0 ? (
                     <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 py-10 text-center">
                       <p className="mb-4 text-sm font-semibold text-zinc-900">Add a delivery address before checkout.</p>
@@ -464,23 +471,28 @@ export default function CheckoutPage() {
                   <span>Subtotal ({itemCount} items)</span>
                   <span className="font-bold text-zinc-900">{formatCurrency(displayedSubtotal)}</span>
                 </div>
-                <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
-                  <span className="flex items-center gap-1"><Truck className="h-4 w-4" /> Delivery</span>
-                  {isLoadingQuote ? (
-                    <span className="font-medium text-zinc-400">Calculating...</span>
-                  ) : quoteError ? (
-                    <span className="font-medium text-red-500">Error</span>
-                  ) : deliveryFee !== undefined ? (
-                    <span className="font-bold text-zinc-900">{formatCurrency(deliveryFee)}</span>
-                  ) : (
-                    <span className="font-medium text-zinc-400">Calculated after address</span>
-                  )}
-                </div>
+                {quoteError ? (
+                  <div className="flex items-start gap-2 rounded-xl bg-red-50 p-4 text-sm font-medium text-red-900 border border-red-200">
+                    <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
+                    <div>{quoteError}</div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-between font-medium">
+                    <span className="text-zinc-500 flex items-center gap-1"><Truck className="h-4 w-4" /> Delivery Fee</span>
+                    {isLoadingQuote ? (
+                      <span className="h-4 w-12 animate-pulse rounded bg-zinc-200"></span>
+                    ) : (
+                      <span className="text-zinc-900">
+                        {deliveryFee !== undefined ? formatCurrency(deliveryFee) : "Calculated at next step"}
+                      </span>
+                    )}
+                  </div>
+                )}
                 
                 <Separator className="bg-zinc-200" />
                 <div className="flex items-center justify-between">
                   <span className="text-base font-bold text-zinc-900">Order Total</span>
-                  {isLoadingQuote ? (
+                  {isLoadingQuote || total === undefined ? (
                     <span className="text-xl font-black text-zinc-400">...</span>
                   ) : (
                     <span className="text-xl font-black text-zinc-900">{formatCurrency(total)}</span>
@@ -498,7 +510,7 @@ export default function CheckoutPage() {
                 </div>
                 <div className="flex items-center justify-between">
                   <span className="text-sm font-bold text-zinc-700">Cash Due on Delivery</span>
-                  {isLoadingQuote ? (
+                  {isLoadingQuote || cashDue === undefined ? (
                     <span className="text-lg font-black text-zinc-900">...</span>
                   ) : (
                     <span className="text-lg font-black text-zinc-900">{formatCurrency(cashDue)}</span>
