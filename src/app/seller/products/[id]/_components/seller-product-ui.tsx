@@ -3,7 +3,13 @@
 import Image from "next/image";
 import { Box, CheckCircle2, FileText, Info, Layers3, MessageSquareWarning, PackageCheck, ShieldAlert, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { getProductModerationStatusLabel } from "@/services/product-moderation";
+import {
+  getSellerProductModerationStatusLabel,
+  isSellerProductApprovedStatus,
+  isSellerProductBuyerVisibleStatus,
+  isSellerProductNeedsChangesStatus,
+  isSellerProductPublishedStatus,
+} from "@/services/product-moderation";
 import type { SellerProductListing, SellerProductStatus } from "@/services/seller-catalog";
 
 export function formatCurrency(value: number) {
@@ -16,10 +22,11 @@ export function formatDate(value?: string | null) {
 }
 
 export function statusTone(status: SellerProductStatus) {
-  if (status === "published" || status === "approved") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "published") return "border-emerald-200 bg-emerald-50 text-emerald-700";
+  if (status === "approved") return "border-teal-200 bg-teal-50 text-teal-700";
   if (status === "paused") return "border-amber-200 bg-amber-50 text-amber-700";
   if (status === "pending_review") return "border-blue-200 bg-blue-50 text-blue-700";
-  if (status === "rejected" || status === "needs_changes") return "border-red-200 bg-red-50 text-red-700";
+  if (isSellerProductNeedsChangesStatus(status)) return "border-red-200 bg-red-50 text-red-700";
   if (status === "suspended") return "border-red-200 bg-red-100 text-red-700";
   return "border-zinc-200 bg-zinc-100 text-zinc-700";
 }
@@ -27,7 +34,7 @@ export function statusTone(status: SellerProductStatus) {
 export function SellerProductStatusBadge({ status }: { status: SellerProductStatus }) {
   return (
     <span className={`inline-flex rounded-xl border px-3 py-1.5 text-[10px] font-black uppercase tracking-wider ${statusTone(status)}`}>
-      {getProductModerationStatusLabel(status)}
+      {getSellerProductModerationStatusLabel(status)}
     </span>
   );
 }
@@ -51,20 +58,29 @@ export function SellerProductStatusBanner({ product }: { product: SellerProductL
     );
   }
 
-  if (product.status === "rejected" || product.status === "needs_changes") {
+  if (isSellerProductNeedsChangesStatus(product.status)) {
     return (
       <div className="rounded-3xl border border-red-200 bg-red-50/90 p-4 text-red-900 shadow-sm">
         <p className="flex items-center gap-2 text-sm font-black"><MessageSquareWarning className="h-4 w-4" /> Review Feedback Required</p>
-        <p className="mt-1 text-xs font-semibold leading-6 text-red-800">{product.moderation?.moderationNotes || "Admin requested changes before this listing can be approved."}</p>
+        <p className="mt-1 text-xs font-semibold leading-6 text-red-800">{product.moderation?.moderationNotes || "Admin requested changes before review can continue."}</p>
       </div>
     );
   }
 
-  if (product.status === "published" || product.status === "approved") {
+  if (isSellerProductPublishedStatus(product.status)) {
     return (
       <div className="rounded-3xl border border-emerald-200 bg-emerald-50/90 p-4 text-emerald-900 shadow-sm">
-        <p className="flex items-center gap-2 text-sm font-black"><CheckCircle2 className="h-4 w-4" /> Seller Listing Active</p>
-        <p className="mt-1 text-xs font-semibold leading-6 text-emerald-800">You can edit this product, but major edits may require review again later.</p>
+        <p className="flex items-center gap-2 text-sm font-black"><CheckCircle2 className="h-4 w-4" /> Listing Published</p>
+        <p className="mt-1 text-xs font-semibold leading-6 text-emerald-800">This product is currently live to buyers while it stays published and your seller account remains eligible.</p>
+      </div>
+    );
+  }
+
+  if (isSellerProductApprovedStatus(product.status)) {
+    return (
+      <div className="rounded-3xl border border-teal-200 bg-teal-50/90 p-4 text-teal-900 shadow-sm">
+        <p className="flex items-center gap-2 text-sm font-black"><CheckCircle2 className="h-4 w-4" /> Approved By Moderation</p>
+        <p className="mt-1 text-xs font-semibold leading-6 text-teal-800">Moderation approved this listing, and it is currently buyer-visible while it remains approved and your seller account stays eligible.</p>
       </div>
     );
   }
@@ -81,7 +97,7 @@ export function SellerProductStatusBanner({ product }: { product: SellerProductL
   return (
     <div className="rounded-3xl border border-zinc-200 bg-white/80 p-4 text-zinc-700 shadow-sm">
       <p className="flex items-center gap-2 text-sm font-black"><FileText className="h-4 w-4" /> Draft Preview</p>
-      <p className="mt-1 text-xs font-semibold leading-6 text-zinc-500">This listing is not visible to buyers until submitted and approved.</p>
+      <p className="mt-1 text-xs font-semibold leading-6 text-zinc-500">This listing stays private until it is submitted for review and approved by moderation.</p>
     </div>
   );
 }
@@ -115,7 +131,7 @@ export function SellerProductInfoGrid({ product }: { product: SellerProductListi
     { label: "Stock", value: String(product.stock), icon: Box },
     { label: "SKU", value: product.sku, icon: FileText },
     { label: "Updated", value: formatDate(product.updatedAt), icon: CheckCircle2 },
-    { label: "Submitted", value: formatDate(product.moderation?.submittedAt), icon: ShieldAlert },
+    { label: "Submitted for Review", value: formatDate(product.moderation?.submittedAt), icon: ShieldAlert },
     { label: "Weight", value: `${product.logistics.weightKG} kg`, icon: Truck },
   ];
 
@@ -220,7 +236,7 @@ export function SellerProductActionBar({
     tone?: "default" | "warning" | "success";
   }> = [];
 
-  if (product.status !== "pending_review" && product.status !== "suspended") {
+  if (product.status !== "pending_review" && product.status !== "suspended" && !isSellerProductNeedsChangesStatus(product.status)) {
     actions.push({ key: "edit", label: "Edit Product", onClick: onEdit, variant: "outline" });
   }
 
@@ -228,12 +244,22 @@ export function SellerProductActionBar({
     actions.push({ key: "withdraw", label: "Withdraw Review", onClick: onWithdraw, variant: "outline", tone: "warning" });
   }
 
-  if (product.status === "draft" || product.status === "rejected" || product.status === "needs_changes") {
+  if (product.status === "draft") {
     actions.push({ key: "submit", label: "Submit for Review", onClick: onSubmit, tone: "success" });
   }
 
-  if (product.status === "published" || product.status === "approved") {
-    actions.push({ key: "unpublish", label: "Pause/Unpublish", onClick: onUnpublish, variant: "outline", tone: "warning" });
+  if (isSellerProductNeedsChangesStatus(product.status)) {
+    actions.push({ key: "edit_feedback", label: "Edit After Feedback", onClick: onEdit, tone: "success" });
+  }
+
+  if (isSellerProductBuyerVisibleStatus(product.status)) {
+    actions.push({
+      key: "unpublish",
+      label: "Pause Listing",
+      onClick: onUnpublish,
+      variant: "outline",
+      tone: "warning",
+    });
     actions.push({ key: "duplicate", label: "Duplicate", onClick: onDuplicate, variant: "outline" });
   }
 

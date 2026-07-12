@@ -68,7 +68,11 @@ export default function OrdersPage() {
       const data = await getMyOrders();
       setOrders(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
+      if (err && typeof err === "object" && "status" in err && err.status === 401) {
+        setError("Your session expired. Please sign in again.");
+      } else {
+        setError(err instanceof Error ? err.message : "An unknown error occurred");
+      }
     } finally {
       setLoading(false);
     }
@@ -83,6 +87,7 @@ export default function OrdersPage() {
     const query = search.toLowerCase();
     const matchSearch =
       order.id.toLowerCase().includes(query) ||
+      (order.orderNumber && order.orderNumber.toLowerCase().includes(query)) ||
       order.items.some((item) => item.name.toLowerCase().includes(query));
     return matchTab && matchSearch;
   });
@@ -139,9 +144,17 @@ export default function OrdersPage() {
           title="Failed to load orders"
           description={error}
           action={
-            <Button onClick={loadOrders} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-              Try Again
-            </Button>
+            error === "Your session expired. Please sign in again." ? (
+              <Link href="/auth/login?next=/account/orders">
+                <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
+                  Sign In
+                </Button>
+              </Link>
+            ) : (
+              <Button onClick={loadOrders} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
+                Try Again
+              </Button>
+            )
           }
         />
       ) : filteredOrders.length === 0 ? (
@@ -158,7 +171,13 @@ export default function OrdersPage() {
               <Button onClick={() => setSearch("")} variant="outline" className="rounded-xl">
                 Clear Search
               </Button>
-            ) : undefined
+            ) : (
+              <Link href="/categories">
+                <Button className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
+                  Browse Categories
+                </Button>
+              </Link>
+            )
           }
         />
       ) : (
@@ -181,7 +200,7 @@ export default function OrdersPage() {
                     </div>
                     <div>
                       <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Order ID</p>
-                      <p className="text-sm font-bold text-zinc-900">{order.id}</p>
+                      <p className="text-sm font-bold text-zinc-900">{order.orderNumber || order.id}</p>
                     </div>
                   </div>
 

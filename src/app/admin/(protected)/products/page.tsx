@@ -11,8 +11,8 @@ import {
   adminProductsApi,
   type AdminProductRecord,
 } from "@/services/admin/products";
-import { recordAdminAudit } from "@/services/admin/audit";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 import {
   getProductModerationStatusLabel,
   type ProductModerationAction,
@@ -51,9 +51,9 @@ export default function AdminProductsPage() {
   const [mobileView, setMobileView] = useState<"list" | "grid">("list");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
-  const [categoryOverrides, setCategoryOverrides] = useState<Record<string, string>>({});
 
-  const canModerate = adminHasPermission("moderate_products");
+  const identity = useAdminIdentity()!;
+  const canModerate = adminIdentityHasPermission(identity, "moderate_products");
 
   useEffect(() => {
     let ignore = false;
@@ -156,49 +156,11 @@ export default function AdminProductsPage() {
       );
 
       const refreshedProducts = await adminProductsApi.fetchProducts();
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: `product_bulk_${action}`,
-        target: `${eligibleProducts.length} products`,
-        severity: "warning",
-        note,
-      });
       setProducts(refreshedProducts);
       setSelectedProductIds([]);
       toast.success(`${result.count} products updated.`);
     } catch {
       toast.error("Failed to run bulk moderation.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  }
-
-  async function handleCategoryOverride(product: AdminProductRecord, value: string) {
-    setCategoryOverrides((current) => ({ ...current, [product.sellerProductId]: value }));
-    await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
-      action: "product_category_override_drafted",
-      target: product.sellerProductId,
-      note: value,
-    });
-    toast.success("Category override draft saved.");
-  }
-
-  async function handlePublishState(product: AdminProductRecord, status: ProductModerationStatus) {
-    if (!canModerate) return toast.error("Unauthorized.");
-    try {
-      setIsSubmitting(true);
-      const updated = await adminProductsApi.updateProductStatus(product.sellerProductId, status);
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: `product_${status}`,
-        target: product.sellerProductId,
-        severity: status === "suspended" ? "critical" : "warning",
-      });
-      setProducts((current) => current.map((item) => item.sellerProductId === product.sellerProductId ? updated : item));
-      toast.success(`Product moved to ${getProductModerationStatusLabel(status)}.`);
-    } catch {
-      toast.error("Failed to update product status.");
     } finally {
       setIsSubmitting(false);
     }
@@ -214,7 +176,7 @@ export default function AdminProductsPage() {
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Product Moderation</h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Review submitted products before backend publication and keep future moderation signals isolated for integration.
+            Review submitted products before approval. Approved products are buyer-visible under the current backend rules.
           </p>
         </div>
       </div>
@@ -416,21 +378,22 @@ export default function AdminProductsPage() {
                       </Button>
                       {product.status === "approved" ? (
                         <Button
-                          onClick={() => handlePublishState(product, "published")}
+                          disabled
                           size="sm"
-                          className="h-9 rounded-xl bg-emerald-600 px-3 text-[11px] font-bold text-white hover:bg-emerald-700"
+                          variant="outline"
+                          className="h-9 rounded-xl border-emerald-200 bg-emerald-50 px-3 text-[11px] font-bold text-emerald-700"
                         >
-                          Publish
+                          Buyer-visible
                         </Button>
                       ) : null}
                       {product.status === "published" ? (
                         <Button
-                          onClick={() => handlePublishState(product, "suspended")}
+                          disabled
                           size="sm"
-                          variant="destructive"
-                          className="h-9 rounded-xl px-3 text-[11px] font-bold"
+                          variant="outline"
+                          className="h-9 rounded-xl border-amber-200 bg-amber-50 px-3 text-[11px] font-bold text-amber-800"
                         >
-                          Suspend
+                          Suspend via review
                         </Button>
                       ) : null}
                     </div>
@@ -486,20 +449,21 @@ export default function AdminProductsPage() {
                           </Button>
                           {product.status === "approved" ? (
                             <Button
-                              onClick={() => handlePublishState(product, "published")}
+                              disabled
                               size="sm"
-                              className="h-8 rounded-xl bg-emerald-600 px-3 text-[10px] font-bold text-white hover:bg-emerald-700"
+                              variant="outline"
+                              className="h-8 rounded-xl border-emerald-200 bg-emerald-50 px-3 text-[10px] font-bold text-emerald-700"
                             >
-                              Publish
+                              Buyer-visible
                             </Button>
                           ) : product.status === "published" ? (
                             <Button
-                              onClick={() => handlePublishState(product, "suspended")}
+                              disabled
                               size="sm"
-                              variant="destructive"
-                              className="h-8 rounded-xl px-3 text-[10px] font-bold"
+                              variant="outline"
+                              className="h-8 rounded-xl border-amber-200 bg-amber-50 px-3 text-[10px] font-bold text-amber-800"
                             >
-                              Suspend
+                              Suspend via review
                             </Button>
                           ) : null}
                         </div>
@@ -584,17 +548,9 @@ export default function AdminProductsPage() {
                       <td className="p-3">
                         <p className="font-bold text-zinc-900">{product.categoryName}</p>
                         <p className="text-[10px] font-medium text-zinc-500">{product.subcategoryName}</p>
-                        <select
-                          value={categoryOverrides[product.sellerProductId] ?? product.categoryName}
-                          onChange={(event) => handleCategoryOverride(product, event.target.value)}
-                          className="mt-2 h-8 rounded-lg border border-zinc-200 bg-zinc-50 px-2 text-[10px] font-bold text-zinc-700"
-                        >
-                          <option value={product.categoryName}>{product.categoryName}</option>
-                          <option value="Electronics">Electronics</option>
-                          <option value="Fashion">Fashion</option>
-                          <option value="Home & Living">Home & Living</option>
-                          <option value="Healthcare & Beauty">Healthcare & Beauty</option>
-                        </select>
+                        <p className="mt-2 rounded-lg border border-zinc-200 bg-zinc-50 px-2 py-1.5 text-[10px] font-bold text-zinc-500">
+                          Backend category snapshot
+                        </p>
                       </td>
                       <td className="p-3 text-xs font-bold text-zinc-600">{formatDate(product.submittedAt)}</td>
                       <td className="p-3">
@@ -611,10 +567,10 @@ export default function AdminProductsPage() {
                           {product.status === "pending_review" ? "Review" : "View"}
                         </Button>
                         {product.status === "approved" ? (
-                          <Button onClick={() => handlePublishState(product, "published")} size="sm" className="ml-2 h-9 rounded-xl bg-emerald-600 font-bold text-white hover:bg-emerald-700">Publish</Button>
+                          <Button disabled size="sm" variant="outline" className="ml-2 h-9 rounded-xl border-emerald-200 bg-emerald-50 font-bold text-emerald-700">Buyer-visible</Button>
                         ) : null}
                         {product.status === "published" ? (
-                          <Button onClick={() => handlePublishState(product, "suspended")} size="sm" variant="destructive" className="ml-2 h-9 rounded-xl font-bold">Suspend</Button>
+                          <Button disabled size="sm" variant="outline" className="ml-2 h-9 rounded-xl border-amber-200 bg-amber-50 font-bold text-amber-800">Suspend via review</Button>
                         ) : null}
                       </td>
                     </tr>

@@ -1,534 +1,497 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import Link from "next/link";
-import {
-  Search, ShoppingCart, AlertTriangle, Truck, CheckCircle2, 
-  PackageX, RefreshCcw, Eye, X, MapPin, ShieldAlert
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ClipboardList, Clock3, PackageCheck, ShieldAlert, Truck } from "lucide-react";
 import { toast } from "sonner";
-import { cn } from "@/lib/utils";
-import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
+import {
+  AdminDetailSheet,
+  AdminEmptyState,
+  AdminMetricCard,
+  AdminPageHeader,
+  AdminSearchField,
+  AdminStatusBadge,
+  AdminToolbar,
+  type AdminTone,
+} from "@/components/admin/AdminPrimitives";
+import { Button } from "@/components/ui/button";
+import { formatAdminCurrency, formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
+import {
+  adminOrdersApi,
+  type AdminOrderRecord,
+  type AdminOrderStatus,
+} from "@/services/admin/orders";
 
-// Architecture Imports
-import { adminOrdersApi, AdminOrderRecord, OrderStatus } from "@/services/admin/orders";
-import { recordAdminAudit } from "@/services/admin/audit";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
-
-// ============================================================================
-// LOGIC HELPERS & UI MAPS
-// ============================================================================
-function formatCurrency(value: number) { return `K${value.toLocaleString()}`; }
-function formatDate(isoString: string) { 
-  return new Intl.DateTimeFormat("en-ZM", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" }).format(new Date(isoString)); 
-}
-
-const STATUS_UI: Record<OrderStatus, { label: string; bg: string; text: string; border: string; icon: React.ElementType }> = {
-  "pending": { label: "Pending", bg: "bg-amber-950", text: "text-amber-100", border: "border-amber-400/50", icon: ClockIcon },
-  "processing": { label: "Processing", bg: "bg-sky-950", text: "text-sky-100", border: "border-sky-400/50", icon: RefreshCcw },
-  "shipped": { label: "In Transit", bg: "bg-indigo-950", text: "text-indigo-100", border: "border-indigo-400/50", icon: Truck },
-  "delivered": { label: "Delivered", bg: "bg-emerald-950", text: "text-emerald-100", border: "border-emerald-400/50", icon: CheckCircle2 },
-  "cancelled": { label: "Cancelled", bg: "bg-zinc-900", text: "text-zinc-200", border: "border-zinc-500/50", icon: PackageX },
-  "refunded": { label: "Refunded", bg: "bg-fuchsia-950", text: "text-fuchsia-100", border: "border-fuchsia-400/50", icon: RefreshCcw },
-  "escalated": { label: "Escalated", bg: "bg-rose-950", text: "text-rose-100", border: "border-rose-400/60 shadow-[0_0_14px_rgba(225,29,72,0.24)]", icon: AlertTriangle },
+const statusTone: Record<AdminOrderStatus, AdminTone> = {
+  PENDING: "amber",
+  CONFIRMED: "indigo",
+  PROCESSING: "sky",
+  SHIPPED: "indigo",
+  DELIVERED: "emerald",
+  CANCELLED: "rose",
+  REFUNDED: "zinc",
 };
 
-function ClockIcon(props: React.SVGProps<SVGSVGElement>) { 
-  return <svg {...props} xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>; 
+const PAGE_SIZE = 12;
+
+const NEXT_STATUSES: Partial<Record<AdminOrderStatus, AdminOrderStatus[]>> = {
+  PENDING: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["PROCESSING", "CANCELLED"],
+  PROCESSING: ["SHIPPED", "CANCELLED"],
+  SHIPPED: ["DELIVERED"],
+};
+
+function getStatusLabel(status: AdminOrderStatus) {
+  return toTitleCase(status.toLowerCase());
 }
 
-// ============================================================================
-// MAIN PAGE EXPORT
-// ============================================================================
 export default function AdminOrdersPage() {
+  const identity = useAdminIdentity();
+  const canViewOrders = identity ? adminIdentityHasPermission(identity, "view_orders") : false;
+  const canManageFulfillment = identity ? adminIdentityHasPermission(identity, "override_orders") : false;
+
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Filters
-  const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<OrderStatus | "all">("all");
-  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
-
-  // Functional Modal State
-  const [selectedOrder, setSelectedOrder] = useState<AdminOrderRecord | null>(null);
-  const [isProcessingOverride, setIsProcessingOverride] = useState(false);
-  const [adminNote, setAdminNote] = useState("");
-  const [orderNotes, setOrderNotes] = useState<Record<string, string[]>>({});
-  const [createdDisputes, setCreatedDisputes] = useState<Record<string, string>>({});
-
-  // RBAC Action-Level Guards
-  const canOverride = adminHasPermission("override_orders");
-  const canCreateDispute = adminHasPermission("manage_disputes");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<AdminOrderStatus | "all">("all");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [nextStatus, setNextStatus] = useState<AdminOrderStatus | "">("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [operationsNotes, setOperationsNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
       setLoading(true);
-      const data = await adminOrdersApi.fetchOrders();
-      setOrders(data);
+      setRequestError(null);
+      const response = await adminOrdersApi.fetchOrders({
+        page,
+        limit: PAGE_SIZE,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        search: search.trim() || undefined,
+        sortBy: "updatedAt",
+        sortOrder: "desc",
+      });
+
+      setOrders(response.orders);
+      setPagination(response.pagination);
     } catch {
-      toast.error("Failed to load platform orders.");
+      setOrders([]);
+      setSelectedOrderId(null);
+      setRequestError("The launch control-room queue could not be loaded from the backend.");
+      toast.error("Failed to load the admin order queue.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [page, search, statusFilter]);
 
-  useEffect(() => { loadOrders(); }, [loadOrders]);
-
-  const filteredOrders = useMemo(() => {
-    return orders.filter(o => {
-      const matchesSearch = !searchQuery || o.id.toLowerCase().includes(searchQuery.toLowerCase()) || o.buyerName.toLowerCase().includes(searchQuery.toLowerCase()) || o.sellerStoreName.toLowerCase().includes(searchQuery.toLowerCase());
-      const matchesStatus = statusFilter === "all" || o.status === statusFilter;
-      return matchesSearch && matchesStatus;
-    });
-  }, [orders, searchQuery, statusFilter]);
-
-  // Derived KPIs
-  const totalVolume = orders.reduce((sum, o) => sum + o.totalAmount, 0);
-  const escalatedCount = orders.filter(o => o.status === "escalated").length;
-  const inTransitCount = orders.filter(o => o.status === "shipped").length;
-
-  // --- MUTATION HANDLERS ---
-  const handleOverrideStatus = async (newStatus: OrderStatus) => {
-    if (!selectedOrder || !canOverride) return toast.error("Unauthorized action.");
-    setIsProcessingOverride(true);
-    try {
-      await adminOrdersApi.overrideOrderStatus(selectedOrder.id, newStatus);
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: "order_status_override",
-        target: selectedOrder.id,
-        severity: "critical",
-        note: `${selectedOrder.status} -> ${newStatus}`,
-      });
-      setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { ...o, status: newStatus } : o));
-      setSelectedOrder(prev => prev ? { ...prev, status: newStatus } : null);
-      setOrderNotes(prev => ({ ...prev, [selectedOrder.id]: [`Status override: ${selectedOrder.status} -> ${newStatus}`, ...(prev[selectedOrder.id] ?? [])] }));
-      toast.success(`Order forcefully moved to ${newStatus}.`);
-    } catch {
-      toast.error("Failed to override order status.");
-    } finally {
-      setIsProcessingOverride(false);
+  useEffect(() => {
+    if (!canViewOrders) {
+      setLoading(false);
+      return;
     }
-  };
 
-  const handleForceRefund = async () => {
-    if (!selectedOrder || !canOverride) return;
-    setIsProcessingOverride(true);
-    try {
-      await adminOrdersApi.processRefund(selectedOrder.id);
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: "order_refund_forced",
-        target: selectedOrder.id,
-        severity: "critical",
-        note: adminNote.trim() || "Manual admin refund override.",
-      });
-      setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { ...o, status: "refunded" } : o));
-      setSelectedOrder(prev => prev ? { ...prev, status: "refunded" } : null);
-      setOrderNotes(prev => ({ ...prev, [selectedOrder.id]: [adminNote.trim() || "Refund processed by admin override.", ...(prev[selectedOrder.id] ?? [])] }));
-      setAdminNote("");
-      toast.success("Refund processed and funds reversed to buyer.");
-    } catch {
-      toast.error("Failed to process refund.");
-    } finally {
-      setIsProcessingOverride(false);
-    }
-  };
+    void loadOrders();
+  }, [canViewOrders, loadOrders]);
 
-  const handleSaveOrderNote = async () => {
-    if (!selectedOrder || !adminNote.trim()) return toast.error("Add an admin note first.");
-    await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
-      action: "order_admin_note_added",
-      target: selectedOrder.id,
-      note: adminNote.trim(),
-    });
-    setOrderNotes(prev => ({ ...prev, [selectedOrder.id]: [adminNote.trim(), ...(prev[selectedOrder.id] ?? [])] }));
-    setAdminNote("");
-    toast.success("Order note saved.");
-  };
-
-  const handleCreateDispute = async () => {
-    if (!selectedOrder) return;
-    if (!canCreateDispute) return toast.error("You do not have permission to create disputes.");
-    const disputeId = `DSP-${Math.floor(1000 + Math.random() * 9000)}`;
-    await recordAdminAudit({
-      actorId: CURRENT_ADMIN_IDENTITY.id,
-      action: "order_dispute_created",
-      target: selectedOrder.id,
-      severity: "warning",
-      note: disputeId,
-    });
-    setCreatedDisputes(prev => ({ ...prev, [selectedOrder.id]: disputeId }));
-    setOrders(prev => prev.map(o => o.id === selectedOrder.id ? { ...o, status: "escalated", escalationReason: adminNote.trim() || "Dispute created from admin order review." } : o));
-    setSelectedOrder(prev => prev ? { ...prev, status: "escalated", escalationReason: adminNote.trim() || "Dispute created from admin order review." } : null);
-    toast.success(`Dispute ${disputeId} created from order.`);
-  };
-
-  if (loading) return (
-    <div className="animate-pulse space-y-6">
-      <div className="h-10 w-64 rounded-xl bg-zinc-200" />
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-3"><div className="h-32 rounded-3xl bg-zinc-200" /><div className="h-32 rounded-3xl bg-zinc-200" /><div className="h-32 rounded-3xl bg-zinc-200" /></div>
-      <div className="h-150 rounded-3xl bg-zinc-200" />
-    </div>
+  const selectedOrder = useMemo(
+    () => orders.find((order) => order.id === selectedOrderId) ?? null,
+    [orders, selectedOrderId],
   );
 
+  useEffect(() => {
+    setNextStatus("");
+    setTrackingNumber(selectedOrder?.trackingNumber ?? "");
+    setOperationsNotes(selectedOrder?.notes ?? "");
+    setMutationError(null);
+  }, [selectedOrder]);
+
+  const handleOrderMutation = async () => {
+    if (!selectedOrder || !nextStatus || !canManageFulfillment) return;
+
+    try {
+      setSubmitting(true);
+      setMutationError(null);
+      const updated = await adminOrdersApi.updateOrder(selectedOrder.id, {
+        status: nextStatus,
+        ...(trackingNumber.trim() ? { trackingNumber: trackingNumber.trim() } : {}),
+        ...(operationsNotes.trim() ? { notes: operationsNotes.trim() } : {}),
+      });
+      setOrders((current) => current.map((order) => order.id === updated.id ? updated : order));
+      toast.success(`Order moved to ${getStatusLabel(updated.status)}.`);
+      await loadOrders();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The order update was rejected by the backend.";
+      setMutationError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const summary = useMemo(() => {
+    return {
+      total: pagination.total,
+      pending: orders.filter((order) => order.status === "PENDING" || order.status === "CONFIRMED").length,
+      inFlight: orders.filter((order) => order.status === "PROCESSING" || order.status === "SHIPPED").length,
+      delivered: orders.filter((order) => order.status === "DELIVERED").length,
+    };
+  }, [orders, pagination.total]);
+
+  if (!canViewOrders) {
+    return (
+      <AdminEmptyState
+        title="Access denied"
+        description="Your admin role cannot view the launch control-room order queue."
+      />
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-400 animate-in space-y-6 fade-in slide-in-from-bottom-4 duration-500 min-w-0 pb-12">
-      
-      {/* 1. HEADER */}
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
-        <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Logistics & Orders</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Monitor all platform fulfillment and resolve stuck deliveries.</p>
-        </div>
-      </div>
-
-      {/* 2. PREMIUM KPI BENTO GRID */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-zinc-950 to-zinc-800 p-6 shadow-md shadow-zinc-900/20 transition-all hover:-translate-y-0.5 hover:shadow-lg">
-          <div className="absolute -right-4 -top-4 opacity-10"><ShoppingCart className="h-24 w-24 text-white" /></div>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Total Pipeline Value</p>
-          <h3 className="mt-2 text-3xl font-black text-white">{formatCurrency(totalVolume)}</h3>
-          <p className="mt-1 text-xs font-medium text-zinc-400">All active & past orders</p>
-        </div>
-        
-        <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-rose-600 to-rose-900 p-6 shadow-md shadow-rose-900/20 transition-all hover:-translate-y-0.5 hover:shadow-lg">
-           <div className="absolute -right-4 -top-4 opacity-20"><ShieldAlert className="h-24 w-24 text-white" /></div>
-           <p className="text-[10px] font-bold uppercase tracking-wider text-rose-200">Escalated Orders</p>
-           <h3 className="mt-2 text-3xl font-black text-white">{escalatedCount} Requires Action</h3>
-           <p className="mt-1 text-xs font-medium text-rose-200">Stuck deliveries or disputes</p>
-        </div>
-
-        <div className="relative overflow-hidden rounded-3xl bg-linear-to-br from-indigo-600 to-sky-900 p-6 shadow-md shadow-indigo-900/20 transition-all hover:-translate-y-0.5 hover:shadow-lg">
-           <div className="absolute -right-4 -top-4 opacity-20"><Truck className="h-24 w-24 text-white" /></div>
-           <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-200">Active Transit</p>
-           <h3 className="mt-2 text-3xl font-black text-white">{inTransitCount} Packages</h3>
-           <p className="mt-1 text-xs font-medium text-indigo-200">Currently out for delivery</p>
-        </div>
-      </div>
-
-      {/* 3. FILTERS TOOLBAR */}
-      <div className="flex flex-col gap-3 rounded-3xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:flex-row md:items-center">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
-          <Input 
-            value={searchQuery} 
-            onChange={(e) => setSearchQuery(e.target.value)} 
-            placeholder="Search Order ID, Buyer, or Store..." 
-            className="h-11 w-full rounded-xl border-zinc-200 bg-zinc-50 pl-9 text-sm font-medium focus-visible:ring-zinc-900 shadow-inner transition-all hover:bg-white" 
-          />
-        </div>
-        <div className="flex gap-3">
-          <select 
-            aria-label="Order Status Filter" 
-            value={statusFilter} 
-            onChange={(e) => setStatusFilter(e.target.value as OrderStatus | "all")} 
-            className="h-11 appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 pr-8 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer transition-all hover:bg-white"
-          >
-            <option value="all">All Statuses</option>
-            <option value="pending">Pending</option>
-            <option value="processing">Processing</option>
-            <option value="shipped">In Transit</option>
-            <option value="delivered">Delivered</option>
-            <option value="escalated">Escalated</option>
-          </select>
-        </div>
-      </div>
-
-      <CollectionViewToggle
-        value={mobileView}
-        onChange={setMobileView}
-        className="md:hidden"
+    <div className="space-y-6">
+      <AdminPageHeader
+        title="Order Queue"
+        description="Launch control-room view for manual dispatch operations. Payment and delivery snapshots come from backend order records; rider tracking remains manual during MVP."
       />
 
-      <div className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-3" : "overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl")}>
-        {filteredOrders.length === 0 ? (
-          <div className="p-10 text-center">
-            <p className="text-sm font-bold text-zinc-500">No orders match your search.</p>
-          </div>
-        ) : mobileView === "list" ? (
-          <div className="divide-y divide-zinc-100">
-            {filteredOrders.map((order) => {
-              const statUI = STATUS_UI[order.status];
-              const StatIcon = statUI.icon;
-              return (
-                <div key={order.id} className="p-3.5">
-                  <div className="flex items-start justify-between gap-2">
-                    <div className="min-w-0">
-                      <p className="text-[13px] font-black text-zinc-900">{order.id}</p>
-                      <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{order.sellerStoreName}</p>
-                    </div>
-                    <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
-                      <StatIcon className="h-3 w-3" />
-                      {statUI.label}
-                    </span>
-                  </div>
-                  <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
-                    <span className="inline-flex items-center gap-1">
-                      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Buyer</span>
-                      <span>{order.buyerName}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Amount</span>
-                      <span>{formatCurrency(order.totalAmount)}</span>
-                    </span>
-                    <span className="inline-flex items-center gap-1">
-                      <span className="text-[8px] font-black uppercase tracking-[0.16em] text-zinc-400">Placed</span>
-                      <span>{formatDate(order.placedAt)}</span>
-                    </span>
-                  </div>
-                  <div className="mt-2 flex justify-end">
-                    <Button onClick={() => setSelectedOrder(order)} variant="outline" size="sm" className="h-8 rounded-xl border-zinc-200 text-[10px] font-bold text-zinc-700">
-                      View Details
-                    </Button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        ) : (
-          filteredOrders.map((order) => {
-            const statUI = STATUS_UI[order.status];
-            const StatIcon = statUI.icon;
-            return (
-              <article key={order.id} className="rounded-[1.5rem] border border-white/70 bg-white/80 p-4 shadow-md shadow-zinc-900/5 backdrop-blur-xl">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-[13px] font-black text-zinc-900">{order.id}</p>
-                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-zinc-500">{order.sellerStoreName}</p>
-                  </div>
-                  <span className={cn("inline-flex items-center gap-1 rounded-lg border px-2 py-0.5 text-[9px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
-                    <StatIcon className="h-3 w-3" />
-                    {statUI.label}
-                  </span>
-                </div>
-                <div className="mt-2.5 rounded-[1rem] border border-zinc-200 bg-zinc-50/80 px-3">
-                  <GridLine label="Buyer" value={order.buyerName} />
-                  <GridLine label="Amount" value={formatCurrency(order.totalAmount)} />
-                  <GridLine label="Items" value={`${order.itemsCount} items`} />
-                  <GridLine label="Placed" value={formatDate(order.placedAt)} isLast />
-                </div>
-                <div className="mt-2.5 flex justify-end">
-                  <Button onClick={() => setSelectedOrder(order)} variant="outline" size="sm" className="h-9 rounded-xl border-zinc-200 text-[11px] font-bold text-zinc-700">
-                    View Details
-                  </Button>
-                </div>
-              </article>
-            );
-          })
-        )}
+      <div className="rounded-3xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm font-medium text-amber-900 shadow-sm shadow-amber-900/5">
+        Manual delivery remains the MVP truth. Use this queue to review buyer, seller, COD snapshot, and timing context without implying live courier tracking or automated dispatch.
       </div>
 
-      {/* 4. PREMIUM DATA GRID */}
-      <div className="hidden overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:block">
-        <div className="overflow-x-auto hide-scrollbar">
-          <table className="w-full text-left text-sm min-w-250">
-            <thead className="border-b border-zinc-100 bg-zinc-100/80 backdrop-blur-sm">
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <AdminMetricCard title="Orders in View" value={summary.total} note="Current filtered queue size" icon={<ClipboardList className="h-5 w-5" />} tone="zinc" />
+        <AdminMetricCard title="Needs Action" value={summary.pending} note="Pending or confirmed orders" icon={<ShieldAlert className="h-5 w-5" />} tone="amber" />
+        <AdminMetricCard title="In Motion" value={summary.inFlight} note="Processing or shipped manually" icon={<Truck className="h-5 w-5" />} tone="sky" />
+        <AdminMetricCard title="Delivered" value={summary.delivered} note="Completed demo or live records" icon={<PackageCheck className="h-5 w-5" />} tone="emerald" />
+      </div>
+
+      <AdminToolbar>
+        <AdminSearchField
+          value={search}
+          onChange={(value) => {
+            setSearch(value);
+            setPage(1);
+          }}
+          placeholder="Search order ID, buyer name, email, or phone..."
+          className="flex-1"
+        />
+        <select
+          value={statusFilter}
+          onChange={(event) => {
+            setStatusFilter(event.target.value as AdminOrderStatus | "all");
+            setPage(1);
+          }}
+          className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm"
+        >
+          <option value="all">All statuses</option>
+          <option value="PENDING">Pending</option>
+          <option value="CONFIRMED">Confirmed</option>
+          <option value="PROCESSING">Processing</option>
+          <option value="SHIPPED">Shipped</option>
+          <option value="DELIVERED">Delivered</option>
+          <option value="CANCELLED">Cancelled</option>
+          <option value="REFUNDED">Refunded</option>
+        </select>
+      </AdminToolbar>
+
+      <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[1120px] text-left text-sm">
+            <thead className="bg-zinc-950 text-[11px] uppercase tracking-wider text-zinc-300">
               <tr>
-                <th className="rounded-tl-2xl p-4 pl-6 text-[10px] font-black uppercase tracking-wider text-zinc-500">Order Details</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Logistics</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Status</th>
-                <th className="p-4 text-[10px] font-black uppercase tracking-wider text-zinc-500">Amount</th>
-                <th className="rounded-tr-2xl p-4 pr-6 text-right text-[10px] font-black uppercase tracking-wider text-zinc-500">Action</th>
+                <th className="rounded-tl-3xl px-5 py-4 font-black">Order</th>
+                <th className="px-5 py-4 font-black">Buyer</th>
+                <th className="px-5 py-4 font-black">Payment Snapshot</th>
+                <th className="px-5 py-4 font-black">Delivery Snapshot</th>
+                <th className="px-5 py-4 font-black">Updated</th>
+                <th className="rounded-tr-3xl px-5 py-4 text-right font-black">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-50">
-              {filteredOrders.length === 0 ? (
-                <tr><td colSpan={5} className="p-12 text-center"><p className="text-sm font-bold text-zinc-500">No orders match your search.</p></td></tr>
+            <tbody className="divide-y divide-zinc-100">
+              {loading ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-12 text-center text-sm font-bold text-zinc-500">
+                    Loading launch order queue...
+                  </td>
+                </tr>
+              ) : requestError ? (
+                <tr>
+                  <td colSpan={6} className="px-5 py-12">
+                    <div className="flex flex-col items-center gap-4 text-center">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700">
+                        <ShieldAlert className="h-5 w-5" />
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-sm font-black text-zinc-700">Order queue unavailable</p>
+                        <p className="text-xs font-medium text-zinc-500">
+                          {requestError} Retry after confirming your admin session, network, or backend availability.
+                        </p>
+                      </div>
+                      <Button
+                        variant="outline"
+                        onClick={() => void loadOrders()}
+                        className="rounded-xl font-black"
+                      >
+                        Retry queue load
+                      </Button>
+                    </div>
+                  </td>
+                </tr>
+              ) : orders.length === 0 ? (
+                <tr>
+                  <td colSpan={6}>
+                    <AdminEmptyState
+                      title="No orders match this control-room view"
+                      description="Try widening the status filter or search query."
+                    />
+                  </td>
+                </tr>
               ) : (
-                filteredOrders.map((order) => {
-                  const statUI = STATUS_UI[order.status];
-                  const StatIcon = statUI.icon;
-
-                  return (
-                    <tr key={order.id} className="group transition-colors hover:bg-indigo-50/35">
-                      <td className="p-4 pl-6">
-                        <div>
-                          <p className="font-black text-zinc-900 group-hover:text-indigo-600 transition-colors">{order.id}</p>
-                          <p className="text-xs font-medium text-zinc-500">from <span className="font-bold">{order.sellerStoreName}</span></p>
-                          <p className="text-[10px] font-bold text-zinc-400 mt-1">{formatDate(order.placedAt)}</p>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="mt-0.5 h-3.5 w-3.5 text-zinc-400" />
-                          <div>
-                            <p className="text-xs font-bold text-zinc-900">{order.buyerName}</p>
-                            <p className="text-[10px] font-medium text-zinc-500 max-w-50 truncate">{order.deliveryAddress}</p>
-                            <p className="mt-1 text-[10px] font-black uppercase tracking-wider text-indigo-600">{order.logisticsPartner}</p>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="p-4">
-                        <span className={cn("inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider", statUI.bg, statUI.text, statUI.border)}>
-                          <StatIcon className="h-3.5 w-3.5" /> {statUI.label}
-                        </span>
-                        {order.status === "escalated" && <p className="mt-1.5 text-[10px] font-bold text-rose-600 max-w-37.5 truncate">Admin Review Required</p>}
-                      </td>
-                      <td className="p-4">
-                        <p className="font-black text-zinc-900">{formatCurrency(order.totalAmount)}</p>
-                        <p className="text-[10px] font-bold text-zinc-400">{order.itemsCount} {order.itemsCount === 1 ? 'item' : 'items'}</p>
-                      </td>
-                      <td className="p-4 pr-6 text-right">
-                         <Button onClick={() => setSelectedOrder(order)} variant="outline" size="sm" className="h-9 rounded-xl border-zinc-200 font-bold text-zinc-700 shadow-sm transition-all hover:border-zinc-300 hover:bg-white hover:shadow-md">
-                           <Eye className="mr-2 h-4 w-4" /> View Details
-                         </Button>
-                      </td>
-                    </tr>
-                  );
-                })
+                orders.map((order) => (
+                  <tr key={order.id} className="bg-white/55 transition-colors hover:bg-sky-50/60">
+                    <td className="px-5 py-4 align-top">
+                      <p className="font-black text-zinc-950">{order.orderNumber}</p>
+                      <div className="mt-2">
+                        <AdminStatusBadge tone={statusTone[order.status]}>
+                          {getStatusLabel(order.status)}
+                        </AdminStatusBadge>
+                      </div>
+                      <p className="mt-2 text-xs font-medium text-zinc-500">
+                        {order.items.length} item{order.items.length === 1 ? "" : "s"} across {order.sellerSummaries.length} seller{order.sellerSummaries.length === 1 ? "" : "s"}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <p className="font-bold text-zinc-800">{order.customer.name}</p>
+                      <p className="text-xs font-medium text-zinc-500">{order.customer.email}</p>
+                      <p className="text-xs font-medium text-zinc-400">{order.customer.phone ?? "Phone not recorded"}</p>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <p className="font-bold text-zinc-900">{formatAdminCurrency(order.totals.grandTotalAmount)}</p>
+                      <p className="text-xs font-medium text-zinc-500">
+                        Delivery fee {formatAdminCurrency(order.totals.deliveryFeeAmount)} · Cash on delivery {formatAdminCurrency(order.totals.cashDueOnDelivery)}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-zinc-400">
+                        {toTitleCase(order.payment.method.toLowerCase().replace(/_/g, " "))} · Commitment {toTitleCase(order.payment.commitmentFeeStatus.toLowerCase())}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <p className="font-bold text-zinc-800">{toTitleCase(order.delivery.method)}</p>
+                      <p className="text-xs font-medium text-zinc-500">
+                        {order.delivery.shippingAddress.district ?? "District pending"} · {order.delivery.shippingAddress.city ?? "City pending"}
+                      </p>
+                      <p className="mt-1 text-xs font-bold text-amber-700">Manual dispatch only</p>
+                    </td>
+                    <td className="px-5 py-4 align-top">
+                      <p className="font-bold text-zinc-800">{formatAdminDateTime(order.updatedAt)}</p>
+                      <p className="mt-1 flex items-center gap-1 text-xs font-medium text-zinc-500">
+                        <Clock3 className="h-3.5 w-3.5" />
+                        Created {formatAdminDateTime(order.createdAt)}
+                      </p>
+                    </td>
+                    <td className="px-5 py-4 text-right align-top">
+                      <Button
+                        variant="outline"
+                        onClick={() => setSelectedOrderId(order.id)}
+                        className="rounded-xl font-black"
+                      >
+                        Open order
+                      </Button>
+                    </td>
+                  </tr>
+                ))
               )}
             </tbody>
           </table>
         </div>
-      </div>
 
-      {/* 5. SLIDE-OVER MODAL (ORDER DETAILS & OVERRIDES) */}
-      {selectedOrder && (
-        <div className="fixed inset-0 z-50 flex justify-end">
-          <div className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm transition-opacity" onClick={() => setSelectedOrder(null)} aria-hidden="true" />
-          
-          <div className="relative h-full w-full max-w-md border-l border-white/40 bg-white/90 shadow-2xl shadow-zinc-950/30 backdrop-blur-2xl animate-in slide-in-from-right duration-300 flex flex-col">
-            
-            {/* Modal Header */}
-            <div className="flex items-center justify-between border-b border-zinc-100 px-6 py-5 bg-zinc-950 text-white">
-              <div>
-                <h2 className="text-lg font-black text-white">{selectedOrder.id}</h2>
-                <p className="text-xs font-bold text-zinc-400">Placed on {formatDate(selectedOrder.placedAt)}</p>
-              </div>
-              <Button variant="ghost" size="icon" onClick={() => setSelectedOrder(null)} aria-label="Close order details" className="h-8 w-8 rounded-full text-zinc-400 hover:bg-white/10 hover:text-white">
-                <X className="h-5 w-5" />
+        {pagination.pages > 1 ? (
+          <div className="flex items-center justify-between border-t border-zinc-100 bg-white/40 px-5 py-3">
+            <span className="text-xs font-bold text-zinc-500">
+              Page {pagination.page} of {pagination.pages} <span className="text-zinc-400">· {pagination.total} total</span>
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg font-bold text-xs"
+                disabled={pagination.page <= 1 || loading}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg font-bold text-xs"
+                disabled={pagination.page >= pagination.pages || loading}
+                onClick={() => setPage((current) => Math.min(pagination.pages, current + 1))}
+              >
+                Next
               </Button>
             </div>
-
-            {/* Modal Content */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-6">
-              
-              {/* Status Banner */}
-              <div className={cn("rounded-3xl border p-4 shadow-md", STATUS_UI[selectedOrder.status].bg, STATUS_UI[selectedOrder.status].border)}>
-                <div className="flex items-center gap-2 mb-1">
-                  {(() => { const Icon = STATUS_UI[selectedOrder.status].icon; return <Icon className={cn("h-4 w-4", STATUS_UI[selectedOrder.status].text)} />; })()}
-                  <span className={cn("text-xs font-black uppercase tracking-wider", STATUS_UI[selectedOrder.status].text)}>Current Status: {STATUS_UI[selectedOrder.status].label}</span>
-                </div>
-                {selectedOrder.escalationReason && (
-                  <p className="mt-2 text-xs font-bold text-rose-100 bg-rose-900/60 p-2 rounded-lg border border-rose-400/30">{selectedOrder.escalationReason}</p>
-                )}
-              </div>
-
-              {/* Entities */}
-              <div className="grid grid-cols-2 gap-4">
-                <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Buyer</p>
-                  <p className="mt-1 text-sm font-black text-zinc-900">{selectedOrder.buyerName}</p>
-                  <p className="mt-1 text-xs font-medium text-zinc-500 line-clamp-2">{selectedOrder.deliveryAddress}</p>
-                  <Button asChild variant="outline" size="sm" className="mt-3 h-8 rounded-lg text-xs font-bold"><Link href="/admin/buyers">Open buyers CRM</Link></Button>
-                </div>
-                <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5">
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Seller</p>
-                  <p className="mt-1 text-sm font-black text-zinc-900">{selectedOrder.sellerStoreName}</p>
-                  <p className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 bg-indigo-50 inline-block px-2 py-0.5 rounded-md mt-1">{selectedOrder.logisticsPartner}</p>
-                  <Button asChild variant="outline" size="sm" className="mt-3 h-8 rounded-lg text-xs font-bold"><Link href="/admin/sellers">Open sellers CRM</Link></Button>
-                </div>
-              </div>
-
-              {/* Financials */}
-              <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs font-bold text-zinc-500">Items ({selectedOrder.itemsCount})</span>
-                  <span className="text-xs font-black text-zinc-900">Total: {formatCurrency(selectedOrder.totalAmount)}</span>
-                </div>
-                <div className="h-px w-full bg-zinc-100 my-2" />
-                <div className="flex justify-between items-center">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600">Escrow Status</span>
-                  <span className="text-xs font-black text-amber-700">{selectedOrder.status === 'delivered' ? 'Released to Seller' : selectedOrder.status === 'refunded' ? 'Returned to Buyer' : 'Held in Escrow'}</span>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Timeline & audit trail</p>
-                <div className="mt-3 space-y-2 text-sm font-bold text-zinc-600">
-                  <p className="rounded-2xl bg-zinc-50 p-3">Order placed: {formatDate(selectedOrder.placedAt)}</p>
-                  <p className="rounded-2xl bg-zinc-50 p-3">Current status: {STATUS_UI[selectedOrder.status].label}</p>
-                  <p className="rounded-2xl bg-zinc-50 p-3">Fulfilment method: {selectedOrder.logisticsPartner}</p>
-                  {createdDisputes[selectedOrder.id] ? <p className="rounded-2xl bg-rose-50 p-3 text-rose-700">Linked dispute: {createdDisputes[selectedOrder.id]}</p> : null}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-white/70 bg-white/75 p-4 shadow-md shadow-zinc-900/5">
-                <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Admin notes</p>
-                <Textarea value={adminNote} onChange={(event) => setAdminNote(event.target.value)} placeholder="Add order note, shipment update context, or dispute rationale..." className="mt-3 min-h-24 rounded-2xl border-zinc-200 bg-white" />
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <Button onClick={handleSaveOrderNote} className="rounded-xl bg-zinc-950 text-xs font-black text-white hover:bg-zinc-800">Save note</Button>
-                  <Button onClick={handleCreateDispute} disabled={!canCreateDispute} variant="outline" className="rounded-xl text-xs font-black">Create dispute</Button>
-                </div>
-                <div className="mt-3 space-y-2">
-                  {(orderNotes[selectedOrder.id] ?? ["No admin notes recorded in this frontend session."]).map((note, index) => (
-                    <p key={`${selectedOrder.id}-note-${index}`} className="rounded-2xl bg-zinc-50 p-3 text-sm font-bold text-zinc-600">{note}</p>
-                  ))}
-                </div>
-              </div>
-
-              {/* RBAC Admin Overrides */}
-              {canOverride && (
-                <div className="rounded-3xl border border-rose-300/70 bg-linear-to-br from-rose-50 to-white p-5 mt-8 shadow-md shadow-rose-900/5">
-                  <div className="flex items-center gap-2 mb-4">
-                    <ShieldAlert className="h-4 w-4 text-rose-600" />
-                    <h3 className="text-xs font-black uppercase tracking-wider text-rose-900">God-Mode Overrides</h3>
-                  </div>
-                  
-                  <div className="space-y-3">
-                    {(selectedOrder.status === "pending" || selectedOrder.status === "processing") && (
-                      <Button onClick={() => handleOverrideStatus("shipped")} disabled={isProcessingOverride} className="w-full h-10 rounded-xl bg-indigo-600 text-xs font-bold text-white hover:bg-indigo-700 shadow-sm">
-                        <Truck className="mr-2 h-4 w-4" /> Update Shipment to In Transit
-                      </Button>
-                    )}
-
-                    {selectedOrder.status !== "delivered" && selectedOrder.status !== "refunded" && selectedOrder.status !== "cancelled" && (
-                      <Button onClick={() => handleOverrideStatus("delivered")} disabled={isProcessingOverride} className="w-full h-10 rounded-xl bg-emerald-600 text-xs font-bold text-white hover:bg-emerald-700 shadow-sm">
-                        <CheckCircle2 className="mr-2 h-4 w-4" /> Force Mark as Delivered
-                      </Button>
-                    )}
-
-                    {selectedOrder.status !== "refunded" && (
-                      <Button onClick={handleForceRefund} disabled={isProcessingOverride} className="w-full h-10 rounded-xl bg-rose-600 text-xs font-bold text-white hover:bg-rose-700 shadow-sm">
-                        <RefreshCcw className="mr-2 h-4 w-4" /> Force Issue Refund
-                      </Button>
-                    )}
-
-                    {selectedOrder.status !== "cancelled" && selectedOrder.status !== "refunded" && selectedOrder.status !== "delivered" && (
-                      <Button onClick={() => handleOverrideStatus("cancelled")} disabled={isProcessingOverride} variant="outline" className="w-full h-10 rounded-xl border-rose-200 text-xs font-bold text-rose-700 hover:bg-rose-100">
-                        <PackageX className="mr-2 h-4 w-4" /> Force Cancel Order
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              )}
-
-            </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
+        ) : null}
+      </section>
 
-function GridLine({
-  label,
-  value,
-  isLast = false,
-}: {
-  label: string;
-  value: string;
-  isLast?: boolean;
-}) {
-  return (
-    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2", !isLast && "border-b border-zinc-100")}>
-      <span className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</span>
-      <span className="truncate text-right text-[11px] font-bold text-zinc-900">{value}</span>
+      <AdminDetailSheet
+        open={Boolean(selectedOrder)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedOrderId(null);
+          }
+        }}
+        title={selectedOrder?.orderNumber ?? "Order"}
+        description={selectedOrder ? `${selectedOrder.customer.name} · ${getStatusLabel(selectedOrder.status)}` : "Order detail"}
+      >
+        {selectedOrder ? (
+          <div className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-3">
+              <AdminMetricCard title="Grand Total" value={formatAdminCurrency(selectedOrder.totals.grandTotalAmount)} note="Backend order snapshot" icon={<ClipboardList className="h-4 w-4" />} tone="zinc" />
+              <AdminMetricCard title="Delivery Fee" value={formatAdminCurrency(selectedOrder.totals.deliveryFeeAmount)} note="Collected before dispatch where required" icon={<Truck className="h-4 w-4" />} tone="amber" />
+              <AdminMetricCard title="Cash on Delivery" value={formatAdminCurrency(selectedOrder.totals.cashDueOnDelivery)} note="Collected at handoff" icon={<PackageCheck className="h-4 w-4" />} tone="emerald" />
+            </div>
+
+            <div className="rounded-3xl border border-zinc-100 bg-white p-4">
+              <h3 className="text-sm font-black text-zinc-950">Buyer</h3>
+              <div className="mt-3 grid gap-2 text-sm text-zinc-700">
+                <p><strong>Name:</strong> {selectedOrder.customer.name}</p>
+                <p><strong>Email:</strong> {selectedOrder.customer.email}</p>
+                <p><strong>Phone:</strong> {selectedOrder.customer.phone ?? "Not recorded"}</p>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-zinc-100 bg-white p-4">
+              <h3 className="text-sm font-black text-zinc-950">Delivery Snapshot</h3>
+              <div className="mt-3 grid gap-2 text-sm text-zinc-700">
+                <p><strong>Method:</strong> {toTitleCase(selectedOrder.delivery.method)}</p>
+                <p><strong>Tracking mode:</strong> {toTitleCase(selectedOrder.delivery.trackingMode.replace(/_/g, " "))}</p>
+                <p><strong>Recipient:</strong> {selectedOrder.delivery.shippingAddress.fullName ?? "Not recorded"}</p>
+                <p><strong>Phone:</strong> {selectedOrder.delivery.shippingAddress.phone ?? "Not recorded"}</p>
+                <p><strong>Address:</strong> {selectedOrder.delivery.shippingAddress.addressLine ?? "Not recorded"}</p>
+                <p><strong>Area:</strong> {[selectedOrder.delivery.shippingAddress.district, selectedOrder.delivery.shippingAddress.city].filter(Boolean).join(", ") || "Not recorded"}</p>
+                <p><strong>Tracking number:</strong> {selectedOrder.trackingNumber ?? "Manual only"}</p>
+                <p><strong>Estimated delivery:</strong> {formatAdminDateTime(selectedOrder.estimatedDelivery)}</p>
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
+              <h3 className="text-sm font-black text-zinc-950">Seller Coverage</h3>
+              <div className="mt-3 space-y-3">
+                {selectedOrder.sellerSummaries.map((seller) => (
+                  <div key={seller.userId} className="rounded-2xl border border-zinc-200 bg-white p-3">
+                    <p className="text-sm font-black text-zinc-950">{seller.storeName ?? "Seller store pending"}</p>
+                    <p className="text-xs font-bold text-zinc-500">
+                      {seller.itemCount} item{seller.itemCount === 1 ? "" : "s"} · Seller status {seller.applicationStatus ?? "Unavailable"}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-zinc-100 bg-white p-4">
+              <h3 className="text-sm font-black text-zinc-950">Items</h3>
+              <div className="mt-3 space-y-3">
+                {selectedOrder.items.map((item) => (
+                  <div key={item.id} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
+                    <div className="flex items-start justify-between gap-3">
+                      <div>
+                        <p className="text-sm font-black text-zinc-950">{item.title}</p>
+                        <p className="text-xs font-medium text-zinc-500">
+                          {item.seller.storeName ?? item.seller.name} · Vendor item status {toTitleCase(item.vendorStatus.toLowerCase())}
+                        </p>
+                      </div>
+                      <p className="text-sm font-black text-zinc-950">{formatAdminCurrency(item.lineTotal)}</p>
+                    </div>
+                    <p className="mt-2 text-xs font-medium text-zinc-500">
+                      Quantity {item.quantity} · Unit price {formatAdminCurrency(item.price)}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-4">
+              <h3 className="text-sm font-black text-amber-900">Operations Note</h3>
+              <p className="mt-2 text-sm text-amber-900">
+                Dispatch and delivery updates remain manual in MVP. This queue reflects backend order snapshots and should not be read as live rider telemetry.
+              </p>
+              {selectedOrder.notes ? (
+                <p className="mt-3 text-sm font-medium text-amber-950">
+                  <strong>Order note:</strong> {selectedOrder.notes}
+                </p>
+              ) : null}
+            </div>
+
+            {canManageFulfillment ? (
+              <div className="rounded-3xl border border-sky-200 bg-sky-50/60 p-4">
+                <h3 className="text-sm font-black text-sky-950">Fulfillment Control</h3>
+                <p className="mt-1 text-xs font-medium text-sky-800">
+                  Record manual operations only. Delivery means physical handoff and does not change payment, remittance, wallet, payout, or refund state.
+                </p>
+                <div className="mt-4 grid gap-3">
+                  <label className="grid gap-1 text-xs font-bold text-zinc-700">
+                    Next status
+                    <select
+                      value={nextStatus}
+                      onChange={(event) => setNextStatus(event.target.value as AdminOrderStatus | "")}
+                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold"
+                    >
+                      <option value="">Select an allowed transition</option>
+                      {(NEXT_STATUSES[selectedOrder.status] ?? []).map((status) => (
+                        <option key={status} value={status}>{getStatusLabel(status)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-xs font-bold text-zinc-700">
+                    External courier reference
+                    <input
+                      value={trackingNumber}
+                      onChange={(event) => setTrackingNumber(event.target.value)}
+                      maxLength={120}
+                      placeholder="Manual courier or dispatch reference"
+                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-bold text-zinc-700">
+                    Operations notes
+                    <textarea
+                      value={operationsNotes}
+                      onChange={(event) => setOperationsNotes(event.target.value)}
+                      maxLength={1000}
+                      rows={3}
+                      placeholder="Concise dispatch or handoff context. Do not enter credentials or financial secrets."
+                      className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium"
+                    />
+                  </label>
+                  {mutationError ? <p className="text-xs font-bold text-rose-700">{mutationError}</p> : null}
+                  {(NEXT_STATUSES[selectedOrder.status] ?? []).length > 0 ? (
+                    <Button
+                      disabled={!nextStatus || submitting}
+                      onClick={() => void handleOrderMutation()}
+                      className="rounded-xl bg-zinc-950 font-black text-white"
+                    >
+                      {submitting ? "Saving backend update..." : "Apply fulfillment update"}
+                    </Button>
+                  ) : (
+                    <p className="text-xs font-bold text-zinc-500">No fulfillment transition is available from this status.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-600">
+                This account has read-only order access. Fulfillment changes require operations authority.
+              </div>
+            )}
+          </div>
+        ) : (
+          <AdminEmptyState title="No order selected" description="Open an order from the queue to inspect its launch operations context." />
+        )}
+      </AdminDetailSheet>
     </div>
   );
 }

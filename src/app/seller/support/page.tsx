@@ -3,17 +3,17 @@
 import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   LifeBuoy, Search, Filter, MessageSquare, Clock, CheckCircle2,
-  AlertCircle, ArrowLeft, Send, AlertTriangle, Info, ShieldAlert,
+  AlertCircle, ArrowLeft, AlertTriangle, Info, ShieldAlert,
   Inbox
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { toast } from "sonner";
 import { cn } from "@/lib/utils";
+import { BRAND } from "@/config/brand";
 
 // Import from our new service layer
 import { supportApi, SupportTicket, SupportStats, TicketStatus, TicketPriority } from "@/services/support";
-import { CreateTicketModal } from "@/app/seller/CreateTicketModal";
+import { ContactSupportModal } from "@/app/seller/ContactSupportModal";
 
 // ============================================================================
 // LOGIC HELPERS & UI MAPS
@@ -59,6 +59,7 @@ export default function SellerSupportPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [detailError, setDetailError] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
@@ -67,21 +68,24 @@ export default function SellerSupportPage() {
 
   // Thread & Modal State
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [isContactModalOpen, setIsContactModalOpen] = useState(false);
+  const [selectedTicketData, setSelectedTicketData] = useState<SupportTicket | null>(null);
+  const [loadingTicket, setLoadingTicket] = useState(false);
   const [replyText, setReplyText] = useState("");
-  const [isReplying, setIsReplying] = useState(false);
-  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [replying, setReplying] = useState(false);
+  const [resolving, setResolving] = useState(false);
 
   // --- 1. DATA FETCHING ---
-  const loadTickets = useCallback(async () => {
+  const loadTickets = useCallback(async (silent = false) => {
     try {
-      setLoading(true);
-      setError(null);
+      if (!silent) setLoading(true);
+      if (!silent) setError(null);
       const data = await supportApi.fetchTickets();
       setTickets(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
+      if (!silent) setError(err instanceof Error ? err.message : "An unknown error occurred");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
@@ -101,46 +105,77 @@ export default function SellerSupportPage() {
     const open = tickets.filter(t => t.status === "open" || t.status === "waiting-support").length;
     const waiting = tickets.filter(t => t.status === "waiting-seller").length;
     const resolved = tickets.filter(t => t.status === "resolved" || t.status === "closed").length;
-    return { open, awaitingSeller: waiting, resolved, avgResponseHrs: 2.4 };
+    return { open, awaitingSeller: waiting, resolved, avgResponseHrs: null };
   }, [tickets]);
 
-  const selectedTicket = useMemo(() => tickets.find(t => t.id === selectedTicketId) || null, [tickets, selectedTicketId]);
+  useEffect(() => {
+    if (!selectedTicketId) {
+      setSelectedTicketData(null);
+      setDetailError(null);
+      setReplyText("");
+      return;
+    }
+    let isMounted = true;
+    const fetchDetail = async () => {
+      setLoadingTicket(true);
+      setDetailError(null);
+      try {
+        const detail = await supportApi.getTicket(selectedTicketId);
+        if (isMounted) setSelectedTicketData(detail);
+      } catch (err) {
+        if (isMounted) setDetailError(err instanceof Error ? err.message : "Failed to load ticket.");
+      } finally {
+        if (isMounted) setLoadingTicket(false);
+      }
+    };
+    fetchDetail();
+    return () => { isMounted = false; };
+  }, [selectedTicketId]);
 
-  // --- 3. MUTATION HANDLERS ---
-  const handleSendReply = async () => {
+  const canReplyToTicket =
+    selectedTicketData?.status !== "resolved" &&
+    selectedTicketData?.status !== "closed";
+
+  const handleReply = async () => {
     if (!selectedTicketId || !replyText.trim()) return;
 
-    setIsReplying(true);
     try {
-      const newMsg = await supportApi.replyToTicket(selectedTicketId, replyText);
-      setTickets(prev => prev.map(t => {
-        if (t.id === selectedTicketId) {
-          return {
-            ...t,
-            status: "waiting-support", 
-            updatedAt: newMsg.createdAt,
-            messages: [...t.messages, newMsg]
-          };
-        }
-        return t;
-      }));
+      setReplying(true);
+      setDetailError(null);
+      await supportApi.replyToTicket(selectedTicketId, replyText.trim());
       setReplyText("");
-      toast.success("Reply sent successfully.");
-    } catch {
-      toast.error("Failed to send reply. Try again.");
+      const updatedTicket = await supportApi.getTicket(selectedTicketId);
+      setSelectedTicketData(updatedTicket);
+      loadTickets(true);
+    } catch (replyError) {
+      setDetailError(
+        replyError instanceof Error
+          ? replyError.message
+          : "Failed to send reply.",
+      );
     } finally {
-      setIsReplying(false);
+      setReplying(false);
     }
   };
 
-  const handleMarkResolved = async () => {
+  const handleResolve = async () => {
     if (!selectedTicketId) return;
+
     try {
+      setResolving(true);
+      setDetailError(null);
       await supportApi.resolveTicket(selectedTicketId);
-      setTickets(prev => prev.map(t => t.id === selectedTicketId ? { ...t, status: "resolved", updatedAt: new Date().toISOString() } : t));
-      toast.success("Ticket marked as resolved.");
-    } catch {
-      toast.error("Failed to resolve ticket.");
+      const updatedTicket = await supportApi.getTicket(selectedTicketId);
+      setSelectedTicketData(updatedTicket);
+      loadTickets(true);
+    } catch (resolveError) {
+      setDetailError(
+        resolveError instanceof Error
+          ? resolveError.message
+          : "Failed to resolve ticket.",
+      );
+    } finally {
+      setResolving(false);
     }
   };
 
@@ -159,7 +194,7 @@ export default function SellerSupportPage() {
       <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
       <h3 className="text-base font-bold text-red-900">System Error</h3>
       <p className="mt-1 text-sm text-red-700">{error}</p>
-      <Button onClick={loadTickets} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">Try Again</Button>
+      <Button onClick={() => loadTickets()} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">Try Again</Button>
     </div>
   );
 
@@ -169,12 +204,31 @@ export default function SellerSupportPage() {
       {/* 1. HEADER */}
       <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end shrink-0">
         <div>
-          <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Manage inquiries, resolve issues, and communicate with the Zogular team.</p>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Support Center</h1>
+          </div>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Manage your support tickets and communicate directly with ZOGULAR operations.</p>
         </div>
-        <Button onClick={() => setIsCreateModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto">
-          Create New Ticket
+        <Button onClick={() => setIsContactModalOpen(true)} className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95">
+          Contact Support
         </Button>
+      </div>
+
+      <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
+            <p className="mt-1 text-sm font-medium text-zinc-600">
+              You can also email support directly if you are unable to open a ticket.
+            </p>
+          </div>
+          <a
+            href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
+            className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
+          >
+            {BRAND.supportEmail}
+          </a>
+        </div>
       </div>
 
       {/* 2. SUMMARY CARDS */}
@@ -182,7 +236,7 @@ export default function SellerSupportPage() {
         <StatCard title="Open Tickets" value={stats.open} icon={LifeBuoy} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
         <StatCard title="Action Needed" value={stats.awaitingSeller} icon={AlertCircle} colorClass="border-amber-200 bg-amber-50/50 text-amber-950" />
         <StatCard title="Resolved" value={stats.resolved} icon={CheckCircle2} colorClass="bg-[#009E49]/5 border-[#009E49]/20 text-[#007a38]" />
-        <StatCard title="Avg Response" value={`${stats.avgResponseHrs}h`} icon={Clock} colorClass="bg-zinc-50 border-zinc-200/80 text-zinc-900" />
+        <StatCard title="Avg Response" value={stats.avgResponseHrs === null ? "Unavailable" : `${stats.avgResponseHrs}h`} icon={Clock} colorClass="bg-zinc-50 border-zinc-200/80 text-zinc-900" />
       </div>
 
       {/* 3. FILTERS TOOLBAR */}
@@ -204,7 +258,8 @@ export default function SellerSupportPage() {
           </div>
           <select aria-label="Filter by Priority" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as TicketPriority | "all")} className="h-11 appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer">
             <option value="all">All Priority</option>
-            <option value="high">High & Urgent</option>
+            <option value="urgent">Urgent</option>
+            <option value="high">High</option>
             <option value="medium">Medium</option>
             <option value="low">Low</option>
           </select>
@@ -217,11 +272,11 @@ export default function SellerSupportPage() {
         {/* LEFT COLUMN: TICKET LIST */}
         <div className={cn("w-full md:w-95 shrink-0 flex-col gap-3 overflow-y-auto hide-scrollbar", selectedTicketId ? "hidden md:flex" : "flex")}>
           {filteredTickets.length === 0 ? (
-             <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-200 bg-white py-16 text-center shadow-sm">
-                <Inbox className="mb-3 h-8 w-8 text-zinc-300" />
-                <h3 className="text-sm font-bold text-zinc-900">No tickets found</h3>
-                <p className="text-xs text-zinc-500">Adjust filters or create a new ticket.</p>
-             </div>
+              <div className="flex flex-col items-center justify-center rounded-3xl border border-dashed border-zinc-200 bg-white py-16 text-center shadow-sm">
+                 <Inbox className="mb-3 h-8 w-8 text-zinc-300" />
+                 <h3 className="text-sm font-bold text-zinc-900">No tickets found</h3>
+                 <p className="text-xs text-zinc-500">Open a support ticket when you need help, or use direct email as a fallback.</p>
+              </div>
           ) : (
             filteredTickets.map(ticket => {
               const statUI = STATUS_UI[ticket.status];
@@ -255,40 +310,65 @@ export default function SellerSupportPage() {
           )}
         </div>
 
-        {/* RIGHT COLUMN: ACTIVE THREAD */}
+        {/* RIGHT COLUMN: LIVE TICKET DETAIL */}
         <div className={cn("flex-1 min-w-0 flex-col rounded-3xl border border-zinc-200/80 bg-white shadow-sm overflow-hidden", selectedTicketId ? "flex" : "hidden md:flex md:items-center md:justify-center md:bg-zinc-50/50")}>
-          {!selectedTicket ? (
+          {loadingTicket ? (
+            <div className="flex flex-col items-center justify-center p-8 h-full">
+               <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
+            </div>
+          ) : detailError ? (
+            <div className="flex flex-col items-center justify-center p-8 h-full text-center">
+              <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
+              <h3 className="text-sm font-bold text-red-900">Failed to load ticket</h3>
+              <p className="mt-1 text-xs text-red-700">{detailError}</p>
+            </div>
+          ) : !selectedTicketData ? (
             <div className="text-center p-8">
               <MessageSquare className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
-              <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view the conversation</h3>
+              <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view conversation</h3>
+              <p className="mx-auto mt-2 max-w-sm text-xs font-medium leading-relaxed text-zinc-500">
+                Ticket replies stay in-app when support is active. You can still use direct email if you need an offline fallback.
+              </p>
+              <a
+                href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
+                className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50"
+              >
+                {BRAND.supportEmail}
+              </a>
             </div>
           ) : (
             <>
-              {/* Thread Header */}
+              {/* Ticket Header */}
               <div className="border-b border-zinc-100 bg-white p-4 md:p-6 shrink-0">
                 <Button variant="ghost" size="sm" className="mb-3 h-8 -ml-2 text-xs font-bold text-zinc-500 md:hidden" onClick={() => setSelectedTicketId(null)}>
                   <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to list
                 </Button>
                 <div className="flex items-start justify-between gap-4">
                   <div>
-                    <h2 className="text-base font-black text-zinc-900 md:text-lg leading-tight">{selectedTicket.subject}</h2>
+                    <h2 className="text-base font-black text-zinc-900 md:text-lg leading-tight">{selectedTicketData.subject}</h2>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicket.id}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicketData.id}</span>
                       <span className="h-1 w-1 rounded-full bg-zinc-300" />
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicket.category}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicketData.category}</span>
                     </div>
                   </div>
-                  {selectedTicket.status !== "resolved" && selectedTicket.status !== "closed" && (
-                    <Button variant="outline" size="sm" onClick={handleMarkResolved} className="h-9 shrink-0 rounded-xl border-zinc-200 text-xs font-bold text-zinc-700 hover:bg-zinc-50 hidden sm:flex">
-                      <CheckCircle2 className="mr-1.5 h-4 w-4" /> Mark Resolved
+                  {canReplyToTicket ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={handleResolve}
+                      disabled={resolving}
+                      className="rounded-xl border-zinc-200 bg-zinc-50 text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-100 hover:text-zinc-900"
+                    >
+                      {resolving ? "Resolving..." : "Mark as Resolved"}
                     </Button>
-                  )}
+                  ) : null}
                 </div>
               </div>
 
-              {/* Thread Messages */}
+              {/* Ticket Messages */}
               <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6 bg-zinc-50/30">
-                {selectedTicket.messages.map((msg) => {
+                {selectedTicketData.messages.map((msg) => {
                   const isSeller = msg.senderType === "seller";
                   const isSystem = msg.senderType === "system";
 
@@ -314,47 +394,39 @@ export default function SellerSupportPage() {
                 })}
               </div>
 
-              {/* Thread Reply Input */}
-              {selectedTicket.status !== "resolved" && selectedTicket.status !== "closed" ? (
-                <div className="border-t border-zinc-200 bg-white p-4 shrink-0">
-                  <div className="relative">
-                    <textarea 
-                      aria-label="Reply message"
+              {canReplyToTicket ? (
+                <div className="border-t border-zinc-100 bg-white p-4 md:p-6 shrink-0">
+                  <div className="flex items-end gap-3">
+                    <textarea
                       value={replyText}
-                      onChange={(e) => setReplyText(e.target.value)}
-                      placeholder="Type your reply..." 
-                      className="min-h-20 w-full resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 pr-14 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
+                      onChange={(event) => setReplyText(event.target.value)}
+                      placeholder="Type your reply..."
+                      className="h-20 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
                     />
-                    <Button 
-                      aria-label="Send reply"
-                      size="icon" 
-                      onClick={handleSendReply}
-                      disabled={!replyText.trim() || isReplying}
-                      className="absolute bottom-3 right-3 h-8 w-8 rounded-lg bg-zinc-900 text-white hover:bg-zinc-800 disabled:bg-zinc-200 disabled:text-zinc-400"
+                    <Button
+                      onClick={handleReply}
+                      disabled={replying || !replyText.trim()}
+                      className="h-11 rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95"
                     >
-                      <Send className="h-4 w-4" />
+                      {replying ? "Sending..." : "Send"}
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div className="border-t border-zinc-100 bg-zinc-50 p-4 text-center shrink-0">
-                  <p className="text-xs font-bold text-zinc-500">This ticket is {selectedTicket.status}. Replies are disabled.</p>
-                </div>
-              )}
+              ) : null}
             </>
           )}
         </div>
       </div>
 
-      {/* 5. CREATE TICKET MODAL */}
-      <CreateTicketModal 
-        isOpen={isCreateModalOpen} 
-        onClose={() => setIsCreateModalOpen(false)} 
-        onSuccess={(newTicket) => {
-          setTickets(prev => [newTicket, ...prev]);
-          setSelectedTicketId(newTicket.id);
-          setIsCreateModalOpen(false);
-        }} 
+      {/* 5. CONTACT SUPPORT MODAL */}
+      <ContactSupportModal
+        isOpen={isContactModalOpen}
+        onClose={() => setIsContactModalOpen(false)}
+        onSuccess={(ticketId) => {
+          setIsContactModalOpen(false);
+          void loadTickets(true);
+          setSelectedTicketId(ticketId);
+        }}
       />
     </div>
   );

@@ -5,7 +5,8 @@ import {
   matchesApplicationSearch,
   getApplicationPrimaryName,
 } from "@/components/admin/sellers/VendorApplicationReviewUI";
-import { adminHasPermission } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 import {
   approveVendorApplication,
   getVendorApplications,
@@ -27,9 +28,10 @@ export function useSellersList() {
   const [activeApplication, setActiveApplication] = useState<VendorApplication | null>(null);
   const [isActionSubmitting, setIsActionSubmitting] = useState(false);
 
-  const canApprove = adminHasPermission("approve_sellers");
-  const canSuspend = adminHasPermission("suspend_sellers");
-  const canExport = adminHasPermission("export_reports");
+  const identity = useAdminIdentity()!;
+  const canApprove = adminIdentityHasPermission(identity, "approve_sellers");
+  const canSuspend = adminIdentityHasPermission(identity, "suspend_sellers");
+  const canExport = adminIdentityHasPermission(identity, "export_reports");
 
   const [visibleCount, setVisibleCount] = useState(20);
 

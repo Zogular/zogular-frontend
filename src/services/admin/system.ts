@@ -1,3 +1,5 @@
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type FeatureFlagStatus = "enabled" | "disabled";
 export type ConfigValueType = "percentage" | "currency" | "text" | "boolean";
 export type HealthStatus = "healthy" | "degraded" | "attention";
@@ -66,17 +68,15 @@ export const adminSystemApi = {
   async toggleFeatureFlag(flagId: string, status: FeatureFlagStatus): Promise<void> {
     void flagId;
     void status;
+    throwBackendPendingFeature("Admin system feature flag toggle");
   },
   async updateConfig(configId: string, value: string): Promise<void> {
     void configId;
     void value;
+    throwBackendPendingFeature("Admin system config update");
   },
   async publishNotice(notice: Omit<OpsNotice, "id" | "status" | "updatedAt">): Promise<OpsNotice> {
-    return {
-      ...notice,
-      id: crypto.randomUUID(),
-      status: "published",
-      updatedAt: new Date().toISOString(),
-    };
+    void notice;
+    throwBackendPendingFeature("Admin system operational notice publish");
   },
 };

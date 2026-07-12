@@ -18,6 +18,7 @@ import {
 } from "@/components/ui/action-menu";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { CollectionViewToggle, type CollectionViewMode } from "@/components/shared/CollectionViewToggle";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import {
   sellerOrdersApi,
   type SellerOrderStatus,
@@ -35,11 +36,13 @@ type DateFilter = "today" | "7days" | "30days" | "all";
 // ============================================================================
 const STATUS_COLUMNS = [
   { id: "new", title: "New Orders", icon: Clock3, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
-  { id: "processing", title: "Processing", icon: Package, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
+  { id: "confirmed", title: "Confirmed", icon: CheckCircle2, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200" },
+  { id: "processing", title: "Preparing", icon: Package, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
   { id: "shipped", title: "Shipped", icon: Truck, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
   { id: "delivered", title: "Delivered", icon: CheckCircle2, color: "text-[#009E49]", bg: "bg-[#009E49]/10", border: "border-[#009E49]/30" },
   { id: "cancelled", title: "Cancelled", icon: XCircle, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
   { id: "refund", title: "Refunds", icon: RotateCcw, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
+  { id: "unknown", title: "Status unavailable", icon: AlertCircle, color: "text-zinc-600", bg: "bg-zinc-100", border: "border-zinc-200" },
 ] as const;
 
 const PAYMENT_STYLES: Record<SellerPaymentStatus, string> = {
@@ -47,6 +50,15 @@ const PAYMENT_STYLES: Record<SellerPaymentStatus, string> = {
   cod: "bg-zinc-100 text-zinc-700 border-zinc-200",
   refunded: "bg-orange-50 text-orange-700 border-orange-200",
   failed: "bg-red-50 text-red-700 border-red-200",
+  unavailable: "bg-amber-50 text-amber-800 border-amber-200",
+};
+
+const PAYMENT_LABELS: Record<SellerPaymentStatus, string> = {
+  paid: "Paid",
+  cod: "COD",
+  refunded: "Refunded",
+  failed: "Failed",
+  unavailable: "Pending backend",
 };
 
 function formatRelativeTime(value: string): string {
@@ -111,16 +123,20 @@ function OrderActionMenu({
             <Phone className="h-3.5 w-3.5 text-zinc-400" /> Call Customer
           </div>
         </ActionMenuItem>
-        <ActionMenuSeparator />
-        <ActionMenuItem
-          onClick={() => {
-            onCancelOrder(order.id);
-            setIsOpen(false);
-          }}
-          className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200"
-        >
-          <XCircle className="h-3.5 w-3.5" /> Cancel Order
-        </ActionMenuItem>
+        {(["new", "confirmed", "processing"] as SellerOrderStatus[]).includes(order.status) ? (
+          <>
+            <ActionMenuSeparator />
+            <ActionMenuItem
+              onClick={() => {
+                onCancelOrder(order.id);
+                setIsOpen(false);
+              }}
+              className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200"
+            >
+              <XCircle className="h-3.5 w-3.5" /> Cancel Order
+            </ActionMenuItem>
+          </>
+        ) : null}
       </ActionMenuContent>
     </ActionMenu>
   );
@@ -158,7 +174,7 @@ function OrderCard({
         <div className="flex items-center"><Phone className="mr-2 h-3.5 w-3.5 text-zinc-400 shrink-0" /> {order.phone}</div>
         <div className="flex items-center">
           <span className={`inline-flex items-center rounded-md border px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wider ${PAYMENT_STYLES[order.paymentStatus]}`}>
-            <CreditCard className="mr-1 h-3 w-3 shrink-0" /> {order.paymentStatus === 'cod' ? 'COD' : order.paymentStatus}
+            <CreditCard className="mr-1 h-3 w-3 shrink-0" /> {PAYMENT_LABELS[order.paymentStatus]}
           </span>
         </div>
       </div>
@@ -168,6 +184,7 @@ function OrderCard({
           <p suppressHydrationWarning className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">
             {formatRelativeTime(order.createdAt)}
           </p>
+          <p className="mt-1 text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Visible Items Total</p>
           <p className="mt-0.5 text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</p>
         </div>
 
@@ -214,7 +231,7 @@ export default function SellerOrdersPage() {
       await sellerOrdersApi.cancelOrder(orderId);
       setOrders((prev) =>
         prev.map((order) =>
-          order.id === orderId ? { ...order, status: "cancelled", paymentStatus: "failed" } : order,
+          order.id === orderId ? { ...order, status: "cancelled" } : order,
         ),
       );
       toast.success(`Order ${orderId} cancelled.`);
@@ -254,7 +271,7 @@ export default function SellerOrdersPage() {
 
   // --- CSV EXPORT ENGINE ---
   const handleExportCSV = () => {
-    const headers = ["Order ID", "Customer", "Phone", "Location", "Items", "Total (Kwacha)", "Status", "Payment", "Date"];
+    const headers = ["Order ID", "Customer", "Phone", "Location", "Items", "Visible Items Total (Kwacha)", "Status", "Payment", "Date"];
     
     const csvRows = filteredOrders.map(order => [
       order.id,
@@ -264,7 +281,7 @@ export default function SellerOrdersPage() {
       order.items,
       order.total,
       order.status.toUpperCase(),
-      order.paymentStatus.toUpperCase(),
+      PAYMENT_LABELS[order.paymentStatus].toUpperCase(),
       new Date(order.createdAt).toLocaleDateString()
     ]);
 
@@ -321,6 +338,12 @@ export default function SellerOrdersPage() {
           <Download className="mr-2 h-4 w-4" /> Export CSV
         </Button>
       </div>
+
+      <FeaturePendingNotice
+        compact
+        title="Payment and settlement fields are limited"
+        description="Totals on this page cover only the seller-visible line items. Payment method, payment status, commission, and seller net stay hidden or marked pending until seller finance endpoints return them."
+      />
 
       {/* 2. FILTERS & SEARCH */}
       <div className="relative z-40 flex shrink-0 flex-col gap-3 rounded-2xl border border-zinc-200/60 bg-white p-4 shadow-[0_4px_20px_rgba(0,0,0,0.02)] md:flex-row">
@@ -463,7 +486,10 @@ export default function SellerOrdersPage() {
                       </div>
 
                       <div className="mt-2 flex items-center justify-between gap-2">
-                        <span className="text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</span>
+                        <div>
+                          <p className="text-[9px] font-bold uppercase tracking-[0.16em] text-zinc-400">Visible Items Total</p>
+                          <span className="text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</span>
+                        </div>
                         <div className="flex items-center gap-2">
                           <Link href={`/seller/orders/${order.id}`}>
                             <Button size="sm" className="h-8 rounded-xl bg-zinc-900 px-3 text-[10px] font-bold text-white hover:bg-zinc-800">

@@ -26,6 +26,7 @@ export interface AdminIdentity {
   sessionStatus: AdminSessionStatus;
 }
 
+/** @deprecated Do not use global static identity. Use real authenticated context instead. */
 export const CURRENT_ADMIN_IDENTITY: AdminIdentity = {
   id: CURRENT_ADMIN_FALLBACK.id,
   name: CURRENT_ADMIN_FALLBACK.name,
@@ -38,19 +39,26 @@ export const CURRENT_ADMIN_IDENTITY: AdminIdentity = {
   sessionStatus: "authenticated",
 };
 
+/** @deprecated Relying on static identity is unsafe for launch. */
 export function getCurrentAdminRole() {
   return CURRENT_ADMIN_IDENTITY.claims.role;
 }
 
+/** @deprecated Do not use static fallback for permissions. Use useAdminIdentity() hook and adminIdentityHasPermission instead. */
 export function adminHasPermission(permission: Permission) {
   return hasPermission(getCurrentAdminRole(), permission);
 }
 
 export function adminIdentityHasPermission(identity: AdminIdentity, permission: Permission) {
+  // Honor backend-supplied permissions when present; fall back to static role mapping only when absent.
+  const backendPermissions = identity.claims.permissions;
+  if (backendPermissions && backendPermissions.length > 0) {
+    return backendPermissions.includes(permission);
+  }
   return hasPermission(identity.claims.role, permission);
 }
 
-export function getAdminInitials(name = CURRENT_ADMIN_IDENTITY.name) {
+export function getAdminInitials(name: string) {
   return name
     .split(" ")
     .filter(Boolean)

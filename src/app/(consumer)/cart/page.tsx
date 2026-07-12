@@ -6,6 +6,7 @@ import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { useCart, type CartItemIdentity } from "@/hooks/use-cart";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
@@ -22,8 +23,7 @@ export default function CartPage() {
     removeItem,
   } = useCart();
 
-  const deliveryFee = itemCount > 0 ? 50 : 0;
-  const finalTotal = totalAmount + deliveryFee;
+  const finalTotal = totalAmount;
 
   if (!hasHydrated) {
     return (
@@ -119,7 +119,7 @@ export default function CartPage() {
                 </div>
                 <div className="flex justify-between font-medium text-zinc-500">
                   <span>Delivery</span>
-                  <span className="font-bold text-zinc-900">{formatCurrency(deliveryFee)}</span>
+                  <span className="font-bold text-zinc-500">Calculated at checkout</span>
                 </div>
                 <div className="flex justify-between border-t border-zinc-100 pt-2 text-base font-black text-zinc-900">
                   <span>Total</span>

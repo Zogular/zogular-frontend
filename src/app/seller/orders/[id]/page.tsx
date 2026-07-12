@@ -10,9 +10,12 @@ import { Button } from "@/components/ui/button";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
+import { BRAND } from "@/config/brand";
 import {
   sellerOrdersApi,
   type SellerOrderDetail,
+  type SellerPaymentStatus,
   type SellerOrderStatus,
 } from "@/services/seller-orders";
 
@@ -25,17 +28,20 @@ import {
 const STATUS_META: Record<SellerOrderStatus, {
   title: string; color: string; bg: string; border: string; icon: React.ComponentType<{ className?: string }>; primaryAction?: { label: string; next: SellerOrderStatus };
 }> = {
-  new: { title: "New Order", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200", icon: Clock3, primaryAction: { label: "Accept Order", next: "processing" } },
-  processing: { title: "Processing", color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", icon: Package, primaryAction: { label: "Mark as Shipped", next: "shipped" } },
-  shipped: { title: "Shipped", color: "text-purple-700", bg: "bg-purple-50", border: "border-purple-200", icon: Truck, primaryAction: { label: "Mark as Delivered", next: "delivered" } },
+  new: { title: "New Order", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200", icon: Clock3, primaryAction: { label: "Accept Order", next: "confirmed" } },
+  confirmed: { title: "Confirmed", color: "text-indigo-700", bg: "bg-indigo-50", border: "border-indigo-200", icon: CheckCircle2, primaryAction: { label: "Start preparing", next: "processing" } },
+  processing: { title: "Preparing for pickup", color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", icon: Package },
+  shipped: { title: "Shipped by operations", color: "text-purple-700", bg: "bg-purple-50", border: "border-purple-200", icon: Truck },
   delivered: { title: "Delivered", color: "text-[#009E49]", bg: "bg-[#009E49]/10", border: "border-[#009E49]/20", icon: CheckCircle2 },
   cancelled: { title: "Cancelled", color: "text-red-600", bg: "bg-red-50", border: "border-red-200", icon: XCircle },
   refund: { title: "Refund Review", color: "text-[#FF6B00]", bg: "bg-orange-50", border: "border-orange-200", icon: RotateCcw },
+  unknown: { title: "Status unavailable", color: "text-zinc-700", bg: "bg-zinc-100", border: "border-zinc-200", icon: AlertCircle },
 };
 
-const PROGRESS_STEPS: Array<{ id: "new" | "processing" | "shipped" | "delivered"; label: string }> = [
+const PROGRESS_STEPS: Array<{ id: "new" | "confirmed" | "processing" | "shipped" | "delivered"; label: string }> = [
   { id: "new", label: "Received" },
-  { id: "processing", label: "Processing" },
+  { id: "confirmed", label: "Confirmed" },
+  { id: "processing", label: "Preparing" },
   { id: "shipped", label: "Shipped" },
   { id: "delivered", label: "Delivered" },
 ];
@@ -46,9 +52,17 @@ function formatDate(dateString: string) {
   return new Intl.DateTimeFormat("en-US", { weekday: "short", month: "short", day: "numeric", hour: "numeric", minute: "numeric", hour12: true }).format(new Date(dateString));
 }
 
-function getStepState(current: SellerOrderStatus, step: "new" | "processing" | "shipped" | "delivered") {
-  if (current === "cancelled" || current === "refund") return step === "new" ? "done" : "pending";
-  const order = ["new", "processing", "shipped", "delivered"] as const;
+function getPaymentStatusLabel(status: SellerPaymentStatus) {
+  if (status === "cod") return "COD";
+  if (status === "paid") return "Paid";
+  if (status === "refunded") return "Refunded";
+  if (status === "failed") return "Failed";
+  return "Pending backend";
+}
+
+function getStepState(current: SellerOrderStatus, step: "new" | "confirmed" | "processing" | "shipped" | "delivered") {
+  if (current === "cancelled" || current === "refund" || current === "unknown") return step === "new" ? "done" : "pending";
+  const order = ["new", "confirmed", "processing", "shipped", "delivered"] as const;
   const currentIndex = order.indexOf(current as (typeof order)[number]);
   const stepIndex = order.indexOf(step);
   if (stepIndex < currentIndex) return "done";
@@ -62,7 +76,7 @@ function getStepState(current: SellerOrderStatus, step: "new" | "processing" | "
 function ProgressStepper({ status }: { status: SellerOrderStatus }) {
   return (
     <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-5 gap-2">
         {PROGRESS_STEPS.map((step, index) => {
           const state = getStepState(status, step.id);
           const isDone = state === "done";
@@ -115,8 +129,6 @@ export default function OrderDetailsPage({
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
-  const [refundReason, setRefundReason] = useState("");
-  const [refundDisputeNote, setRefundDisputeNote] = useState<string | null>(null);
 
   const loadOrder = useCallback(async () => {
     try {
@@ -155,19 +167,6 @@ export default function OrderDetailsPage({
   const handlePrintReceipt = () => {
     toast.success("Preparing receipt for printing...");
     setTimeout(() => window.print(), 400);
-  };
-
-  const handleContestRefund = () => {
-    const normalizedReason = refundReason.trim();
-    if (!normalizedReason) {
-      toast.error("Please provide a reason before submitting.");
-      return;
-    }
-
-    setRefundDisputeNote(normalizedReason);
-    setIsRefundModalOpen(false);
-    setRefundReason("");
-    toast.success("Refund contest submitted for admin review.");
   };
 
   // --- SYSTEM STATES ---
@@ -242,11 +241,20 @@ export default function OrderDetailsPage({
 
       {/* 2. PROGRESS STEPPER */}
       <ProgressStepper status={orderStatus} />
-      {refundDisputeNote ? (
-        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs font-bold text-orange-800">
-          Refund contest submitted: {refundDisputeNote}
-        </div>
+
+      {orderStatus === "processing" ? (
+        <FeaturePendingNotice
+          compact
+          title="Prepare for operations pickup"
+          description="Keep the seller items ready for handoff. Shipment and delivery updates are controlled by authorized Zogular operations."
+        />
       ) : null}
+
+      <FeaturePendingNotice
+        compact
+        title="Seller finance truth is partial"
+        description="This order shows backend-confirmed fulfillment data. Totals on this page cover only the seller-visible items, not necessarily the buyer's full basket. Payment method, payment status, commission, and seller net remain pending until seller finance endpoints are available."
+      />
 
       {/* 3. KPI STRIP */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
@@ -256,11 +264,11 @@ export default function OrderDetailsPage({
         </div>
         <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Payment</p>
-          <p className="mt-1 text-sm font-black text-zinc-900">{order.paymentMethod}</p>
+          <p className="mt-1 text-sm font-black text-zinc-900">{order.paymentMethod ?? "Pending backend"}</p>
         </div>
         <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Status</p>
-          <p className="mt-1 text-sm font-black text-zinc-900 uppercase">{order.paymentStatus}</p>
+          <p className="mt-1 text-sm font-black text-zinc-900 uppercase">{getPaymentStatusLabel(order.paymentStatus)}</p>
         </div>
         <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Delivery</p>
@@ -302,18 +310,18 @@ export default function OrderDetailsPage({
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
                 <span>Shipping Fee</span>
-                <span>{formatCurrency(order.totals.shipping)}</span>
+                <span>{order.totals.shipping === null ? "Pending backend" : formatCurrency(order.totals.shipping)}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
                 <span>Zogular Commission</span>
-                <span>-{formatCurrency(order.earnings.commission)}</span>
+                <span>{order.earnings.commission === null ? "Pending backend" : `-${formatCurrency(order.earnings.commission)}`}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
                 <span>Seller Net</span>
-                <span>{formatCurrency(order.earnings.sellerNet)}</span>
+                <span>{order.earnings.sellerNet === null ? "Pending backend" : formatCurrency(order.earnings.sellerNet)}</span>
               </div>
               <div className="flex justify-between border-t border-zinc-200/60 pt-2 text-base font-black text-zinc-900">
-                <span>Total</span>
+                <span>Visible Items Total</span>
                 <span className="text-[#009E49]">{formatCurrency(order.totals.total)}</span>
               </div>
             </div>
@@ -388,24 +396,26 @@ export default function OrderDetailsPage({
             className="absolute inset-0 bg-zinc-900/45 backdrop-blur-sm"
             onClick={() => setIsRefundModalOpen(false)}
           />
-          <div className="relative z-10 w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl">
-            <h2 className="text-lg font-black text-zinc-900">Contest Refund Request</h2>
+            <div className="relative z-10 w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl">
+            <h2 className="text-lg font-black text-zinc-900">Refund Review Contact Path</h2>
             <p className="mt-1 text-sm font-medium text-zinc-500">
-              Explain why this refund should be reviewed again by an admin.
+              Seller-side refund contest submission is not wired to the backend yet. Use the support contact fallback with the order ID and your delivery evidence.
             </p>
-            <textarea
-              aria-label="Refund contest reason"
-              value={refundReason}
-              onChange={(event) => setRefundReason(event.target.value)}
-              placeholder="Add order evidence, delivery notes, or buyer communication details."
-              className="mt-4 min-h-28 w-full resize-none rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
+            <FeaturePendingNotice
+              compact
+              className="mt-4"
+              title="No local refund submission"
+              description="Do not rely on this page to record refund contests until backend dispute endpoints are available."
             />
+            <a
+              href={`mailto:${BRAND.supportEmail}?subject=Refund%20review%20request%20${order.id}`}
+              className="mt-4 inline-flex items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm font-bold text-zinc-900 transition-colors hover:bg-white"
+            >
+              Email {BRAND.supportEmail}
+            </a>
             <div className="mt-5 flex items-center justify-end gap-2">
               <Button variant="outline" onClick={() => setIsRefundModalOpen(false)} className="rounded-xl">
                 Cancel
-              </Button>
-              <Button onClick={handleContestRefund} className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
-                Submit Contest
               </Button>
             </div>
           </div>

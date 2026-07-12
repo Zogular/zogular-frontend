@@ -1,5 +1,6 @@
-import { calculatePayoutQuote, DEFAULT_PLATFORM_FINANCE_CONFIG, type SellerWalletBalances } from "@/services/platform-finance";
-import { PaymentProviderService, type ProviderReference } from "@/services/payment-provider";
+import { type SellerWalletBalances } from "@/services/platform-finance";
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+import { type ProviderReference } from "@/services/payment-provider";
 
 export type PayoutStatus = "pending" | "successful" | "failed" | "cancelled";
 
@@ -33,6 +34,9 @@ export interface SellerWalletDashboard {
   methods: PayoutMethod[];
 }
 
+export const SELLER_WALLET_BACKEND_PENDING_NOTICE =
+  "Seller wallet and payout balances are an operations-only preview. Real balances, payout methods, fees, and provider transfers require backend support.";
+
 const WALLET: SellerWalletBalances = {
   pendingBalance: 0,
   availableBalance: 0,
@@ -58,77 +62,20 @@ export const sellerWalletApi = {
     };
   },
   async requestPayout(amount: number, method: PayoutMethod): Promise<PayoutTransaction> {
-    await delay(500);
-
-    if (amount < DEFAULT_PLATFORM_FINANCE_CONFIG.payoutFee.minimumWithdrawal) {
-      throw new Error(`Minimum withdrawal is K${DEFAULT_PLATFORM_FINANCE_CONFIG.payoutFee.minimumWithdrawal.toLocaleString()}.`);
-    }
-    if (amount > WALLET.availableBalance) {
-      throw new Error("Amount exceeds available balance.");
-    }
-
-    const id = `WD-${Date.now().toString().slice(-5)}`;
-    const quote = calculatePayoutQuote(amount);
-    const provider = await PaymentProviderService.createPayout({
-      payoutId: id,
-      amount: quote.sellerReceives,
-      currency: "ZMW",
-      destination: {
-        type: method.type,
-        provider: method.provider,
-        accountName: method.accountName,
-        accountNumber: method.accountNumber,
-      },
-    });
-    const transaction: PayoutTransaction = {
-      id,
-      reference: provider.providerReference,
-      requestedAmount: quote.requestedAmount,
-      withdrawalFee: quote.withdrawalFee,
-      sellerReceives: quote.sellerReceives,
-      status: "pending",
-      method: method.provider,
-      requestedAt: new Date().toISOString(),
-      paidAt: null,
-      provider,
-    };
-
-    WALLET.availableBalance -= quote.requestedAmount;
-    WALLET.pendingBalance += quote.requestedAmount;
-    WALLET.totalWithdrawn += quote.requestedAmount;
-    WALLET.totalPayoutFeesPaid += quote.withdrawalFee;
-    HISTORY.unshift(transaction);
-    return transaction;
+    void amount;
+    void method;
+    throwBackendPendingFeature("Seller payout request");
   },
   async markPayoutSuccessful(payoutId: string): Promise<PayoutTransaction> {
-    await delay(300);
-    const transaction = getPayoutTransaction(payoutId);
-    if (transaction.status === "successful") return transaction;
-    transaction.status = "successful";
-    transaction.paidAt = new Date().toISOString();
-    WALLET.pendingBalance = Math.max(0, WALLET.pendingBalance - transaction.requestedAmount);
-    return { ...transaction };
+    void payoutId;
+    throwBackendPendingFeature("Seller payout success mutation");
   },
   async markPayoutFailed(payoutId: string, failureReason: string): Promise<PayoutTransaction> {
-    await delay(300);
-    const transaction = getPayoutTransaction(payoutId);
-    if (transaction.status === "failed") return transaction;
-    transaction.status = "failed";
-    transaction.failureReason = failureReason;
-    WALLET.pendingBalance = Math.max(0, WALLET.pendingBalance - transaction.requestedAmount);
-    WALLET.availableBalance += transaction.requestedAmount;
-    WALLET.totalWithdrawn = Math.max(0, WALLET.totalWithdrawn - transaction.requestedAmount);
-    WALLET.totalPayoutFeesPaid = Math.max(0, WALLET.totalPayoutFeesPaid - transaction.withdrawalFee);
-    return { ...transaction };
+    void payoutId;
+    void failureReason;
+    throwBackendPendingFeature("Seller payout failure mutation");
   },
 };
-
-function getPayoutTransaction(payoutId: string): PayoutTransaction {
-  const transaction = HISTORY.find((item) => item.id === payoutId);
-  if (!transaction) throw new Error("Payout transaction not found.");
-  return transaction;
-}
-
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));

@@ -167,9 +167,13 @@ export function ProductListingStudioForm({
       { label: "Name added", done: Boolean(productName.trim()), detail: productName.trim() ? "Ready" : "Pending" },
       { label: "Category selected", done: Boolean(submittedCategory), detail: submittedCategory?.leafName ?? "Pending" },
       { label: "Details completed", done: Boolean(description.trim() && price && stock && requiredCategoryFieldsComplete), detail: isLoadingCategoryAttributes ? "Loading" : revealDetails ? "In progress" : "Locked" },
-      { label: "Ready for review", done: Boolean(images.length && productName.trim() && submittedCategory && price && stock && description.trim() && requiredCategoryFieldsComplete), detail: "Final check" },
+      {
+        label: canSubmitForReview ? "Ready for review" : "Draft ready for later review",
+        done: Boolean(images.length && productName.trim() && submittedCategory && price && stock && description.trim() && requiredCategoryFieldsComplete),
+        detail: canSubmitForReview ? "Final check" : "Awaiting seller approval",
+      },
     ],
-    [description, images.length, isLoadingCategoryAttributes, price, productName, requiredCategoryFieldsComplete, revealDetails, stock, submittedCategory],
+    [canSubmitForReview, description, images.length, isLoadingCategoryAttributes, price, productName, requiredCategoryFieldsComplete, revealDetails, stock, submittedCategory],
   );
 
   useEffect(() => {
@@ -639,7 +643,7 @@ export function ProductListingStudioForm({
             ) : (
               <div className="rounded-3xl border border-amber-200 bg-amber-50/80 p-4 text-sm font-semibold leading-relaxed text-amber-800 shadow-sm">
                 <Info className="mb-2 h-4 w-4" />
-                Submit a final category from the drawer to unlock product details, pricing, logistics, variants, and review submission.
+                Submit a final category from the drawer to unlock product details, pricing, logistics, variants, and the seller actions available for this listing.
               </div>
             )}
           </aside>

@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import {
   AlertCircle,
-  Bell,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -14,17 +13,20 @@ import {
   ShoppingBag,
   Truck,
   User,
+  HeadphonesIcon,
+  MessageCircle,
+  Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { ProductCard } from "@/components/productCard";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { useWishlist } from "@/hooks/use-wishlist";
 import { useCart } from "@/hooks/use-cart";
 import { useHydratedValue } from "@/hooks/use-hydrated-value";
 import { getAccountOverview } from "@/services/account";
 import type { AccountOverview } from "@/types/account";
+import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 
 export default function AccountOverviewPage() {
   const [data, setData] = React.useState<AccountOverview | null>(null);
@@ -45,7 +47,11 @@ export default function AccountOverviewPage() {
       const result = await getAccountOverview();
       setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error occurred");
+      if (err && typeof err === "object" && "status" in err && err.status === 401) {
+        setError("Your session expired. Please sign in again.");
+      } else {
+        setError(err instanceof Error ? err.message : "Unknown error occurred");
+      }
     } finally {
       setLoading(false);
     }
@@ -67,15 +73,23 @@ export default function AccountOverviewPage() {
         title="Failed to load dashboard"
         description={error ?? "We couldn't load your account overview right now."}
         action={
-          <Button onClick={loadData} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-            Try Again
-          </Button>
+          error === "Your session expired. Please sign in again." ? (
+            <Link href="/auth/login?next=/account">
+              <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
+                Sign In
+              </Button>
+            </Link>
+          ) : (
+            <Button onClick={loadData} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
+              Try Again
+            </Button>
+          )
         }
       />
     );
   }
 
-  const unreadNotifs = data.notifications.filter((notification) => notification.unread).length;
+
 
   return (
     <div className="space-y-8 pb-8">
@@ -214,37 +228,7 @@ export default function AccountOverviewPage() {
         </div>
 
         <div className="flex flex-col gap-6">
-          <div className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-            <div className="mb-5 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-lg font-black text-zinc-900">
-                <Bell className="h-5 w-5 text-zinc-400" /> Updates
-              </h2>
-              {unreadNotifs > 0 ? (
-                <Badge className="flex min-w-5 items-center justify-center rounded-full border-none bg-red-500 px-1.5 py-0 text-white hover:bg-red-500">
-                  {unreadNotifs}
-                </Badge>
-              ) : null}
-            </div>
 
-            <div className="space-y-4">
-              {data.notifications.length === 0 ? (
-                <p className="text-sm text-zinc-500">No account updates yet.</p>
-              ) : (
-                data.notifications.map((notification) => (
-                  <div key={notification.id} className="relative border-l-2 border-zinc-100 pl-4">
-                    {notification.unread ? (
-                      <span className="absolute -left-1.25 top-1.5 h-2 w-2 rounded-full bg-red-500 ring-4 ring-white" />
-                    ) : null}
-                    <h4 className={`text-sm font-bold ${notification.unread ? "text-zinc-900" : "text-zinc-600"}`}>
-                      {notification.title}
-                    </h4>
-                    <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">{notification.desc}</p>
-                    <span className="mt-1 block text-[10px] font-bold text-zinc-400">{notification.time}</span>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
 
           <div className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
             <div className="mb-4 flex items-center justify-between">
@@ -268,34 +252,53 @@ export default function AccountOverviewPage() {
                 <p className="mt-2 text-xs font-medium text-zinc-500">{data.defaultAddress.phone}</p>
               </div>
             ) : (
-              <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-4">
+              <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-6 text-center">
                 <p className="text-sm font-bold text-zinc-900">No default address</p>
-                <p className="mt-1 text-xs leading-relaxed text-zinc-500">Add a delivery address before checkout.</p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">Add your first delivery address.</p>
+                <Link href="/account/addresses">
+                  <Button variant="outline" className="mt-3 h-8 text-xs font-bold text-[#009E49] hover:bg-[#009E49]/10">
+                    Add Address
+                  </Button>
+                </Link>
               </div>
             )}
+          </div>
+
+          <div className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
+            <h2 className="mb-4 flex items-center gap-2 text-lg font-black text-zinc-900">
+              <HeadphonesIcon className="h-5 w-5 text-zinc-400" /> Support
+            </h2>
+            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-4">
+              {(!SUPPORT_WHATSAPP_NUMBER && !SUPPORT_CALL_NUMBER) ? (
+                <p className="text-sm font-medium text-zinc-600">
+                  Support contact will be available before launch.
+                </p>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  {SUPPORT_WHATSAPP_NUMBER && (
+                    <a href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
+                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10">
+                        <MessageCircle className="mr-2 h-4 w-4" />
+                        WhatsApp Support
+                      </Button>
+                    </a>
+                  )}
+                  {SUPPORT_CALL_NUMBER && (
+                    <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
+                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
+                        <Phone className="mr-2 h-4 w-4" />
+                        Call Support
+                      </Button>
+                    </a>
+                  )}
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
 
-      <section className="animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500" style={{ animationDelay: "300ms" }}>
-        <div className="mb-6 flex items-center justify-between px-2">
-          <h2 className="text-xl font-black text-zinc-900">Recently Viewed</h2>
-          <Link href="/categories" className="text-sm font-bold text-[#009E49] hover:underline">
-            Continue Shopping
-          </Link>
-        </div>
-        {data.recentlyViewed.length === 0 ? (
-          <div className="rounded-3xl border border-dashed border-zinc-200 bg-white p-6 text-sm font-medium text-zinc-500">
-            Products you view will appear here.
-          </div>
-        ) : (
-          <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
-            {data.recentlyViewed.map((product) => (
-              <ProductCard key={`${product.id}-${product.slug}`} product={product} />
-            ))}
-          </div>
-        )}
-      </section>
+
     </div>
   );
 }

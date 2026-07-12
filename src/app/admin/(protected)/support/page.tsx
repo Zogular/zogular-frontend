@@ -1,12 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock, LifeBuoy, MessageSquareReply, Send, Siren, TicketCheck } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { MessageCircle, Send, TicketCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
   AdminDetailSheet,
   AdminEmptyState,
-  AdminMetricCard,
   AdminPageHeader,
   AdminSearchField,
   AdminStatusBadge,
@@ -14,120 +13,99 @@ import {
   type AdminTone,
 } from "@/components/admin/AdminPrimitives";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
-import { recordAdminAudit } from "@/services/admin/audit";
 import {
   adminSupportApi,
   type AdminSupportTicket,
-  type SupportCategory,
-  type SupportMacro,
-  type SupportPriority,
-  type SupportTicketStatus,
+  type AdminTicketCategory,
+  type AdminTicketPriority,
+  type AdminTicketStatus,
 } from "@/services/admin/support";
-import { adminHasPermission, CURRENT_ADMIN_IDENTITY } from "@/services/admin/session";
+import { adminIdentityHasPermission } from "@/services/admin/session";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
 
-const statusTone: Record<SupportTicketStatus, AdminTone> = {
-  open: "amber",
-  pending: "sky",
-  escalated: "rose",
-  closed: "zinc",
+const statusTone: Record<AdminTicketStatus, AdminTone> = {
+  "open": "amber",
+  "waiting-seller": "indigo",
+  "waiting-support": "amber",
+  "resolved": "emerald",
+  "closed": "zinc",
 };
 
-const priorityTone: Record<SupportPriority, AdminTone> = {
-  low: "zinc",
-  normal: "indigo",
-  high: "amber",
-  urgent: "rose",
+const priorityTone: Record<AdminTicketPriority, AdminTone> = {
+  "low": "zinc",
+  "medium": "indigo",
+  "high": "amber",
+  "urgent": "rose",
 };
 
 export default function AdminSupportPage() {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
-  const [macros, setMacros] = useState<SupportMacro[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<SupportCategory | "all">("all");
-  const [priorityFilter, setPriorityFilter] = useState<SupportPriority | "all">("all");
-  const [selectedTicket, setSelectedTicket] = useState<AdminSupportTicket | null>(null);
+  const [categoryFilter, setCategoryFilter] = useState<AdminTicketCategory | "all">("all");
+  const [priorityFilter, setPriorityFilter] = useState<AdminTicketPriority | "all">("all");
+  const [statusFilter, setStatusFilter] = useState<AdminTicketStatus | "all">("all");
+  const [page, setPage] = useState(1);
+  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
+  
+  const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
+  const [selectedTicketDetail, setSelectedTicketDetail] = useState<AdminSupportTicket | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+
   const [reply, setReply] = useState("");
-  const [assignee, setAssignee] = useState("");
   const [isMutating, setIsMutating] = useState(false);
 
-  const canManageSupport = adminHasPermission("manage_support");
+  const identity = useAdminIdentity();
+  const canViewSupport = identity ? adminIdentityHasPermission(identity, "view_support_tickets") : false;
+  const canReplySupport = identity ? adminIdentityHasPermission(identity, "reply_support_tickets") : false;
+  const canManageSupport = identity ? adminIdentityHasPermission(identity, "manage_support_tickets") : false;
 
   const loadTickets = useCallback(async () => {
     try {
       setLoading(true);
-      const workspace = await adminSupportApi.fetchTickets();
-      setTickets(workspace.tickets);
-      setMacros(workspace.macros);
+      const res = await adminSupportApi.fetchTickets({
+        page,
+        limit: 10,
+        status: statusFilter === "all" ? undefined : statusFilter,
+        priority: priorityFilter === "all" ? undefined : priorityFilter,
+        category: categoryFilter === "all" ? undefined : categoryFilter,
+        search: search.trim() || undefined
+      });
+      setTickets(res.tickets);
+      setPagination(res.pagination);
     } catch {
       toast.error("Failed to load support tickets.");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [statusFilter, priorityFilter, categoryFilter, search, page]);
 
   useEffect(() => { loadTickets(); }, [loadTickets]);
 
-  const filteredTickets = useMemo(() => {
-    const normalizedSearch = search.trim().toLowerCase();
-    return tickets.filter((ticket) => {
-      const matchesSearch = !normalizedSearch || [
-        ticket.id,
-        ticket.subject,
-        ticket.requester,
-        ticket.assignedTo,
-        ticket.linkedEntities.map((entity) => `${entity.id} ${entity.label}`).join(" "),
-      ].some((value) => value.toLowerCase().includes(normalizedSearch));
-      const matchesCategory = categoryFilter === "all" || ticket.category === categoryFilter;
-      const matchesPriority = priorityFilter === "all" || ticket.priority === priorityFilter;
-      return matchesSearch && matchesCategory && matchesPriority;
-    });
-  }, [categoryFilter, priorityFilter, search, tickets]);
-
-  const metrics = useMemo(() => {
-    const open = tickets.filter((ticket) => ticket.status === "open").length;
-    const escalated = tickets.filter((ticket) => ticket.status === "escalated").length;
-    const urgent = tickets.filter((ticket) => ticket.priority === "urgent").length;
-    const overdue = tickets.filter((ticket) => new Date(ticket.slaDueAt).getTime() < Date.now() && ticket.status !== "closed").length;
-    return { open, escalated, urgent, overdue };
-  }, [tickets]);
-
-  const syncTicket = (updatedTicket: AdminSupportTicket) => {
-    setTickets((current) => current.map((ticket) => ticket.id === updatedTicket.id ? updatedTicket : ticket));
-    setSelectedTicket(updatedTicket);
+  const openTicket = async (ticketId: string) => {
+    setSelectedTicketId(ticketId);
+    setDetailLoading(true);
+    try {
+      const ticket = await adminSupportApi.getTicket(ticketId);
+      setSelectedTicketDetail(ticket);
+    } catch {
+      toast.error("Failed to load ticket details.");
+    } finally {
+      setDetailLoading(false);
+    }
   };
 
-  const updateStatus = async (status: SupportTicketStatus) => {
-    if (!selectedTicket) return;
+  const updateStatus = async (status: AdminTicketStatus) => {
+    if (!selectedTicketDetail) return;
 
     try {
       setIsMutating(true);
-      await adminSupportApi.updateTicketStatus(selectedTicket.id, status);
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: `support_ticket_${status}`,
-        target: selectedTicket.id,
-        severity: status === "escalated" ? "warning" : "info",
-      });
-      syncTicket({
-        ...selectedTicket,
-        status,
-        lastActivityAt: new Date().toISOString(),
-        messages: [
-          {
-            id: `MSG-${Date.now()}`,
-            author: CURRENT_ADMIN_IDENTITY.name,
-            role: "admin",
-            timestamp: new Date().toISOString(),
-            body: `Ticket status changed to ${toTitleCase(status)}.`,
-          },
-          ...selectedTicket.messages,
-        ],
-      });
-      toast.success(`Ticket moved to ${toTitleCase(status)}.`);
+      const updated = await adminSupportApi.updateTicketStatus(selectedTicketDetail.id, status);
+      setSelectedTicketDetail({ ...selectedTicketDetail, ...updated });
+      loadTickets(); // Refresh list to get new status
+      toast.success(`Ticket moved to ${toTitleCase(status.replace('-', ' '))}.`);
     } catch {
       toast.error("Failed to update ticket status.");
     } finally {
@@ -135,60 +113,22 @@ export default function AdminSupportPage() {
     }
   };
 
-  const assignTicket = async () => {
-    if (!selectedTicket || !assignee.trim()) return toast.error("Enter an assignee.");
-
-    try {
-      setIsMutating(true);
-      await adminSupportApi.assignTicket(selectedTicket.id, assignee.trim());
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: "support_ticket_assigned",
-        target: selectedTicket.id,
-        note: `Assigned to ${assignee.trim()}`,
-      });
-      syncTicket({
-        ...selectedTicket,
-        assignedTo: assignee.trim(),
-        lastActivityAt: new Date().toISOString(),
-        internalNotes: [`Assigned to ${assignee.trim()}.`, ...selectedTicket.internalNotes],
-      });
-      setAssignee("");
-      toast.success("Ticket assigned.");
-    } catch {
-      toast.error("Failed to assign ticket.");
-    } finally {
-      setIsMutating(false);
-    }
-  };
-
   const sendReply = async () => {
-    if (!selectedTicket || !reply.trim()) return toast.error("Write a reply before sending.");
+    if (!selectedTicketDetail || !reply.trim()) return toast.error("Write a reply before sending.");
 
     try {
       setIsMutating(true);
-      await adminSupportApi.replyToTicket(selectedTicket.id, reply.trim());
-      await recordAdminAudit({
-        actorId: CURRENT_ADMIN_IDENTITY.id,
-        action: "support_ticket_replied",
-        target: selectedTicket.id,
-      });
-      syncTicket({
-        ...selectedTicket,
-        status: selectedTicket.status === "closed" ? "open" : selectedTicket.status,
-        lastActivityAt: new Date().toISOString(),
-        messages: [
-          {
-            id: `MSG-${Date.now()}`,
-            author: CURRENT_ADMIN_IDENTITY.name,
-            role: "admin",
-            timestamp: new Date().toISOString(),
-            body: reply.trim(),
-          },
-          ...selectedTicket.messages,
-        ],
+      const message = await adminSupportApi.replyToTicket(selectedTicketDetail.id, reply.trim());
+      setSelectedTicketDetail(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          status: 'waiting-seller',
+          messages: [...(prev.messages || []), message]
+        };
       });
       setReply("");
+      loadTickets();
       toast.success("Reply sent.");
     } catch {
       toast.error("Failed to send reply.");
@@ -197,38 +137,43 @@ export default function AdminSupportPage() {
     }
   };
 
-  if (!canManageSupport) {
-    return <AdminEmptyState title="Access denied" description="Your admin role cannot manage support tickets." />;
+  if (!canViewSupport) {
+    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
   }
 
   return (
     <div className="space-y-6">
       <AdminPageHeader
         title="Support Hub"
-        description="Handle seller and buyer tickets with SLA views, linked context, macros, and assignment controls."
+        description="Seller support queue. Read and reply to seller issues."
       />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
-        <AdminMetricCard title="Open tickets" value={metrics.open} note="Awaiting support response" icon={<LifeBuoy className="h-5 w-5" />} tone="indigo" />
-        <AdminMetricCard title="Escalated" value={metrics.escalated} note="Linked to ops or disputes" icon={<Siren className="h-5 w-5" />} tone="rose" />
-        <AdminMetricCard title="Urgent priority" value={metrics.urgent} note="Highest service risk" icon={<TicketCheck className="h-5 w-5" />} tone="amber" />
-        <AdminMetricCard title="SLA overdue" value={metrics.overdue} note="Needs immediate attention" icon={<Clock className="h-5 w-5" />} tone={metrics.overdue ? "rose" : "emerald"} />
-      </div>
-
       <AdminToolbar>
-        <AdminSearchField value={search} onChange={setSearch} placeholder="Search tickets, requester, linked order, or owner" className="flex-1" />
-        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as SupportCategory | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
-          <option value="all">All categories</option>
-          <option value="buyer">Buyer</option>
-          <option value="seller">Seller</option>
-          <option value="orders">Orders</option>
-          <option value="payments">Payments</option>
-          <option value="account">Account</option>
+        <AdminSearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search tickets by subject, store, or email..." className="flex-1" />
+        
+        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+          <option value="all">All statuses</option>
+          <option value="open">Open</option>
+          <option value="waiting-support">Waiting on Support</option>
+          <option value="waiting-seller">Waiting on Seller</option>
+          <option value="resolved">Resolved</option>
+          <option value="closed">Closed</option>
         </select>
-        <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as SupportPriority | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        
+        <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value as AdminTicketCategory | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+          <option value="all">All categories</option>
+          <option value="order">Order</option>
+          <option value="payout">Payout</option>
+          <option value="inventory">Inventory</option>
+          <option value="tech">Tech</option>
+          <option value="account">Account</option>
+          <option value="general">General</option>
+        </select>
+        
+        <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value as AdminTicketPriority | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All priorities</option>
           <option value="low">Low</option>
-          <option value="normal">Normal</option>
+          <option value="medium">Medium</option>
           <option value="high">High</option>
           <option value="urgent">Urgent</option>
         </select>
@@ -243,120 +188,128 @@ export default function AdminSupportPage() {
                 <th className="px-5 py-4 font-black">Requester</th>
                 <th className="px-5 py-4 font-black">Priority</th>
                 <th className="px-5 py-4 font-black">Status</th>
-                <th className="px-5 py-4 font-black">SLA</th>
                 <th className="rounded-tr-3xl px-5 py-4 text-right font-black">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {loading ? (
-                <tr><td colSpan={6} className="px-5 py-12 text-center text-sm font-bold text-zinc-500">Loading support inbox...</td></tr>
-              ) : filteredTickets.length === 0 ? (
-                <tr><td colSpan={6}><AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /></td></tr>
-              ) : filteredTickets.map((ticket) => (
+                <tr><td colSpan={5} className="px-5 py-12 text-center text-sm font-bold text-zinc-500">Loading support inbox...</td></tr>
+              ) : tickets.length === 0 ? (
+                <tr><td colSpan={5}><AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /></td></tr>
+              ) : tickets.map((ticket) => (
                 <tr key={ticket.id} className="bg-white/55 transition-colors hover:bg-sky-50/60">
                   <td className="px-5 py-4">
                     <p className="font-black text-zinc-950">{ticket.subject}</p>
                     <p className="text-xs font-bold text-zinc-500">{ticket.id} · {toTitleCase(ticket.category)}</p>
-                    <p className="text-xs font-medium text-zinc-400">Last activity {formatAdminDateTime(ticket.lastActivityAt)}</p>
+                    <p className="text-xs font-medium text-zinc-400">Updated {formatAdminDateTime(ticket.updatedAt)}</p>
                   </td>
                   <td className="px-5 py-4">
-                    <p className="font-bold text-zinc-700">{ticket.requester}</p>
-                    <p className="text-xs font-bold text-zinc-500">{toTitleCase(ticket.requesterType)}</p>
+                    <p className="font-bold text-zinc-700">{ticket.seller.displayName}</p>
+                    <p className="text-xs font-bold text-zinc-500">{ticket.seller.storeName || "No Store"}</p>
                   </td>
-                  <td className="px-5 py-4"><AdminStatusBadge tone={priorityTone[ticket.priority]}>{ticket.priority}</AdminStatusBadge></td>
-                  <td className="px-5 py-4"><AdminStatusBadge tone={statusTone[ticket.status]}>{ticket.status}</AdminStatusBadge></td>
-                  <td className="px-5 py-4 text-xs font-bold text-zinc-600">{formatAdminDateTime(ticket.slaDueAt)}</td>
+                  <td className="px-5 py-4"><AdminStatusBadge tone={priorityTone[ticket.priority]}>{toTitleCase(ticket.priority)}</AdminStatusBadge></td>
+                  <td className="px-5 py-4"><AdminStatusBadge tone={statusTone[ticket.status]}>{toTitleCase(ticket.status.replace('-', ' '))}</AdminStatusBadge></td>
                   <td className="px-5 py-4 text-right">
-                    <Button variant="outline" onClick={() => setSelectedTicket(ticket)} className="rounded-xl font-black">Open ticket</Button>
+                    <Button variant="outline" onClick={() => openTicket(ticket.id)} className="rounded-xl font-black">Open ticket</Button>
                   </td>
                 </tr>
               ))}
             </tbody>
           </table>
         </div>
+        {pagination.pages > 1 && (
+          <div className="flex items-center justify-between border-t border-zinc-100 px-5 py-3 bg-white/40">
+            <span className="text-xs font-bold text-zinc-500">
+              Page {pagination.page} of {pagination.pages} <span className="text-zinc-400">· {pagination.total} total</span>
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg font-bold text-xs"
+                disabled={pagination.page <= 1 || loading}
+                onClick={() => setPage(p => Math.max(1, p - 1))}
+              >
+                Previous
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg font-bold text-xs"
+                disabled={pagination.page >= pagination.pages || loading}
+                onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
       </section>
 
       <AdminDetailSheet
-        open={Boolean(selectedTicket)}
-        onOpenChange={(open) => !open && setSelectedTicket(null)}
-        title={selectedTicket?.subject ?? "Support ticket"}
-        description={selectedTicket ? `${selectedTicket.id} · ${selectedTicket.requester}` : "Support ticket details"}
+        open={Boolean(selectedTicketId)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedTicketId(null);
+            setSelectedTicketDetail(null);
+          }
+        }}
+        title={selectedTicketDetail?.subject ?? "Support ticket"}
+        description={selectedTicketDetail ? `${selectedTicketDetail.id} · ${selectedTicketDetail.seller.storeName || selectedTicketDetail.seller.displayName}` : "Support ticket details"}
       >
-        {selectedTicket ? (
+        {detailLoading ? (
+          <div className="py-12 text-center text-sm font-bold text-zinc-500">Loading ticket details...</div>
+        ) : selectedTicketDetail ? (
           <div className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2">
               <div className="rounded-2xl bg-indigo-50 p-4">
                 <p className="text-[10px] font-black uppercase text-indigo-700">Category</p>
-                <p className="text-lg font-black text-zinc-950">{toTitleCase(selectedTicket.category)}</p>
+                <p className="text-lg font-black text-zinc-950">{toTitleCase(selectedTicketDetail.category)}</p>
               </div>
               <div className="rounded-2xl bg-amber-50 p-4">
                 <p className="text-[10px] font-black uppercase text-amber-700">Priority</p>
-                <div className="mt-2"><AdminStatusBadge tone={priorityTone[selectedTicket.priority]}>{selectedTicket.priority}</AdminStatusBadge></div>
-              </div>
-              <div className="rounded-2xl bg-sky-50 p-4">
-                <p className="text-[10px] font-black uppercase text-sky-700">SLA due</p>
-                <p className="text-sm font-black text-zinc-950">{formatAdminDateTime(selectedTicket.slaDueAt)}</p>
+                <div className="mt-2"><AdminStatusBadge tone={priorityTone[selectedTicketDetail.priority]}>{toTitleCase(selectedTicketDetail.priority)}</AdminStatusBadge></div>
               </div>
             </div>
 
             <div className="rounded-3xl border border-zinc-100 bg-white p-4">
-              <h3 className="text-sm font-black text-zinc-950">Linked context</h3>
-              <div className="mt-3 flex flex-wrap gap-2">
-                {selectedTicket.linkedEntities.map((entity) => (
-                  <AdminStatusBadge key={`${entity.type}-${entity.id}`} tone="zinc">{toTitleCase(entity.type)} · {entity.id}</AdminStatusBadge>
-                ))}
+              <h3 className="text-sm font-black text-zinc-950">Seller Context</h3>
+              <div className="mt-3 grid gap-2 text-sm text-zinc-700">
+                <p><strong>Name:</strong> {selectedTicketDetail.seller.displayName}</p>
+                <p><strong>Email:</strong> {selectedTicketDetail.seller.email}</p>
+                <p><strong>Store:</strong> {selectedTicketDetail.seller.storeName || "N/A"}</p>
+                <p><strong>Status:</strong> {selectedTicketDetail.seller.applicationStatus}</p>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-zinc-100 bg-white p-4">
-              <h3 className="text-sm font-black text-zinc-950">Assignment</h3>
-              <p className="mt-1 text-xs font-bold text-zinc-500">Current owner: {selectedTicket.assignedTo}</p>
-              <div className="mt-3 flex gap-2">
-                <Input value={assignee} onChange={(event) => setAssignee(event.target.value)} placeholder="Assign to agent, queue, or team" className="h-11 rounded-xl border-zinc-200" />
-                <Button onClick={assignTicket} disabled={isMutating} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">Assign</Button>
-              </div>
-            </div>
-
-            <div>
-              <h3 className="text-sm font-black text-zinc-950">Macros</h3>
-              <div className="mt-3 grid gap-2">
-                {macros.filter((macro) => macro.category === selectedTicket.category || macro.category === "orders").map((macro) => (
-                  <button key={macro.id} type="button" onClick={() => setReply(macro.body)} className="rounded-2xl border border-zinc-100 bg-white p-3 text-left text-sm font-bold text-zinc-700 transition hover:border-emerald-200 hover:bg-emerald-50">
-                    {macro.title}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div>
+            <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
               <h3 className="text-sm font-black text-zinc-950">Reply</h3>
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Write a clear buyer/seller support reply..." className="mt-3 min-h-28 rounded-2xl border-zinc-200 bg-white" />
-              <Button onClick={sendReply} disabled={isMutating} className="mt-3 rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
-                <Send className="mr-2 h-4 w-4" /> Send reply
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport} className="mt-3 min-h-28 rounded-2xl border-zinc-200 bg-white" />
+              <Button onClick={sendReply} disabled={!reply.trim() || isMutating || !canReplySupport} className="mt-3 rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
+                <Send className="mr-2 h-4 w-4" /> Send Reply
               </Button>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-4">
-              <Button disabled={isMutating} variant="outline" onClick={() => updateStatus("pending")} className="rounded-xl font-black">Pending</Button>
-              <Button disabled={isMutating} variant="destructive" onClick={() => updateStatus("escalated")} className="rounded-xl font-black">
-                <Siren className="mr-2 h-4 w-4" /> Escalate
+            <div className="grid gap-2 md:grid-cols-3">
+              <Button disabled={isMutating || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="rounded-xl font-black">
+                <MessageCircle className="mr-2 h-4 w-4" /> Mark Waiting Support
               </Button>
-              <Button disabled={isMutating} onClick={() => updateStatus("closed")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
-                <TicketCheck className="mr-2 h-4 w-4" /> Close
+              <Button disabled={isMutating || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
+                <TicketCheck className="mr-2 h-4 w-4" /> Mark Resolved
               </Button>
-              <Button disabled={isMutating} variant="outline" onClick={() => updateStatus("open")} className="rounded-xl font-black">
-                <MessageSquareReply className="mr-2 h-4 w-4" /> Reopen
+              <Button disabled={isMutating || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+                Close Ticket
               </Button>
             </div>
 
             <div>
               <h3 className="text-sm font-black text-zinc-950">Conversation</h3>
               <div className="mt-3 space-y-3">
-                {selectedTicket.messages.map((message) => (
+                {selectedTicketDetail.messages?.map((message) => (
                   <div key={message.id} className="rounded-2xl border border-zinc-100 bg-white p-3">
-                    <p className="text-sm font-black text-zinc-950">{message.author}</p>
-                    <p className="text-xs font-bold text-zinc-500">{toTitleCase(message.role)} · {formatAdminDateTime(message.timestamp)}</p>
-                    <p className="mt-2 text-sm text-zinc-600">{message.body}</p>
+                    <p className="text-sm font-black text-zinc-950">{message.senderName}</p>
+                    <p className="text-xs font-bold text-zinc-500">{toTitleCase(message.senderType)} · {formatAdminDateTime(message.createdAt)}</p>
+                    <p className="mt-2 text-sm text-zinc-600 whitespace-pre-wrap">{message.body}</p>
                   </div>
                 ))}
               </div>

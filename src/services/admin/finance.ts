@@ -1,3 +1,5 @@
+import { throwBackendPendingFeature } from "@/services/backend-pending";
+
 export type PayoutStatus = "pending" | "processing" | "completed" | "failed" | "rejected";
 export type TransactionType = "escrow_deposit" | "commission_fee" | "payout_release" | "refund_debit";
 
@@ -46,5 +48,6 @@ export const adminFinanceApi = {
   },
   async updatePayoutStatus(payoutId: string, newStatus: "completed" | "rejected", note?: string): Promise<void> {
     void payoutId; void newStatus; void note;
+    throwBackendPendingFeature("Admin payout status update");
   }
 };

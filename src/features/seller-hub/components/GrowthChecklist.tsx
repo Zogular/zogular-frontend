@@ -25,17 +25,16 @@ export function GrowthChecklist({
       href: "/seller/products/new",
     },
     {
-      label: "Add store basics (logo & bio)",
+      label: "Review store settings preview",
       isComplete: false, // Future enhancement
       href: "/seller/settings",
     },
     {
-      label: "Verify payout details",
+      label: "Payout details provided",
       isComplete: !!application.payoutProvider,
-      href: "/seller/settings",
     },
     {
-      label: "Submit application for full approval",
+      label: "Wait for full admin approval",
       isComplete: application.status === "APPROVED",
       href: "/seller/status",
     },

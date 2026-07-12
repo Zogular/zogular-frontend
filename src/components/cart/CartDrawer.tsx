@@ -26,6 +26,7 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useCart, type CartItem } from "@/hooks/use-cart";
+import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 
 type CartDrawerProps = {
   children: ReactNode;
@@ -167,8 +168,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
   const displayItemCount = hasHydrated ? itemCount : 0;
   const displayItems = hasHydrated ? items : [];
   const displayTotalAmount = hasHydrated ? totalAmount : 0;
-  const deliveryFee = displayItemCount > 0 ? 50 : 0;
-  const total = displayTotalAmount + deliveryFee;
+  const total = displayTotalAmount;
   const closeDrawer = () => setOpen(false);
 
   return (
@@ -220,8 +220,8 @@ export function CartDrawer({ children }: CartDrawerProps) {
 
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
                   <span>Delivery (Lusaka Area)</span>
-                  <span className="font-bold text-zinc-900">
-                    {formatCurrency(deliveryFee)}
+                  <span className="font-bold text-zinc-500">
+                    Calculated at checkout
                   </span>
                 </div>
 
@@ -246,7 +246,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
 
               <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                 <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" />
-                100% Secure Checkout
+                Backend-quoted COD checkout
               </div>
             </SheetFooter>
           </>

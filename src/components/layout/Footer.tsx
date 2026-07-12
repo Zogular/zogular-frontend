@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { CircleHelp, CreditCard, Package, Send, ShieldCheck, Smartphone, Store } from "lucide-react";
+import { CircleHelp, Package, ReceiptText, Send, ShieldCheck, Store, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -163,15 +163,15 @@ export function Footer() {
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-[10px] md:text-xs font-semibold text-zinc-400 bg-zinc-900 px-2 py-1 md:px-3 md:py-1.5 rounded-lg">
-              <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" /> 100% Secure
+              <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" /> Backend-quoted COD
             </div>
             
             <div className="flex items-center gap-2 text-zinc-500">
-              <span title="Mobile Money (MTN, Airtel)">
-                <Smartphone className="h-4 w-4 md:h-5 md:w-5 hover:text-white transition-colors" />
+              <span title="Cash on Delivery">
+                <ReceiptText className="h-4 w-4 md:h-5 md:w-5 hover:text-white transition-colors" />
               </span>
-              <span title="Visa / Mastercard">
-                <CreditCard className="h-4 w-4 md:h-5 md:w-5 hover:text-white transition-colors" />
+              <span title="Manual delivery dispatch">
+                <Truck className="h-4 w-4 md:h-5 md:w-5 hover:text-white transition-colors" />
               </span>
             </div>
           </div>

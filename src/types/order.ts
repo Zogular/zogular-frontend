@@ -8,6 +8,7 @@ export interface OrderLineItem {
 
 export interface OrderSummary {
   id: string;
+  orderNumber?: string;
   date: string;
   total: number;
   status: OrderStatus;
@@ -16,6 +17,9 @@ export interface OrderSummary {
 }
 
 export interface InvoiceItem {
+  productId: string;
+  slug?: string;
+  image?: string;
   name: string;
   qty: number;
   price: number;
@@ -23,6 +27,7 @@ export interface InvoiceItem {
 
 export interface Invoice {
   id: string;
+  orderNumber?: string;
   date: string;
   status: OrderStatus;
   customer: {
@@ -36,6 +41,10 @@ export interface Invoice {
     city: string;
   };
   paymentMethod: string;
+  paymentCollectionMode?: string;
+  commitmentFeeAmount?: number;
+  cashDueOnDelivery?: number;
+  commitmentFeeStatus?: string;
   items: InvoiceItem[];
   subtotal: number;
   shippingFee: number;

@@ -1,32 +1,59 @@
 "use client";
 
 import * as React from "react";
-import Image from "next/image";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, CheckCircle2, MapPin, Package } from "lucide-react";
+import { ArrowRight, CheckCircle2, MapPin, Package, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
-import { getStoredCheckoutOrder, type CheckoutOrder } from "@/services/checkout";
+import { getInvoiceById } from "@/services/orders";
+import { getStoredAuthUser } from "@/services/auth-session";
+import { getStoredCheckoutOrderId } from "@/services/checkout";
+import type { Invoice } from "@/types/order";
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
 }
 
-function paymentLabel(value: CheckoutOrder["paymentMethod"]) {
-  return value === "mobile-money" ? "Mobile Money" : "Bank Card";
-}
-
 function SuccessContent() {
   const searchParams = useSearchParams();
-  const [order, setOrder] = React.useState<CheckoutOrder | null>(null);
+  const orderId = searchParams.get("orderId");
+  
+  const [order, setOrder] = React.useState<Invoice | null>(null);
+  const [isGuest, setIsGuest] = React.useState(false);
+  const [isError, setIsError] = React.useState(false);
   const [loaded, setLoaded] = React.useState(false);
+  const [storedOrderRef, setStoredOrderRef] = React.useState<string | null>(null);
 
   React.useEffect(() => {
-    setOrder(getStoredCheckoutOrder(searchParams.get("orderId")));
-    setLoaded(true);
-  }, [searchParams]);
+    if (!orderId) {
+      setLoaded(true);
+      return;
+    }
+
+    const storedOrderId = getStoredCheckoutOrderId();
+    if (storedOrderId === orderId) {
+      // We don't have orderNumber in localStorage anymore, just id.
+      // The backend will provide it.
+    }
+
+    getInvoiceById(orderId)
+      .then((data) => {
+        setOrder(data);
+      })
+      .catch((err) => {
+        // Fallback to guest UI if unauthorized, otherwise error
+        if (err && typeof err === "object" && "status" in err && err.status === 401) {
+          setIsGuest(true);
+        } else {
+          setIsError(true);
+        }
+      })
+      .finally(() => {
+        setLoaded(true);
+      });
+  }, [orderId]);
 
   if (!loaded) {
     return (
@@ -38,7 +65,8 @@ function SuccessContent() {
     );
   }
 
-  if (!order) {
+  // Missing or Invalid Order ID
+  if (!orderId) {
     return (
       <main className="min-h-screen bg-[#f4fbf6] px-4 py-12">
         <div className="mx-auto w-full max-w-2xl">
@@ -47,19 +75,19 @@ function SuccessContent() {
             <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-zinc-100 text-zinc-400">
               <Package className="h-8 w-8" />
             </div>
-            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">No recent order found</h1>
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Invalid or missing order reference</h1>
             <p className="mx-auto mt-3 max-w-md text-sm font-medium text-zinc-500">
-              This confirmation page needs an order created from checkout. Start from your cart to generate a matching receipt.
+              We couldn&apos;t find an order matching that link. 
             </p>
             <div className="mt-8 flex flex-col justify-center gap-3 md:flex-row">
-              <Link href="/cart" className="w-full md:w-auto">
+              <Link href="/account/orders" className="w-full md:w-auto">
                 <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white hover:bg-zinc-800">
-                  Go to Cart
+                  My Orders
                 </Button>
               </Link>
               <Link href="/categories" className="w-full md:w-auto">
                 <Button variant="outline" className="h-12 w-full rounded-xl border-zinc-200 px-8 font-bold text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900">
-                  Browse Categories
+                  Continue Shopping
                 </Button>
               </Link>
             </div>
@@ -69,7 +97,45 @@ function SuccessContent() {
     );
   }
 
-  const customerName = `${order.contact.firstName} ${order.contact.lastName}`.trim();
+  // General Error Fetching Order
+  if (isError) {
+    return (
+      <main className="min-h-screen bg-[#f4fbf6] px-4 py-12">
+        <div className="mx-auto w-full max-w-2xl">
+          <PurchaseProgress currentStep="cart" className="mb-5" />
+          <div className="rounded-[2rem] border border-zinc-200/60 bg-white p-8 text-center shadow-[0_20px_60px_rgba(15,23,42,0.08)] md:p-12">
+            <div className="mx-auto mb-6 flex h-20 w-20 items-center justify-center rounded-full bg-orange-100 text-orange-500">
+              <Clock className="h-8 w-8" />
+            </div>
+            <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">We&apos;re processing your request</h1>
+            <p className="mx-auto mt-3 max-w-md text-sm font-medium text-zinc-500">
+              Your order may have been placed successfully, but we are having trouble retrieving the details right now.
+            </p>
+            <div className="mt-8 flex flex-col justify-center gap-3 md:flex-row">
+              {getStoredAuthUser() ? (
+                <Link href="/account/orders" className="w-full md:w-auto">
+                  <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white hover:bg-zinc-800">
+                    Check My Orders
+                  </Button>
+                </Link>
+              ) : (
+                <Link href="/categories" className="w-full md:w-auto">
+                  <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white hover:bg-zinc-800">
+                    Continue Shopping
+                  </Button>
+                </Link>
+              )}
+              <Button onClick={() => window.location.reload()} variant="outline" className="h-12 w-full rounded-xl border-zinc-200 px-8 font-bold text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900 md:w-auto">
+                Refresh Page
+              </Button>
+            </div>
+          </div>
+        </div>
+      </main>
+    );
+  }
+
+  const displayOrderNumber = order?.orderNumber || storedOrderRef || orderId;
 
   return (
     <main className="min-h-screen bg-[#f4fbf6] px-4 py-12">
@@ -86,13 +152,10 @@ function SuccessContent() {
           </div>
 
           <h1 className="relative z-10 mb-3 text-3xl font-black tracking-tight text-zinc-900 md:text-4xl">
-            Order Confirmed
+            Your order has been placed.
           </h1>
-          <p className="relative z-10 mx-auto mb-8 max-w-md text-sm font-medium text-zinc-500 md:text-base">
-            Thanks for shopping with Zogular. We received your order and are getting it ready for dispatch.
-          </p>
 
-          <Separator className="mb-8 bg-zinc-100" />
+          <Separator className="mb-8 mt-6 bg-zinc-100" />
 
           <div className="mb-8 grid grid-cols-1 gap-4 text-left md:grid-cols-2">
             <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-5">
@@ -100,62 +163,119 @@ function SuccessContent() {
                 <Package className="h-4 w-4" />
                 <span className="text-xs font-bold uppercase tracking-wider">Order Number</span>
               </div>
-              <p className="text-lg font-black text-zinc-900">{order.id}</p>
-              <p className="mt-1 text-xs font-bold text-[#009E49]">Estimated delivery: {order.estimatedDelivery}</p>
+              <p className="text-lg font-black text-zinc-900">{displayOrderNumber}</p>
             </div>
-
-            <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-5">
-              <div className="mb-2 flex items-center gap-2 text-zinc-500">
-                <MapPin className="h-4 w-4" />
-                <span className="text-xs font-bold uppercase tracking-wider">Delivery To</span>
+            
+            {order && (
+              <div className="rounded-2xl border border-zinc-100 bg-zinc-50/80 p-5">
+                <div className="mb-2 flex items-center gap-2 text-zinc-500">
+                  <MapPin className="h-4 w-4" />
+                  <span className="text-xs font-bold uppercase tracking-wider">Delivery To</span>
+                </div>
+                <p className="text-sm font-bold text-zinc-900">{order.customer.name}</p>
+                <p className="mt-1 text-xs text-zinc-500">{order.shipping.address}, {order.shipping.area}</p>
               </div>
-              <p className="text-sm font-bold text-zinc-900">{customerName}</p>
-              <p className="mt-1 text-xs text-zinc-500">{order.delivery.street}, {order.delivery.area}</p>
-            </div>
+            )}
           </div>
 
-          <div className="mb-8 rounded-2xl border border-zinc-100 bg-white p-4 text-left">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-sm font-black text-zinc-900">Items Ordered</h2>
-              <span className="text-xs font-bold text-zinc-500">{paymentLabel(order.paymentMethod)}</span>
+          {/* Guest/Unauthorized view */}
+          {isGuest && (
+            <div className="mb-8 rounded-2xl border border-zinc-200 bg-zinc-50 p-6 text-center">
+              <p className="mb-3 font-semibold text-zinc-800">
+                Full order details are safely hidden for guest visitors.
+              </p>
+              <p className="mb-4 text-sm text-zinc-500">
+                To track your order, please log into the account you used during checkout.
+              </p>
+              <Link href={`/auth/login?redirect=/account/orders/${orderId}`}>
+                <Button className="rounded-xl bg-zinc-900 px-6 font-bold text-white hover:bg-zinc-800">
+                  Log In to View Order
+                </Button>
+              </Link>
             </div>
-            <div className="space-y-3">
-              {order.items.map((item) => (
-                <div key={`${item.id}-${item.variant ?? "default"}`} className="flex items-center gap-3">
-                  <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50">
-                    <Image src={item.image} alt={item.name} fill sizes="48px" unoptimized className="object-contain p-1.5 mix-blend-multiply" />
+          )}
+
+          {/* Authenticated order details */}
+          {order && (
+            <div className="mb-8 rounded-2xl border border-zinc-100 bg-white p-4 text-left">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-sm font-black text-zinc-900">Items Ordered</h2>
+              </div>
+              <div className="space-y-3">
+                {order.items.map((item, idx) => (
+                  <div key={`${item.name}-${idx}`} className="flex items-center gap-3">
+                    <div className="min-w-0 flex-1">
+                      <p className="line-clamp-1 text-xs font-bold text-zinc-900">{item.name}</p>
+                      <p className="text-[11px] font-medium text-zinc-500">Qty {item.qty}</p>
+                    </div>
+                    <span className="text-xs font-black text-zinc-900">{formatCurrency(item.price * item.qty)}</span>
                   </div>
-                  <div className="min-w-0 flex-1">
-                    <p className="line-clamp-1 text-xs font-bold text-zinc-900">{item.name}</p>
-                    <p className="text-[11px] font-medium text-zinc-500">Qty {item.quantity}{item.variant ? ` · ${item.variant}` : ""}</p>
-                  </div>
-                  <span className="text-xs font-black text-zinc-900">{formatCurrency(item.price * item.quantity)}</span>
+                ))}
+              </div>
+              <Separator className="my-4 bg-zinc-100" />
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between text-zinc-500">
+                  <span>Subtotal</span>
+                  <span className="font-bold text-zinc-900">{formatCurrency(order.subtotal)}</span>
                 </div>
-              ))}
+                <div className="flex justify-between text-zinc-500">
+                  <span>Delivery</span>
+                  <span className="font-bold text-zinc-900">{formatCurrency(order.shippingFee)}</span>
+                </div>
+                <div className="flex justify-between text-base font-black text-zinc-900">
+                  <span>Total</span>
+                  <span className="text-[#009E49]">{formatCurrency(order.total)}</span>
+                </div>
+                
+                {typeof order.commitmentFeeAmount === "number" && typeof order.cashDueOnDelivery === "number" && (
+                  <div className="mt-4 rounded-xl bg-orange-50 p-3 text-sm text-left print:bg-transparent print:p-0">
+                    <Separator className="mb-3 border-dashed bg-transparent border-t border-orange-200" />
+                    <div className="space-y-2">
+                      <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
+                        <span>Delivery Fee (Due Now)</span>
+                        <span className="text-[#FF6B00]">{formatCurrency(order.commitmentFeeAmount)}</span>
+                      </div>
+                      <div className="flex justify-between font-bold text-zinc-900">
+                        <span>Cash Due on Delivery</span>
+                        <span>{formatCurrency(order.cashDueOnDelivery)}</span>
+                      </div>
+                      <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
+                        * Official payment status is pending.
+                      </p>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-            <Separator className="my-4 bg-zinc-100" />
-            <div className="space-y-2 text-sm">
-              <div className="flex justify-between text-zinc-500">
-                <span>Subtotal</span>
-                <span className="font-bold text-zinc-900">{formatCurrency(order.subtotal)}</span>
-              </div>
-              <div className="flex justify-between text-zinc-500">
-                <span>Delivery</span>
-                <span className="font-bold text-zinc-900">{formatCurrency(order.deliveryFee)}</span>
-              </div>
-              <div className="flex justify-between text-base font-black text-zinc-900">
-                <span>Total</span>
-                <span className="text-[#FF6B00]">{formatCurrency(order.total)}</span>
-              </div>
-            </div>
+          )}
+
+          {/* Next steps section */}
+          <div className="mb-8 text-left rounded-2xl border border-zinc-100 bg-zinc-50/80 p-5">
+            <h3 className="mb-3 text-sm font-bold text-zinc-900">Next Steps</h3>
+            <ul className="space-y-2 text-xs font-medium text-zinc-600">
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 block h-1.5 w-1.5 rounded-full bg-orange-400" />
+                <span><strong className="text-zinc-800">Processing:</strong> Seller review and order processing is pending.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 block h-1.5 w-1.5 rounded-full bg-zinc-300" />
+                <span><strong className="text-zinc-800">Delivery:</strong> Delivery confirmation is pending.</span>
+              </li>
+              <li className="flex items-start gap-2">
+                <span className="mt-0.5 block h-1.5 w-1.5 rounded-full bg-zinc-300" />
+                <span><strong className="text-zinc-800">Payment:</strong> Payment confirmation will be handled through the current checkout process.</span>
+              </li>
+            </ul>
           </div>
 
           <div className="flex flex-col justify-center gap-4 md:flex-row">
-            <Link href={`/account/orders?orderId=${encodeURIComponent(order.id)}`} className="w-full md:w-auto">
-              <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white shadow-md hover:bg-zinc-800">
-                Track My Order
-              </Button>
-            </Link>
+            {!isGuest && (
+              <Link href={`/account/orders`} className="w-full md:w-auto">
+                <Button className="h-12 w-full rounded-xl bg-zinc-900 px-8 font-bold text-white shadow-md hover:bg-zinc-800">
+                  Track My Order
+                </Button>
+              </Link>
+            )}
             <Link href="/" className="w-full md:w-auto">
               <Button variant="outline" className="group h-12 w-full rounded-xl border-zinc-200 px-8 font-bold text-zinc-700 hover:bg-zinc-50 hover:text-zinc-900">
                 Continue Shopping <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-1" />
@@ -163,10 +283,6 @@ function SuccessContent() {
             </Link>
           </div>
         </div>
-
-        <p className="mt-8 text-center text-xs font-bold text-zinc-400">
-          A confirmation email has been prepared for {order.contact.email}.
-        </p>
       </div>
     </main>
   );
