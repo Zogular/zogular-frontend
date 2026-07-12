@@ -35,6 +35,13 @@ const statusTone: Record<AdminOrderStatus, AdminTone> = {
 
 const PAGE_SIZE = 12;
 
+const NEXT_STATUSES: Partial<Record<AdminOrderStatus, AdminOrderStatus[]>> = {
+  PENDING: ["CONFIRMED", "CANCELLED"],
+  CONFIRMED: ["PROCESSING", "CANCELLED"],
+  PROCESSING: ["SHIPPED", "CANCELLED"],
+  SHIPPED: ["DELIVERED"],
+};
+
 function getStatusLabel(status: AdminOrderStatus) {
   return toTitleCase(status.toLowerCase());
 }
@@ -42,6 +49,7 @@ function getStatusLabel(status: AdminOrderStatus) {
 export default function AdminOrdersPage() {
   const identity = useAdminIdentity();
   const canViewOrders = identity ? adminIdentityHasPermission(identity, "view_orders") : false;
+  const canManageFulfillment = identity ? adminIdentityHasPermission(identity, "override_orders") : false;
 
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
@@ -51,6 +59,11 @@ export default function AdminOrdersPage() {
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [nextStatus, setNextStatus] = useState<AdminOrderStatus | "">("");
+  const [trackingNumber, setTrackingNumber] = useState("");
+  const [operationsNotes, setOperationsNotes] = useState("");
+  const [submitting, setSubmitting] = useState(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const loadOrders = useCallback(async () => {
     try {
@@ -90,6 +103,36 @@ export default function AdminOrdersPage() {
     () => orders.find((order) => order.id === selectedOrderId) ?? null,
     [orders, selectedOrderId],
   );
+
+  useEffect(() => {
+    setNextStatus("");
+    setTrackingNumber(selectedOrder?.trackingNumber ?? "");
+    setOperationsNotes(selectedOrder?.notes ?? "");
+    setMutationError(null);
+  }, [selectedOrder]);
+
+  const handleOrderMutation = async () => {
+    if (!selectedOrder || !nextStatus || !canManageFulfillment) return;
+
+    try {
+      setSubmitting(true);
+      setMutationError(null);
+      const updated = await adminOrdersApi.updateOrder(selectedOrder.id, {
+        status: nextStatus,
+        ...(trackingNumber.trim() ? { trackingNumber: trackingNumber.trim() } : {}),
+        ...(operationsNotes.trim() ? { notes: operationsNotes.trim() } : {}),
+      });
+      setOrders((current) => current.map((order) => order.id === updated.id ? updated : order));
+      toast.success(`Order moved to ${getStatusLabel(updated.status)}.`);
+      await loadOrders();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "The order update was rejected by the backend.";
+      setMutationError(message);
+      toast.error(message);
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   const summary = useMemo(() => {
     return {
@@ -383,6 +426,67 @@ export default function AdminOrdersPage() {
                 </p>
               ) : null}
             </div>
+
+            {canManageFulfillment ? (
+              <div className="rounded-3xl border border-sky-200 bg-sky-50/60 p-4">
+                <h3 className="text-sm font-black text-sky-950">Fulfillment Control</h3>
+                <p className="mt-1 text-xs font-medium text-sky-800">
+                  Record manual operations only. Delivery means physical handoff and does not change payment, remittance, wallet, payout, or refund state.
+                </p>
+                <div className="mt-4 grid gap-3">
+                  <label className="grid gap-1 text-xs font-bold text-zinc-700">
+                    Next status
+                    <select
+                      value={nextStatus}
+                      onChange={(event) => setNextStatus(event.target.value as AdminOrderStatus | "")}
+                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold"
+                    >
+                      <option value="">Select an allowed transition</option>
+                      {(NEXT_STATUSES[selectedOrder.status] ?? []).map((status) => (
+                        <option key={status} value={status}>{getStatusLabel(status)}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="grid gap-1 text-xs font-bold text-zinc-700">
+                    External courier reference
+                    <input
+                      value={trackingNumber}
+                      onChange={(event) => setTrackingNumber(event.target.value)}
+                      maxLength={120}
+                      placeholder="Manual courier or dispatch reference"
+                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium"
+                    />
+                  </label>
+                  <label className="grid gap-1 text-xs font-bold text-zinc-700">
+                    Operations notes
+                    <textarea
+                      value={operationsNotes}
+                      onChange={(event) => setOperationsNotes(event.target.value)}
+                      maxLength={1000}
+                      rows={3}
+                      placeholder="Concise dispatch or handoff context. Do not enter credentials or financial secrets."
+                      className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium"
+                    />
+                  </label>
+                  {mutationError ? <p className="text-xs font-bold text-rose-700">{mutationError}</p> : null}
+                  {(NEXT_STATUSES[selectedOrder.status] ?? []).length > 0 ? (
+                    <Button
+                      disabled={!nextStatus || submitting}
+                      onClick={() => void handleOrderMutation()}
+                      className="rounded-xl bg-zinc-950 font-black text-white"
+                    >
+                      {submitting ? "Saving backend update..." : "Apply fulfillment update"}
+                    </Button>
+                  ) : (
+                    <p className="text-xs font-bold text-zinc-500">No fulfillment transition is available from this status.</p>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-zinc-200 bg-zinc-50 p-4 text-sm font-medium text-zinc-600">
+                This account has read-only order access. Fulfillment changes require operations authority.
+              </div>
+            )}
           </div>
         ) : (
           <AdminEmptyState title="No order selected" description="Open an order from the queue to inspect its launch operations context." />

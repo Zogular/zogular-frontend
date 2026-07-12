@@ -28,17 +28,20 @@ import {
 const STATUS_META: Record<SellerOrderStatus, {
   title: string; color: string; bg: string; border: string; icon: React.ComponentType<{ className?: string }>; primaryAction?: { label: string; next: SellerOrderStatus };
 }> = {
-  new: { title: "New Order", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200", icon: Clock3, primaryAction: { label: "Accept Order", next: "processing" } },
-  processing: { title: "Processing", color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", icon: Package, primaryAction: { label: "Mark as Shipped", next: "shipped" } },
-  shipped: { title: "Shipped", color: "text-purple-700", bg: "bg-purple-50", border: "border-purple-200", icon: Truck, primaryAction: { label: "Mark as Delivered", next: "delivered" } },
+  new: { title: "New Order", color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200", icon: Clock3, primaryAction: { label: "Accept Order", next: "confirmed" } },
+  confirmed: { title: "Confirmed", color: "text-indigo-700", bg: "bg-indigo-50", border: "border-indigo-200", icon: CheckCircle2, primaryAction: { label: "Start preparing", next: "processing" } },
+  processing: { title: "Preparing for pickup", color: "text-amber-700", bg: "bg-amber-50", border: "border-amber-200", icon: Package },
+  shipped: { title: "Shipped by operations", color: "text-purple-700", bg: "bg-purple-50", border: "border-purple-200", icon: Truck },
   delivered: { title: "Delivered", color: "text-[#009E49]", bg: "bg-[#009E49]/10", border: "border-[#009E49]/20", icon: CheckCircle2 },
   cancelled: { title: "Cancelled", color: "text-red-600", bg: "bg-red-50", border: "border-red-200", icon: XCircle },
   refund: { title: "Refund Review", color: "text-[#FF6B00]", bg: "bg-orange-50", border: "border-orange-200", icon: RotateCcw },
+  unknown: { title: "Status unavailable", color: "text-zinc-700", bg: "bg-zinc-100", border: "border-zinc-200", icon: AlertCircle },
 };
 
-const PROGRESS_STEPS: Array<{ id: "new" | "processing" | "shipped" | "delivered"; label: string }> = [
+const PROGRESS_STEPS: Array<{ id: "new" | "confirmed" | "processing" | "shipped" | "delivered"; label: string }> = [
   { id: "new", label: "Received" },
-  { id: "processing", label: "Processing" },
+  { id: "confirmed", label: "Confirmed" },
+  { id: "processing", label: "Preparing" },
   { id: "shipped", label: "Shipped" },
   { id: "delivered", label: "Delivered" },
 ];
@@ -57,9 +60,9 @@ function getPaymentStatusLabel(status: SellerPaymentStatus) {
   return "Pending backend";
 }
 
-function getStepState(current: SellerOrderStatus, step: "new" | "processing" | "shipped" | "delivered") {
-  if (current === "cancelled" || current === "refund") return step === "new" ? "done" : "pending";
-  const order = ["new", "processing", "shipped", "delivered"] as const;
+function getStepState(current: SellerOrderStatus, step: "new" | "confirmed" | "processing" | "shipped" | "delivered") {
+  if (current === "cancelled" || current === "refund" || current === "unknown") return step === "new" ? "done" : "pending";
+  const order = ["new", "confirmed", "processing", "shipped", "delivered"] as const;
   const currentIndex = order.indexOf(current as (typeof order)[number]);
   const stepIndex = order.indexOf(step);
   if (stepIndex < currentIndex) return "done";
@@ -73,7 +76,7 @@ function getStepState(current: SellerOrderStatus, step: "new" | "processing" | "
 function ProgressStepper({ status }: { status: SellerOrderStatus }) {
   return (
     <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm">
-      <div className="grid grid-cols-4 gap-2">
+      <div className="grid grid-cols-5 gap-2">
         {PROGRESS_STEPS.map((step, index) => {
           const state = getStepState(status, step.id);
           const isDone = state === "done";
@@ -238,6 +241,14 @@ export default function OrderDetailsPage({
 
       {/* 2. PROGRESS STEPPER */}
       <ProgressStepper status={orderStatus} />
+
+      {orderStatus === "processing" ? (
+        <FeaturePendingNotice
+          compact
+          title="Prepare for operations pickup"
+          description="Keep the seller items ready for handoff. Shipment and delivery updates are controlled by authorized Zogular operations."
+        />
+      ) : null}
 
       <FeaturePendingNotice
         compact

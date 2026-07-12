@@ -121,20 +121,24 @@ export interface SellerAnalyticsData {
 
 const ORDER_STATUS_COLORS: Record<SellerOrderStatus, string> = {
   new: "#3B82F6",
+  confirmed: "#4F46E5",
   processing: "#F59E0B",
   shipped: "#6366F1",
   delivered: "#009E49",
   cancelled: "#EF4444",
   refund: "#F97316",
+  unknown: "#71717A",
 };
 
 const ORDER_STATUS_LABELS: Record<SellerOrderStatus, string> = {
   new: "New",
+  confirmed: "Confirmed",
   processing: "Processing",
   shipped: "Shipped",
   delivered: "Delivered",
   cancelled: "Cancelled",
   refund: "Refund Review",
+  unknown: "Status unavailable",
 };
 
 export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
@@ -165,7 +169,7 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
       })),
     recentActivity: buildDashboardActivity(orders, lowStockItems),
     kpis: {
-      pendingOrders: orders.filter((order) => order.status === "new" || order.status === "processing").length,
+      pendingOrders: orders.filter((order) => ["new", "confirmed", "processing"].includes(order.status)).length,
       activeProducts: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
       payoutAvailable: 0,
       payoutPending: 0,
@@ -201,7 +205,7 @@ export async function fetchSellerAnalyticsData(range: SellerAnalyticsTimeRange):
     orderStats: {
       total: orders.length,
       delivered: deliveredOrders,
-      processing: orders.filter((order) => order.status === "new" || order.status === "processing").length,
+      processing: orders.filter((order) => ["new", "confirmed", "processing"].includes(order.status)).length,
       cancelled: orders.filter((order) => order.status === "cancelled").length,
       refunded: refundOrders.length,
     },
@@ -260,7 +264,7 @@ function buildOrderStatusData(orders: SellerOrderDetail[]): SellerOrderStatusPoi
       acc[order.status] += 1;
       return acc;
     },
-    { new: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0, refund: 0 },
+    { new: 0, confirmed: 0, processing: 0, shipped: 0, delivered: 0, cancelled: 0, refund: 0, unknown: 0 },
   );
 
   return (Object.keys(counts) as SellerOrderStatus[])

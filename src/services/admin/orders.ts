@@ -120,4 +120,14 @@ export const adminOrdersApi = {
       pagination: response.pagination,
     };
   },
+  async updateOrder(
+    orderId: string,
+    input: { status: AdminOrderStatus; trackingNumber?: string; notes?: string },
+  ) {
+    const response = await apiClient<{ data: { order: AdminOrderRecord } }>(
+      `/admin/orders/${orderId}/status`,
+      { method: "PATCH", body: JSON.stringify(input), csrf: true },
+    );
+    return response.data.order;
+  },
 };
