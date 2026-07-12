@@ -1,9 +1,10 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter } from "next/font/google";
 import { Toaster } from "sonner";
 import "./globals.css";
 import { cn } from "@/lib/utils";
 import { QueryProvider } from "@/components/query-provider";
+import { PwaRegistry } from "@/components/pwa/PwaRegistry";
 import { BRAND, BRAND_SITE_URL, BRAND_TITLE } from "@/config/brand";
 
 import { SpeedInsights } from "@vercel/speed-insights/next"
@@ -21,6 +22,12 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
+export const viewport: Viewport = {
+  themeColor: "#009E49",
+  width: "device-width",
+  initialScale: 1,
+};
+
 export const metadata: Metadata = {
   metadataBase: new URL(BRAND_SITE_URL),
   title: BRAND_TITLE,
@@ -29,6 +36,14 @@ export const metadata: Metadata = {
   icons: {
     icon: "/icon.png",
     apple: "/apple-icon.png",
+  },
+  appleWebApp: {
+    capable: true,
+    title: BRAND.name,
+    statusBarStyle: "default",
+  },
+  formatDetection: {
+    telephone: false,
   },
   openGraph: {
     title: BRAND_TITLE,
@@ -58,6 +73,7 @@ export default function RootLayout({
         <QueryProvider>
           {/* THE TOASTER IS NOW GLOBAL */}
           <Toaster position="top-center" richColors />
+          <PwaRegistry />
           {children}
           <SpeedInsights />
           <Analytics />
