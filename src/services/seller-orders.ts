@@ -1,6 +1,6 @@
 import { apiClient } from "@/services/api";
 
-export type SellerOrderStatus = "new" | "processing" | "shipped" | "delivered" | "cancelled" | "refund";
+export type SellerOrderStatus = "new" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refund" | "unknown";
 export type SellerPaymentStatus = "paid" | "cod" | "refunded" | "failed" | "unavailable";
 
 export interface SellerOrderEarningsPreview {
@@ -139,22 +139,24 @@ function mapSettlementPreview(order: BackendOrder, subtotal: number, categorySlu
 function mapVendorStatus(status: string): SellerOrderStatus {
   const s = status.toUpperCase();
   if (s === "PENDING") return "new";
+  if (s === "CONFIRMED") return "confirmed";
   if (s === "PROCESSING") return "processing";
   if (s === "SHIPPED") return "shipped";
   if (s === "DELIVERED") return "delivered";
   if (s === "CANCELLED") return "cancelled";
   if (s === "REFUNDED") return "refund";
-  return "new";
+  return "unknown";
 }
 
 function mapToBackendVendorStatus(status: SellerOrderStatus): string {
   if (status === "new") return "PENDING";
+  if (status === "confirmed") return "CONFIRMED";
   if (status === "processing") return "PROCESSING";
   if (status === "shipped") return "SHIPPED";
   if (status === "delivered") return "DELIVERED";
   if (status === "cancelled") return "CANCELLED";
   if (status === "refund") return "REFUNDED";
-  return "PENDING";
+  throw new Error(`Seller order status ${status} cannot be submitted`);
 }
 
 function mapOrderToSummary(order: BackendOrder): SellerOrderSummary {

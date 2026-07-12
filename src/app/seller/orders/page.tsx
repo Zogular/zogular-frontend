@@ -36,11 +36,13 @@ type DateFilter = "today" | "7days" | "30days" | "all";
 // ============================================================================
 const STATUS_COLUMNS = [
   { id: "new", title: "New Orders", icon: Clock3, color: "text-blue-600", bg: "bg-blue-50", border: "border-blue-200" },
-  { id: "processing", title: "Processing", icon: Package, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
+  { id: "confirmed", title: "Confirmed", icon: CheckCircle2, color: "text-indigo-600", bg: "bg-indigo-50", border: "border-indigo-200" },
+  { id: "processing", title: "Preparing", icon: Package, color: "text-amber-600", bg: "bg-amber-50", border: "border-amber-200" },
   { id: "shipped", title: "Shipped", icon: Truck, color: "text-purple-600", bg: "bg-purple-50", border: "border-purple-200" },
   { id: "delivered", title: "Delivered", icon: CheckCircle2, color: "text-[#009E49]", bg: "bg-[#009E49]/10", border: "border-[#009E49]/30" },
   { id: "cancelled", title: "Cancelled", icon: XCircle, color: "text-red-600", bg: "bg-red-50", border: "border-red-200" },
   { id: "refund", title: "Refunds", icon: RotateCcw, color: "text-orange-600", bg: "bg-orange-50", border: "border-orange-200" },
+  { id: "unknown", title: "Status unavailable", icon: AlertCircle, color: "text-zinc-600", bg: "bg-zinc-100", border: "border-zinc-200" },
 ] as const;
 
 const PAYMENT_STYLES: Record<SellerPaymentStatus, string> = {
@@ -121,16 +123,20 @@ function OrderActionMenu({
             <Phone className="h-3.5 w-3.5 text-zinc-400" /> Call Customer
           </div>
         </ActionMenuItem>
-        <ActionMenuSeparator />
-        <ActionMenuItem
-          onClick={() => {
-            onCancelOrder(order.id);
-            setIsOpen(false);
-          }}
-          className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200"
-        >
-          <XCircle className="h-3.5 w-3.5" /> Cancel Order
-        </ActionMenuItem>
+        {(["new", "confirmed", "processing"] as SellerOrderStatus[]).includes(order.status) ? (
+          <>
+            <ActionMenuSeparator />
+            <ActionMenuItem
+              onClick={() => {
+                onCancelOrder(order.id);
+                setIsOpen(false);
+              }}
+              className="text-red-600 hover:bg-red-50 focus-visible:ring-red-200"
+            >
+              <XCircle className="h-3.5 w-3.5" /> Cancel Order
+            </ActionMenuItem>
+          </>
+        ) : null}
       </ActionMenuContent>
     </ActionMenu>
   );
