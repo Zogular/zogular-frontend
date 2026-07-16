@@ -24,6 +24,8 @@ type CategoryDrawerProps = {
   onChooseSearchResult: (path: CategoryNode[]) => void;
   onSelectOther: () => void;
   onSubmitCategory: () => void;
+  categoryTreeStatus?: "loading" | "success" | "error";
+  onRetryCategoryTree?: () => void;
 };
 
 export function CategoryDrawer({
@@ -42,6 +44,8 @@ export function CategoryDrawer({
   onChooseSearchResult,
   onSelectOther,
   onSubmitCategory,
+  categoryTreeStatus = "success",
+  onRetryCategoryTree,
 }: CategoryDrawerProps) {
   const canSelectOther = browsePath.length > 0;
 
@@ -76,6 +80,15 @@ export function CategoryDrawer({
                   <span className="mt-1 block text-xs font-semibold text-zinc-500">{path.map((item) => item.name).join(" > ")}</span>
                 </button>
               )) : <p className="rounded-2xl bg-zinc-50 p-4 text-sm font-semibold text-zinc-500">No category matches. Browse to the closest parent and choose Other.</p>}
+            </div>
+          ) : categoryTreeStatus === "loading" ? (
+            <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/90 p-4 text-sm font-semibold text-zinc-600">
+               Loading category tree...
+            </div>
+          ) : categoryTreeStatus === "error" ? (
+            <div className="rounded-2xl border border-dashed border-red-200 bg-red-50/90 p-4 text-sm font-semibold text-red-600">
+               <p>Failed to load categories.</p>
+               <Button type="button" onClick={onRetryCategoryTree} className="mt-3 h-9 rounded-xl bg-red-100 px-4 text-xs font-bold text-red-800 hover:bg-red-200">Retry</Button>
             </div>
           ) : (
             <div className="space-y-2">

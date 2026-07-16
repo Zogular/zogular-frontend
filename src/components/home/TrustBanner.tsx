@@ -18,10 +18,10 @@ type TrustItem = {
 
 const TRUST_ITEMS: TrustItem[] = [
   {
-    id: "fast-delivery",
+    id: "manual-delivery",
     icon: Truck,
-    title: "Fast Delivery",
-    subtitle: "Across Lusaka within 24 hours",
+    title: "Lusaka Pilot Delivery",
+    subtitle: "Manual dispatch and timing confirmation",
     colorClass: "text-[#FF6B00]",
     bgClass: "bg-[#FF6B00]/10",
   },
@@ -44,8 +44,8 @@ const TRUST_ITEMS: TrustItem[] = [
   {
     id: "local-support",
     icon: Headphones,
-    title: "24/7 Local Support",
-    subtitle: "Dedicated customer service",
+    title: "Support Options",
+    subtitle: "Help centre and account support paths",
     colorClass: "text-purple-600",
     bgClass: "bg-purple-500/10",
   },

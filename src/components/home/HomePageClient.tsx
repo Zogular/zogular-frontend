@@ -136,13 +136,13 @@ export function HomePageClient({
               <div className="absolute inset-0 bg-linear-to-t from-[#FF6B00]/95 via-[#FF6B00]/40 to-transparent" />
               <div className="absolute left-4 top-4 z-20">
                 <Badge className="border-white/20 bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
-                  Promo
+                  Delivery
                 </Badge>
               </div>
               <div className="absolute bottom-0 left-0 z-10 p-6">
-                <h3 className="text-xl font-black leading-tight text-white">Free Delivery</h3>
+                <h3 className="text-xl font-black leading-tight text-white">Lusaka Pilot Delivery</h3>
                 <p className="mt-1 text-xs font-medium text-white/90">
-                  On your first order in Lusaka.
+                  Fees and timing are confirmed at checkout.
                 </p>
               </div>
             </Link>
@@ -155,13 +155,13 @@ export function HomePageClient({
               <div className="absolute inset-0 bg-linear-to-t from-[#009E49]/95 via-[#009E49]/40 to-transparent" />
               <div className="absolute left-4 top-4 z-20">
                 <Badge className="border-white/20 bg-white/20 px-2 py-0.5 text-[10px] font-bold text-white shadow-sm backdrop-blur-md">
-                  Sale
+                  Catalog
                 </Badge>
               </div>
               <div className="absolute bottom-0 left-0 z-10 p-6">
-                <h3 className="text-xl font-black leading-tight text-white">Audio Fest</h3>
+                <h3 className="text-xl font-black leading-tight text-white">Shop Electronics</h3>
                 <p className="mt-1 text-xs font-medium text-white/90">
-                  Headphones up to 20% off.
+                  Browse current buyer-visible listings.
                 </p>
               </div>
             </Link>

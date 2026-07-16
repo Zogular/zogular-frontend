@@ -7,6 +7,8 @@ import { getCategoryDirectory } from "@/services/categories";
 import { getAllProductsPageData } from "@/services/products";
 import type { CategoryFilterOption, CategorySortOption } from "@/types/category";
 
+export const dynamic = "force-dynamic";
+
 export default async function AllProductsPage({
   searchParams,
 }: {

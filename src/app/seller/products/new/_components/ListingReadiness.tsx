@@ -1,6 +1,7 @@
 "use client";
 
 import { BadgeCheck } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
 
 export type ListingReadinessItem = {
   label: string;
@@ -20,35 +21,21 @@ export function ListingReadiness({ items, variant }: ListingReadinessProps) {
 
   if (variant === "mobile") {
     return (
-      <section className="lg:hidden">
-        <div aria-hidden className="h-19" />
-        <div className="fixed left-4 right-4 top-37 z-40 overflow-hidden rounded-2xl border border-white/70 bg-white/90 shadow-[0_14px_36px_rgba(15,23,42,0.16)] ring-1 ring-zinc-900/3 backdrop-blur-2xl">
-          <div className="flex items-center justify-between gap-3 bg-linear-to-r from-zinc-950 via-zinc-900 to-emerald-950 px-3.5 py-2.5 text-white">
-            <div className="min-w-0">
-              <p className="text-[9px] font-black uppercase tracking-[0.16em] text-emerald-300">Listing readiness</p>
-              <h2 className="mt-0.5 truncate text-xs font-black">{nextItem ? `Next: ${nextItem.label}` : "Ready for review"}</h2>
-            </div>
-            <div className="flex shrink-0 items-center gap-2">
-              <span className="rounded-full bg-white/12 px-2.5 py-1 text-[11px] font-black text-white">{completeCount}/{items.length}</span>
-              <BadgeCheck className="h-4 w-4 text-emerald-300" />
-            </div>
+      <section className="bg-white/95 backdrop-blur-xl border-b border-zinc-200/80 px-4 py-3 shadow-sm">
+        <div className="flex items-center justify-between gap-3 mb-2">
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 mb-0.5">Listing readiness</p>
+            <h2 className="truncate text-xs font-black text-zinc-900">{nextItem ? `Next: ${nextItem.label}` : "Ready for review"}</h2>
           </div>
-          <div className="h-1 bg-zinc-200/80">
-            <div className="h-full rounded-r-full bg-linear-to-r from-[#009E49] to-emerald-300 transition-all" style={{ width: `${progress}%` }} />
-          </div>
-          <div className="flex items-center justify-between gap-2 px-3 py-2">
+          <div className="flex flex-col items-end gap-0.5">
             <div className="flex items-center gap-1.5">
-              {items.map((item) => (
-                <span
-                  key={item.label}
-                  aria-label={`${item.label}: ${item.detail}`}
-                  className={`h-2.5 w-2.5 rounded-full ${item.done ? "bg-[#009E49] shadow-[0_0_10px_rgba(0,158,73,0.45)]" : "bg-amber-400"}`}
-                />
-              ))}
+              <span className="text-[11px] font-black text-zinc-800">{completeCount}/{items.length}</span>
+              {completeCount === items.length ? <BadgeCheck className="h-3.5 w-3.5 text-[#009E49]" /> : null}
             </div>
-            <span className="truncate text-[10px] font-black uppercase tracking-wider text-zinc-500">{progress}% complete</span>
+            <span className="text-[10px] font-bold text-zinc-500">{progress}%</span>
           </div>
         </div>
+        <Progress value={progress} className="h-1.5 bg-zinc-200/80 [&>div]:bg-emerald-500" />
       </section>
     );
   }

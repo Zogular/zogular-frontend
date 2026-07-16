@@ -46,7 +46,6 @@ interface CreateCheckoutOrderInput {
 }
 
 const latestOrderKey = "zogular-checkout-latest-order";
-const ordersKey = "zogular-checkout-orders";
 const legacyLatestOrderKeys = ["zamoyo-checkout-latest-order"];
 
 function getStorage() {
@@ -59,16 +58,6 @@ function writeOrderId(orderId: string) {
   if (!storage) return;
 
   storage.setItem(latestOrderKey, orderId);
-}
-
-function buildEstimatedDeliveryDate(): string {
-  const date = new Date();
-  date.setDate(date.getDate() + 2);
-  return date.toLocaleDateString("en-ZM", {
-    weekday: "short",
-    month: "short",
-    day: "numeric",
-  });
 }
 
 export async function quoteCheckoutOrder(input: CreateCheckoutOrderInput): Promise<CheckoutQuote> {

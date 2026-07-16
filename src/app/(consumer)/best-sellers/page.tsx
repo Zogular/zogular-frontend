@@ -1,6 +1,8 @@
 import { ProductCollectionPage } from "@/components/consumer/ProductCollectionPage";
 import { getSearchableProducts } from "@/services/products";
 
+export const dynamic = "force-dynamic";
+
 export default async function BestSellersPage() {
   const products = await getSearchableProducts();
   const bestSellers = [...products]

@@ -97,16 +97,18 @@ export default function AdminSellersPage() {
           tone="emerald"
           icon={<Building2 className="h-5 w-5" />}
         />
-        <AdminMetricCard
-          title="Restricted / blocked"
-          value={summary.blocked}
-          note="Restricted, suspended, or rejected"
-          tone="rose"
-          icon={<Filter className="h-5 w-5" />}
-        />
+        <div className="col-span-2 md:col-span-1">
+          <AdminMetricCard
+            title="Restricted / blocked"
+            value={summary.blocked}
+            note="Restricted, suspended, or rejected"
+            tone="rose"
+            icon={<Filter className="h-5 w-5" />}
+          />
+        </div>
       </div>
 
-      <div className="sticky top-4 z-40 transition-shadow">
+      <div className="transition-shadow md:sticky md:top-4 md:z-40">
         <SellersListFilters
           searchQuery={searchQuery}
           setSearchQuery={setSearchQuery}

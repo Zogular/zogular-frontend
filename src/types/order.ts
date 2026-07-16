@@ -8,12 +8,14 @@ export interface OrderLineItem {
 
 export interface OrderSummary {
   id: string;
-  orderNumber?: string;
+  orderNumber: string;
   date: string;
-  total: number;
+  total: number | null;
+  itemSubtotal: number;
   status: OrderStatus;
   estDelivery: string;
   items: OrderLineItem[];
+  isLegacyIncomplete?: boolean;
 }
 
 export interface InvoiceItem {
@@ -47,7 +49,8 @@ export interface Invoice {
   commitmentFeeStatus?: string;
   items: InvoiceItem[];
   subtotal: number;
-  shippingFee: number;
+  shippingFee: number | null;
   discount: number;
-  total: number;
+  total: number | null;
+  isLegacyIncomplete?: boolean;
 }

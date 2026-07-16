@@ -1,12 +1,12 @@
 "use client";
 
-import { useState, createContext, useContext } from "react";
+import { useEffect, useState, createContext, useContext } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Store, Package,
-  LifeBuoy, LogOut, Menu, X, Sparkles, FolderTree,
-  Truck,
+  Store, Package, LifeBuoy, LogOut, Menu, X, Sparkles, FolderTree,
+  Truck, LayoutDashboard, Users, ShieldCheck, FileText, Megaphone,
+  Scale, Landmark, ServerCog,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -25,15 +25,27 @@ export function useAdminIdentity() {
   return useContext(AdminIdentityContext);
 }
 
-type NavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }>; permission: Permission; };
+type NavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }>; permission: Permission; pending?: boolean };
 
 const NAV_ITEMS: NavItem[] = [
+  { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
   { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
+  { name: "Buyers", href: "/admin/buyers", icon: Users, permission: "view_buyers", pending: true },
   { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
   { name: "Order Queue", href: "/admin/orders", icon: Truck, permission: "view_orders" },
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
   { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
+  { name: "Access Control", href: "/admin/access", icon: ShieldCheck, permission: "manage_admins", pending: true },
+  { name: "Reports", href: "/admin/reports", icon: FileText, permission: "view_financial_reports", pending: true },
+  { name: "Content", href: "/admin/content", icon: Megaphone, permission: "manage_content", pending: true },
+  { name: "Disputes", href: "/admin/disputes", icon: Scale, permission: "manage_disputes", pending: true },
+  { name: "Finance", href: "/admin/finance", icon: Landmark, permission: "view_treasury", pending: true },
+  { name: "System", href: "/admin/system", icon: ServerCog, permission: "view_system_logs", pending: true },
 ];
+
+function getAdminPageTitle(pathname: string) {
+  return [...NAV_ITEMS].sort((a, b) => b.href.length - a.href.length).find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.name ?? "Admin";
+}
 
 export default function AdminShell({
   children,
@@ -46,8 +58,18 @@ export default function AdminShell({
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
+  const [isDesktop, setIsDesktop] = useState(false);
 
   const authorizedNavItems = NAV_ITEMS.filter(item => adminIdentityHasPermission(identity, item.permission));
+  const pageTitle = getAdminPageTitle(pathname);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const update = () => setIsDesktop(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
+  }, []);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
@@ -68,7 +90,7 @@ export default function AdminShell({
   };
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(0,158,73,0.12),transparent_32rem),linear-gradient(135deg,#f8fafc_0%,#e4e4e7_45%,#f4f4f5_100%)]">
+    <div className="flex h-dvh overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(0,158,73,0.12),transparent_32rem),linear-gradient(135deg,#f8fafc_0%,#e4e4e7_45%,#f4f4f5_100%)]">
 
       {/* Mobile Sidebar Overlay */}
       {isMobileMenuOpen && (
@@ -76,8 +98,11 @@ export default function AdminShell({
       )}
 
       {/* Sidebar Architecture */}
-      <aside className={cn(
-        "fixed inset-y-0 left-0 z-50 h-screen w-72 flex-col overflow-hidden border-r border-white/10 bg-zinc-950 text-white shadow-2xl shadow-zinc-950/30 transition-transform duration-300 lg:static lg:flex lg:translate-x-0",
+      <aside
+        aria-hidden={!isDesktop && !isMobileMenuOpen}
+        inert={!isDesktop && !isMobileMenuOpen}
+        className={cn(
+        "fixed inset-y-0 left-0 z-50 h-dvh w-72 flex-col overflow-hidden border-r border-white/10 bg-zinc-950 text-white shadow-2xl shadow-zinc-950/30 transition-transform duration-300 lg:static lg:flex lg:translate-x-0",
         isMobileMenuOpen ? "flex translate-x-0" : "-translate-x-full"
       )}>
         {/* Branding & Environment Badge */}
@@ -92,7 +117,7 @@ export default function AdminShell({
         {/* Navigation Map */}
         <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-4 py-6 hide-scrollbar">
           {authorizedNavItems.map((item) => {
-            const isActive = pathname === item.href;
+            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
             const navClasses = cn(
               "flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold transition-all",
               isActive
@@ -109,6 +134,7 @@ export default function AdminShell({
               >
                 <item.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-emerald-300" : "text-zinc-500")} />
                 <span className="min-w-0 flex-1 truncate">{item.name}</span>
+                {item.pending ? <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200">Pending</span> : null}
               </Link>
             );
           })}
@@ -122,29 +148,30 @@ export default function AdminShell({
               Privileged Session
             </div>
             <div className="flex items-center gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-zinc-950 font-black shadow-md">
-              {getAdminInitials(identity.name)}
-            </div>
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-sm font-bold text-white">{identity.name}</p>
-              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">{identity.claims.role.replace(/_/g, " ")}</p>
-            </div>
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-zinc-950 font-black shadow-md">
+                {getAdminInitials(identity.name)}
+              </div>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-bold text-white">{identity.name}</p>
+                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">{identity.claims.role.replace(/_/g, " ")}</p>
+              </div>
             </div>
           </div>
         </div>
       </aside>
 
       {/* Main Execution Area */}
-      <main className="flex h-screen min-w-0 flex-1 flex-col overflow-hidden">
+      <main className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
         {/* Topbar */}
-        <header className="flex h-16 shrink-0 items-center justify-between border-b border-white/60 bg-white/70 px-4 shadow-sm shadow-zinc-900/5 backdrop-blur-xl lg:px-8">
-          <button aria-label="Open admin menu" className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 lg:hidden" onClick={() => setIsMobileMenuOpen(true)}>
-            <Menu className="h-5 w-5" />
-          </button>
+        <header className="flex min-h-16 shrink-0 items-center justify-between border-b border-white/60 bg-white/70 px-4 pt-safe pb-2 shadow-sm shadow-zinc-900/5 backdrop-blur-xl lg:px-8">
+          <div className="flex min-w-0 items-center gap-3">
+            <button aria-label="Open admin menu" className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 lg:hidden" onClick={() => setIsMobileMenuOpen(true)}><Menu className="h-5 w-5" /></button>
+            <div className="min-w-0 lg:hidden"><p className="truncate text-sm font-black text-zinc-950">{pageTitle}</p><p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Admin workspace</p></div>
+          </div>
 
           <div className="hidden items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-50/80 px-3 py-1 text-xs font-bold text-emerald-700 shadow-sm shadow-emerald-900/5 lg:flex">
             <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span></span>
-            System Operational
+            Backend session active
           </div>
 
           <button onClick={handleSignOut} disabled={isSigningOut} className="flex items-center gap-2 rounded-xl border border-rose-200/70 bg-white/80 px-3 py-2 text-xs font-bold text-rose-700 shadow-sm transition-all hover:bg-rose-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60">

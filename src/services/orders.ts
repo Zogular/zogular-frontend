@@ -2,7 +2,6 @@ import { apiClient } from "@/services/api";
 import { getStoredAuthUser } from "@/services/auth-session";
 import type { Invoice, OrderSummary, OrderStatus } from "@/types/order";
 import { type BackendOrder, type BackendOrderStatus, type BackendOrderItem, getBackendProductImage } from "@/types/backend-order";
-import { PAYMENT_COLLECTION_MODE } from "@/config/checkout";
 
 function mapBackendStatusToFrontend(status: BackendOrderStatus): OrderStatus {
   switch (status) {
@@ -22,11 +21,29 @@ function mapBackendStatusToFrontend(status: BackendOrderStatus): OrderStatus {
   }
 }
 
+function isOrderLegacyIncomplete(order: BackendOrder): boolean {
+  return !(
+    Boolean(order.paymentMethod) &&
+    Boolean(order.paymentCollectionMode) &&
+    Boolean(order.commitmentFeeStatus) &&
+    typeof order.deliveryFeeAmount === "number" && order.deliveryFeeAmount >= 0 &&
+    typeof order.cashDueOnDelivery === "number" && order.cashDueOnDelivery >= 0 &&
+    typeof order.grandTotalAmount === "number" && order.grandTotalAmount > 0
+  );
+}
+
 export async function getMyOrders(): Promise<OrderSummary[]> {
   const response = await apiClient<{ data: { orders: BackendOrder[] } }>("/orders");
   const orders = response.data.orders;
   
   return orders.map((order) => {
+    const isLegacyIncomplete = isOrderLegacyIncomplete(order);
+
+    const getOrderItemLineTotal = (item: BackendOrderItem) =>
+      typeof item.lineTotal === "number" ? item.lineTotal : (item.price || 0) * (item.quantity || 1);
+
+    const computedSubtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
+
     return {
       id: order.id,
       orderNumber: order.orderNumber || order.id,
@@ -35,7 +52,8 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
         month: "short",
         day: "numeric",
       }),
-      total: order.grandTotalAmount ?? order.totalAmount,
+      itemSubtotal: order.totalAmount ?? computedSubtotal,
+      total: isLegacyIncomplete ? null : (order.grandTotalAmount ?? order.totalAmount ?? computedSubtotal),
       status: mapBackendStatusToFrontend(order.status),
       estDelivery: order.estimatedDelivery 
         ? new Date(order.estimatedDelivery).toLocaleDateString("en-US", { month: "short", day: "numeric" })
@@ -45,12 +63,13 @@ export async function getMyOrders(): Promise<OrderSummary[]> {
         image: getBackendProductImage(item.product),
         qty: item.quantity || 1,
       })),
+      isLegacyIncomplete,
     };
   });
 }
 
 function formatPaymentMethod(method?: string): string {
-  if (!method) return "Pending Configuration";
+  if (!method) return "Unavailable";
   if (method === "cash_on_delivery" || method === "CASH_ON_DELIVERY") return "Cash on Delivery";
   if (method === "mobile_money" || method === "MOBILE_MONEY") return "Mobile Money";
   return method;
@@ -82,8 +101,7 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
 
   const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
   
-  const rawPaymentMethod = order.paymentMethod || "cash_on_delivery";
-  const isCod = rawPaymentMethod === "cash_on_delivery" || rawPaymentMethod === "CASH_ON_DELIVERY";
+  const isLegacyIncomplete = isOrderLegacyIncomplete(order);
 
   return {
     id: order.id,
@@ -104,11 +122,11 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       area: shippingArea,
       city: shippingCity,
     },
-    paymentMethod: formatPaymentMethod(rawPaymentMethod),
-    paymentCollectionMode: order.paymentCollectionMode || (isCod ? PAYMENT_COLLECTION_MODE : undefined),
-    commitmentFeeAmount: order.deliveryFeeAmount,
-    cashDueOnDelivery: order.cashDueOnDelivery,
-    commitmentFeeStatus: order.commitmentFeeStatus,
+    paymentMethod: isLegacyIncomplete ? "Unavailable" : formatPaymentMethod(order.paymentMethod),
+    paymentCollectionMode: isLegacyIncomplete ? undefined : order.paymentCollectionMode,
+    commitmentFeeAmount: isLegacyIncomplete ? undefined : order.deliveryFeeAmount,
+    cashDueOnDelivery: isLegacyIncomplete ? undefined : order.cashDueOnDelivery,
+    commitmentFeeStatus: isLegacyIncomplete ? undefined : order.commitmentFeeStatus,
     items: order.items.map((item) => ({
       productId: item.productId || "",
       slug: (item.product?.slug as string) || "",
@@ -117,9 +135,10 @@ export async function getInvoiceById(id: string): Promise<Invoice> {
       qty: item.quantity || 1,
       price: item.price || 0,
     })),
-    subtotal: subtotal,
-    shippingFee: order.deliveryFeeAmount ?? Math.max(order.totalAmount - subtotal, 0),
+    subtotal: isLegacyIncomplete ? (order.totalAmount ?? subtotal) : subtotal,
+    shippingFee: isLegacyIncomplete ? null : (order.deliveryFeeAmount as number),
     discount: 0,
-    total: order.grandTotalAmount ?? order.totalAmount,
+    total: isLegacyIncomplete ? null : (order.grandTotalAmount as number),
+    isLegacyIncomplete,
   };
 }

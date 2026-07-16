@@ -194,9 +194,10 @@ export default function OrdersPage() {
                       <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Order Placed</p>
                       <p className="text-sm font-bold text-zinc-900">{order.date}</p>
                     </div>
-                    <div>
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Total</p>
-                      <p className="text-sm font-bold text-zinc-900">{formatCurrency(order.total)}</p>
+                    <div className="flex flex-col">
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : "Total"}</p>
+                      <p className="text-sm font-bold text-zinc-900">{order.isLegacyIncomplete ? formatCurrency(order.itemSubtotal) : formatCurrency(order.total as number)}</p>
+                      {order.isLegacyIncomplete && <p className="text-[10px] font-bold text-orange-600 mt-0.5">Payment breakdown unavailable</p>}
                     </div>
                     <div>
                       <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Order ID</p>

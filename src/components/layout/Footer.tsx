@@ -2,12 +2,8 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState } from "react";
-import { CircleHelp, Package, ReceiptText, Send, ShieldCheck, Store, Truck } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { CircleHelp, Mail, Package, ReceiptText, ShieldCheck, Store, Truck } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { toast } from "sonner";
 
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
@@ -40,27 +36,11 @@ const FOOTER_ACTION_LINKS = [
 // --- MAIN EXPORT ---
 export function Footer() {
   const pathname = usePathname();
-  const [email, setEmail] = useState("");
-  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const hiddenRoutes = ["/auth", "/seller"];
   if (hiddenRoutes.some((route) => pathname?.startsWith(route))) {
     return null;
   }
-
-  const handleSubscribe = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!email.trim() || !/\S+@\S+\.\S+/.test(email)) {
-      toast.error("Please enter a valid email address.");
-      return;
-    }
-    setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
-      setEmail("");
-      toast.success("Welcome to the Zogular Insider list!");
-    }, 700);
-  };
 
   return (
     <footer className="relative border-t border-zinc-900 bg-zinc-900 pt-10 pb-6 text-zinc-300">
@@ -74,7 +54,7 @@ export function Footer() {
           <div className="space-y-4 lg:col-span-2">
             <BrandLogo href="/" variant="dark" imageClassName="h-10 w-auto md:h-12" className="focus-visible:ring-offset-zinc-900" />
             <p className="text-xs md:text-sm text-zinc-400 max-w-sm leading-relaxed">
-              Zambia&apos;s premier online shopping platform. Connecting trusted sellers with buyers across Lusaka.
+              Zambia&apos;s online marketplace for buyer-visible listings during the Lusaka pilot.
             </p>
             
             <div className="flex flex-wrap gap-2 pt-1">
@@ -133,24 +113,13 @@ export function Footer() {
             </div>
           </div>
 
-          {/* Newsletter */}
+          {/* Contact fallback */}
           <div className="space-y-3 lg:col-span-1">
-            <h4 className="text-white font-bold tracking-wide text-sm">Stay in the Loop</h4>
-            <p className="text-[11px] md:text-xs text-zinc-400">Exclusive deals straight to your inbox.</p>
-            <form className="flex flex-col gap-2" onSubmit={handleSubscribe}>
-              <div className="relative">
-                <Input 
-                  type="email" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter email" 
-                  className="bg-zinc-900 border-zinc-800 text-white text-xs placeholder:text-zinc-500 h-10 pr-10 rounded-xl focus-visible:ring-[#FF6B00]"
-                />
-                <Button aria-label="Subscribe to newsletter" type="submit" disabled={isSubmitting} size="icon" className="absolute right-1 top-1 h-8 w-8 rounded-lg bg-[#FF6B00] hover:bg-[#e66000] text-white">
-                  <Send className="h-3.5 w-3.5" />
-                </Button>
-              </div>
-            </form>
+            <h4 className="text-sm font-bold tracking-wide text-white">Need Help?</h4>
+            <p className="text-[11px] leading-5 text-zinc-400 md:text-xs">Newsletter signup is not live yet. Contact support for marketplace help.</p>
+            <a href="mailto:support@zogular.com" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-xs font-bold text-white hover:border-zinc-700 hover:bg-zinc-800">
+              <Mail className="h-3.5 w-3.5" /> Email support
+            </a>
           </div>
           
         </div>

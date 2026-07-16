@@ -888,7 +888,7 @@ export default function Navbar() {
         <TopBar />
         <div
           className={cn(
-            "relative z-20 w-full border-b transition-all duration-300",
+            "relative z-20 w-full border-b transition-all duration-300 pt-safe",
             isScrolled
               ? "border-white/45 bg-[linear-gradient(180deg,rgba(255,255,255,0.86),rgba(255,255,255,0.74))] shadow-[0_14px_32px_rgba(15,23,42,0.08)] backdrop-blur-3xl"
               : "border-white/40 bg-[linear-gradient(180deg,rgba(255,255,255,0.62),rgba(255,255,255,0.5))] shadow-[0_12px_28px_rgba(15,23,42,0.07)] backdrop-blur-2xl",

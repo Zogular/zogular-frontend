@@ -70,34 +70,24 @@ export interface CategoryAttributesResponse {
  * Fetch the full category tree (top-level with children).
  */
 export async function fetchCategoryTree(): Promise<CategoryNode[]> {
-  try {
-    const response = await apiClient<CategoryTreeResponse>("/categories", {
-      method: "GET",
-      authMode: "omit",
-      cache: "no-store",
-    });
-    return response.data.categories;
-  } catch (error) {
-    console.warn("[categories-api] Failed to fetch category tree:", error);
-    return [];
-  }
+  const response = await apiClient<CategoryTreeResponse>("/categories", {
+    method: "GET",
+    authMode: "omit",
+    cache: "no-store",
+  });
+  return response.data.categories;
 }
 
 /**
  * Fetch a single category by slug with children and attributes.
  */
 export async function fetchCategoryBySlug(slug: string): Promise<CategoryNode | null> {
-  try {
-    const response = await apiClient<CategoryDetailResponse>(`/categories/${slug}`, {
-      method: "GET",
-      authMode: "omit",
-      cache: "no-store",
-    });
-    return response.data.category;
-  } catch (error) {
-    console.warn(`[categories-api] Failed to fetch category "${slug}":`, error);
-    return null;
-  }
+  const response = await apiClient<CategoryDetailResponse>(`/categories/${slug}`, {
+    method: "GET",
+    authMode: "omit",
+    cache: "no-store",
+  });
+  return response.data.category;
 }
 
 /**
@@ -106,20 +96,15 @@ export async function fetchCategoryBySlug(slug: string): Promise<CategoryNode | 
 export async function fetchCategoryAttributes(
   slug: string,
 ): Promise<CategoryAttributeOption[]> {
-  try {
-    const response = await apiClient<CategoryAttributesResponse>(
-      `/categories/${slug}/attributes`,
-      {
-        method: "GET",
-        authMode: "omit",
-        cache: "no-store",
-      },
-    );
-    return response.data.attributes;
-  } catch (error) {
-    console.warn(`[categories-api] Failed to fetch attributes for "${slug}":`, error);
-    return [];
-  }
+  const response = await apiClient<CategoryAttributesResponse>(
+    `/categories/${slug}/attributes`,
+    {
+      method: "GET",
+      authMode: "omit",
+      cache: "no-store",
+    },
+  );
+  return response.data.attributes;
 }
 
 /**

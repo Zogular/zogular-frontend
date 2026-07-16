@@ -26,8 +26,8 @@ export default function manifest(): MetadataRoute.Manifest {
         purpose: "any",
       },
       {
-        src: BRAND.assets.icon512,
-        sizes: "512x512",
+        src: "/brand/zogular-icon-maskable.png",
+        sizes: "1254x1254",
         type: "image/png",
         purpose: "maskable",
       },

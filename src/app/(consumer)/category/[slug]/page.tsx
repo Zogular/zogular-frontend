@@ -10,6 +10,8 @@ import {
 } from "@/types/category";
 import { getCategoryPageData } from "@/services/products";
 
+export const dynamic = "force-dynamic";
+
 function SubcategoryPill({
   active,
   label,

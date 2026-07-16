@@ -1,4 +1,5 @@
-const CACHE_NAME = 'zogular-offline-v1';
+const CACHE_PREFIX = 'zogular-';
+const CACHE_NAME = `${CACHE_PREFIX}offline-v2`;
 const OFFLINE_URL = '/offline';
 
 self.addEventListener('install', (event) => {
@@ -8,7 +9,10 @@ self.addEventListener('install', (event) => {
       await cache.add(new Request(OFFLINE_URL, { cache: 'reload' }));
     })()
   );
-  self.skipWaiting();
+});
+
+self.addEventListener('message', (event) => {
+  if (event.data?.type === 'SKIP_WAITING') self.skipWaiting();
 });
 
 self.addEventListener('activate', (event) => {
@@ -17,7 +21,7 @@ self.addEventListener('activate', (event) => {
       const cacheNames = await caches.keys();
       await Promise.all(
         cacheNames
-          .filter((name) => name !== CACHE_NAME)
+          .filter((name) => name.startsWith(CACHE_PREFIX) && name !== CACHE_NAME)
           .map((name) => caches.delete(name))
       );
 
@@ -39,8 +43,7 @@ self.addEventListener('fetch', (event) => {
             return preloadResponse;
           }
           return await fetch(event.request);
-        } catch (error) {
-          console.warn('Network request failed, serving offline page:', error);
+        } catch {
           const cache = await caches.open(CACHE_NAME);
           const cachedResponse = await cache.match(OFFLINE_URL);
           return cachedResponse;

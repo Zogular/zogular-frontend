@@ -52,7 +52,7 @@ export function adminHasPermission(permission: Permission) {
 export function adminIdentityHasPermission(identity: AdminIdentity, permission: Permission) {
   // Honor backend-supplied permissions when present; fall back to static role mapping only when absent.
   const backendPermissions = identity.claims.permissions;
-  if (backendPermissions && backendPermissions.length > 0) {
+  if (backendPermissions !== undefined) {
     return backendPermissions.includes(permission);
   }
   return hasPermission(identity.claims.role, permission);

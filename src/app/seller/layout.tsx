@@ -13,7 +13,8 @@ import { cn } from "@/lib/utils";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { SellerApplicationContext } from "@/components/seller/SellerApplicationContext";
 import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
-import { getStoredAuthSession, logout } from "@/services/auth";
+import { getCurrentUser, logout } from "@/services/auth";
+import { AUTH_SESSION_CHANGED_EVENT } from "@/services/auth-session";
 import { ApiError } from "@/services/api";
 import {
   getMyVendorApplication,
@@ -257,46 +258,55 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   const refreshApplication = useCallback(async () => {
     if (isAuthRoute) return; // auth pages handle their own auth
 
-    const existingSession = getStoredAuthSession();
-    if (!existingSession) {
-      setApplication(null);
-      setApplicationLoading(false);
-      // Onboarding and auth routes are allowed without a stored session
-      if (isOnboardingRoute || isAuthRoute) return;
-      router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-      return;
-    }
-
     try {
       setApplicationLoading(true);
       setApplicationError(null);
-      const nextApplication = await getMyVendorApplication();
-      setApplication(nextApplication);
+
+      try {
+        await getCurrentUser();
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 401) {
+          setApplication(null);
+          if (isAuthRoute) return;
+          router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
+          return;
+        }
+        throw error;
+      }
+
+      try {
+        const nextApplication = await getMyVendorApplication();
+        setApplication(nextApplication);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          setApplication(null);
+          return;
+        }
+        throw error;
+      }
     } catch (error) {
-      if (error instanceof ApiError && error.status === 404) {
-        setApplication(null);
-        return;
-      }
-
-      if (error instanceof ApiError && error.status === 401) {
-        setApplication(null);
-        if (isOnboardingRoute || isAuthRoute) return;
-        router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-        return;
-      }
-
       setApplicationError(error instanceof Error ? error.message : "Failed to load seller access state.");
     } finally {
       setApplicationLoading(false);
     }
-  }, [isAuthRoute, isOnboardingRoute, pathname, router]);
+  }, [isAuthRoute, pathname, router]);
 
   useEffect(() => {
     refreshApplication();
+
+    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, refreshApplication);
+    window.addEventListener("storage", refreshApplication);
+
+    return () => {
+      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, refreshApplication);
+      window.removeEventListener("storage", refreshApplication);
+    };
   }, [refreshApplication]);
+
   useEffect(() => {
     if (applicationLoading) return;
     if (isAuthRoute) return; // auth pages manage their own session state
+    if (applicationError) return;
 
     if (!application) {
       if (!isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
@@ -339,7 +349,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       router.replace("/seller");
       return;
     }
-  }, [application, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, router]);
+  }, [application, applicationError, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, pathname, router]);
 
   const handleSidebarToggle = () => {
     setSidebarCollapsed((current) => {
@@ -374,9 +384,9 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     );
   }
 
-  if (applicationLoading && !application && !isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) {
+  if (applicationLoading && !application) {
     return (
-      <div className="flex min-h-screen items-center justify-center bg-[#f4fbf6] p-6">
+      <div className="flex min-h-dvh items-center justify-center bg-[#f4fbf6] p-6">
         <div className="rounded-3xl border border-zinc-200 bg-white/90 px-6 py-5 text-sm font-semibold text-zinc-600 shadow-sm">
           Loading seller workspace...
         </div>
@@ -384,9 +394,35 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
     );
   }
 
+  if (applicationError && !application) {
+    return (
+      <SellerApplicationContext.Provider value={contextValue}>
+        <div className="flex min-h-dvh flex-col items-center justify-center bg-[#f4fbf6] p-6 text-center">
+          <div className="mx-auto max-w-md rounded-3xl border border-red-200 bg-white p-8 shadow-[0_10px_40px_rgba(220,38,38,0.1)]">
+            <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-red-50">
+              <CircleHelp className="h-8 w-8 text-red-500" />
+            </div>
+            <h2 className="mb-2 text-xl font-black tracking-tight text-zinc-900">Workspace Unavailable</h2>
+            <p className="mb-6 text-sm font-semibold leading-relaxed text-zinc-600">
+              {applicationError}
+            </p>
+            <div className="flex flex-col gap-3">
+              <Button type="button" onClick={refreshApplication} className="h-12 w-full rounded-xl bg-[#009E49] text-sm font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] hover:bg-[#00853d]">
+                Try Again
+              </Button>
+              <Button type="button" variant="outline" onClick={handleSignOut} className="h-12 w-full rounded-xl border-zinc-200 text-sm font-bold text-zinc-700">
+                Sign Out
+              </Button>
+            </div>
+          </div>
+        </div>
+      </SellerApplicationContext.Provider>
+    );
+  }
+
   return (
     <SellerApplicationContext.Provider value={contextValue}>
-    <div className="flex min-h-screen w-full flex-col bg-[#f4fbf6] md:flex-row">
+    <div className="flex min-h-dvh w-full flex-col bg-[#f4fbf6] md:flex-row">
       
       {/* =========================================
           1. MOBILE HEADER (Sticky Top)
@@ -418,7 +454,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           ========================================= */}
       <aside
         className={cn(
-          "sticky top-0 z-40 hidden h-screen flex-col border-r border-[#143320] bg-[#0A1A10] shadow-[10px_0_30px_rgba(0,0,0,0.1)] transition-[width] duration-300 ease-out md:flex",
+          "sticky top-0 z-40 hidden h-dvh flex-col border-r border-[#143320] bg-[#0A1A10] shadow-[10px_0_30px_rgba(0,0,0,0.1)] transition-[width] duration-300 ease-out md:flex",
           sidebarCollapsed ? "w-20" : "w-64",
         )}
       >
@@ -567,7 +603,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between px-1">
-              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-400">Seller Tools</p>
+              <div className="min-w-0"><p className="truncate text-sm font-black text-zinc-950">{sellerDisplayName}</p><p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">{sellerDisplayRole}</p></div>
               <button
                 type="button"
                 aria-label="Close seller tools"
@@ -611,10 +647,13 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
                 );
               })}
             </div>
+            <button type="button" onClick={handleSignOut} className="mt-3 flex h-11 w-full items-center justify-center gap-2 rounded-2xl border border-rose-200 bg-rose-50 text-sm font-black text-rose-700">
+              <LogOut className="h-4 w-4" /> Sign out
+            </button>
           </div>
         </div>
       ) : null}
-      <div className="fixed bottom-0 left-0 z-40 flex w-full justify-between border-t border-zinc-200 bg-white px-2 pt-2 pb-6 shadow-[0_-10px_20px_rgba(0,0,0,0.03)] md:hidden">
+      <div className="fixed bottom-0 left-0 z-40 flex w-full justify-between border-t border-zinc-200 bg-white px-2 pt-2 pb-[max(env(safe-area-inset-bottom),0.75rem)] shadow-[0_-10px_20px_rgba(0,0,0,0.03)] md:hidden">
         {MOBILE_NAV_ITEMS.map((item) => {
           const enabled = isSellerNavItemEnabled(item, sellerStatus);
           return (

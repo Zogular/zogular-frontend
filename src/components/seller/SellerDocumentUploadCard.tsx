@@ -103,7 +103,7 @@ export function SellerDocumentUploadCard({
             <div className="h-2 overflow-hidden rounded-full bg-white/70">
               <div
                 className="h-full rounded-full bg-[#0f8c48] transition-[width] duration-200"
-                style={{ width: `${Math.max(state.progress, 8)}%` }}
+                style={{ width: `${state.progress}%` }}
               />
             </div>
             <p className="text-[11px] font-semibold text-[#6b5a46]">
