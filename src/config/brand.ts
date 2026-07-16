@@ -17,7 +17,7 @@ export const BRAND = {
     iconCircleDark: "/brand/zogular-icon-circle-dark.png",
     iconCircleOrange: "/brand/zogular-icon-circle-orange.png",
     iconCircleBlack: "/brand/zogular-icon-circle-black.png",
-    favicon: "/brand/zogular-icon-favicon.png",
+    favicon: "/brand/zogular-favicon-48.png?v=2",
     icon192: "/brand/zogular-icon-192.png",
     icon512: "/brand/zogular-icon-512.png",
   },
