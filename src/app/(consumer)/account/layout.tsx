@@ -167,7 +167,7 @@ export default function AccountLayout({
           </aside>
 
           {/* PAGE CONTENT (Children render here) */}
-          <div className="flex-1">{children}</div>
+          <div className="flex-1 min-w-0">{children}</div>
           
         </div>
       </div>

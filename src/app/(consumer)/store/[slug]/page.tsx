@@ -1,6 +1,8 @@
 import { ProductCollectionPage } from "@/components/consumer/ProductCollectionPage";
 import { getSearchableProducts, getSellerProducts } from "@/services/products";
 
+export const dynamic = "force-dynamic";
+
 function humanizeSlug(slug: string): string {
   return decodeURIComponent(slug)
     .replace(/-/g, " ")

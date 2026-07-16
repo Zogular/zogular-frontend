@@ -105,12 +105,16 @@ export function getAuthSessionSnapshot(): string {
 export function storeAuthSession(session: AuthSession): void {
   cleanupLegacyTokenStorageOnce();
   const storage = getStorage();
+  const previousUser = storage?.getItem(AUTH_USER_KEY) ?? null;
+  const nextUser = JSON.stringify(session.user);
   if (storage) {
     removeLegacyTokenKeys(storage);
+    storage.setItem(AUTH_USER_KEY, nextUser);
   }
-  storeAuthUser(session.user);
   storeLastAuthEmail(session.user.email);
-  notifyAuthSessionChanged();
+  if (previousUser !== nextUser) {
+    notifyAuthSessionChanged();
+  }
 }
 
 export function clearStoredAuthSession(): void {

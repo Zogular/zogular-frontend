@@ -46,6 +46,8 @@ function formatDate(value: string | null) {
 export default function AdminProductsPage() {
   const [products, setProducts] = useState<AdminProductRecord[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [mobileView, setMobileView] = useState<"list" | "grid">("list");
@@ -61,10 +63,15 @@ export default function AdminProductsPage() {
     async function loadProducts() {
       try {
         setLoading(true);
+        setRequestError(null);
         const data = await adminProductsApi.fetchProducts();
         if (!ignore) setProducts(data);
-      } catch {
-        if (!ignore) toast.error("Failed to load product moderation queue.");
+      } catch (error) {
+        if (!ignore) {
+          const message = error instanceof Error ? error.message : "Failed to load product moderation queue.";
+          setRequestError(message);
+          toast.error(message);
+        }
       } finally {
         if (!ignore) setLoading(false);
       }
@@ -74,7 +81,7 @@ export default function AdminProductsPage() {
     return () => {
       ignore = true;
     };
-  }, []);
+  }, [reloadKey]);
 
   const filteredProducts = useMemo(() => {
     let filtered = products;
@@ -167,7 +174,21 @@ export default function AdminProductsPage() {
   }
 
   if (loading) {
-    return <div className="h-96 w-full animate-pulse rounded-3xl bg-zinc-200" />;
+    return (
+      <div className="flex h-96 w-full items-center justify-center rounded-3xl border border-zinc-200 bg-zinc-50">
+        <p className="text-sm font-bold text-zinc-500">Loading product moderation queue...</p>
+      </div>
+    );
+  }
+
+  if (requestError) {
+    return (
+      <div className="mx-auto max-w-2xl rounded-3xl border border-rose-200 bg-white p-7 text-center shadow-sm">
+        <h1 className="text-xl font-black text-zinc-950">Product moderation queue unavailable</h1>
+        <p className="mt-2 text-sm font-semibold text-zinc-600">{requestError}</p>
+        <Button onClick={() => setReloadKey((value) => value + 1)} variant="outline" className="mt-5 rounded-xl font-black">Retry products</Button>
+      </div>
+    );
   }
 
   return (
@@ -306,7 +327,7 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      <div className={cn("md:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-2 min-[430px]:grid-cols-2" : "space-y-2.5")}>
+      <div className={cn("lg:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-2 min-[430px]:grid-cols-2" : "space-y-2.5")}>
         {filteredProducts.length === 0 ? (
           <div className={cn("rounded-3xl border border-white/70 bg-white/75 px-4 py-10 text-center shadow-md shadow-zinc-900/5 backdrop-blur-xl", mobileView === "grid" && "col-span-2")}>
             <p className="text-sm font-bold text-zinc-500">No products match your search.</p>
@@ -477,7 +498,7 @@ export default function AdminProductsPage() {
         )}
       </div>
 
-      <div className="hidden overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl md:block">
+      <div className="hidden overflow-hidden rounded-3xl border border-white/70 bg-white/75 shadow-md shadow-zinc-900/5 backdrop-blur-xl lg:block">
         <div className="overflow-x-auto hide-scrollbar">
           <table className="min-w-[1080px] w-full text-left text-sm">
             <thead className="border-b border-zinc-100 bg-zinc-100/80 backdrop-blur-sm">

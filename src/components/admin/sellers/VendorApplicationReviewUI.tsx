@@ -28,16 +28,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { getAvailableVendorActions } from "@/features/admin-sellers/lib/vendor-action-availability";
 import { cn } from "@/lib/utils";
 import type { SellerApplicationStatus, SellerType, VendorApplication } from "@/types/seller";
 
-export type VendorApplicationAdminAction =
-  | "approve-approved"
-  | "approve-provisional"
-  | "needs-info"
-  | "reject"
-  | "restrict"
-  | "suspend";
+import type { VendorApplicationAdminAction } from "@/features/admin-sellers/types/admin-seller.types";
 
 const STATUS_META: Record<
   SellerApplicationStatus,
@@ -475,6 +470,7 @@ export function SellerReviewActionDialog({
   );
 }
 
+
 export function AdminSellerActionButtons({
   application,
   onOpenAction,
@@ -488,6 +484,8 @@ export function AdminSellerActionButtons({
   canSuspend: boolean;
   detailHref?: string;
 }) {
+  const availableActions = getAvailableVendorActions(application, canApprove, canSuspend);
+
   return (
     <div className="flex flex-wrap items-center gap-2">
       {detailHref ? (
@@ -496,62 +494,36 @@ export function AdminSellerActionButtons({
         </Button>
       ) : null}
 
-      {canApprove ? (
-        <>
-          <Button
-            size="sm"
-            onClick={() => onOpenAction("approve-approved", application)}
-            className="rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d]"
-          >
-            Approve
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenAction("approve-provisional", application)}
-            className="rounded-xl border-sky-200 bg-sky-50/80 font-black text-sky-700 hover:bg-sky-100"
-          >
-            Provisional
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenAction("needs-info", application)}
-            className="rounded-xl border-orange-200 bg-orange-50/80 font-black text-orange-700 hover:bg-orange-100"
-          >
-            Needs info
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenAction("reject", application)}
-            className="rounded-xl border-rose-200 bg-rose-50/80 font-black text-rose-700 hover:bg-rose-100"
-          >
-            Reject
-          </Button>
-        </>
-      ) : null}
-
-      {canSuspend ? (
-        <>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenAction("restrict", application)}
-            className="rounded-xl border-amber-200 bg-amber-50/85 font-black text-amber-700 hover:bg-amber-100"
-          >
-            Restrict
-          </Button>
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenAction("suspend", application)}
-            className="rounded-xl border-zinc-200 bg-zinc-950 font-black text-white hover:bg-zinc-800"
-          >
-            Suspend
-          </Button>
-        </>
-      ) : null}
+      {availableActions.includes("approve-approved") && (
+        <Button size="sm" onClick={() => onOpenAction("approve-approved", application)} className="rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d]">
+          Approve
+        </Button>
+      )}
+      {availableActions.includes("approve-provisional") && (
+        <Button size="sm" variant="outline" onClick={() => onOpenAction("approve-provisional", application)} className="rounded-xl border-sky-200 bg-sky-50/80 font-black text-sky-700 hover:bg-sky-100">
+          Provisional
+        </Button>
+      )}
+      {availableActions.includes("needs-info") && (
+        <Button size="sm" variant="outline" onClick={() => onOpenAction("needs-info", application)} className="rounded-xl border-orange-200 bg-orange-50/80 font-black text-orange-700 hover:bg-orange-100">
+          Needs info
+        </Button>
+      )}
+      {availableActions.includes("reject") && (
+        <Button size="sm" variant="outline" onClick={() => onOpenAction("reject", application)} className="rounded-xl border-rose-200 bg-rose-50/80 font-black text-rose-700 hover:bg-rose-100">
+          Reject
+        </Button>
+      )}
+      {availableActions.includes("restrict") && (
+        <Button size="sm" variant="outline" onClick={() => onOpenAction("restrict", application)} className="rounded-xl border-amber-200 bg-amber-50/85 font-black text-amber-700 hover:bg-amber-100">
+          Restrict
+        </Button>
+      )}
+      {availableActions.includes("suspend") && (
+        <Button size="sm" variant="outline" onClick={() => onOpenAction("suspend", application)} className="rounded-xl border-zinc-200 bg-zinc-950 font-black text-white hover:bg-zinc-800">
+          Suspend
+        </Button>
+      )}
     </div>
   );
 }

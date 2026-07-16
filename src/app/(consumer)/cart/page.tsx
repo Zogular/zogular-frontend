@@ -6,7 +6,6 @@ import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { useCart, type CartItemIdentity } from "@/hooks/use-cart";
-import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;

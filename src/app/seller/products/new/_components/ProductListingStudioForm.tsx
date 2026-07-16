@@ -111,7 +111,9 @@ export function ProductListingStudioForm({
   const [pickerSelection, setPickerSelection] = useState<PickerSelection | null>(null);
   const [submittedCategory, setSubmittedCategory] = useState<CategorySelection | null>(initialCategory);
   const [categoryAttributes, setCategoryAttributes] = useState<CategoryAttributeOption[]>([]);
-  const [isLoadingCategoryAttributes, setIsLoadingCategoryAttributes] = useState(false);
+  const [categoryTreeStatus, setCategoryTreeStatus] = useState<"loading" | "success" | "error">("loading");
+  const [categoryAttributesStatus, setCategoryAttributesStatus] = useState<"loading" | "success" | "error">("success");
+  const [attributesRetry, setAttributesRetry] = useState(0);
 
   const [deliveryType, setDeliveryType] = useState(initialProduct?.deliveryType ?? "standard");
   const [packageWeight, setPackageWeight] = useState(initialProduct ? String(initialProduct.logistics.weightKG) : "");
@@ -137,12 +139,12 @@ export function ProductListingStudioForm({
     return categoryAttributesToDetailGroup(categoryAttributes, fallbackCategoryDetailGroup);
   }, [categoryAttributes, fallbackCategoryDetailGroup]);
   const requiredCategoryFieldsComplete = useMemo(() => {
-    if (isLoadingCategoryAttributes) return false;
+    if (categoryAttributesStatus === "loading" || categoryAttributesStatus === "error") return false;
     if (!categoryDetailGroup) return false;
     const requiredFields = categoryDetailGroup.fields.filter((field) => field.required);
     if (!requiredFields.length) return true;
     return requiredFields.every((field) => categoryFieldValues.some((item) => item.attributeId === field.attributeId && item.value.trim()));
-  }, [categoryDetailGroup, categoryFieldValues, isLoadingCategoryAttributes]);
+  }, [categoryDetailGroup, categoryFieldValues, categoryAttributesStatus]);
   const currentLevel = browsePath.length ? browsePath[browsePath.length - 1].children ?? [] : categoryTree;
   const flatCategoryNodes = useMemo(() => flattenCategoryNodes(categoryTree), [categoryTree]);
   const searchResults = useMemo(() => {
@@ -166,54 +168,62 @@ export function ProductListingStudioForm({
       { label: "Images added", done: images.length > 0, detail: `${images.length}/${MAX_IMAGES}` },
       { label: "Name added", done: Boolean(productName.trim()), detail: productName.trim() ? "Ready" : "Pending" },
       { label: "Category selected", done: Boolean(submittedCategory), detail: submittedCategory?.leafName ?? "Pending" },
-      { label: "Details completed", done: Boolean(description.trim() && price && stock && requiredCategoryFieldsComplete), detail: isLoadingCategoryAttributes ? "Loading" : revealDetails ? "In progress" : "Locked" },
+      { label: "Details completed", done: Boolean(description.trim() && price && stock && requiredCategoryFieldsComplete), detail: categoryAttributesStatus === "loading" ? "Loading" : revealDetails ? "In progress" : "Locked" },
       {
         label: canSubmitForReview ? "Ready for review" : "Draft ready for later review",
         done: Boolean(images.length && productName.trim() && submittedCategory && price && stock && description.trim() && requiredCategoryFieldsComplete),
         detail: canSubmitForReview ? "Final check" : "Awaiting seller approval",
       },
     ],
-    [canSubmitForReview, description, images.length, isLoadingCategoryAttributes, price, productName, requiredCategoryFieldsComplete, revealDetails, stock, submittedCategory],
+    [canSubmitForReview, description, images.length, categoryAttributesStatus, price, productName, requiredCategoryFieldsComplete, revealDetails, stock, submittedCategory],
   );
 
-  useEffect(() => {
+  const loadCategoryTree = () => {
     let isMounted = true;
+    setCategoryTreeStatus("loading");
     fetchCategoryTree().then((categories) => {
-      if (isMounted) setCategoryTree(categories);
+      if (isMounted) {
+        setCategoryTree(categories);
+        setCategoryTreeStatus("success");
+      }
+    }).catch(() => {
+      if (isMounted) setCategoryTreeStatus("error");
     });
     return () => {
       isMounted = false;
     };
+  };
+
+  useEffect(() => {
+    return loadCategoryTree();
   }, []);
 
   useEffect(() => {
-    if (!submittedCategory) {
+    if (!submittedCategory || submittedCategory.isOther || !submittedCategory.isBackendCategory) {
       setCategoryAttributes([]);
-      setIsLoadingCategoryAttributes(false);
-      return;
-    }
-
-    setCategoryAttributes([]);
-
-    if (submittedCategory.isOther || !submittedCategory.isBackendCategory) {
-      setIsLoadingCategoryAttributes(false);
+      setCategoryAttributesStatus("success");
       return;
     }
 
     let isCurrent = true;
-    setIsLoadingCategoryAttributes(true);
+    setCategoryAttributesStatus("loading");
+    setCategoryAttributes([]);
+
     fetchCategoryAttributes(submittedCategory.leafSlug)
       .then((attributes) => {
-        if (isCurrent) setCategoryAttributes(attributes);
+        if (isCurrent) {
+          setCategoryAttributes(attributes);
+          setCategoryAttributesStatus("success");
+        }
       })
-      .finally(() => {
-        if (isCurrent) setIsLoadingCategoryAttributes(false);
+      .catch(() => {
+        if (isCurrent) setCategoryAttributesStatus("error");
       });
 
     return () => {
       isCurrent = false;
     };
-  }, [submittedCategory]);
+  }, [submittedCategory, attributesRetry]);
 
   const addSpec = () => setSpecs((current) => [...current, { name: "", value: "" }]);
   const removeSpec = (index: number) => setSpecs((current) => current.filter((_, i) => i !== index));
@@ -251,7 +261,8 @@ export function ProductListingStudioForm({
       if (!productName.trim()) nextErrors.productName = "Product name required.";
       if (!submittedCategory) nextErrors.category = "Submit a final category first.";
       if (!description.trim()) nextErrors.description = "Description required before submission.";
-      if (isLoadingCategoryAttributes) nextErrors.categoryDetails = "Wait for category attributes to finish loading.";
+      if (categoryAttributesStatus === "loading") nextErrors.categoryDetails = "Wait for category attributes to finish loading.";
+      else if (categoryAttributesStatus === "error") nextErrors.categoryDetails = "Category attributes are unavailable.";
       else if (!requiredCategoryFieldsComplete) nextErrors.categoryDetails = "Complete the required category-specific fields.";
       if (!price || Number(price) <= 0) nextErrors.price = "Valid price required.";
       if (!stock || Number(stock) < 0) nextErrors.stock = "Valid stock required.";
@@ -259,7 +270,8 @@ export function ProductListingStudioForm({
     }
 
     if (status === "draft") {
-      if (!productName.trim() && !images.length && !submittedCategory) nextErrors.productName = "Add a name, image, or category before saving a draft.";
+      if (!productName.trim() && !images.length) nextErrors.productName = "Add a name or image before saving a draft.";
+      if (!submittedCategory) nextErrors.category = "A category is required to save a draft.";
       if (price && Number(price) <= 0) nextErrors.price = "Price must be greater than zero.";
       if (stock && Number(stock) < 0) nextErrors.stock = "Stock cannot be negative.";
     }
@@ -298,7 +310,11 @@ export function ProductListingStudioForm({
         throw new Error("Only uploaded Cloudinary images can be saved to this product.");
       }
 
-      const category = submittedCategory ?? buildSelectionFromLegacy("Computing", "Laptops");
+      if (!submittedCategory) {
+        throw new Error("Category selection is required.");
+      }
+
+      const category = submittedCategory;
       const finalSKU = sku.trim() || buildSku(category.subcategoryName, productName || "Draft product");
       const finalWeight = packageWeight ? Number(packageWeight) : getDefaultWeight(category.subcategoryName);
       const normalizedStock = stock ? Number(stock) : 0;
@@ -434,7 +450,7 @@ export function ProductListingStudioForm({
           submitLabel={submitLabel}
         />
 
-        <div className="mb-5">
+        <div className="sticky top-[69px] z-30 mb-5 lg:hidden">
           <ListingReadiness items={readiness} variant="mobile" />
         </div>
 
@@ -493,17 +509,30 @@ export function ProductListingStudioForm({
                   </div>
                 </GlassSection>
 
-                {categoryDetailGroup ? (
+                {categoryAttributesStatus === "error" ? (
+                  <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 shadow-sm">
+                    <div className="flex items-start gap-3">
+                      <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
+                      <div>
+                        <h4 className="text-sm font-black text-red-900">Attributes temporarily unavailable</h4>
+                        <p className="mt-1 text-xs font-semibold leading-relaxed text-red-700">We could not load the required attributes for this category.</p>
+                        <Button type="button" onClick={() => setAttributesRetry((c) => c + 1)} className="mt-3 h-9 rounded-xl bg-red-100 px-4 text-xs font-bold text-red-800 hover:bg-red-200">
+                          Retry
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ) : categoryDetailGroup ? (
                   <>
                     {submittedCategory?.isBackendCategory ? (
                       <div className={`rounded-2xl border p-3 text-xs font-bold leading-relaxed ${
-                        isLoadingCategoryAttributes
+                        categoryAttributesStatus === "loading"
                           ? "border-amber-200 bg-amber-50/80 text-amber-800"
                           : categoryAttributes.length
                             ? "border-emerald-200 bg-emerald-50/80 text-emerald-800"
                             : "border-zinc-200 bg-white/75 text-zinc-600"
                       }`}>
-                        {isLoadingCategoryAttributes
+                        {categoryAttributesStatus === "loading"
                           ? "Loading backend category attributes..."
                           : categoryAttributes.length
                             ? `${categoryAttributes.length} backend attribute${categoryAttributes.length === 1 ? "" : "s"} loaded for ${submittedCategory.leafName}.`
@@ -666,6 +695,8 @@ export function ProductListingStudioForm({
         onChooseSearchResult={chooseSearchResult}
         onSelectOther={() => setPickerSelection({ path: browsePath, isOther: true })}
         onSubmitCategory={submitCategory}
+        categoryTreeStatus={categoryTreeStatus}
+        onRetryCategoryTree={loadCategoryTree}
       />
 
       <ProductListingMobileActions

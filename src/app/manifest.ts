@@ -7,7 +7,9 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: BRAND.name,
     description: BRAND.description,
     start_url: "/",
+    id: "/",
     display: "standalone",
+    orientation: "portrait",
     background_color: "#f4fbf6",
     theme_color: "#009E49",
     icons: [
@@ -15,11 +17,19 @@ export default function manifest(): MetadataRoute.Manifest {
         src: BRAND.assets.icon192,
         sizes: "192x192",
         type: "image/png",
+        purpose: "any",
       },
       {
         src: BRAND.assets.icon512,
         sizes: "512x512",
         type: "image/png",
+        purpose: "any",
+      },
+      {
+        src: "/brand/zogular-icon-maskable.png",
+        sizes: "1254x1254",
+        type: "image/png",
+        purpose: "maskable",
       },
     ],
   };

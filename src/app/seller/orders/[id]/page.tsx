@@ -93,8 +93,8 @@ function ProgressStepper({ status }: { status: SellerOrderStatus }) {
                 <div className={cn("flex h-8 w-8 items-center justify-center rounded-full border bg-white shadow-sm transition-colors", isDone && "border-[#009E49] bg-[#009E49] text-white", isCurrent && "border-[#009E49] text-[#009E49]", state === "pending" && "border-zinc-200 text-zinc-300")}>
                   {isDone ? <CheckCircle2 className="h-4 w-4" /> : <Circle className={cn("h-3.5 w-3.5", isCurrent && "fill-[#009E49]")} />}
                 </div>
-                <div className="min-w-0">
-                  <p className={cn("text-[10px] font-bold uppercase tracking-wider", isDone || isCurrent ? "text-zinc-900" : "text-zinc-400")}>
+                <div className="min-w-0 w-full px-0.5">
+                  <p className={cn("text-[9px] font-bold leading-tight break-words", isDone || isCurrent ? "text-zinc-900" : "text-zinc-400")}>
                     {step.label}
                   </p>
                 </div>

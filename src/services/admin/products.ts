@@ -51,6 +51,15 @@ export const adminProductsApi = {
       .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
   },
 
+  async fetchProductsCount(): Promise<number> {
+    const response = await apiClient<{ pagination?: { total: number } }>("/admin/products", {
+      method: "GET",
+      query: { page: 1, limit: 1 },
+      cache: "no-store",
+    });
+    return response.pagination?.total ?? 0;
+  },
+
   async fetchProductById(productId: string): Promise<SellerProductListing> {
     const product = await fetchAdminCatalogProductById(productId);
     return product;

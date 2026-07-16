@@ -156,10 +156,12 @@ export function AdminCategoriesWorkspace() {
 
   return (
     <div className="mx-auto max-w-[96rem] space-y-5">
-      <section className="grid gap-3 md:grid-cols-3">
+      <section className="grid grid-cols-2 gap-3 md:grid-cols-3">
         <SummaryCard label="Total categories" value={categories.length} icon={<Layers3 className="h-4 w-4" />} />
         <SummaryCard label="Root groups" value={rootCategories.length} icon={<FolderTree className="h-4 w-4" />} />
-        <SummaryCard label="Subcategories" value={totalSubcategories} icon={<Shapes className="h-4 w-4" />} />
+        <div className="col-span-2 md:col-span-1">
+          <SummaryCard label="Subcategories" value={totalSubcategories} icon={<Shapes className="h-4 w-4" />} />
+        </div>
       </section>
 
       <section className="grid gap-5 xl:grid-cols-[minmax(0,0.95fr)_minmax(22rem,0.8fr)]">

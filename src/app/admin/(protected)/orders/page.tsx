@@ -199,7 +199,94 @@ export default function AdminOrdersPage() {
         </select>
       </AdminToolbar>
 
-      <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+      <div className="grid gap-3 lg:hidden">
+        {loading ? (
+          <div className="rounded-3xl border border-white/70 bg-white/80 px-5 py-12 text-center text-sm font-bold text-zinc-500 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+            Loading launch order queue...
+          </div>
+        ) : requestError ? (
+          <div className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+            <div className="flex flex-col items-center gap-4 text-center">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl border border-rose-200 bg-rose-50 text-rose-700">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-black text-zinc-700">Order queue unavailable</p>
+                <p className="text-xs font-medium text-zinc-500">
+                  {requestError} Retry after confirming your admin session, network, or backend availability.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => void loadOrders()}
+                className="rounded-xl font-black"
+              >
+                Retry queue load
+              </Button>
+            </div>
+          </div>
+        ) : orders.length === 0 ? (
+          <AdminEmptyState
+            title="No orders match this control-room view"
+            description="Try widening the status filter or search query."
+          />
+        ) : (
+          orders.map((order) => (
+            <div key={order.id} className="rounded-3xl border border-white/70 bg-white/80 p-4 shadow-xl shadow-zinc-900/5 backdrop-blur-xl transition-colors hover:bg-sky-50/60">
+              <div className="flex items-start justify-between">
+                <div>
+                  <p className="font-black text-zinc-950">{order.orderNumber}</p>
+                  <p className="mt-1 text-sm font-bold text-zinc-800">{order.customer.name}</p>
+                </div>
+                <AdminStatusBadge tone={statusTone[order.status]}>
+                  {getStatusLabel(order.status)}
+                </AdminStatusBadge>
+              </div>
+              <div className="mt-4 grid gap-2 text-xs font-medium text-zinc-600">
+                <p><strong>Total:</strong> {formatAdminCurrency(order.totals.grandTotalAmount)}</p>
+                <p><strong>Delivery:</strong> {toTitleCase(order.delivery.method)}</p>
+                <p><strong>Updated:</strong> {formatAdminDateTime(order.updatedAt)}</p>
+              </div>
+              <Button
+                variant="outline"
+                onClick={() => setSelectedOrderId(order.id)}
+                className="mt-4 w-full rounded-xl font-black"
+              >
+                Open order
+              </Button>
+            </div>
+          ))
+        )}
+        {pagination.pages > 1 && (
+          <div className="flex items-center justify-between rounded-3xl border border-white/70 bg-white/80 px-4 py-3 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+            <span className="text-xs font-bold text-zinc-500">
+              Page {pagination.page} / {pagination.pages}
+            </span>
+            <div className="flex gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg text-xs font-bold"
+                disabled={pagination.page <= 1 || loading}
+                onClick={() => setPage((current) => Math.max(1, current - 1))}
+              >
+                Prev
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 rounded-lg text-xs font-bold"
+                disabled={pagination.page >= pagination.pages || loading}
+                onClick={() => setPage((current) => Math.min(pagination.pages, current + 1))}
+              >
+                Next
+              </Button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      <section className="hidden lg:block overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
         <div className="overflow-x-auto">
           <table className="w-full min-w-[1120px] text-left text-sm">
             <thead className="bg-zinc-950 text-[11px] uppercase tracking-wider text-zinc-300">

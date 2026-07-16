@@ -26,7 +26,6 @@ import {
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { useCart, type CartItem } from "@/hooks/use-cart";
-import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 
 type CartDrawerProps = {
   children: ReactNode;

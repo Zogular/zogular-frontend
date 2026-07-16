@@ -97,6 +97,7 @@ export default function AdminSellerReviewPage() {
         {/* Right: operations sidebar */}
         <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
           <SellerActionPanel
+            application={application}
             onAction={openAction}
             canApprove={canApprove}
             canSuspend={canSuspend}

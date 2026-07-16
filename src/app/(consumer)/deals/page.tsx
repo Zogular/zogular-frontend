@@ -1,6 +1,8 @@
 import { ProductCollectionPage } from "@/components/consumer/ProductCollectionPage";
 import { getFlashSaleProducts } from "@/services/products";
 
+export const dynamic = "force-dynamic";
+
 export default async function DealsPage() {
   const products = await getFlashSaleProducts();
 

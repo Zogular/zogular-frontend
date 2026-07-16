@@ -6,7 +6,7 @@ export default function AboutPage() {
       title="About Zogular"
       eyebrow="Zambian platform"
       tone="company"
-      description="Zogular is a Zambian-first platform built to connect trusted local sellers with shoppers who want fast delivery, transparent pricing, and a smoother buying experience."
+      description="Zogular is a Zambian-first marketplace connecting reviewed local sellers with shoppers through backend-quoted pricing, Cash on Delivery, and manually coordinated Lusaka pilot delivery."
       highlights={["Local seller visibility", "Mobile-first shopping", "Clearer delivery expectations", "Practical support"]}
       stats={[
         { value: "ZM", label: "Built for" },

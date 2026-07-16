@@ -75,11 +75,11 @@ function SellerLoginContent() {
 
   return (
     <main
-      className="relative h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat lg:grid lg:grid-cols-2"
+      className="relative min-h-dvh w-full overflow-x-hidden bg-cover bg-center bg-no-repeat lg:grid lg:grid-cols-2"
       style={{ backgroundImage: "url('https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=2070&auto=format&fit=crop')" }}
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
-      <div className="relative z-10 flex min-h-screen flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
+      <div className="relative z-10 flex min-h-dvh flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
         <Link href="/sell">
           <Button aria-label="Back to Sell page" variant="ghost" size="icon" className="absolute left-4 top-4 z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
             <ArrowLeft className="h-4 w-4" />
@@ -101,7 +101,7 @@ function SellerLoginContent() {
                 Sign in to continue selling
               </h1>
               <p className="text-xs font-medium text-zinc-300 md:text-sm">
-                Access your seller onboarding and application status.
+                Access the seller workspace, application status, or onboarding path available to your account.
               </p>
             </div>
           </div>
@@ -152,7 +152,7 @@ function SellerLoginContent() {
               className="mt-4 h-11 w-full rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]"
             >
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
-              {isSubmitting ? "Signing In..." : "Continue to Seller Onboarding"}
+              {isSubmitting ? "Signing In..." : "Continue to seller access"}
             </Button>
           </form>
 
@@ -184,10 +184,10 @@ function SellerLoginContent() {
 
         <div className="max-w-lg">
           <h2 className="mb-4 text-4xl font-extrabold leading-tight tracking-tighter text-white drop-shadow-lg xl:text-5xl">
-            Continue your seller setup.
+            Continue to seller access.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            After sign in, you will return to the seller onboarding flow to complete your application.
+            After sign in, Zogular will resolve your backend seller status and route you to the correct workspace or next step.
           </p>
         </div>
       </div>
@@ -197,7 +197,7 @@ function SellerLoginContent() {
 
 function SellerLoginFallback() {
   return (
-    <main className="flex min-h-screen items-center justify-center bg-[#101010] p-6 text-white">
+    <main className="flex min-h-dvh items-center justify-center bg-[#101010] p-6 text-white">
       <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold">
         <Loader2 className="h-4 w-4 animate-spin" />
         Loading seller sign in...
