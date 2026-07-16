@@ -35,7 +35,11 @@ export const metadata: Metadata = {
   description: BRAND.description,
   applicationName: BRAND.name,
   icons: {
-    icon: "/icon.png",
+    icon: [
+      { url: "/brand/zogular-favicon-32.png?v=2", sizes: "32x32", type: "image/png" },
+      { url: "/brand/zogular-favicon-48.png?v=2", sizes: "48x48", type: "image/png" },
+      { url: BRAND.assets.icon192, sizes: "192x192", type: "image/png" },
+    ],
     apple: "/apple-icon.png",
   },
   appleWebApp: {
