@@ -43,6 +43,7 @@ const priorityTone: Record<AdminTicketPriority, AdminTone> = {
 export default function AdminSupportPage() {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
+  const [requestError, setRequestError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<AdminTicketCategory | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<AdminTicketPriority | "all">("all");
@@ -65,6 +66,7 @@ export default function AdminSupportPage() {
   const loadTickets = useCallback(async () => {
     try {
       setLoading(true);
+      setRequestError(null);
       const res = await adminSupportApi.fetchTickets({
         page,
         limit: 10,
@@ -75,8 +77,10 @@ export default function AdminSupportPage() {
       });
       setTickets(res.tickets);
       setPagination(res.pagination);
-    } catch {
-      toast.error("Failed to load support tickets.");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Failed to load support tickets.";
+      setRequestError(message);
+      toast.error(message);
     } finally {
       setLoading(false);
     }
@@ -180,7 +184,20 @@ export default function AdminSupportPage() {
       </AdminToolbar>
 
       <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
-        <div className="overflow-x-auto">
+        {requestError && !loading ? (
+          <div className="p-5"><AdminEmptyState title="Support inbox unavailable" description={requestError} /><div className="flex justify-center pb-4"><Button onClick={() => void loadTickets()} variant="outline" className="rounded-xl font-black">Retry support inbox</Button></div></div>
+        ) : null}
+        {!requestError ? (
+        <>
+        <div className="space-y-3 p-3 lg:hidden">
+          {loading ? <div className="px-3 py-10 text-center text-sm font-bold text-zinc-500">Loading support inbox...</div> : tickets.length === 0 ? <AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /> : tickets.map((ticket) => (
+            <article key={ticket.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black text-zinc-950">{ticket.subject}</p><p className="mt-1 text-xs font-semibold text-zinc-500">{ticket.seller.displayName}</p></div><AdminStatusBadge tone={statusTone[ticket.status]}>{toTitleCase(ticket.status.replace('-', ' '))}</AdminStatusBadge></div>
+              <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs font-medium text-zinc-500">Updated {formatAdminDateTime(ticket.updatedAt)}</p><Button variant="outline" onClick={() => openTicket(ticket.id)} className="h-9 rounded-xl text-xs font-black">Open</Button></div>
+            </article>
+          ))}
+        </div>
+        <div className="hidden overflow-x-auto lg:block">
           <table className="w-full min-w-[960px] text-left text-sm">
             <thead className="bg-zinc-950 text-[11px] uppercase tracking-wider text-zinc-300">
               <tr>
@@ -217,6 +234,8 @@ export default function AdminSupportPage() {
             </tbody>
           </table>
         </div>
+        </>
+        ) : null}
         {pagination.pages > 1 && (
           <div className="flex items-center justify-between border-t border-zinc-100 px-5 py-3 bg-white/40">
             <span className="text-xs font-bold text-zinc-500">

@@ -40,7 +40,7 @@ export default function AdminLoginPage() {
   };
 
   return (
-    <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-zinc-950 p-4">
+    <div className="relative flex min-h-dvh items-center justify-center overflow-x-hidden bg-zinc-950 p-4">
       <div className="absolute inset-0 bg-[linear-gradient(rgba(255,255,255,0.055)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.055)_1px,transparent_1px)] bg-[size:42px_42px]" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_top,rgba(0,158,73,0.18),transparent_32rem),linear-gradient(135deg,rgba(24,24,27,0.55),rgba(9,9,11,0.95))]" />
 
@@ -87,7 +87,7 @@ export default function AdminLoginPage() {
             </div>
 
             <div className="pt-4">
-              <Button type="submit" disabled={isLoading} className="h-14 w-full rounded-2xl bg-white text-sm font-black text-zinc-950 shadow-xl shadow-black/20 transition-all hover:bg-emerald-50 active:scale-95 disabled:opacity-60">
+              <Button type="submit" aria-label="Sign in to admin" disabled={isLoading} className="h-14 w-full rounded-2xl bg-white text-sm font-black text-zinc-950 shadow-xl shadow-black/20 transition-all hover:bg-emerald-50 active:scale-95 disabled:opacity-60">
                 {isLoading ? "Verifying..." : <span className="flex items-center">Sign In <ArrowRight className="ml-2 h-4 w-4" /></span>}
               </Button>
             </div>

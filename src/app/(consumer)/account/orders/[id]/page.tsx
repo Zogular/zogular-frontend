@@ -224,14 +224,20 @@ export default function InvoicePage({
                 {invoice.shipping.area}, {invoice.shipping.city}
               </span>
             </div>
-            <div className="mt-3 rounded-lg border border-zinc-200 p-3 bg-zinc-50">
-              <p className="text-sm text-zinc-600">
-                <span className="font-bold text-zinc-700">Payment:</span> {invoice.paymentMethod}
-              </p>
-              <p className="mt-1 text-xs text-zinc-500">
-                Payment confirmation is handled during order processing.
-              </p>
-            </div>
+            {invoice.isLegacyIncomplete ? (
+              <div className="mt-3 rounded-lg border border-orange-200 bg-orange-50 p-2.5">
+                <p className="text-xs font-bold text-orange-900 leading-tight">Legacy payment breakdown unavailable.</p>
+              </div>
+            ) : (
+              <div className="mt-3 rounded-lg border border-zinc-200 p-3 bg-zinc-50">
+                <p className="text-sm text-zinc-600">
+                  <span className="font-bold text-zinc-700">Payment:</span> {invoice.paymentMethod}
+                </p>
+                <p className="mt-1 text-xs text-zinc-500">
+                  Payment confirmation is handled during order processing.
+                </p>
+              </div>
+            )}
           </div>
         </div>
 
@@ -334,41 +340,50 @@ export default function InvoicePage({
               <span className="text-zinc-500">Subtotal</span>
               <span className="font-medium text-zinc-900">{formatCurrency(invoice.subtotal)}</span>
             </div>
-            <div className="flex justify-between text-sm">
-              <span className="text-zinc-500">Shipping Fee</span>
-              <span className="font-medium text-zinc-900">{formatCurrency(invoice.shippingFee)}</span>
-            </div>
 
-            {invoice.discount > 0 ? (
-              <div className="flex justify-between text-sm text-[#009E49]">
-                <span>Discount</span>
-                <span className="font-medium">-{formatCurrency(invoice.discount)}</span>
+            {invoice.isLegacyIncomplete ? (
+              <div className="mt-4 rounded-xl border border-orange-200 bg-orange-50 p-3">
+                <p className="text-xs font-bold text-orange-900">Payment breakdown unavailable for this legacy order.</p>
               </div>
-            ) : null}
-
-            <Separator className="bg-zinc-100" />
-
-            <div className="flex items-center justify-between pt-1">
-              <span className="font-bold text-zinc-900">Total</span>
-              <span className="text-2xl font-black text-[#009E49]">
-                {formatCurrency(invoice.total)}
-              </span>
-            </div>
-
-            {typeof invoice.commitmentFeeAmount === "number" && typeof invoice.cashDueOnDelivery === "number" && (
-              <div className="mt-3 space-y-2 rounded-xl bg-orange-50 p-3 text-sm print:bg-transparent print:p-0 print:border print:border-zinc-200">
-                <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
-                  <span>Delivery Fee (Due Now)</span>
-                  <span>{formatCurrency(invoice.commitmentFeeAmount)}</span>
+            ) : (
+              <>
+                <div className="flex justify-between text-sm">
+                  <span className="text-zinc-500">Shipping Fee</span>
+                  <span className="font-medium text-zinc-900">{formatCurrency(invoice.shippingFee!)}</span>
                 </div>
-                <div className="flex justify-between font-bold text-zinc-900">
-                  <span>Cash Due on Delivery</span>
-                  <span>{formatCurrency(invoice.cashDueOnDelivery)}</span>
+
+                {invoice.discount > 0 ? (
+                  <div className="flex justify-between text-sm text-[#009E49]">
+                    <span>Discount</span>
+                    <span className="font-medium">-{formatCurrency(invoice.discount)}</span>
+                  </div>
+                ) : null}
+
+                <Separator className="bg-zinc-100" />
+
+                <div className="flex items-center justify-between pt-1">
+                  <span className="font-bold text-zinc-900">Total</span>
+                  <span className="text-2xl font-black text-[#009E49]">
+                    {formatCurrency(invoice.total!)}
+                  </span>
                 </div>
-                <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
-                  * Official payment status is pending.
-                </p>
-              </div>
+
+                {typeof invoice.commitmentFeeAmount === "number" && typeof invoice.cashDueOnDelivery === "number" && (
+                  <div className="mt-3 space-y-2 rounded-xl bg-orange-50 p-3 text-sm print:bg-transparent print:p-0 print:border print:border-zinc-200">
+                    <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
+                      <span>Delivery Fee (Due Now)</span>
+                      <span>{formatCurrency(invoice.commitmentFeeAmount)}</span>
+                    </div>
+                    <div className="flex justify-between font-bold text-zinc-900">
+                      <span>Cash Due on Delivery</span>
+                      <span>{formatCurrency(invoice.cashDueOnDelivery)}</span>
+                    </div>
+                    <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
+                      * Official payment status is pending.
+                    </p>
+                  </div>
+                )}
+              </>
             )}
           </div>
         </div>

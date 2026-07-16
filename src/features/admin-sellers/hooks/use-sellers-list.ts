@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import {
-  type VendorApplicationAdminAction,
   matchesApplicationSearch,
   getApplicationPrimaryName,
 } from "@/components/admin/sellers/VendorApplicationReviewUI";
+import type { VendorApplicationAdminAction } from "../types/admin-seller.types";
 import { adminIdentityHasPermission } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 import {

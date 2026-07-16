@@ -13,21 +13,16 @@ type ChecklistItem = {
 
 export function GrowthChecklist({
   application,
-  hasProducts,
+  productProbe,
 }: {
   application: VendorApplication;
-  hasProducts: boolean;
+  productProbe: "loading" | "has-products" | "empty" | "unavailable";
 }) {
   const items: ChecklistItem[] = [
     {
       label: "Create your first product draft",
-      isComplete: hasProducts,
+      isComplete: productProbe === "has-products",
       href: "/seller/products/new",
-    },
-    {
-      label: "Review store settings preview",
-      isComplete: false, // Future enhancement
-      href: "/seller/settings",
     },
     {
       label: "Payout details provided",
@@ -44,7 +39,12 @@ export function GrowthChecklist({
     <div className="rounded-3xl border border-[#009E49]/20 bg-[#f4fbf6] p-5 shadow-sm">
       <div className="mb-4">
         <h2 className="text-base font-black text-zinc-900">Growth Readiness</h2>
-        <p className="mt-0.5 text-xs font-medium text-zinc-600">Complete these steps to start selling</p>
+        <p className="mt-0.5 text-xs font-medium text-zinc-600">Backend-confirmed seller readiness</p>
+        {productProbe === "unavailable" ? (
+          <p className="mt-2 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-800">
+            Product readiness could not be checked. Your product count has not been marked empty.
+          </p>
+        ) : null}
       </div>
 
       <div className="space-y-3">

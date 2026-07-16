@@ -29,11 +29,11 @@ export default function PermissionsPage() {
 
   return (
     <main
-      className="relative h-screen w-full overflow-hidden bg-cover bg-center bg-no-repeat lg:grid lg:grid-cols-2"
+      className="relative min-h-dvh w-full overflow-x-hidden bg-cover bg-center bg-no-repeat lg:grid lg:grid-cols-2"
       style={{ backgroundImage: "url('https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=2070&auto=format&fit=crop')" }}
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
-      <div className="relative z-10 flex min-h-screen flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
+      <div className="relative z-10 flex min-h-dvh flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
         <Link href="/">
           <Button variant="ghost" className="absolute right-4 top-4 z-20 rounded-full text-xs font-bold text-zinc-300 transition-colors hover:bg-white/10 hover:text-white">
             Skip for now
@@ -70,7 +70,7 @@ export default function PermissionsPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white">Location Services</h3>
-                    <p className="mt-0.5 max-w-40 text-[10px] text-zinc-400">Find verified sellers and exact delivery estimates near you.</p>
+                    <p className="mt-0.5 max-w-40 text-[10px] text-zinc-400">Browse buyer-visible products and confirm delivery terms at checkout.</p>
                   </div>
                 </div>
                 <div className={`flex h-6 w-11 items-center rounded-full px-0.5 transition-colors duration-300 ${locationOn ? "bg-[#009E49]" : "bg-zinc-600"}`}>

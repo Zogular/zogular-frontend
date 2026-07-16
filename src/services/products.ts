@@ -1,5 +1,5 @@
 import { normalizeProduct } from "@/lib/normalizers/product";
-import { apiClient } from "@/services/api";
+import { apiClient, ApiError } from "@/services/api";
 import { getCategoryMetaBySlug } from "@/services/categories";
 import type {
   CategoryFilterOption,
@@ -17,11 +17,11 @@ const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
   fashion:
     "Shop premium fashion, footwear, and accessories curated for your style and everyday wear.",
   electronics:
-    "Find trending electronics, entertainment gear, and premium gadgets from trusted sellers.",
+    "Browse current electronics, entertainment gear, and buyer-visible gadgets.",
   supermarket:
-    "Shop pantry staples, drinks, household essentials, and daily supplies with fast local delivery.",
+    "Shop buyer-visible pantry staples, drinks, household essentials, and daily supplies.",
   "health-and-beauty":
-    "Discover skincare, wellness, grooming, and beauty essentials from trusted Zogular sellers.",
+    "Discover buyer-visible skincare, wellness, grooming, and beauty essentials.",
   "sports-and-outdoors":
     "Find fitness gear, outdoor essentials, and active lifestyle products for everyday movement.",
   "home-and-living":
@@ -29,15 +29,6 @@ const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
 };
 
 const PRODUCT_IMAGE_PLACEHOLDER = "/file.svg";
-
-const BACKEND_CATEGORY_BY_SLUG = {
-  "phones-and-tablets": "PHONES",
-  computing: "LAPTOPS",
-  fashion: "FASHIONS",
-  electronics: "ELECTRONICS",
-  accessories: "ACCESSORIES",
-  "home-and-living": "OTHERS",
-} as const;
 
 const FRONTEND_CATEGORY_BY_BACKEND: Record<string, { name: string; slug: string }> = {
   PHONES: { name: "Phones & Tablets", slug: "phones-and-tablets" },
@@ -205,10 +196,6 @@ function getProductCategoryMeta(product: BackendProduct) {
   };
 }
 
-function getBackendCategoryForSlug(slug: string): string | undefined {
-  return BACKEND_CATEGORY_BY_SLUG[slug as keyof typeof BACKEND_CATEGORY_BY_SLUG];
-}
-
 function getBackendPriceQuery(filter: CategoryFilterOption) {
   if (filter === "under-500") return { maxPrice: 499 };
   if (filter === "500-2000") return { minPrice: 500, maxPrice: 2000 };
@@ -319,44 +306,35 @@ function toPaginationMeta(
 
 async function fetchBackendProducts(
   query: Record<string, string | number | boolean | null | undefined>,
-): Promise<{ products: Product[]; pagination: ProductPaginationMeta } | null> {
-  try {
-    const payload = await apiClient<BackendProductListResponse>("/products", {
-      method: "GET",
-      authMode: "omit",
-      cache: "no-store",
-      query,
-    });
-    const backendProducts = getBackendProducts(payload);
-    const products = backendProducts.map(normalizeBackendProduct);
-    const page = toNumber(query.page, 1);
-    const pageSize = toNumber(query.limit, products.length || 20);
+): Promise<{ products: Product[]; pagination: ProductPaginationMeta }> {
+  const payload = await apiClient<BackendProductListResponse>("/products", {
+    method: "GET",
+    authMode: "omit",
+    cache: "no-store",
+    query,
+  });
+  const backendProducts = getBackendProducts(payload);
+  const products = backendProducts.map(normalizeBackendProduct);
+  const page = toNumber(query.page, 1);
+  const pageSize = toNumber(query.limit, products.length || 20);
 
-    return {
-      products,
-      pagination: toPaginationMeta(payload, page, pageSize, products.length),
-    };
-  } catch {
-    return null;
-  }
+  return {
+    products,
+    pagination: toPaginationMeta(payload, page, pageSize, products.length),
+  };
 }
 
 async function fetchBackendProductCollection(
   endpoint: string,
   query: Record<string, string | number | boolean | null | undefined>,
-): Promise<Product[] | null> {
-  try {
-    const payload = await apiClient<BackendProductListResponse>(endpoint, {
-      method: "GET",
-      authMode: "omit",
-      cache: "no-store",
-      query,
-    });
-    const products = getBackendProducts(payload).map(normalizeBackendProduct);
-    return products.length ? products : null;
-  } catch {
-    return null;
-  }
+): Promise<Product[]> {
+  const payload = await apiClient<BackendProductListResponse>(endpoint, {
+    method: "GET",
+    authMode: "omit",
+    cache: "no-store",
+    query,
+  });
+  return getBackendProducts(payload).map(normalizeBackendProduct);
 }
 
 function buildBackendProductSpecs(product: BackendProduct): ProductDetail["specs"] {
@@ -448,8 +426,9 @@ async function fetchBackendProductDetailBySlug(slug: string): Promise<ProductDet
     });
     const product = payload.data?.product;
     return product ? normalizeBackendProductDetail(product) : null;
-  } catch {
-    return null;
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
   }
 }
 
@@ -473,7 +452,7 @@ async function fetchBackendRelatedProducts(
 
 export async function getTrendingProducts(): Promise<Product[]> {
   const backendProducts = await fetchBackendProductCollection("/products/featured", { limit: 10 });
-  return backendProducts ?? [];
+  return backendProducts;
 }
 
 export async function getFlashSaleProducts(): Promise<Product[]> {
@@ -481,7 +460,7 @@ export async function getFlashSaleProducts(): Promise<Product[]> {
     limit: 50,
     sort: "newest",
   });
-  return backendProducts?.filter((product) => (product.discount ?? 0) > 0).slice(0, 8) ?? [];
+  return backendProducts.filter((product) => (product.discount ?? 0) > 0).slice(0, 8);
 }
 
 export async function getCategoryPageData(
@@ -505,56 +484,27 @@ export async function getCategoryPageData(
       : undefined;
   const meta = await getCategoryMetaBySlug(slug).catch(() => getFallbackCategoryMeta(slug));
 
-  const backendData =
-    (await fetchBackendProducts({
-      categorySlug: slug,
-      subcategorySlug: activeSubcategory,
-      sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
-      page: activePage,
-      limit: activePageSize,
-      ...backendPriceQuery,
-    })) ??
-    (getBackendCategoryForSlug(slug)
-      ? await fetchBackendProducts({
-          category: getBackendCategoryForSlug(slug),
-          sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
-          page: activePage,
-          limit: activePageSize,
-          ...backendPriceQuery,
-        })
-      : null);
+  const backendData = await fetchBackendProducts({
+    categorySlug: slug,
+    subcategorySlug: activeSubcategory,
+    sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
+    page: activePage,
+    limit: activePageSize,
+    ...backendPriceQuery,
+  });
 
-  if (backendData) {
-    return {
-      slug,
-      meta,
-      products: backendData.products,
-      pagination: backendData.pagination,
-    };
-  }
-
-  // Fallback to empty if not found
   return {
     slug,
     meta,
-    products: [],
-    pagination: {
-      page: 1,
-      pageSize: activePageSize,
-      total: 0,
-      totalPages: 1,
-      startItem: 0,
-      endItem: 0,
-    },
+    products: backendData.products,
+    pagination: backendData.pagination,
   };
 }
 
-export async function getProductDetailBySlug(slug: string): Promise<ProductDetail> {
+export async function getProductDetailBySlug(slug: string): Promise<ProductDetail | null> {
   const normalizedSlug = decodeURIComponent(slug).trim().toLowerCase();
   const backendProductDetail = await fetchBackendProductDetailBySlug(normalizedSlug);
-  if (backendProductDetail) return backendProductDetail;
-
-  throw new Error(`Product ${slug} not found`);
+  return backendProductDetail;
 }
 
 export async function getSellerProducts(options: { excludeSlug?: string } = {}): Promise<Product[]> {
@@ -563,12 +513,8 @@ export async function getSellerProducts(options: { excludeSlug?: string } = {}):
     limit: 8,
     sort: "newest",
   });
-  if (backendData?.products) {
-      return backendData.products.filter(p => p.slug !== options.excludeSlug);
-  }
-  return [];
+  return backendData.products.filter((product) => product.slug !== options.excludeSlug);
 }
-
 export async function getRelatedProducts(
   options: { excludeSlug?: string; categoryName?: string } = {},
 ): Promise<Product[]> {

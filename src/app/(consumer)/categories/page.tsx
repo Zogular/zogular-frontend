@@ -3,6 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
+  AlertTriangle,
   ChevronRight,
   Dumbbell,
   HeartPulse,
@@ -12,6 +13,7 @@ import {
   ShoppingBasket,
   Smartphone,
   Sofa,
+  Loader2,
   Tv,
 } from "lucide-react";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
@@ -31,16 +33,29 @@ const CATEGORY_ICONS = {
 export default function CategoriesDirectoryPage() {
   const [searchQuery, setSearchQuery] = React.useState("");
   const [categories, setCategories] = React.useState<CategorySummary[]>([]);
+  const [requestState, setRequestState] = React.useState<"loading" | "success" | "error">("loading");
+  const [requestVersion, setRequestVersion] = React.useState(0);
 
   React.useEffect(() => {
     let active = true;
-    getCategoryDirectory().then((data) => {
-      if (active) setCategories(data);
-    });
+    getCategoryDirectory()
+      .then((data) => {
+        if (!active) return;
+        setCategories(data);
+        setRequestState("success");
+      })
+      .catch(() => {
+        if (active) setRequestState("error");
+      });
     return () => {
       active = false;
     };
-  }, []);
+  }, [requestVersion]);
+
+  const retry = () => {
+    setRequestState("loading");
+    setRequestVersion((version) => version + 1);
+  };
 
   const filteredCategories = categories.filter((category) => {
     const query = searchQuery.toLowerCase();
@@ -52,7 +67,7 @@ export default function CategoriesDirectoryPage() {
   });
 
   return (
-    <main className="min-h-screen bg-[#f4fbf6] pb-24 pt-8 md:pt-12">
+    <main className="min-h-dvh bg-[#f4fbf6] pb-24 pt-8 md:pt-12">
       <div className="container mx-auto max-w-7xl px-4 md:px-6">
         <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
@@ -60,7 +75,7 @@ export default function CategoriesDirectoryPage() {
               All Categories
             </h1>
             <p className="mt-3 text-sm font-medium text-zinc-500 md:text-base">
-              Browse the entire Zogular platform. Find electronics, fashion, groceries, and everything in between from trusted Lusaka sellers.
+              Browse buyer-visible products across electronics, fashion, groceries, and more during the Lusaka pilot.
             </p>
             <Link href="/products" className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-900 px-5 text-sm font-black text-white shadow-md transition-colors hover:bg-zinc-800">
               Shop All Products
@@ -81,7 +96,18 @@ export default function CategoriesDirectoryPage() {
           </div>
         </div>
 
-        {filteredCategories.length > 0 ? (
+        {requestState === "loading" ? (
+          <div className="flex min-h-64 items-center justify-center rounded-3xl border border-zinc-200 bg-white">
+            <Loader2 className="h-7 w-7 animate-spin text-[#009E49]" aria-label="Loading categories" />
+          </div>
+        ) : requestState === "error" ? (
+          <div className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50 px-6 text-center">
+            <AlertTriangle className="h-8 w-8 text-amber-700" />
+            <h2 className="mt-4 text-xl font-black text-zinc-950">Categories are temporarily unavailable</h2>
+            <p className="mt-2 max-w-md text-sm font-medium leading-6 text-zinc-600">Zogular could not reach the catalog service. No empty category result has been assumed.</p>
+            <button onClick={retry} className="mt-5 rounded-xl bg-zinc-950 px-6 py-3 text-sm font-bold text-white hover:bg-zinc-800">Retry</button>
+          </div>
+        ) : filteredCategories.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-6">
             {filteredCategories.map((category) => {
               const Icon = CATEGORY_ICONS[category.iconKey];

@@ -67,7 +67,7 @@ export function UploadTile({
       {uploading ? (
         <div className="mt-4 space-y-2">
           <div className="h-2 overflow-hidden rounded-full bg-white">
-            <div className="h-full rounded-full bg-[#0EA85B]" style={{ width: `${Math.max(progress, 8)}%` }} />
+            <div className="h-full rounded-full bg-[#0EA85B]" style={{ width: `${progress}%` }} />
           </div>
           <p className="text-xs font-bold text-[#6F6A62]">Uploading file...</p>
         </div>

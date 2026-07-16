@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/accordion";
 import { ProductCard } from "@/components/productCard";
 import { WishlistButton } from "@/components/WishlistButton";
+import { ProductImageUnavailable } from "@/components/product/ProductImageUnavailable";
 import { AddToCartButton } from "@/components/AddToCartButton";
 import { toProductFromDetail } from "@/lib/normalizers/product";
 import type { Product, ProductDetail } from "@/types/product";
@@ -96,14 +97,14 @@ function ProductImageGallery({
                 <Share2 className="h-4 w-4" />
               </Button>
             </div>
-            <Image
+            {activeImage === "/file.svg" ? <ProductImageUnavailable /> : <Image
               src={activeImage}
               alt={title}
               fill
               sizes="100vw"
               unoptimized
               className="object-cover"
-            />
+            />}
           </div>
           <div className="hide-scrollbar flex gap-2 overflow-x-auto px-4 pb-1">
             {images.map((src, index) => (
@@ -115,14 +116,14 @@ function ProductImageGallery({
                 aria-label={`Preview image ${index + 1}`}
                 className={`relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border-2 transition-all ${activeImage === src ? "border-[#009E49] shadow-md" : "border-zinc-200 bg-zinc-50 opacity-80"}`}
               >
-                <Image
+                {src === "/file.svg" ? <ProductImageUnavailable compact /> : <Image
                   src={src}
                   alt={`${title} thumbnail ${index + 1}`}
                   fill
                   sizes="64px"
                   unoptimized
                   className="object-cover"
-                />
+                />}
               </button>
             ))}
           </div>
@@ -147,14 +148,14 @@ function ProductImageGallery({
             <Share2 className="h-4 w-4" />
           </Button>
         </div>
-        <Image
+        {activeImage === "/file.svg" ? <ProductImageUnavailable /> : <Image
           src={activeImage}
           alt={title}
           fill
           sizes="(min-width: 768px) 700px, 100vw"
           unoptimized
           className="object-cover transition-transform duration-700 hover:scale-[1.03]"
-        />
+        />}
       </div>
 
       <div className="hidden grid-cols-4 gap-4 md:grid">
@@ -167,14 +168,14 @@ function ProductImageGallery({
             aria-label={`Preview image ${index + 1}`}
             className={`aspect-square overflow-hidden rounded-xl border-2 transition-all ${activeImage === src ? "scale-[1.03] border-[#009E49] shadow-md" : "border-transparent bg-zinc-50 opacity-70 hover:border-zinc-300 hover:opacity-100"}`}
           >
-            <Image
+            {src === "/file.svg" ? <ProductImageUnavailable compact /> : <Image
               src={src}
               alt={`${title} thumbnail ${index + 1}`}
               width={160}
               height={160}
               unoptimized
               className="h-full w-full object-cover"
-            />
+            />}
           </button>
         ))}
       </div>

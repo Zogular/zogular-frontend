@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useSyncExternalStore } from "react";
 import {
   ArrowRight,
   BadgeCheck,
@@ -15,38 +14,18 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { getStoredAuthSession } from "@/services/auth";
 import { appendNextPath } from "@/services/auth-intent";
 
 const SELLER_ONBOARDING_PATH = "/seller/onboarding?start=1";
+const SELLER_ENTRY_PATH = "/seller";
 const SELLER_REGISTER_PATH = appendNextPath(
   "/seller/register",
   SELLER_ONBOARDING_PATH,
 );
 const SELLER_LOGIN_PATH = appendNextPath(
   "/seller/login",
-  SELLER_ONBOARDING_PATH,
+  SELLER_ENTRY_PATH,
 );
-
-function subscribeAuthSession(callback: () => void) {
-  if (typeof window === "undefined") return () => {};
-
-  window.addEventListener("storage", callback);
-  window.addEventListener("zogular-auth-session", callback);
-
-  return () => {
-    window.removeEventListener("storage", callback);
-    window.removeEventListener("zogular-auth-session", callback);
-  };
-}
-
-function getAuthSessionSnapshot() {
-  return Boolean(getStoredAuthSession()?.user);
-}
-
-function getServerAuthSessionSnapshot() {
-  return false;
-}
 
 const HIGHLIGHTS = [
   {
@@ -125,17 +104,8 @@ const FAQS = [
 ];
 
 export default function SellOnZogularPage() {
-  const isLoggedIn = useSyncExternalStore(
-    subscribeAuthSession,
-    getAuthSessionSnapshot,
-    getServerAuthSessionSnapshot,
-  );
-  const primaryHref = isLoggedIn
-    ? SELLER_ONBOARDING_PATH
-    : SELLER_REGISTER_PATH;
-  const secondaryHref = isLoggedIn
-    ? "/seller/status"
-    : SELLER_LOGIN_PATH;
+  const primaryHref = SELLER_REGISTER_PATH;
+  const secondaryHref = SELLER_LOGIN_PATH;
 
   return (
     <main className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
@@ -168,14 +138,14 @@ export default function SellOnZogularPage() {
               <Link href={primaryHref} className="sm:flex-1">
                 <Button className="group h-12 w-full rounded-[1.35rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_42px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:h-13 sm:text-[13px]">
                   <span className="mr-2 h-2 w-2 rounded-full bg-white/85 shadow-[0_0_16px_rgba(255,255,255,0.8)] transition-transform duration-300 group-hover:scale-125" />
-                  Start Selling
+                  Create seller account
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                 </Button>
               </Link>
               <Link href={secondaryHref} className="sm:flex-1">
                 <Button className="group h-12 w-full rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:h-13 sm:text-[13px]">
                   <span className="mr-2 h-2 w-2 rounded-full border border-white/45 bg-white/15 transition-colors duration-300 group-hover:bg-white/8" />
-                  {isLoggedIn ? "Check seller status" : "Sign in to continue"}
+                  Sign in to continue
                 </Button>
               </Link>
             </div>
@@ -385,14 +355,14 @@ export default function SellOnZogularPage() {
               <Link href={primaryHref}>
                 <Button className="group h-12 w-full rounded-[1.25rem] border border-emerald-300/18 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[0_20px_46px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:text-[13px]">
                   <span className="mr-2 h-2 w-2 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.72)] transition-transform duration-300 group-hover:scale-125" />
-                  Start Selling
+                  Create seller account
                   <ChevronRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
                 </Button>
               </Link>
               <Link href={secondaryHref}>
                 <Button className="group h-12 w-full rounded-[1.25rem] border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:text-[13px]">
                   <span className="mr-2 h-2 w-2 rounded-full border border-white/40 bg-white/12" />
-                  {isLoggedIn ? "Open seller status" : "Sign in first"}
+                  Sign in to seller access
                 </Button>
               </Link>
             </div>

@@ -362,8 +362,7 @@ export async function getCurrentUser(): Promise<AuthUser> {
 
   const fallbackEmail = getStoredAuthUser()?.email;
   const user = normalizeUser(payload, fallbackEmail);
-  storeAuthUser(user);
-  storeLastAuthEmail(user.email);
+  storeAuthSession({ user });
   return user;
 }
 

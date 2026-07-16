@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
+import { notFound } from "next/navigation";
 import { ProductDetailsClient } from "@/components/product/ProductDetailsClient";
 import { getProductDetailBySlug, getRelatedProducts, getSellerProducts } from "@/services/products";
+
+export const dynamic = "force-dynamic";
 
 interface ProductDetailsPageProps {
   params: Promise<{ slug: string }>;
@@ -9,6 +12,8 @@ interface ProductDetailsPageProps {
 export async function generateMetadata({ params }: ProductDetailsPageProps): Promise<Metadata> {
   const { slug } = await params;
   const product = await getProductDetailBySlug(slug);
+
+  if (!product) return {};
 
   return {
     title: `${product.title} | Zogular`,
@@ -24,6 +29,11 @@ export async function generateMetadata({ params }: ProductDetailsPageProps): Pro
 export default async function ProductDetailsPage({ params }: ProductDetailsPageProps) {
   const { slug } = await params;
   const productData = await getProductDetailBySlug(slug);
+
+  if (!productData) {
+    notFound();
+  }
+
   const [sellerProducts, relatedProducts] = await Promise.all([
     getSellerProducts({ excludeSlug: productData.slug }),
     getRelatedProducts({

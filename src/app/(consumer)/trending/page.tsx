@@ -1,6 +1,8 @@
 import { ProductCollectionPage } from "@/components/consumer/ProductCollectionPage";
 import { getTrendingProducts } from "@/services/products";
 
+export const dynamic = "force-dynamic";
+
 export default async function TrendingPage() {
   const products = await getTrendingProducts();
 

@@ -196,7 +196,9 @@ export default function AccountOverviewPage() {
                       </p>
                     </div>
                     <div className="flex flex-col md:items-end">
-                      <span className="font-black text-zinc-900">K{order.total.toLocaleString()}</span>
+                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : "Total"}</span>
+                      <span className="font-black text-zinc-900">{order.isLegacyIncomplete ? `K${order.itemSubtotal.toLocaleString()}` : `K${order.total?.toLocaleString()}`}</span>
+                      {order.isLegacyIncomplete && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Payment breakdown unavailable</span>}
                       {order.status === "processing" ? (
                         <Badge className="mt-1 gap-1 border-none bg-amber-100 px-2 shadow-none text-amber-700 hover:bg-amber-100">
                           <Clock className="h-3 w-3" /> Processing

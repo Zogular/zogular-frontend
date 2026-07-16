@@ -346,7 +346,7 @@ export default function CheckoutPage() {
                     onClick={() => setCheckoutStage("payment")}
                     className="mt-6 h-12 w-full rounded-xl bg-[#009E49] font-black text-white hover:bg-[#00853d] disabled:opacity-50 md:hidden"
                   >
-                    Continue to Payment
+                    Continue to order review
                   </Button>
                 </section>
               )

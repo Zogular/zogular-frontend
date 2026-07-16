@@ -6,8 +6,9 @@ import {
   formatAdminDate,
   getApplicationLocation,
   getApplicationPrimaryName,
-  type VendorApplicationAdminAction,
 } from "@/components/admin/sellers/VendorApplicationReviewUI";
+import type { VendorApplicationAdminAction } from "@/features/admin-sellers/types/admin-seller.types";
+import { getAvailableVendorActions } from "@/features/admin-sellers/lib/vendor-action-availability";
 import {
   ActionMenu,
   ActionMenuContent,
@@ -57,7 +58,9 @@ export function SellersListTable({
               </tr>
             </thead>
             <tbody className="divide-y divide-stone-100 text-xs font-bold text-stone-700">
-              {applications.map((application) => (
+              {applications.map((application) => {
+                const availableActions = getAvailableVendorActions(application, canApprove, canSuspend);
+                return (
                 <tr key={application.id} className="transition-colors hover:bg-stone-50/50">
                   <td className="px-4 py-3.5">
                     <div className="font-black text-stone-950 text-sm">{getApplicationPrimaryName(application)}</div>
@@ -86,7 +89,7 @@ export function SellersListTable({
                         <Link href={`/admin/sellers/${application.id}`}>Review</Link>
                       </Button>
                       
-                      {(canApprove || canSuspend) && (
+                      {availableActions.length > 0 && (
                         <ActionMenu>
                           <ActionMenuTrigger asChild>
                             <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-100">
@@ -96,32 +99,39 @@ export function SellersListTable({
                           <ActionMenuContent>
                             <ActionMenuNote>Manage Seller</ActionMenuNote>
                             <ActionMenuSeparator />
-                            {canApprove && (
-                              <>
-                                <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>
-                                  Approve
-                                </ActionMenuItem>
-                                <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>
-                                  Approve Provisional
-                                </ActionMenuItem>
-                                <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>
-                                  Needs Info
-                                </ActionMenuItem>
-                                <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">
-                                  Reject
-                                </ActionMenuItem>
-                              </>
+                            {availableActions.includes("approve-approved") && (
+                              <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>
+                                Approve
+                              </ActionMenuItem>
                             )}
-                            {canApprove && canSuspend && <ActionMenuSeparator />}
-                            {canSuspend && (
-                              <>
-                                <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500">
-                                  Restrict
-                                </ActionMenuItem>
-                                <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">
-                                  Suspend
-                                </ActionMenuItem>
-                              </>
+                            {availableActions.includes("approve-provisional") && (
+                              <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>
+                                Approve Provisional
+                              </ActionMenuItem>
+                            )}
+                            {availableActions.includes("needs-info") && (
+                              <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>
+                                Needs Info
+                              </ActionMenuItem>
+                            )}
+                            {availableActions.includes("reject") && (
+                              <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">
+                                Reject
+                              </ActionMenuItem>
+                            )}
+                            {availableActions.some(a => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(a)) &&
+                             availableActions.some(a => ["restrict", "suspend"].includes(a)) && (
+                              <ActionMenuSeparator />
+                            )}
+                            {availableActions.includes("restrict") && (
+                              <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500">
+                                Restrict
+                              </ActionMenuItem>
+                            )}
+                            {availableActions.includes("suspend") && (
+                              <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">
+                                Suspend
+                              </ActionMenuItem>
                             )}
                           </ActionMenuContent>
                         </ActionMenu>
@@ -129,7 +139,7 @@ export function SellersListTable({
                     </div>
                   </td>
                 </tr>
-              ))}
+              )})}
             </tbody>
           </table>
         </div>
@@ -221,7 +231,8 @@ function SellerMobileActionMenu({
   canApprove: boolean;
   canSuspend: boolean;
 }) {
-  if (!canApprove && !canSuspend) return null;
+  const availableActions = getAvailableVendorActions(application, canApprove, canSuspend);
+  if (availableActions.length === 0) return null;
 
   return (
     <ActionMenu>
@@ -233,20 +244,27 @@ function SellerMobileActionMenu({
       <ActionMenuContent>
         <ActionMenuNote>Manage Seller</ActionMenuNote>
         <ActionMenuSeparator />
-        {canApprove && (
-          <>
-            <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem>
-            <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve Provisional</ActionMenuItem>
-            <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs Info</ActionMenuItem>
-            <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">Reject</ActionMenuItem>
-          </>
+        {availableActions.includes("approve-approved") && (
+          <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem>
         )}
-        {canApprove && canSuspend && <ActionMenuSeparator />}
-        {canSuspend && (
-          <>
-            <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500">Restrict</ActionMenuItem>
-            <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">Suspend</ActionMenuItem>
-          </>
+        {availableActions.includes("approve-provisional") && (
+          <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve Provisional</ActionMenuItem>
+        )}
+        {availableActions.includes("needs-info") && (
+          <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs Info</ActionMenuItem>
+        )}
+        {availableActions.includes("reject") && (
+          <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">Reject</ActionMenuItem>
+        )}
+        {availableActions.some(a => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(a)) &&
+         availableActions.some(a => ["restrict", "suspend"].includes(a)) && (
+          <ActionMenuSeparator />
+        )}
+        {availableActions.includes("restrict") && (
+          <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500">Restrict</ActionMenuItem>
+        )}
+        {availableActions.includes("suspend") && (
+          <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">Suspend</ActionMenuItem>
         )}
       </ActionMenuContent>
     </ActionMenu>

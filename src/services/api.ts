@@ -30,6 +30,8 @@ interface FetchOptions extends RequestInit {
 }
 
 let csrfTokenPromise: Promise<string> | null = null;
+let authRefreshPromise: Promise<boolean> | null = null;
+let authSessionRevision = 0;
 
 function buildUrl(endpoint: string, query?: FetchOptions["query"]): string {
   const base =
@@ -156,28 +158,32 @@ async function requestCsrfToken(timeout: number): Promise<string> {
 }
 
 async function refreshCookieSession(timeout: number): Promise<boolean> {
-  const headers = new Headers();
-  headers.set("Accept", "application/json");
+  if (!authRefreshPromise) {
+    authRefreshPromise = (async () => {
+      const headers = new Headers({ Accept: "application/json" });
 
-  try {
-    const response = await fetchWithTimeout(
-      buildUrl("/auth/refresh-token"),
-      { method: "POST", headers },
-      timeout,
-    );
+      try {
+        const response = await fetchWithTimeout(
+          buildUrl("/auth/refresh-token"),
+          { method: "POST", headers },
+          timeout,
+        );
 
-    if (!response.ok) {
-      clearStoredAuthSession();
-      return false;
-    }
+        if (!response.ok) return false;
 
-    await parseResponse(response);
-
-    return true;
-  } catch {
-    clearStoredAuthSession();
-    return false;
+        await parseResponse(response);
+        authSessionRevision += 1;
+        csrfTokenPromise = null;
+        return true;
+      } catch {
+        return false;
+      }
+    })().finally(() => {
+      authRefreshPromise = null;
+    });
   }
+
+  return authRefreshPromise;
 }
 
 function withCsrfBody(body: BodyInit | null | undefined, token: string): BodyInit {
@@ -279,6 +285,7 @@ export async function apiClient<T>(
   const timeout = options.timeout ?? 10_000;
   let didRefresh = false;
   let didRefreshCsrf = false;
+  let requestSessionRevision = authSessionRevision;
 
   while (true) {
     try {
@@ -301,7 +308,19 @@ export async function apiClient<T>(
         endpoint !== "/auth/refresh-token"
       ) {
         didRefresh = true;
-        if (await refreshCookieSession(timeout)) continue;
+        if (requestSessionRevision !== authSessionRevision) {
+          requestSessionRevision = authSessionRevision;
+          continue;
+        }
+
+        if (await refreshCookieSession(timeout)) {
+          requestSessionRevision = authSessionRevision;
+          continue;
+        }
+
+        if (requestSessionRevision === authSessionRevision) {
+          clearStoredAuthSession();
+        }
       }
 
       if (

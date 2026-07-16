@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { WishlistButton } from "@/components/WishlistButton";
 import type { Product } from "@/types/product";
 import { getProductCategoryLabel, getProductOldPrice, getProductTitle } from "@/lib/normalizers/product";
+import { ProductImageUnavailable } from "@/components/product/ProductImageUnavailable";
 
 export type { Product } from "@/types/product";
 
@@ -46,10 +47,11 @@ export function ProductCard({ product }: { product: Product }) {
           />
 
           <Link href={productHref} className="absolute inset-2 block">
-            <div
-              className="h-full w-full bg-cover bg-center bg-no-repeat transition-transform duration-500 group-hover:scale-105"
-              style={{ backgroundImage: `url('${product.image}')` }}
-            />
+            {product.image === "/file.svg" ? (
+              <ProductImageUnavailable className="rounded-xl" />
+            ) : (
+              <div className="h-full w-full bg-cover bg-center bg-no-repeat transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url('${product.image}')` }} />
+            )}
           </Link>
         </div>
       </div>

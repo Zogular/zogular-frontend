@@ -6,11 +6,11 @@ import type { VendorApplication } from "@/types/seller";
 import { TrustPassport } from "../components/TrustPassport";
 import { GrowthChecklist } from "../components/GrowthChecklist";
 import { HubQuickActions } from "../components/HubQuickActions";
-import { apiClient } from "@/services/api";
 import { hasSellerCapability } from "@/services/vendor-application";
+import { fetchSellerCatalogProducts } from "@/services/seller-catalog";
 
 export function SellerOperatingHub({ application }: { application: VendorApplication }) {
-  const [hasProducts, setHasProducts] = useState(false);
+  const [productProbe, setProductProbe] = useState<"loading" | "has-products" | "empty" | "unavailable">("loading");
   const canCreateDraft = hasSellerCapability(application.status, "canCreateDraftProduct");
   let introCopy = "Complete your seller application to unlock the marketplace hub.";
   if (application.status === "APPROVED") {
@@ -27,12 +27,10 @@ export function SellerOperatingHub({ application }: { application: VendorApplica
     async function checkProducts() {
       if (!canCreateDraft) return;
       try {
-        const response = await apiClient<{ data: unknown[] }>("/vendor/products");
-        if (response.data && response.data.length > 0) {
-          setHasProducts(true);
-        }
+        const products = await fetchSellerCatalogProducts();
+        setProductProbe(products.length > 0 ? "has-products" : "empty");
       } catch {
-        // Ignore errors for this quick check
+        setProductProbe("unavailable");
       }
     }
     checkProducts();
@@ -62,7 +60,7 @@ export function SellerOperatingHub({ application }: { application: VendorApplica
 
       {/* Two-Column Setup for Growth & Trust */}
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <GrowthChecklist application={application} hasProducts={hasProducts} />
+        <GrowthChecklist application={application} productProbe={productProbe} />
         <TrustPassport application={application} />
       </div>
       
