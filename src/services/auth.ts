@@ -7,6 +7,10 @@ import {
   storeAuthUser,
   storeLastAuthEmail,
 } from "@/services/auth-session";
+import {
+  appendNextPath,
+  sanitizeInternalNextPath,
+} from "@/services/auth-intent";
 import type {
   AuthActionResult,
   AuthRole,
@@ -193,22 +197,8 @@ function normalizeUser(payload: unknown, fallbackEmail?: string): AuthUser {
   };
 }
 
-function sanitizeInternalPath(path?: string | null): string | undefined {
-  if (!path) return undefined;
-
-  const normalized = path.trim();
-  if (!normalized.startsWith("/") || normalized.startsWith("//")) return undefined;
-  if (normalized.startsWith("/auth")) return undefined;
-
-  return normalized;
-}
-
 function appendSafeNext(path: string, nextPath?: string | null): string {
-  const safeNextPath = sanitizeInternalPath(nextPath);
-  if (!safeNextPath) return path;
-
-  const separator = path.includes("?") ? "&" : "?";
-  return `${path}${separator}next=${encodeURIComponent(safeNextPath)}`;
+  return appendNextPath(path, nextPath);
 }
 
 function extractActionMessage(payload: unknown, fallbackMessage: string): string {
@@ -225,14 +215,14 @@ function buildActionResult(
   fallbackPath?: string,
 ): AuthActionResult {
   const records = collectCandidateRecords(payload);
-  const payloadNextPath = sanitizeInternalPath(
+  const payloadNextPath = sanitizeInternalNextPath(
     getStringByKeys(records, ["nextPath", "redirectPath", "redirectTo"]),
   );
 
   return {
     success: true,
     message: extractActionMessage(payload, fallbackMessage),
-    nextPath: payloadNextPath ?? sanitizeInternalPath(fallbackPath),
+    nextPath: payloadNextPath ?? sanitizeInternalNextPath(fallbackPath) ?? undefined,
     developmentCode: getStringByKeys(records, ["developmentCode", "devCode"]),
   };
 }
@@ -243,6 +233,7 @@ function buildRegisterPayload(input: RegisterInput) {
     /^(9|7)\d{8}$/.test(normalizedPhone)
       ? `0${normalizedPhone}`
       : normalizedPhone;
+  const nextPath = sanitizeInternalNextPath(input.next);
 
   return {
     firstName: input.firstName.trim(),
@@ -250,7 +241,7 @@ function buildRegisterPayload(input: RegisterInput) {
     email: input.email.trim().toLowerCase(),
     password: input.password,
     telephone,
-    ...(sanitizeInternalPath(input.next) ? { next: sanitizeInternalPath(input.next) } : {}),
+    ...(nextPath ? { next: nextPath } : {}),
   };
 }
 
@@ -262,7 +253,7 @@ export function getPostLoginRedirectPath(
   user: Pick<AuthUser, "role">,
   preferredPath?: string | null,
 ): string {
-  const safePreferredPath = sanitizeInternalPath(preferredPath);
+  const safePreferredPath = sanitizeInternalNextPath(preferredPath);
   if (safePreferredPath) return safePreferredPath;
 
   if (!user.role) return DEFAULT_BUYER_REDIRECT;
@@ -447,6 +438,7 @@ export async function resendVerificationEmail(
   nextPath?: string | null,
 ): Promise<AuthActionResult> {
   storeLastAuthEmail(email);
+  const safeNextPath = sanitizeInternalNextPath(nextPath);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resendVerification, {
     method: "POST",
@@ -454,7 +446,7 @@ export async function resendVerificationEmail(
     csrf: true,
     body: JSON.stringify({
       email: email.trim().toLowerCase(),
-      ...(sanitizeInternalPath(nextPath) ? { next: sanitizeInternalPath(nextPath) } : {}),
+      ...(safeNextPath ? { next: safeNextPath } : {}),
     }),
   });
 

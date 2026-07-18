@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Barcode, Box, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Info, ListPlus, Palette, Percent, PlusCircle, Settings2, ShieldAlert, Sparkles, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -25,6 +25,15 @@ import {
   splitVariantValues,
   withoutRecordKey,
 } from "../_lib/product-listing-studio";
+import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
+import {
+  clearProductDraft,
+  getProductDraftStorageKey,
+  hasRecoverableProductDraft,
+  readProductDraft,
+  type RecoverableProductDraft,
+  writeProductDraft,
+} from "../_lib/product-draft-recovery";
 
 type ProductStatus = Extract<SellerProductStatus, "draft" | "pending_review">;
 type ValidationErrors = Record<string, string>;
@@ -74,6 +83,7 @@ export function ProductListingStudioForm({
   submitLabel = "Submit for Review",
 }: ProductListingStudioFormProps) {
   const router = useRouter();
+  const { application } = useSellerApplication();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
 
@@ -127,6 +137,92 @@ export function ProductListingStudioForm({
   const [variantOptions, setVariantOptions] = useState(initialVariantOptions);
   const [seo, setSeo] = useState({ title: initialProduct?.seo.metaTitle ?? "", description: initialProduct?.seo.metaDescription ?? "" });
   const [dimensions, setDimensions] = useState(initialDimensions);
+  const sellerId = application?.userId ?? application?.user?.id ?? application?.id ?? null;
+  const draftStorageKey = !isEditMode && sellerId
+    ? getProductDraftStorageKey(sellerId)
+    : null;
+  const [draftRecoveryReady, setDraftRecoveryReady] = useState(isEditMode);
+  const recoveredDraftKeyRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (isEditMode) {
+      setDraftRecoveryReady(true);
+      return;
+    }
+    if (!draftStorageKey) return;
+    if (recoveredDraftKeyRef.current === draftStorageKey) return;
+    recoveredDraftKeyRef.current = draftStorageKey;
+
+    const recovered = readProductDraft(draftStorageKey);
+    if (recovered) {
+      setProductName(recovered.productName);
+      setBrand(recovered.brand);
+      setCondition(recovered.condition);
+      setDescription(recovered.description);
+      setPrice(recovered.price);
+      setSalePrice(recovered.salePrice);
+      setStock(recovered.stock);
+      setSku(recovered.sku);
+      setLowStockThreshold(recovered.lowStockThreshold);
+      setSubmittedCategory(recovered.submittedCategory);
+      setCategoryFieldValues(recovered.categoryFieldValues);
+      setDeliveryType(recovered.deliveryType);
+      setPackageWeight(recovered.packageWeight);
+      setHasDiscount(recovered.hasDiscount);
+      setHasVariants(recovered.hasVariants);
+      setShowAdvanced(recovered.showAdvanced);
+      setSpecs(recovered.specs.length ? recovered.specs : [{ name: "", value: "" }]);
+      setVariantOptions(recovered.variantOptions);
+      setSeo(recovered.seo);
+      setDimensions(recovered.dimensions);
+      toast.info("Unsaved product details restored.", {
+        description: "Please add product images again before saving or submitting.",
+      });
+    }
+    setDraftRecoveryReady(true);
+  }, [draftStorageKey, isEditMode]);
+
+  const recoverableDraft = useMemo<RecoverableProductDraft>(() => ({
+    version: 1,
+    savedAt: Date.now(),
+    productName,
+    brand,
+    condition,
+    description,
+    price,
+    salePrice,
+    stock,
+    sku,
+    lowStockThreshold,
+    submittedCategory,
+    categoryFieldValues,
+    deliveryType,
+    packageWeight,
+    hasDiscount,
+    hasVariants,
+    showAdvanced,
+    specs,
+    variantOptions,
+    seo,
+    dimensions,
+  }), [brand, categoryFieldValues, condition, deliveryType, description, dimensions, hasDiscount, hasVariants, lowStockThreshold, packageWeight, price, productName, salePrice, seo, showAdvanced, sku, specs, stock, submittedCategory, variantOptions]);
+
+  useEffect(() => {
+    if (!draftRecoveryReady || !draftStorageKey) return;
+
+    const timeoutId = window.setTimeout(() => {
+      if (hasRecoverableProductDraft(recoverableDraft)) {
+        writeProductDraft(draftStorageKey, {
+          ...recoverableDraft,
+          savedAt: Date.now(),
+        });
+      } else {
+        clearProductDraft(draftStorageKey);
+      }
+    }, 500);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [draftRecoveryReady, draftStorageKey, recoverableDraft]);
 
   const selectedSubcategory = submittedCategory?.subcategoryName ?? "";
   const revealDetails = Boolean(submittedCategory);
@@ -386,6 +482,7 @@ export function ProductListingStudioForm({
         await createSellerCatalogProduct(payload);
       }
       if (onStatusChange && status === "pending_review") await onStatusChange(status);
+      clearProductDraft(draftStorageKey);
       toast.success(
         isEditMode
           ? status === "draft"
@@ -533,10 +630,10 @@ export function ProductListingStudioForm({
                             : "border-zinc-200 bg-white/75 text-zinc-600"
                       }`}>
                         {categoryAttributesStatus === "loading"
-                          ? "Loading backend category attributes..."
+                          ? "Loading category details..."
                           : categoryAttributes.length
-                            ? `${categoryAttributes.length} backend attribute${categoryAttributes.length === 1 ? "" : "s"} loaded for ${submittedCategory.leafName}.`
-                            : "No backend attributes returned for this category yet. Showing the baseline category fields for now."}
+                            ? `${categoryAttributes.length} category detail${categoryAttributes.length === 1 ? "" : "s"} loaded for ${submittedCategory.leafName}.`
+                            : "No additional details are required for this category. Showing the standard product fields."}
                       </div>
                     ) : null}
                     <CategorySpecificDetails

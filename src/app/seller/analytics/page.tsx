@@ -74,7 +74,7 @@ export default function SellerAnalyticsPage() {
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Analytics</h1>
             <BackendPendingBadge />
           </div>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Review a seller-visible order and catalog snapshot while finance, customer, and conversion analytics remain backend-dependent.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Review available order and catalog activity. Finance, customer, and conversion reports are not available yet.</p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
@@ -115,7 +115,7 @@ export default function SellerAnalyticsPage() {
       <FeaturePendingNotice
         compact
         title="Only seller-visible order and catalog data are shown"
-        description="Commission, payout, settlement, repeat-customer, and conversion reporting stay hidden until backend analytics and finance endpoints expose them directly."
+        description="Commission, payout, settlement, repeat-customer, and conversion reports are not available yet."
       />
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
@@ -139,7 +139,7 @@ export default function SellerAnalyticsPage() {
             <div className="space-y-3 text-sm">
               <p className="font-bold text-amber-950">Customer cohorts, conversion, commission, and payout analytics are not shown yet.</p>
               <p className="font-medium leading-relaxed text-amber-900/80">
-                This page currently limits itself to seller-visible orders, product statuses, and stock signals that can be derived from backend-backed seller data.
+                This page currently shows only confirmed seller orders, product statuses, and stock signals.
               </p>
               <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-xs font-bold text-amber-900 shadow-sm">
                 Treat this as an operational snapshot, not a finance or growth report.

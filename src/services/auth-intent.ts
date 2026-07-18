@@ -4,9 +4,30 @@ export function sanitizeInternalNextPath(path?: string | null): string | null {
   if (!path) return null;
 
   const normalized = path.trim();
-  if (!normalized.startsWith("/") || normalized.startsWith("//")) return null;
+  if (
+    !normalized.startsWith("/") ||
+    normalized.startsWith("//") ||
+    normalized.includes("\\") ||
+    /[\u0000-\u001F\u007F]/.test(normalized)
+  ) return null;
 
-  return normalized;
+  let parsed: URL;
+  try {
+    parsed = new URL(normalized, "https://zogular.internal");
+  } catch {
+    return null;
+  }
+
+  if (parsed.origin !== "https://zogular.internal") return null;
+  if (
+    parsed.pathname === "/auth" ||
+    parsed.pathname.startsWith("/auth/") ||
+    parsed.pathname === "/seller/login" ||
+    parsed.pathname === "/seller/register" ||
+    parsed.pathname === "/seller/check-email"
+  ) return null;
+
+  return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }
 
 export function appendNextPath(path: string, nextPath?: string | null): string {

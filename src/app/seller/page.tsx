@@ -173,7 +173,7 @@ export default function SellerDashboard() {
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
             <h2 className="text-xl font-black tracking-tight text-zinc-900">Performance Analytics</h2>
-            <p className="mt-1 text-sm font-medium text-zinc-500">Review seller-visible order revenue, order states, and stock signals while finance automation remains pending.</p>
+            <p className="mt-1 text-sm font-medium text-zinc-500">Review confirmed order revenue, order states, and stock signals. Detailed finance reports are not available yet.</p>
           </div>
           <div className="rounded-xl bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-600 self-start md:self-auto">
             Today: {getTodayLabel()}
@@ -398,7 +398,7 @@ export default function SellerDashboard() {
               <p className="text-xs font-black text-zinc-900">Finance Readiness</p>
             </div>
             <p className="text-xs font-medium leading-5 text-amber-900/90">
-              Wallet balances, payout releases, refund settlement, and payout execution remain pending backend ledger and escrow support.
+              Wallet balances, payout releases, refund settlement, and withdrawals are not available yet.
             </p>
             <p className="mt-2 text-[11px] font-bold text-amber-900">
               Use the payouts page for readiness guidance, not live money movement truth.

@@ -143,9 +143,68 @@
     transform: translateY(-20px) translateX(10px);
   }
 }
-html,
+html {
+  background-color: #f4fbf6;
+  -webkit-tap-highlight-color: transparent;
+}
+
+html:has(.auth-viewport) {
+  background-color: #071c13;
+}
+
 body {
   max-width: 100%;
+  background-color: #f4fbf6;
+}
+
+@media (display-mode: standalone) {
+  body::before {
+    position: fixed;
+    inset: 0 0 auto;
+    z-index: 100;
+    height: env(safe-area-inset-top);
+    background: #073c27;
+    content: "";
+    pointer-events: none;
+  }
+}
+
+body:has(.auth-viewport) {
+  height: 100dvh;
+  overflow: hidden;
+  background: #071c13;
+}
+
+.auth-viewport {
+  height: 100dvh;
+  min-height: 100svh;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: none;
+  background-color: #071c13;
+  -webkit-overflow-scrolling: touch;
+}
+
+.auth-panel {
+  min-height: 100%;
+  padding-top: max(1.5rem, env(safe-area-inset-top));
+  padding-bottom: max(1.5rem, env(safe-area-inset-bottom));
+}
+
+.auth-viewport[data-centered-auth] {
+  padding-top: max(1rem, env(safe-area-inset-top));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+}
+
+.auth-viewport [data-auth-back] {
+  top: max(1rem, env(safe-area-inset-top));
+  left: max(1rem, env(safe-area-inset-left));
+}
+
+@media (max-width: 767px) {
+  :is(input, select, textarea, [role="combobox"]) {
+    font-size: 16px !important;
+  }
 }
 
 @utility pt-safe {

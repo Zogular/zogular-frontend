@@ -13,6 +13,7 @@ import { cn } from "@/lib/utils";
 import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { SellerApplicationContext } from "@/components/seller/SellerApplicationContext";
 import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
+import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { getCurrentUser, logout } from "@/services/auth";
 import { AUTH_SESSION_CHANGED_EVENT } from "@/services/auth-session";
 import { ApiError } from "@/services/api";
@@ -386,10 +387,8 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
   if (applicationLoading && !application) {
     return (
-      <div className="flex min-h-dvh items-center justify-center bg-[#f4fbf6] p-6">
-        <div className="rounded-3xl border border-zinc-200 bg-white/90 px-6 py-5 text-sm font-semibold text-zinc-600 shadow-sm">
-          Loading seller workspace...
-        </div>
+      <div className="min-h-dvh bg-[#f4fbf6] px-4 py-6 md:px-8">
+        <SellerPageLoading variant="dashboard" />
       </div>
     );
   }
@@ -417,6 +416,27 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           </div>
         </div>
       </SellerApplicationContext.Provider>
+    );
+  }
+
+  let isRedirecting = false;
+  if (!applicationLoading) {
+    if (!application) {
+      if (!isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) isRedirecting = true;
+    } else {
+      const status = application.status;
+      if ((status === "DRAFT" || status === "NEEDS_INFO") && !isOnboardingRoute && !isStatusRoute && !isVerifyPhoneRoute) isRedirecting = true;
+      else if (status === "SUBMITTED" && !isStatusRoute && !isVerifyPhoneRoute) isRedirecting = true;
+      else if ((status === "RESTRICTED" || status === "SUSPENDED" || status === "REJECTED") && !isStatusRoute && !isVerifyPhoneRoute && !pathname.startsWith("/seller/support")) isRedirecting = true;
+      else if ((status === "APPROVED" || status === "PROVISIONAL") && (isOnboardingRoute || isStatusRoute)) isRedirecting = true;
+    }
+  }
+
+  if (isRedirecting) {
+    return (
+      <div className="min-h-dvh bg-[#f4fbf6] px-4 py-6 md:px-8">
+        <SellerPageLoading variant="dashboard" />
+      </div>
     );
   }
 

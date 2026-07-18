@@ -21,7 +21,7 @@ export function FulfillmentSettings({
         <div className="mb-5 space-y-1">
           <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Fulfillment Preferences</h2>
           <p className="text-xs font-medium text-zinc-500">
-            These are preparation-only preferences. Buyer-facing delivery, pickup, and fee controls still depend on backend logistics and settings rollout.
+            These preferences are for preparation only. Buyer-facing delivery, pickup, and fee controls are not available yet.
           </p>
         </div>
 
@@ -29,7 +29,7 @@ export function FulfillmentSettings({
           <div className="flex items-center justify-between rounded-2xl border border-zinc-200 bg-zinc-50 p-4">
             <div>
               <p className="text-sm font-bold text-zinc-900">Local delivery preference</p>
-              <p className="text-xs text-zinc-500">Reference only until backend logistics controls are live.</p>
+              <p className="text-xs text-zinc-500">Reference only until delivery controls become available.</p>
             </div>
             <SettingsToggleSwitch
               active={settings.fulfillment.deliveryEnabled}

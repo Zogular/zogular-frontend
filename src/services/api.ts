@@ -1,4 +1,7 @@
-import { clearStoredAuthSession } from "@/services/auth-session";
+import {
+  clearStoredAuthSession,
+  getAuthSessionSnapshot,
+} from "@/services/auth-session";
 
 export class ApiError extends Error {
   status: number;
@@ -160,9 +163,12 @@ async function requestCsrfToken(timeout: number): Promise<string> {
 async function refreshCookieSession(timeout: number): Promise<boolean> {
   if (!authRefreshPromise) {
     authRefreshPromise = (async () => {
-      const headers = new Headers({ Accept: "application/json" });
-
       try {
+        const csrfToken = await requestCsrfToken(timeout);
+        const headers = new Headers({
+          Accept: "application/json",
+          "X-CSRF-Token": csrfToken,
+        });
         const response = await fetchWithTimeout(
           buildUrl("/auth/refresh-token"),
           { method: "POST", headers },
@@ -286,6 +292,7 @@ export async function apiClient<T>(
   let didRefresh = false;
   let didRefreshCsrf = false;
   let requestSessionRevision = authSessionRevision;
+  const requestAuthSnapshot = getAuthSessionSnapshot();
 
   while (true) {
     try {
@@ -318,7 +325,10 @@ export async function apiClient<T>(
           continue;
         }
 
-        if (requestSessionRevision === authSessionRevision) {
+        if (
+          requestSessionRevision === authSessionRevision &&
+          requestAuthSnapshot === getAuthSessionSnapshot()
+        ) {
           clearStoredAuthSession();
         }
       }

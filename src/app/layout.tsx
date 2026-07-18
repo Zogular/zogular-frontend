@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#009E49",
+  themeColor: "#073C27",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -35,13 +35,17 @@ export const metadata: Metadata = {
   description: BRAND.description,
   applicationName: BRAND.name,
   icons: {
-    icon: "/icon.png",
+    icon: [
+      { url: "/brand/zogular-favicon-32.png?v=2", sizes: "32x32", type: "image/png" },
+      { url: "/brand/zogular-favicon-48.png?v=2", sizes: "48x48", type: "image/png" },
+      { url: BRAND.assets.icon192, sizes: "192x192", type: "image/png" },
+    ],
     apple: "/apple-icon.png",
   },
   appleWebApp: {
     capable: true,
     title: BRAND.name,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
   },
   formatDetection: {
     telephone: false,

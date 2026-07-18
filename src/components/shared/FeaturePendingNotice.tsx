@@ -21,13 +21,13 @@ export function BackendPendingBadge({ className }: { className?: string }) {
       )}
     >
       <LockKeyhole className="h-3 w-3" />
-      Backend pending
+      Coming later
     </span>
   );
 }
 
 export function FeaturePendingNotice({
-  title = "Backend integration pending",
+  title = "Feature not available yet",
   description = OPERATIONS_PREVIEW_MESSAGE,
   className,
   compact = false,

@@ -1,8 +1,8 @@
 export const BACKEND_INTEGRATION_PENDING_MESSAGE =
-  "This action is disabled until backend support is implemented.";
+  "This action is not available yet.";
 
 export const OPERATIONS_PREVIEW_MESSAGE =
-  "Operations-only preview. Backend integration pending.";
+  "This page is a preview. Actions will become available in a future update.";
 
 export class BackendIntegrationPendingError extends Error {
   constructor(featureName: string) {

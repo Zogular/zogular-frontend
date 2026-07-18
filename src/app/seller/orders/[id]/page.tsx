@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect, useCallback, use } from "react";
-import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft, Package, Truck, CheckCircle2, Clock3, MapPin, Phone,
   Printer, User, Calendar, Circle, XCircle, RotateCcw, AlertCircle
@@ -18,6 +18,7 @@ import {
   type SellerPaymentStatus,
   type SellerOrderStatus,
 } from "@/services/seller-orders";
+import { sanitizeInternalNextPath } from "@/services/auth-intent";
 
 // ============================================================================
 // 1. DATA CONTRACTS
@@ -57,7 +58,7 @@ function getPaymentStatusLabel(status: SellerPaymentStatus) {
   if (status === "paid") return "Paid";
   if (status === "refunded") return "Refunded";
   if (status === "failed") return "Failed";
-  return "Pending backend";
+  return "Not available yet";
 }
 
 function getStepState(current: SellerOrderStatus, step: "new" | "confirmed" | "processing" | "shipped" | "delivered") {
@@ -122,6 +123,8 @@ export default function OrderDetailsPage({
   params: Promise<{ id: string }>;
 }) {
   const { id: orderId } = use(params);
+  const router = useRouter();
+  const searchParams = useSearchParams();
   
   const [order, setOrder] = useState<SellerOrderDetail | null>(null);
   const [orderStatus, setOrderStatus] = useState<SellerOrderStatus>("new");
@@ -129,6 +132,11 @@ export default function OrderDetailsPage({
   const [error, setError] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
   const [isRefundModalOpen, setIsRefundModalOpen] = useState(false);
+  const returnTo = sanitizeInternalNextPath(searchParams.get("returnTo"));
+  const handleBack = () => {
+    if (returnTo?.startsWith("/seller/orders")) router.back();
+    else router.push("/seller/orders");
+  };
 
   const loadOrder = useCallback(async () => {
     try {
@@ -180,9 +188,7 @@ export default function OrderDetailsPage({
           <h1 className="text-xl font-black text-red-900">Failed to load order</h1>
           <p className="mt-2 text-sm font-medium text-red-700">{error || "Order not found"}</p>
           <div className="mt-6 flex gap-3">
-            <Link href="/seller/orders">
-              <Button variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">Back to Orders</Button>
-            </Link>
+            <Button onClick={handleBack} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">Back to Orders</Button>
             <Button onClick={loadOrder} className="bg-red-600 text-white hover:bg-red-700">Try Again</Button>
           </div>
         </div>
@@ -202,11 +208,9 @@ export default function OrderDetailsPage({
         <div className="flex items-start justify-between gap-4">
           <div className="min-w-0">
             <div className="flex items-center gap-3">
-              <Link href="/seller/orders">
-                <Button aria-label="Go back to orders" variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm hover:bg-zinc-100">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Button onClick={handleBack} aria-label="Go back to orders" variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-zinc-200 bg-white text-zinc-600 shadow-sm hover:bg-zinc-100">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
               <div className="min-w-0">
                 <h1 className="truncate text-xl font-black leading-none tracking-tight text-zinc-900 md:text-2xl">{order.id}</h1>
                 <div className="mt-1.5 flex flex-wrap items-center gap-2">
@@ -253,7 +257,7 @@ export default function OrderDetailsPage({
       <FeaturePendingNotice
         compact
         title="Seller finance truth is partial"
-        description="This order shows backend-confirmed fulfillment data. Totals on this page cover only the seller-visible items, not necessarily the buyer's full basket. Payment method, payment status, commission, and seller net remain pending until seller finance endpoints are available."
+        description="This order shows confirmed fulfillment details. Totals cover only the items assigned to your store, not necessarily the buyer's full basket. Payment status, commission, and seller earnings are not available yet."
       />
 
       {/* 3. KPI STRIP */}
@@ -264,7 +268,7 @@ export default function OrderDetailsPage({
         </div>
         <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Payment</p>
-          <p className="mt-1 text-sm font-black text-zinc-900">{order.paymentMethod ?? "Pending backend"}</p>
+          <p className="mt-1 text-sm font-black text-zinc-900">{order.paymentMethod ?? "Not available yet"}</p>
         </div>
         <div className="rounded-2xl border border-zinc-200/80 bg-white p-4 shadow-sm">
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Status</p>
@@ -310,15 +314,15 @@ export default function OrderDetailsPage({
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
                 <span>Shipping Fee</span>
-                <span>{order.totals.shipping === null ? "Pending backend" : formatCurrency(order.totals.shipping)}</span>
+                <span>{order.totals.shipping === null ? "Not available yet" : formatCurrency(order.totals.shipping)}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
                 <span>Zogular Commission</span>
-                <span>{order.earnings.commission === null ? "Pending backend" : `-${formatCurrency(order.earnings.commission)}`}</span>
+                <span>{order.earnings.commission === null ? "Not available yet" : `-${formatCurrency(order.earnings.commission)}`}</span>
               </div>
               <div className="flex justify-between text-xs font-medium text-zinc-500">
                 <span>Seller Net</span>
-                <span>{order.earnings.sellerNet === null ? "Pending backend" : formatCurrency(order.earnings.sellerNet)}</span>
+                <span>{order.earnings.sellerNet === null ? "Not available yet" : formatCurrency(order.earnings.sellerNet)}</span>
               </div>
               <div className="flex justify-between border-t border-zinc-200/60 pt-2 text-base font-black text-zinc-900">
                 <span>Visible Items Total</span>
@@ -399,13 +403,13 @@ export default function OrderDetailsPage({
             <div className="relative z-10 w-full max-w-lg rounded-3xl border border-zinc-200 bg-white p-6 shadow-2xl">
             <h2 className="text-lg font-black text-zinc-900">Refund Review Contact Path</h2>
             <p className="mt-1 text-sm font-medium text-zinc-500">
-              Seller-side refund contest submission is not wired to the backend yet. Use the support contact fallback with the order ID and your delivery evidence.
+              Refund review requests cannot be submitted from this page yet. Contact seller support with the order ID and your delivery evidence.
             </p>
             <FeaturePendingNotice
               compact
               className="mt-4"
               title="No local refund submission"
-              description="Do not rely on this page to record refund contests until backend dispute endpoints are available."
+              description="This page does not record refund review requests yet. Contact seller support to start a review."
             />
             <a
               href={`mailto:${BRAND.supportEmail}?subject=Refund%20review%20request%20${order.id}`}
