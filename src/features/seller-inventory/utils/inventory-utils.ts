@@ -11,8 +11,8 @@ export type StatusInfo = {
   icon: LucideIcon;
 };
 
-export function getStatusInfo(stock: number, threshold: number): StatusInfo {
-  if (stock === 0) {
+export function getStatusInfo(stock: number, threshold: number, isSold: boolean): StatusInfo {
+  if (isSold || stock === 0) {
     return {
       state: "out-of-stock",
       label: "Out of Stock",
@@ -47,8 +47,8 @@ export function getStatusInfo(stock: number, threshold: number): StatusInfo {
 export function parseStockInput(value: string): number | null {
   if (value.trim() === "") return null;
   const parsed = Number(value);
-  if (!Number.isFinite(parsed) || parsed < 0) return null;
-  return Math.floor(parsed);
+  if (!Number.isSafeInteger(parsed) || parsed < 0 || parsed > 2_147_483_647) return null;
+  return parsed;
 }
 
 export function formatCurrency(value: number) {

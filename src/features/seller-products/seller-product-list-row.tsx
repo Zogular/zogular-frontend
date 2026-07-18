@@ -32,7 +32,7 @@ export function SellerProductListRow({ product, actions }: SellerProductListRowP
       >
         <div className="relative h-20 w-15 overflow-hidden rounded-lg border border-zinc-200 bg-zinc-100 xl:h-16 xl:w-12">
           {product.images[0]?.url ? (
-            <Image src={product.images[0].url} alt={product.title} fill sizes="60px" unoptimized className="object-contain" />
+            <Image src={product.images[0].url} alt={`Product image for ${product.title}`} fill sizes="60px" className="object-contain" />
           ) : (
             <div className="flex h-full items-center justify-center"><ImageIcon className="h-5 w-5 text-zinc-300" aria-hidden="true" /></div>
           )}

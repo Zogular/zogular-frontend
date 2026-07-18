@@ -23,7 +23,7 @@ export function SellerProductsHeader({ addProductHref, showDraftOnlyNotice }: Se
       </header>
       {showDraftOnlyNotice ? (
         <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm font-medium text-amber-800">
-          Your seller account can create drafts. Only APPROVED sellers can submit products for review.
+          Your seller account can create drafts. Product review submission becomes available after full seller approval.
         </div>
       ) : null}
     </>

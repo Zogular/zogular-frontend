@@ -146,17 +146,17 @@ export function SellersListTable({
       </div>
 
       {/* Mobile Stacked View */}
-      <div className={mobileView === "grid" ? "grid gap-4 md:hidden" : "md:hidden overflow-hidden rounded-[1.6rem] border border-stone-200 bg-white/80 shadow-sm backdrop-blur-xl"}>
+      <div className={mobileView === "grid" ? "grid grid-cols-1 gap-2.5 min-[540px]:grid-cols-2 md:hidden" : "md:hidden overflow-hidden rounded-[1.6rem] border border-stone-200 bg-white/80 shadow-sm backdrop-blur-xl"}>
         {applications.map((application) => (
           <article
             key={application.id}
-            className={mobileView === "grid" ? "flex flex-col gap-4 rounded-[1.5rem] border border-stone-200 bg-white/80 p-4 shadow-sm backdrop-blur-xl" : "p-3.5"}
+            className={mobileView === "grid" ? "flex flex-col gap-2.5 rounded-[1.35rem] border border-stone-200 bg-white/80 p-3 shadow-sm backdrop-blur-xl" : "p-3.5"}
           >
             {mobileView === "grid" ? (
               <>
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-base font-black text-stone-950">
+                    <h2 className="truncate text-sm font-black text-stone-950">
                       {getApplicationPrimaryName(application)}
                     </h2>
                     <p className="mt-0.5 text-xs font-bold text-stone-500">{application.ownerFullName}</p>
@@ -164,19 +164,19 @@ export function SellersListTable({
                   <SellerMobileActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
                 </div>
 
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-1.5">
                   <StatusBadge status={application.status} />
                   <SellerTypeBadge sellerType={application.sellerType} />
                 </div>
 
-                <div className="rounded-[1rem] border border-stone-200 bg-stone-50/80 px-3">
+                <div className="rounded-[1rem] border border-stone-200 bg-stone-50/80 px-2.5">
                   <MobileSellerRow label="Contact" value={application.businessPhone || application.user?.telephone || "No phone"} />
                   <MobileSellerRow label="Location" value={getApplicationLocation(application) || "Not provided"} />
                   <MobileSellerRow label="Submitted" value={formatAdminDate(application.submittedAt || application.createdAt)} />
                   <MobileSellerRow label="Reviewed" value={formatAdminDate(application.reviewedAt)} isLast />
                 </div>
 
-                <Button asChild variant="outline" className="mt-1 w-full rounded-xl border-stone-200 bg-stone-50 font-black text-stone-900 shadow-sm hover:bg-stone-100">
+                <Button asChild variant="outline" className="h-9 w-full rounded-xl border-stone-200 bg-stone-50 text-xs font-black text-stone-900 shadow-sm hover:bg-stone-100">
                   <Link href={`/admin/sellers/${application.id}`}>Review Application</Link>
                 </Button>
               </>

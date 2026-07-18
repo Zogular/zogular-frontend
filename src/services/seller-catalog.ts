@@ -63,6 +63,8 @@ export interface SellerProductListing {
   price: number;
   salePrice: number | null;
   stock: number;
+  isSold: boolean;
+  isLegacySingleItem: boolean;
   lowStockThreshold: number;
   sku: string;
   images: SellerProductImage[];
@@ -88,15 +90,74 @@ export interface SellerProductListing {
   updatedAt: string;
 }
 
+export type SellerProductStockState = "in_stock" | "low_stock" | "out_of_stock";
+export type SellerProductStatusGroup = "needs_changes";
+export type SellerProductSortField = "createdAt" | "updatedAt" | "title" | "price" | "stock";
+export type SellerProductSortOrder = "asc" | "desc";
+
+export interface SellerProductListQuery {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: SellerProductStatus;
+  statusGroup?: SellerProductStatusGroup;
+  categorySlug?: string;
+  stockState?: SellerProductStockState;
+  sortBy?: SellerProductSortField;
+  sortOrder?: SellerProductSortOrder;
+}
+
+export interface SellerProductPagination {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface SellerProductSummary {
+  total: number;
+  buyerVisible: number;
+  pendingReview: number;
+  lowStock: number;
+  outOfStock: number;
+}
+
+export interface SellerProductCategoryFacet {
+  id: string | null;
+  slug: string;
+  name: string;
+  count: number;
+}
+
+export interface SellerProductFacets {
+  categories: SellerProductCategoryFacet[];
+  statuses: Record<SellerProductStatus, number>;
+  stock: {
+    inStock: number;
+    lowStock: number;
+    outOfStock: number;
+  };
+}
+
+export interface SellerProductListResult {
+  products: SellerProductListing[];
+  pagination: SellerProductPagination;
+  summary: SellerProductSummary;
+  facets: SellerProductFacets;
+}
+
 export type CreateSellerProductInput = Omit<
   SellerProductListing,
-  "id" | "slug" | "createdAt" | "updatedAt" | "seller"
+  "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem"
 > & {
   seller?: Partial<SellerProductListing["seller"]>;
 };
 
 export type UpdateSellerProductInput = Partial<
-  Omit<SellerProductListing, "id" | "slug" | "createdAt" | "updatedAt" | "seller">
+  Omit<
+    SellerProductListing,
+    "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem"
+  >
 >;
 
 export interface SellerProductModerationInput extends ProductModerationState {
@@ -164,6 +225,7 @@ type BackendVendorProduct = {
   location?: string | null;
   sku?: string | null;
   stock?: number | null;
+  isSold?: boolean;
   lowStockThreshold?: number | null;
   categoryId?: string | null;
   categorySlug?: string | null;
@@ -210,6 +272,21 @@ type BackendListResponse = {
   };
   data: {
     products: BackendVendorProduct[];
+  };
+};
+
+type BackendSellerListResponse = {
+  status: string;
+  results: number;
+  pagination: SellerProductPagination;
+  data: {
+    products: BackendVendorProduct[];
+    summary: SellerProductSummary;
+    facets: {
+      categories: SellerProductCategoryFacet[];
+      statuses: Partial<Record<BackendProductStatus, number>>;
+      stock: SellerProductFacets["stock"];
+    };
   };
 };
 
@@ -321,14 +398,59 @@ export const SELLER_CATEGORY_TREE = SELLER_CATALOG_CATEGORIES.reduce<Record<stri
 );
 
 export async function fetchSellerCatalogProducts(): Promise<SellerProductListing[]> {
-  const response = await apiClient<BackendListResponse>("/vendor/products", {
+  const result = await fetchSellerCatalogProductPage({
+    page: 1,
+    limit: SELLER_PRODUCTS_QUERY_LIMIT,
+  });
+  return result.products;
+}
+
+export async function fetchSellerCatalogProductPage(
+  query: SellerProductListQuery = {},
+): Promise<SellerProductListResult> {
+  const response = await apiClient<BackendSellerListResponse>("/vendor/products", {
     method: "GET",
-    query: { page: 1, limit: SELLER_PRODUCTS_QUERY_LIMIT },
+    query: {
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      search: query.search?.trim() || undefined,
+      status: mapFrontendStatusToBackend(query.status),
+      statusGroup: query.statusGroup,
+      categorySlug: query.categorySlug,
+      stockState: query.stockState,
+      sortBy: query.sortBy ?? "createdAt",
+      sortOrder: query.sortOrder ?? "desc",
+    },
   });
 
   const products = response.data.products.map(normalizeBackendSellerProduct);
+  const statuses: Record<SellerProductStatus, number> = {
+    draft: 0,
+    pending_review: 0,
+    needs_changes: 0,
+    rejected: 0,
+    approved: 0,
+    published: 0,
+    paused: 0,
+    suspended: 0,
+  };
+
+  for (const [status, count] of Object.entries(response.data.facets.statuses)) {
+    const normalizedStatus = normalizeBackendStatus(status as BackendProductStatus);
+    statuses[normalizedStatus] += count ?? 0;
+  }
+
   setSellerCatalogSnapshot(products);
-  return products;
+  return {
+    products,
+    pagination: response.pagination,
+    summary: response.data.summary,
+    facets: {
+      categories: response.data.facets.categories,
+      statuses,
+      stock: response.data.facets.stock,
+    },
+  };
 }
 
 export async function fetchAdminCatalogProducts(): Promise<SellerProductListing[]> {
@@ -669,6 +791,8 @@ function normalizeBackendSellerProduct(product: BackendVendorProduct): SellerPro
     price: product.price,
     salePrice: product.salePrice ?? null,
     stock: product.stock ?? 0,
+    isSold: product.isSold === true,
+    isLegacySingleItem: product.stock === null && product.isSold !== true,
     lowStockThreshold: product.lowStockThreshold ?? 0,
     sku: product.sku ?? "",
     images: normalizeBackendImages(product),
