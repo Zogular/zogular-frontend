@@ -327,9 +327,9 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
-      <div className={cn("lg:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-2 min-[430px]:grid-cols-2" : "space-y-2.5")}>
+      <div className={cn("lg:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-2 min-[430px]:grid-cols-2 min-[720px]:grid-cols-3" : "space-y-2.5")}>
         {filteredProducts.length === 0 ? (
-          <div className={cn("rounded-3xl border border-white/70 bg-white/75 px-4 py-10 text-center shadow-md shadow-zinc-900/5 backdrop-blur-xl", mobileView === "grid" && "col-span-2")}>
+          <div className={cn("rounded-3xl border border-white/70 bg-white/75 px-4 py-10 text-center shadow-md shadow-zinc-900/5 backdrop-blur-xl", mobileView === "grid" && "col-span-full")}>
             <p className="text-sm font-bold text-zinc-500">No products match your search.</p>
           </div>
         ) : (
@@ -342,13 +342,13 @@ export default function AdminProductsPage() {
                 className={cn(
                   "border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(247,248,250,0.94))] backdrop-blur-2xl",
                   isGridView
-                    ? "rounded-[1.55rem] p-3 shadow-[0_14px_30px_rgba(15,23,42,0.08)]"
+                    ? "rounded-[1.35rem] p-2.5 shadow-[0_12px_26px_rgba(15,23,42,0.07)]"
                     : "rounded-[1.35rem] px-3 py-2.5 shadow-[0_10px_24px_rgba(15,23,42,0.06)]",
                 )}
               >
                 {isGridView ? (
-                  <div className="space-y-2.5">
-                    <div className="flex items-start gap-2.5">
+                  <div className="space-y-2">
+                    <div className="flex items-start gap-2">
                       <input
                         type="checkbox"
                         aria-label={`Select ${product.name}`}
@@ -357,7 +357,7 @@ export default function AdminProductsPage() {
                         className="mt-1 h-4 w-4 shrink-0 rounded border-zinc-300 accent-[#009E49]"
                       />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2.5">
+                        <div className="flex items-start justify-between gap-2">
                           <div className="min-w-0">
                             <p className="line-clamp-2 text-[13px] font-black leading-5 text-zinc-950">
                               {product.name}
@@ -374,7 +374,7 @@ export default function AdminProductsPage() {
                       </div>
                     </div>
 
-                    <div className="rounded-[1.2rem] border border-zinc-200/80 bg-zinc-50/90 px-3">
+                    <div className="rounded-[1.1rem] border border-zinc-200/80 bg-zinc-50/90 px-2.5">
                       <GridDetailRow label="Category" value={product.categoryName} />
                       <GridDetailRow label="Submitted" value={formatDate(product.submittedAt)} />
                       <GridDetailRow label="Price" value={formatCurrency(product.price)} />
@@ -651,7 +651,7 @@ function GridDetailRow({
   isLast?: boolean;
 }) {
   return (
-    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2.5", !isLast && "border-b border-zinc-200/80")}>
+    <div className={cn("grid grid-cols-[auto_minmax(0,1fr)] items-center gap-2.5 py-2", !isLast && "border-b border-zinc-200/80")}>
       <p className="text-[9px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
       <p className="truncate text-right text-[11px] font-bold text-zinc-900">{value}</p>
     </div>

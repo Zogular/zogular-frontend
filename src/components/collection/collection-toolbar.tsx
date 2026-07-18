@@ -27,13 +27,13 @@ export function CollectionToolbar({
     >
       <div className="flex min-w-0 items-center gap-2">
         <div className="min-w-0 flex-1">{search}</div>
-        <div className="md:hidden">{mobileFilters}</div>
+        <div className="xl:hidden">{mobileFilters}</div>
         <div className="shrink-0">{viewControl}</div>
       </div>
 
       <div className="mt-2 flex min-h-8 items-center justify-between gap-3 border-t border-zinc-100 pt-2">
         <div className="min-w-0 flex-1">{resultContext}</div>
-        <div className="hidden shrink-0 items-center gap-2 md:flex">
+        <div className="hidden shrink-0 items-center gap-2 xl:flex">
           {desktopControls}
           {sortControl}
         </div>

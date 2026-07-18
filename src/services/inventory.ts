@@ -1,5 +1,13 @@
 import type { Product } from "@/types/product";
-import { fetchSellerCatalogProducts } from "@/services/seller-catalog";
+import { apiClient } from "@/services/api";
+import {
+  fetchSellerCatalogProductPage,
+  type SellerProductFacets,
+  type SellerProductListQuery,
+  type SellerProductPagination,
+  type SellerProductSummary,
+  type SellerProductListing,
+} from "@/services/seller-catalog";
 
 export interface Category {
   id: string;
@@ -24,10 +32,27 @@ export interface InventoryProduct
   category: Category;
   sku: string;
   stock: number;
+  isSold: boolean;
   threshold: number;
   lastUpdated: string;
   hasVariants: boolean;
   variants: ProductVariant[];
+}
+
+export interface InventoryListResult {
+  products: InventoryProduct[];
+  pagination: SellerProductPagination;
+  summary: SellerProductSummary;
+  facets: SellerProductFacets;
+}
+
+export type InventoryListQuery = SellerProductListQuery;
+
+export interface InventoryMutationDto {
+  id: string;
+  stock: number;
+  isSold: boolean;
+  updatedAt: string;
 }
 
 export type RawInventoryData = {
@@ -46,7 +71,9 @@ export type RawInventoryData = {
   categoryId?: string;
   categoryName?: string;
   sku?: string;
-  stock?: string | number;
+  stock?: string | number | null;
+  isSold?: boolean;
+  legacySingleItem?: boolean;
   threshold?: string | number;
   lastUpdated?: string;
   hasVariants?: boolean;
@@ -120,7 +147,7 @@ export function normalizeInventoryProduct(raw: RawInventoryData): InventoryProdu
   const name = toSafeString(raw.name, "Unknown Product");
   const id = String(raw.id ?? "");
   const variants = normalizeVariants(raw);
-  const stock = Math.max(0, toNumber(raw.stock, 0));
+  const stock = raw.legacySingleItem ? 1 : Math.max(0, toNumber(raw.stock, 0));
 
   return {
     id,
@@ -146,6 +173,7 @@ export function normalizeInventoryProduct(raw: RawInventoryData): InventoryProdu
     category,
     sku: toSafeString(raw.sku, `SKU-${id || "UNKNOWN"}`),
     stock,
+    isSold: raw.isSold === true,
     threshold: Math.max(0, toNumber(raw.threshold, 5)),
     lastUpdated: toSafeString(raw.lastUpdated, new Date().toISOString()),
     hasVariants: Boolean(raw.hasVariants || variants.length > 0),
@@ -153,42 +181,78 @@ export function normalizeInventoryProduct(raw: RawInventoryData): InventoryProdu
   };
 }
 
+function mapSellerProductToInventory(product: SellerProductListing): InventoryProduct {
+  return normalizeInventoryProduct({
+    id: product.id,
+    slug: product.slug,
+    sku: product.sku,
+    name: product.title,
+    category: { id: product.categorySlug, name: product.categoryName },
+    image: product.images.find((image) => image.isPrimary)?.url ?? product.images[0]?.url ?? null,
+    price: product.salePrice ?? product.price,
+    originalPrice: product.salePrice ? product.price : null,
+    stock: product.stock,
+    isSold: product.isSold,
+    legacySingleItem: product.isLegacySingleItem,
+    threshold: product.lowStockThreshold,
+    lastUpdated: product.updatedAt,
+    hasVariants: product.variants.length > 1,
+    variants: product.variants.map((variant) => ({
+      id: variant.id,
+      name: `${variant.label}: ${variant.value}`,
+      sku: variant.sku,
+      stock: variant.stock,
+    })),
+    rating: 0,
+    reviews: 0,
+    badge: product.status === "pending_review" ? "Pending Review" : null,
+  });
+}
+
+type SingleInventoryMutationResponse = {
+  status: string;
+  data: { inventory: InventoryMutationDto };
+};
+
+type BulkInventoryMutationResponse = {
+  status: string;
+  data: { inventory: InventoryMutationDto[] };
+};
+
 export const inventoryApi = {
-  async fetchAll(): Promise<InventoryProduct[]> {
-    const sellerProducts = await fetchSellerCatalogProducts();
-    return sellerProducts.map<RawInventoryData>((product) => ({
-      id: product.id,
-      slug: product.slug,
-      sku: product.sku,
-      name: product.title,
-      category: { id: product.categorySlug, name: product.categoryName },
-      image: product.images.find((image) => image.isPrimary)?.url ?? product.images[0]?.url ?? null,
-      price: product.salePrice ?? product.price,
-      originalPrice: product.salePrice ? product.price : null,
-      stock: product.stock,
-      threshold: product.lowStockThreshold,
-      lastUpdated: product.updatedAt,
-      hasVariants: product.variants.length > 1,
-      variants: product.variants.map((variant) => ({
-        id: variant.id,
-        name: `${variant.label}: ${variant.value}`,
-        sku: variant.sku,
-        stock: variant.stock,
-      })),
-      rating: 0,
-      reviews: 0,
-      badge: product.status === "pending_review" ? "Pending Review" : null,
-    })).map(normalizeInventoryProduct);
+  async fetchPage(query: InventoryListQuery): Promise<InventoryListResult> {
+    const result = await fetchSellerCatalogProductPage(query);
+    return {
+      products: result.products.map(mapSellerProductToInventory),
+      pagination: result.pagination,
+      summary: result.summary,
+      facets: result.facets,
+    };
   },
 
-  async updateStock(id: string, newStock: number): Promise<{ id: string; stock: number }> {
-    return { id, stock: Math.max(0, newStock) };
+  async fetchAll(): Promise<InventoryProduct[]> {
+    const result = await this.fetchPage({ page: 1, limit: 100 });
+    return result.products;
+  },
+
+  async updateStock(id: string, newStock: number): Promise<InventoryMutationDto> {
+    const response = await apiClient<SingleInventoryMutationResponse>(`/vendor/products/${id}/stock`, {
+      method: "PATCH",
+      body: JSON.stringify({ stock: newStock }),
+      csrf: true,
+    });
+    return response.data.inventory;
   },
 
   async bulkUpdateStock(
     ids: string[],
     newStock: number,
-  ): Promise<{ ids: string[]; stock: number }> {
-    return { ids, stock: Math.max(0, newStock) };
+  ): Promise<InventoryMutationDto[]> {
+    const response = await apiClient<BulkInventoryMutationResponse>("/vendor/products/inventory/bulk", {
+      method: "PATCH",
+      body: JSON.stringify({ productIds: ids, stock: newStock }),
+      csrf: true,
+    });
+    return response.data.inventory;
   },
 };
