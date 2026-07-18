@@ -4,52 +4,81 @@ import Link from "next/link";
 import { useCallback, useMemo } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle } from "lucide-react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { CollectionErrorState, CollectionState } from "@/components/collection/collection-state";
 import { CollectionSkeleton } from "@/components/collection/collection-skeleton";
+import { DENSE_COLLECTION_GRID_CLASS } from "@/components/collection/collection-grid-density";
+import { CollectionPagination } from "@/components/collection/collection-pagination";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import { rememberListScroll, useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 import { useCollectionQueryState } from "@/hooks/use-collection-query-state";
 import {
   duplicateSellerProduct,
-  fetchSellerCatalogProducts,
+  fetchSellerCatalogProductPage,
   removeSellerProduct,
   submitSellerProductForReview as submitSellerProductForReviewRequest,
   unpublishSellerProduct as unpublishSellerProductRequest,
   withdrawSellerProductReview as withdrawSellerProductReviewRequest,
   type SellerProductListing,
+  type SellerProductListQuery,
+  type SellerProductStatus,
 } from "@/services/seller-catalog";
-import {
-  isSellerProductBuyerVisibleStatus,
-  isSellerProductNeedsChangesStatus,
-} from "@/services/product-moderation";
 import { hasSellerCapability } from "@/services/vendor-application";
 import { SellerProductGridCard } from "@/features/seller-products/seller-product-grid-card";
 import { SellerProductListRow } from "@/features/seller-products/seller-product-list-row";
 import { SellerProductsHeader } from "@/features/seller-products/seller-products-header";
 import { SellerProductsOverview } from "@/features/seller-products/seller-products-overview";
 import {
-  SELLER_PRODUCT_TABS,
   SellerProductsTabs,
   isSellerProductTab,
   type SellerProductTab,
 } from "@/features/seller-products/seller-products-tabs";
 import { SellerProductsToolbar } from "@/features/seller-products/seller-products-toolbar";
-import { getSellerProductStockState } from "@/features/seller-products/product-presentation";
-import type { SellerProductActions, SellerProductsSummary } from "@/features/seller-products/types";
+import {
+  isSellerProductsSortOption,
+  type SellerProductActions,
+  type SellerProductsSortOption,
+  type SellerProductsSummary,
+} from "@/features/seller-products/types";
 
 const SELLER_PRODUCTS_QUERY_KEY = ["seller", "catalog", "products"] as const;
-const EMPTY_PRODUCTS: SellerProductListing[] = [];
+const PRODUCT_TAB_STATUS: Partial<Record<SellerProductTab, SellerProductStatus>> = {
+  published: "published",
+  draft: "draft",
+  pending_review: "pending_review",
+  approved: "approved",
+  paused: "paused",
+  suspended: "suspended",
+};
 
-function matchesSellerProductTab(product: SellerProductListing, tab: SellerProductTab) {
-  const stockState = getSellerProductStockState(product);
-  if (tab === "all") return true;
-  if (tab === "low-stock") return stockState === "low-stock";
-  if (tab === "out-of-stock") return stockState === "out-of-stock";
-  if (tab === "needs_changes") return isSellerProductNeedsChangesStatus(product.status);
-  return product.status === tab;
+function buildSellerProductQuery(
+  activeTab: SellerProductTab,
+  sort: SellerProductsSortOption,
+  input: Pick<SellerProductListQuery, "page" | "limit" | "search" | "categorySlug">,
+): SellerProductListQuery {
+  const sortContract: Record<SellerProductsSortOption, Pick<SellerProductListQuery, "sortBy" | "sortOrder">> = {
+    newest: { sortBy: "createdAt", sortOrder: "desc" },
+    updated: { sortBy: "updatedAt", sortOrder: "desc" },
+    "title-asc": { sortBy: "title", sortOrder: "asc" },
+    "price-asc": { sortBy: "price", sortOrder: "asc" },
+    "price-desc": { sortBy: "price", sortOrder: "desc" },
+    "stock-low": { sortBy: "stock", sortOrder: "asc" },
+    "stock-high": { sortBy: "stock", sortOrder: "desc" },
+  };
+
+  return {
+    ...input,
+    ...sortContract[sort],
+    status: PRODUCT_TAB_STATUS[activeTab],
+    statusGroup: activeTab === "needs_changes" ? "needs_changes" : undefined,
+    stockState: activeTab === "low-stock"
+      ? "low_stock"
+      : activeTab === "out-of-stock"
+        ? "out_of_stock"
+        : undefined,
+  };
 }
 
 export default function SellerProductsPage() {
@@ -60,14 +89,26 @@ export default function SellerProductsPage() {
     activeTab,
     categoryFilter,
     currentUrl,
+    limit,
+    page,
     pathname,
     searchQuery,
+    serverSearch,
     setActiveTab,
     setCategoryFilter,
+    setLimit,
+    setPage,
     setSearchQuery,
+    setSort,
     setView,
+    sort,
     view,
-  } = useCollectionQueryState({ defaultTab: "all" as SellerProductTab, isTab: isSellerProductTab });
+  } = useCollectionQueryState({
+    defaultTab: "all" as SellerProductTab,
+    isTab: isSellerProductTab,
+    defaultSort: "newest" as SellerProductsSortOption,
+    isSort: isSellerProductsSortOption,
+  });
 
   const sellerStatus = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
@@ -76,13 +117,20 @@ export default function SellerProductsPage() {
     ? "/seller/onboarding"
     : "/seller/status";
 
+  const productListQuery = useMemo(() => buildSellerProductQuery(activeTab, sort, {
+    page,
+    limit,
+    search: serverSearch || undefined,
+    categorySlug: categoryFilter === "all" ? undefined : categoryFilter,
+  }), [activeTab, categoryFilter, limit, page, serverSearch, sort]);
   const productsQuery = useQuery({
-    queryKey: SELLER_PRODUCTS_QUERY_KEY,
-    queryFn: fetchSellerCatalogProducts,
+    queryKey: [...SELLER_PRODUCTS_QUERY_KEY, productListQuery],
+    queryFn: () => fetchSellerCatalogProductPage(productListQuery),
     enabled: canCreateDraftProduct,
+    placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
-  const products = productsQuery.data ?? EMPTY_PRODUCTS;
+  const products = productsQuery.data?.products ?? [];
   const loading = canCreateDraftProduct && productsQuery.isPending;
   const error = productsQuery.error instanceof Error
     ? productsQuery.error.message
@@ -91,24 +139,24 @@ export default function SellerProductsPage() {
       : null;
 
   const getReturnTo = useCallback(() => `${pathname}${window.location.search}`, [pathname]);
-  const updateProducts = useCallback((updater: (current: SellerProductListing[]) => SellerProductListing[]) => {
-    queryClient.setQueryData<SellerProductListing[]>(SELLER_PRODUCTS_QUERY_KEY, (current = []) => updater(current));
+  const refreshProducts = useCallback(async () => {
+    await queryClient.invalidateQueries({ queryKey: SELLER_PRODUCTS_QUERY_KEY });
   }, [queryClient]);
 
   const duplicateProduct = useCallback(async (product: SellerProductListing) => {
     if (!canCreateDraftProduct) {
       router.push(actionFallbackHref);
-      toast.error("Seller approval is required before mutating products.");
+      toast.error("Your seller account is not eligible to change products yet.");
       return;
     }
     try {
-      const duplicate = await duplicateSellerProduct(product.id);
-      updateProducts((current) => [duplicate, ...current]);
+      await duplicateSellerProduct(product.id);
+      await refreshProducts();
       toast.success(`${product.title} duplicated as draft.`);
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Failed to duplicate product.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
+  }, [actionFallbackHref, canCreateDraftProduct, refreshProducts, router]);
 
   const editProduct = useCallback((product: SellerProductListing) => {
     if (!canCreateDraftProduct) {
@@ -131,47 +179,50 @@ export default function SellerProductsPage() {
   const submitProductForReview = useCallback(async (productId: string) => {
     if (!canSubmitProductForReview) {
       router.push("/seller/status");
-      toast.error("Only APPROVED sellers can submit products for review.");
+      toast.error("Your seller account must be fully approved before submitting products for review.");
       return;
     }
     try {
       const updated = await submitSellerProductForReviewRequest(productId);
-      updateProducts((current) => current.map((product) => product.id === productId ? updated : product));
+      void updated;
+      await refreshProducts();
       toast.success("Product submitted for review.");
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Failed to update product.");
     }
-  }, [canSubmitProductForReview, router, updateProducts]);
+  }, [canSubmitProductForReview, refreshProducts, router]);
 
   const withdrawProductReview = useCallback(async (productId: string) => {
     if (!canCreateDraftProduct) {
       router.push(actionFallbackHref);
-      toast.error("Seller approval is required before mutating products.");
+      toast.error("Your seller account is not eligible to change products yet.");
       return;
     }
     try {
       const updated = await withdrawSellerProductReviewRequest(productId);
-      updateProducts((current) => current.map((product) => product.id === productId ? updated : product));
+      void updated;
+      await refreshProducts();
       toast.success("Review withdrawn. Product moved back to drafts.");
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Failed to withdraw review.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
+  }, [actionFallbackHref, canCreateDraftProduct, refreshProducts, router]);
 
   const unpublishProduct = useCallback(async (productId: string) => {
     if (!canCreateDraftProduct) {
       router.push(actionFallbackHref);
-      toast.error("Seller approval is required before mutating products.");
+      toast.error("Your seller account is not eligible to change products yet.");
       return;
     }
     try {
       const updated = await unpublishSellerProductRequest(productId);
-      updateProducts((current) => current.map((product) => product.id === productId ? updated : product));
+      void updated;
+      await refreshProducts();
       toast.success("Listing paused and removed from buyer visibility.");
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Failed to pause listing.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
+  }, [actionFallbackHref, canCreateDraftProduct, refreshProducts, router]);
 
   const removeProduct = useCallback(async (productId: string) => {
     if (!canCreateDraftProduct) {
@@ -181,12 +232,12 @@ export default function SellerProductsPage() {
     }
     try {
       await removeSellerProduct(productId);
-      updateProducts((current) => current.filter((product) => product.id !== productId));
+      await refreshProducts();
       toast.success("Product removed from this list.");
     } catch (requestError) {
       toast.error(requestError instanceof Error ? requestError.message : "Failed to remove product.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
+  }, [actionFallbackHref, canCreateDraftProduct, refreshProducts, router]);
 
   const productActions = useMemo<SellerProductActions>(() => ({
     edit: editProduct,
@@ -198,32 +249,28 @@ export default function SellerProductsPage() {
     remove: removeProduct,
   }), [duplicateProduct, editProduct, removeProduct, submitProductForReview, unpublishProduct, viewProduct, withdrawProductReview]);
 
-  const categories = useMemo(() => Array.from(new Set(products.map((product) => product.categoryName))).sort(), [products]);
+  const facets = productsQuery.data?.facets;
   const summary = useMemo<SellerProductsSummary>(() => ({
-    total: products.length,
-    buyerVisible: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
-    draft: products.filter((product) => product.status === "draft").length,
-    pendingReview: products.filter((product) => product.status === "pending_review").length,
-    lowStock: products.filter((product) => getSellerProductStockState(product) === "low-stock").length,
-    outOfStock: products.filter((product) => getSellerProductStockState(product) === "out-of-stock").length,
-  }), [products]);
+    total: productsQuery.data?.summary.total ?? 0,
+    buyerVisible: productsQuery.data?.summary.buyerVisible ?? 0,
+    draft: facets?.statuses.draft ?? 0,
+    pendingReview: productsQuery.data?.summary.pendingReview ?? 0,
+    lowStock: productsQuery.data?.summary.lowStock ?? 0,
+    outOfStock: productsQuery.data?.summary.outOfStock ?? 0,
+  }), [facets?.statuses.draft, productsQuery.data?.summary]);
 
-  const filteredProducts = useMemo(() => {
-    const query = searchQuery.trim().toLowerCase();
-    return products.filter((product) => {
-      const matchesSearch = !query
-        || product.title.toLowerCase().includes(query)
-        || product.id.toLowerCase().includes(query)
-        || product.brand.toLowerCase().includes(query);
-      const matchesCategory = categoryFilter === "all" || product.categoryName === categoryFilter;
-      return matchesSearch && matchesCategory && matchesSellerProductTab(product, activeTab);
-    });
-  }, [activeTab, categoryFilter, products, searchQuery]);
-
-  const tabCounts = useMemo(() => SELLER_PRODUCT_TABS.reduce<Record<SellerProductTab, number>>((counts, tab) => {
-    counts[tab.id] = products.filter((product) => matchesSellerProductTab(product, tab.id)).length;
-    return counts;
-  }, {} as Record<SellerProductTab, number>), [products]);
+  const tabCounts = useMemo<Record<SellerProductTab, number>>(() => ({
+    all: summary.total,
+    published: facets?.statuses.published ?? 0,
+    draft: facets?.statuses.draft ?? 0,
+    pending_review: facets?.statuses.pending_review ?? 0,
+    approved: facets?.statuses.approved ?? 0,
+    needs_changes: (facets?.statuses.needs_changes ?? 0) + (facets?.statuses.rejected ?? 0),
+    paused: facets?.statuses.paused ?? 0,
+    suspended: facets?.statuses.suspended ?? 0,
+    "low-stock": facets?.stock.lowStock ?? 0,
+    "out-of-stock": facets?.stock.outOfStock ?? 0,
+  }), [facets, summary.total]);
 
   useListScrollRestoration(currentUrl, !loading);
 
@@ -232,7 +279,7 @@ export default function SellerProductsPage() {
       <div className="mx-auto max-w-2xl rounded-3xl border border-amber-200 bg-amber-50/90 p-6 text-center shadow-sm">
         <AlertCircle className="mx-auto h-10 w-10 text-amber-600" aria-hidden="true" />
         <h1 className="mt-4 text-2xl font-black tracking-tight text-amber-950">Seller approval is not ready for product access</h1>
-        <p className="mt-3 text-sm font-medium leading-6 text-amber-800">Product drafts are available only after seller status moves to PROVISIONAL or APPROVED. Complete seller onboarding or follow your seller review status first.</p>
+        <p className="mt-3 text-sm font-medium leading-6 text-amber-800">Product drafts become available after your seller application reaches an eligible review stage. Complete onboarding or check your seller status for the next step.</p>
         <Button asChild className="mt-5 h-10 rounded-lg bg-[#009E49] px-5 font-bold text-white hover:bg-[#00853d]">
           <Link href={actionFallbackHref}>
             {actionFallbackHref === "/seller/onboarding" ? "Continue seller application" : "View seller status"}
@@ -265,26 +312,40 @@ export default function SellerProductsPage() {
             onSearchQueryChange={setSearchQuery}
             categoryFilter={categoryFilter}
             onCategoryFilterChange={setCategoryFilter}
-            categories={categories}
+            categories={facets?.categories ?? []}
             view={view}
             onViewChange={setView}
-            resultCount={filteredProducts.length}
-            totalCount={products.length}
+            sort={sort}
+            onSortChange={setSort}
+            limit={limit}
+            onLimitChange={setLimit}
+            resultCount={products.length}
+            totalCount={productsQuery.data?.pagination.total ?? 0}
           />
 
-          {filteredProducts.length === 0 ? (
+          {products.length === 0 ? (
             <CollectionState
-              title={products.length === 0 ? "No products yet" : "No matching products"}
-              description={products.length === 0
+              title={summary.total === 0 ? "No products yet" : "No matching products"}
+              description={summary.total === 0
                 ? "Create your first product draft to begin building your catalog."
                 : "No products match the current search, category, and status filters."}
-              action={products.length === 0
+              action={summary.total === 0
                 ? { label: "Add product", onClick: () => router.push("/seller/products/new") }
                 : { label: "Clear filters", onClick: () => router.push(pathname, { scroll: false }) }}
             />
           ) : view === "grid" ? (
-            <section aria-label="Seller products grid" className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 xl:grid-cols-4">
-              {filteredProducts.map((product) => <SellerProductGridCard key={product.id} product={product} actions={productActions} />)}
+            <section
+              aria-label="Seller products grid"
+              className={DENSE_COLLECTION_GRID_CLASS}
+            >
+              {products.map((product, index) => (
+                <SellerProductGridCard
+                  key={product.id}
+                  product={product}
+                  actions={productActions}
+                  eager={index < 4}
+                />
+              ))}
             </section>
           ) : (
             <section aria-label="Seller products list" className="overflow-hidden rounded-2xl border border-zinc-200 bg-white shadow-sm">
@@ -294,9 +355,16 @@ export default function SellerProductsPage() {
                 </div>
                 <span className="ml-1 w-9" />
               </div>
-              {filteredProducts.map((product) => <SellerProductListRow key={product.id} product={product} actions={productActions} />)}
+              {products.map((product) => <SellerProductListRow key={product.id} product={product} actions={productActions} />)}
             </section>
           )}
+
+          <CollectionPagination
+            page={productsQuery.data?.pagination.page ?? page}
+            totalPages={productsQuery.data?.pagination.pages ?? 0}
+            onPageChange={setPage}
+            disabled={productsQuery.isFetching}
+          />
         </>
       ) : null}
     </div>

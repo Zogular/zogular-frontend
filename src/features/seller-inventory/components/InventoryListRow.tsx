@@ -1,3 +1,4 @@
+import Image from "next/image";
 import { Minus, Plus, Save, ArrowUpDown, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -29,7 +30,7 @@ export function InventoryListRow({
   onAdjustStock: (id: string, currentStock: number, delta: number) => void;
   onSaveStock: (id: string, overrideValue?: number) => void;
 }) {
-  const status = getStatusInfo(item.stock, item.threshold);
+  const status = getStatusInfo(item.stock, item.threshold, item.isSold);
 
   return (
     <tr
@@ -49,12 +50,9 @@ export function InventoryListRow({
 
       <td className="p-4">
         <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-100">
+          <div className="relative flex h-13 w-10 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-zinc-200 bg-zinc-50">
             {item.image ? (
-              <div
-                className="h-full w-full rounded-xl bg-cover bg-center"
-                style={{ backgroundImage: `url('${item.image}')` }}
-              />
+              <Image src={item.image} alt={item.name} fill sizes="40px" className="object-contain p-0.5" />
             ) : (
               <ImageIcon className="h-4 w-4 text-zinc-400" />
             )}
@@ -98,6 +96,9 @@ export function InventoryListRow({
 
           <Input
             type="number"
+            min={0}
+            max={2_147_483_647}
+            step={1}
             value={isEditing ? editingStockValue : String(item.stock)}
             onChange={(event) => onUpdateEditingStock(item.id, event.target.value)}
             onKeyDown={(event) => onKeyDown(event, item.id)}

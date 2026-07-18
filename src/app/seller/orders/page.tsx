@@ -516,7 +516,7 @@ export default function SellerOrdersPage() {
           const columnOrders = filteredOrders.filter(o => o.status === column.id);
           const Icon = column.icon;
           return (
-            <div key={column.id} className="flex w-[85vw] max-w-[320px] min-w-[280px] md:min-w-[320px] flex-col gap-4 snap-center shrink-0">
+            <div key={column.id} className="flex w-[78vw] max-w-[288px] min-w-[260px] shrink-0 snap-center flex-col gap-3 md:w-auto md:min-w-[288px]">
               <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-[#f4fbf6] pb-3">
                 <div className="flex items-center gap-2 min-w-0">
                   <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${column.bg} ${column.color}`}>
@@ -608,7 +608,7 @@ export default function SellerOrdersPage() {
               const columnOrders = filteredOrders.filter((o) => o.status === column.id);
               const Icon = column.icon;
               return (
-                <div key={column.id} className="flex w-[85vw] max-w-[320px] min-w-[280px] flex-col gap-4 snap-center shrink-0">
+                <div key={column.id} className="flex w-[78vw] max-w-[288px] min-w-[260px] shrink-0 snap-center flex-col gap-3">
                   <div className="sticky top-0 z-10 flex items-center justify-between border-b border-zinc-200 bg-[#f4fbf6] pb-3">
                     <div className="flex min-w-0 items-center gap-2">
                       <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg ${column.bg} ${column.color}`}>

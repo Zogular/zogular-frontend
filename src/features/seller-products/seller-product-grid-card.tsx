@@ -16,9 +16,10 @@ import type { SellerProductActions } from "@/features/seller-products/types";
 interface SellerProductGridCardProps {
   product: SellerProductListing;
   actions: SellerProductActions;
+  eager?: boolean;
 }
 
-export function SellerProductGridCard({ product, actions }: SellerProductGridCardProps) {
+export function SellerProductGridCard({ product, actions, eager = false }: SellerProductGridCardProps) {
   const stockState = getSellerProductStockState(product);
 
   return (
@@ -32,10 +33,10 @@ export function SellerProductGridCard({ product, actions }: SellerProductGridCar
         {product.images[0]?.url ? (
           <Image
             src={product.images[0].url}
-            alt={product.title}
+            alt={`Product image for ${product.title}`}
             fill
-            sizes="(max-width: 639px) 50vw, (max-width: 1279px) 33vw, 25vw"
-            unoptimized
+            sizes="(max-width: 899px) 50vw, (max-width: 1199px) 33vw, (max-width: 1535px) 25vw, 20vw"
+            loading={eager ? "eager" : "lazy"}
             className="object-contain transition-transform duration-200 group-hover:scale-[1.02]"
           />
         ) : (
@@ -51,11 +52,11 @@ export function SellerProductGridCard({ product, actions }: SellerProductGridCar
       <button
         type="button"
         onClick={() => actions.view(product)}
-        className="block w-full min-w-0 p-2.5 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#009E49]"
+        className="block w-full min-w-0 p-2 text-left outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#009E49]"
       >
-        <h2 className="line-clamp-2 min-h-9 text-xs font-bold leading-4.5 text-zinc-950 sm:text-[13px]">{product.title}</h2>
-        <p className="mt-1.5 text-sm font-black text-zinc-950">{formatSellerProductPrice(product)}</p>
-        <p className={cn("mt-1 truncate text-[10px] font-bold", stockState === "out-of-stock" ? "text-red-600" : stockState === "low-stock" ? "text-amber-700" : "text-zinc-500")}>
+        <h2 className="line-clamp-2 text-xs font-bold leading-4 text-zinc-950 sm:text-[13px]">{product.title}</h2>
+        <p className="mt-1 text-sm font-black text-zinc-950">{formatSellerProductPrice(product)}</p>
+        <p className={cn("mt-0.5 truncate text-[10px] font-bold", stockState === "out-of-stock" ? "text-red-600" : stockState === "low-stock" ? "text-amber-700" : "text-zinc-500")}>
           {getSellerProductStockLabel(product)}
         </p>
       </button>
