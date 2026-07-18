@@ -23,7 +23,7 @@ const geistMono = Geist_Mono({
 });
 
 export const viewport: Viewport = {
-  themeColor: "#009E49",
+  themeColor: "#073C27",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
@@ -45,7 +45,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: BRAND.name,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
   },
   formatDetection: {
     telephone: false,

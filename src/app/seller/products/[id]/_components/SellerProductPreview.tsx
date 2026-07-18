@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { SellerProductListing } from "@/services/seller-catalog";
@@ -20,6 +19,7 @@ export function SellerProductPreview({
   onSubmit,
   onUnpublish,
   onWithdraw,
+  onBack,
 }: {
   product: SellerProductListing;
   onDuplicate: () => void;
@@ -27,17 +27,16 @@ export function SellerProductPreview({
   onSubmit: () => void;
   onUnpublish: () => void;
   onWithdraw: () => void;
+  onBack: () => void;
 }) {
   return (
     <div className="mx-auto min-w-0 max-w-[1400px] space-y-6 pb-28 md:pb-24">
       {/* 1. Header Area */}
       <div className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-[#f4fbf6]/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-2xl md:flex-row md:items-center md:justify-between md:p-6">
         <div className="flex min-w-0 items-center gap-3 md:gap-4">
-          <Link href="/seller/products">
-            <Button aria-label="Back to products" type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-2xl border border-white/70 bg-white/80 shadow-sm transition-all hover:bg-white hover:shadow-md md:h-10 md:w-10">
-              <ArrowLeft className="h-4 w-4 md:h-4 md:w-4" />
-            </Button>
-          </Link>
+          <Button onClick={onBack} aria-label="Back to products" type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-2xl border border-white/70 bg-white/80 shadow-sm transition-all hover:bg-white hover:shadow-md md:h-10 md:w-10">
+            <ArrowLeft className="h-4 w-4 md:h-4 md:w-4" />
+          </Button>
           <div className="min-w-0">
             <div className="flex flex-wrap items-center gap-2">
               <p className="text-[9px] font-black uppercase tracking-[0.2em] text-[#009E49] md:text-[10px]">Product Preview</p>

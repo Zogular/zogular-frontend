@@ -32,8 +32,8 @@ export function TrustPassport({ application }: { application: VendorApplication 
   return (
     <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm">
       <div className="mb-4">
-        <h2 className="text-base font-black text-zinc-900">Trust Passport</h2>
-        <p className="mt-0.5 text-xs font-medium text-zinc-500">Your verification status</p>
+        <h2 className="text-base font-black text-zinc-900">Verification progress</h2>
+        <p className="mt-0.5 text-xs font-medium text-zinc-500">Items still needed for your seller account.</p>
       </div>
 
       <div className="space-y-3">

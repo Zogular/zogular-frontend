@@ -194,7 +194,7 @@ export function StoreProfileForm({
                 className="min-h-20 w-full resize-none rounded-xl border border-zinc-200 bg-white p-3 text-sm shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
                 disabled={disabled}
               />
-              <p className="text-[11px] font-medium text-zinc-500">Useful as future search copy once backend publishing support is added.</p>
+              <p className="text-[11px] font-medium text-zinc-500">This description may also help buyers find your store in future search results.</p>
             </div>
           </div>
         )}

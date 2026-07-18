@@ -55,7 +55,7 @@ export interface StoreSettings {
 }
 
 export const SELLER_SETTINGS_BACKEND_PENDING_NOTICE =
-  "Read is connected to the backend, but saving profile updates is pending backend persistence implementation.";
+  "You can review your current store information, but editing and saving changes are not available yet.";
 
 
 function asString(val: unknown): string {

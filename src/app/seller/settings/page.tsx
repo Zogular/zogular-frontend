@@ -79,7 +79,7 @@ export default function SellerSettingsPage() {
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Store Profile & Settings</h1>
           </div>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Review backend-read store setup context. Editing and publishing settings remain pending backend persistence.
+            Review your current store information. Editing and publishing changes are not available yet.
           </p>
         </div>
         <Button
@@ -87,7 +87,7 @@ export default function SellerSettingsPage() {
           className="h-11 w-full rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 md:w-auto transition-all active:scale-95"
         >
           <LockKeyhole className="mr-2 h-4 w-4" />
-          {isWritePending ? "Read-only until backend save is live" : "Save unavailable"}
+          {isWritePending ? "Read-only for now" : "Save unavailable"}
         </Button>
       </div>
 
@@ -128,13 +128,13 @@ export default function SellerSettingsPage() {
             </div>
 
               <p className="mb-3 text-xs font-medium text-zinc-500">
-                Payout setup stays backend-owned. This page links to readiness details only until wallet, review, and disbursement endpoints are live.
+                Review payout preparation details here. Balances, approvals, and transfers are not available yet.
               </p>
 
               <div className="rounded-xl border border-zinc-200 bg-white p-3 shadow-sm">
                 <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-400">Payout Readiness</p>
-                <p className="mt-1 text-sm font-bold text-zinc-900">Pending backend</p>
-                <p className="text-xs font-medium text-zinc-500">Onboarding payout details will surface here after backend rollout.</p>
+                <p className="mt-1 text-sm font-bold text-zinc-900">Not available yet</p>
+                <p className="text-xs font-medium text-zinc-500">Your verified payout details will appear here when payouts become available.</p>
               </div>
 
             <Link href="/seller/payouts">

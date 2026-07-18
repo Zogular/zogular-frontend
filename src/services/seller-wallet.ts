@@ -35,7 +35,7 @@ export interface SellerWalletDashboard {
 }
 
 export const SELLER_WALLET_BACKEND_PENDING_NOTICE =
-  "Seller wallet and payout balances are an operations-only preview. Real balances, payout methods, fees, and provider transfers require backend support.";
+  "Wallet balances, payout methods, fees, and transfers are not available yet. This page does not show or move real money.";
 
 const WALLET: SellerWalletBalances = {
   pendingBalance: 0,

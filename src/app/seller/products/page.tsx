@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useRouter } from "next/navigation";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import {
   Box, Filter, Image as ImageIcon, MoreVertical, Package, Plus, Search, AlertCircle,
   Layers, CheckCircle2, FileEdit, AlertTriangle, XCircle, Eye, Pencil, Trash2,
@@ -39,6 +39,8 @@ import {
 } from "@/services/product-moderation";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import { hasSellerCapability } from "@/services/vendor-application";
+import { rememberListScroll, useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // ============================================================================
 // 1. DATA CONTRACTS
@@ -67,6 +69,17 @@ const PRODUCT_TABS: Array<{ id: ProductTab; label: string }> = [
   { id: "low-stock", label: "Low Stock" },
   { id: "out-of-stock", label: "Out of Stock" },
 ];
+
+const SELLER_PRODUCTS_QUERY_KEY = ["seller", "catalog", "products"] as const;
+const EMPTY_PRODUCTS: SellerProductListing[] = [];
+
+function getProductTab(value: string | null): ProductTab {
+  return PRODUCT_TABS.some((tab) => tab.id === value) ? (value as ProductTab) : "all";
+}
+
+function getCollectionView(value: string | null): CollectionViewMode {
+  return value === "grid" ? "grid" : "list";
+}
 
 // ============================================================================
 // 3. LOGIC HELPERS
@@ -337,15 +350,66 @@ function ProductActionMenu({
 // ============================================================================
 export default function SellerProductsPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const searchParamsKey = searchParams.toString();
+  const listUrl = `${pathname}${searchParamsKey ? `?${searchParamsKey}` : ""}`;
   const { application } = useSellerApplication();
-  const [products, setProducts] = useState<SellerProductListing[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [activeTab, setActiveTab] = useState<ProductTab>("all");
-  const [categoryFilter, setCategoryFilter] = useState("all");
-  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") ?? "");
+  const [activeTab, setActiveTab] = useState(() => getProductTab(searchParams.get("tab")));
+  const [categoryFilter, setCategoryFilter] = useState(searchParams.get("category") ?? "all");
+  const [mobileView, setMobileView] = useState(() => getCollectionView(searchParams.get("view")));
+  const lastWrittenQueryRef = useRef<string | null>(null);
+  const applyingExternalRouteRef = useRef(false);
+
+  const replaceRouteParam = useCallback((key: string, value: string, defaultValue = "") => {
+    const params = new URLSearchParams(window.location.search);
+    if (!value || value === defaultValue) params.delete(key);
+    else params.set(key, value);
+
+    const query = params.toString();
+    lastWrittenQueryRef.current = query;
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  }, [pathname, router]);
+
+  const getReturnTo = useCallback(
+    () => `${pathname}${window.location.search}`,
+    [pathname],
+  );
+
+  useEffect(() => {
+    if (searchParamsKey === lastWrittenQueryRef.current) {
+      lastWrittenQueryRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      applyingExternalRouteRef.current = true;
+      setSearchQuery(searchParams.get("search") ?? "");
+      setActiveTab(getProductTab(searchParams.get("tab")));
+      setCategoryFilter(searchParams.get("category") ?? "all");
+      setMobileView(getCollectionView(searchParams.get("view")));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, searchParamsKey]);
+
+  useEffect(() => {
+    if (applyingExternalRouteRef.current) {
+      applyingExternalRouteRef.current = false;
+      return;
+    }
+    if (searchQuery === (searchParams.get("search") ?? "")) return;
+    const timeoutId = window.setTimeout(() => {
+      replaceRouteParam("search", searchQuery);
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [replaceRouteParam, searchParams, searchQuery]);
 
   const sellerStatus = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
@@ -353,6 +417,29 @@ export default function SellerProductsPage() {
   const actionFallbackHref = !application || sellerStatus === "DRAFT" || sellerStatus === "NEEDS_INFO"
     ? "/seller/onboarding"
     : "/seller/status";
+  const productsQuery = useQuery({
+    queryKey: SELLER_PRODUCTS_QUERY_KEY,
+    queryFn: fetchSellerCatalogProducts,
+    enabled: canCreateDraftProduct,
+    staleTime: 60_000,
+  });
+  const refetchProducts = productsQuery.refetch;
+  const products = productsQuery.data ?? EMPTY_PRODUCTS;
+  const loading = canCreateDraftProduct && productsQuery.isPending;
+  const error = productsQuery.error instanceof Error
+    ? productsQuery.error.message
+    : productsQuery.error
+      ? "An unknown error occurred"
+      : null;
+  const updateProducts = useCallback(
+    (updater: (current: SellerProductListing[]) => SellerProductListing[]) => {
+      queryClient.setQueryData<SellerProductListing[]>(
+        SELLER_PRODUCTS_QUERY_KEY,
+        (current = []) => updater(current),
+      );
+    },
+    [queryClient],
+  );
 
   const duplicateProduct = useCallback(async (product: SellerProductListing) => {
     if (!canCreateDraftProduct) {
@@ -362,12 +449,12 @@ export default function SellerProductsPage() {
     }
     try {
       const duplicate = await duplicateSellerProduct(product.id);
-      setProducts((prev) => [duplicate, ...prev]);
+      updateProducts((current) => [duplicate, ...current]);
       toast.success(`${product.title} duplicated as draft.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to duplicate product.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router]);
+  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
 
   const editProduct = useCallback((product: SellerProductListing) => {
     if (!canCreateDraftProduct) {
@@ -379,12 +466,13 @@ export default function SellerProductsPage() {
       toast.warning("Withdraw review before editing this product.");
       return;
     }
-    router.push(`/seller/products/${product.id}/edit`);
-  }, [actionFallbackHref, canCreateDraftProduct, router]);
+    router.push(`/seller/products/${product.id}/edit?returnTo=${encodeURIComponent(getReturnTo())}`);
+  }, [actionFallbackHref, canCreateDraftProduct, getReturnTo, router]);
 
   const viewProduct = useCallback((product: SellerProductListing) => {
-    router.push(`/seller/products/${product.id}`);
-  }, [router]);
+    rememberListScroll(getReturnTo());
+    router.push(`/seller/products/${product.id}?returnTo=${encodeURIComponent(getReturnTo())}`);
+  }, [getReturnTo, router]);
 
   const submitProductForReview = useCallback(async (productId: string) => {
     if (!canSubmitProductForReview) {
@@ -394,12 +482,12 @@ export default function SellerProductsPage() {
     }
     try {
       const updated = await submitSellerProductForReviewRequest(productId);
-      setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
+      updateProducts((current) => current.map((product) => (product.id === productId ? updated : product)));
       toast.success("Product submitted for review.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update product.");
     }
-  }, [canSubmitProductForReview, router]);
+  }, [canSubmitProductForReview, router, updateProducts]);
 
   const withdrawProductReview = useCallback(async (productId: string) => {
     if (!canCreateDraftProduct) {
@@ -409,12 +497,12 @@ export default function SellerProductsPage() {
     }
     try {
       const updated = await withdrawSellerProductReviewRequest(productId);
-      setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
+      updateProducts((current) => current.map((product) => (product.id === productId ? updated : product)));
       toast.success("Review withdrawn. Product moved back to drafts.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to withdraw review.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router]);
+  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
 
   const unpublishProduct = useCallback(async (productId: string) => {
     if (!canCreateDraftProduct) {
@@ -424,12 +512,12 @@ export default function SellerProductsPage() {
     }
     try {
       const updated = await unpublishSellerProductRequest(productId);
-      setProducts((prev) => prev.map((product) => (product.id === productId ? updated : product)));
+      updateProducts((current) => current.map((product) => (product.id === productId ? updated : product)));
       toast.success("Listing paused and removed from buyer visibility.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to pause listing.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router]);
+  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
 
   const removeProduct = useCallback(async (productId: string) => {
     if (!canCreateDraftProduct) {
@@ -439,33 +527,16 @@ export default function SellerProductsPage() {
     }
     try {
       await removeSellerProduct(productId);
-      setProducts((prev) => prev.filter((product) => product.id !== productId));
+      updateProducts((current) => current.filter((product) => product.id !== productId));
       toast.success("Product removed from this list.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to remove product.");
     }
-  }, [actionFallbackHref, canCreateDraftProduct, router]);
+  }, [actionFallbackHref, canCreateDraftProduct, router, updateProducts]);
 
-  const loadProducts = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await fetchSellerCatalogProducts();
-      setProducts(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (!canCreateDraftProduct) {
-      setLoading(false);
-      return;
-    }
-    loadProducts();
-  }, [canCreateDraftProduct, loadProducts]);
+  const loadProducts = useCallback(() => {
+    void refetchProducts();
+  }, [refetchProducts]);
 
   const categories = useMemo(() => Array.from(new Set(products.map((p) => p.categoryName))).sort(), [products]);
 
@@ -490,6 +561,8 @@ export default function SellerProductsPage() {
       return matchesSearch && matchesCategory && matchesTab;
     });
   }, [products, activeTab, categoryFilter, searchQuery]);
+
+  useListScrollRestoration(listUrl, !loading);
 
   const tabCounts = useMemo(() => {
     return PRODUCT_TABS.reduce<Record<ProductTab, number>>((acc, tab) => {
@@ -616,7 +689,10 @@ export default function SellerProductsPage() {
             <button
               key={tab.id}
               type="button"
-              onClick={() => setActiveTab(tab.id)}
+              onClick={() => {
+                setActiveTab(tab.id);
+                replaceRouteParam("tab", tab.id, "all");
+              }}
               className={`whitespace-nowrap rounded-xl border px-4 py-2.5 text-sm font-bold transition-all ${
                 isActive ? "border-zinc-900 bg-zinc-900 text-white" : "border-zinc-200 bg-white text-zinc-500 hover:bg-zinc-50"
               }`}
@@ -644,14 +720,20 @@ export default function SellerProductsPage() {
 
           <CategoryDropdown 
             value={categoryFilter} 
-            onChange={setCategoryFilter} 
+            onChange={(value) => {
+              setCategoryFilter(value);
+              replaceRouteParam("category", value, "all");
+            }}
             categories={categories} 
           />
       </div>
 
       <CollectionViewToggle
         value={mobileView}
-        onChange={setMobileView}
+        onChange={(value) => {
+          setMobileView(value);
+          replaceRouteParam("view", value, "list");
+        }}
         className="md:hidden"
       />
 

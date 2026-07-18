@@ -71,7 +71,7 @@ export default function SellerPayoutsPage() {
             <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">Payouts & Wallet</h1>
             <BackendPendingBadge />
           </div>
-          <p className="mt-1 text-sm font-medium text-zinc-500">Prepare your payout destination here, but wallet balances, releases, and payout execution remain backend-dependent.</p>
+          <p className="mt-1 text-sm font-medium text-zinc-500">Prepare your payout destination here. Balances, releases, and transfers are not available yet.</p>
         </div>
       </div>
 
@@ -90,9 +90,9 @@ export default function SellerPayoutsPage() {
             <span className="rounded-md bg-white/20 px-2 py-1 text-[10px] font-bold uppercase tracking-wider backdrop-blur-sm">Not live</span>
           </div>
           <p className="text-xs font-bold uppercase tracking-wider text-[#99e6bc]">Withdrawable Balance Status</p>
-          <h2 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Backend pending</h2>
+          <h2 className="mt-1 text-2xl font-black tracking-tight md:text-3xl">Not available yet</h2>
           <p className="mt-3 text-sm font-medium leading-6 text-white/85">
-            No withdrawable, released, or held balance is shown until the backend ledger and escrow release flow are live.
+            No withdrawable, released, or held balance is shown because seller payouts are not live yet.
           </p>
         </div>
 
@@ -101,9 +101,9 @@ export default function SellerPayoutsPage() {
             <Clock3 className="h-4.5 w-4.5" />
           </div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-amber-700">Settlement & Release</p>
-          <h2 className="mt-1 text-xl font-black text-amber-950">Pending backend workflow</h2>
+          <h2 className="mt-1 text-xl font-black text-amber-950">Payout process coming later</h2>
           <p className="mt-3 text-sm font-medium leading-6 text-amber-900/85">
-            Delivery confirmation, escrow release timing, payout review, and weekly transfer scheduling will appear here only after backend finance automation is available.
+            Delivery confirmation, release timing, payout review, and weekly transfer scheduling will appear when seller payouts become available.
           </p>
         </div>
 
@@ -112,9 +112,9 @@ export default function SellerPayoutsPage() {
             <ShieldAlert className="h-4.5 w-4.5" />
           </div>
           <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">History & Confirmation</p>
-          <h2 className="mt-1 text-xl font-black text-zinc-950">No payout ledger shown yet</h2>
+          <h2 className="mt-1 text-xl font-black text-zinc-950">No payout history yet</h2>
           <p className="mt-3 text-sm font-medium leading-6 text-zinc-600">
-            This page does not show transfer confirmations, payout statuses, or net-settlement records until those values come from backend-owned ledger APIs.
+            This page does not show transfer confirmations, payout statuses, or final settlement records because payouts are not live yet.
           </p>
         </div>
       </div>
@@ -127,9 +127,9 @@ export default function SellerPayoutsPage() {
           </h2>
           <div className="grid gap-3 sm:grid-cols-2">
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
-              <p className="text-xs font-black uppercase tracking-wider text-zinc-500">Ledger-backed balances</p>
+              <p className="text-xs font-black uppercase tracking-wider text-zinc-500">Confirmed balances</p>
               <p className="mt-2 text-sm font-medium leading-6 text-zinc-700">
-                Released, pending, held, refunded, and fee-adjusted seller balances from backend finance records.
+                Released, pending, held, refunded, and fee-adjusted seller balances from confirmed Zogular records.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
@@ -139,15 +139,15 @@ export default function SellerPayoutsPage() {
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
-              <p className="text-xs font-black uppercase tracking-wider text-zinc-500">Escrow release timing</p>
+              <p className="text-xs font-black uppercase tracking-wider text-zinc-500">Balance release timing</p>
               <p className="mt-2 text-sm font-medium leading-6 text-zinc-700">
-                Delivery-confirmed release windows and dispute holds once backend escrow automation is active.
+                Delivery-confirmed release windows and dispute holds when the payout process becomes available.
               </p>
             </div>
             <div className="rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4">
               <p className="text-xs font-black uppercase tracking-wider text-zinc-500">Payout issue handling</p>
               <p className="mt-2 text-sm font-medium leading-6 text-zinc-700">
-                Verified failure reasons, retry controls, and support notes after real payout provider integrations exist.
+                Verified failure reasons, retry controls, and support notes after payout transfers become available.
               </p>
             </div>
           </div>
@@ -180,7 +180,7 @@ export default function SellerPayoutsPage() {
               </div>
             ) : (
               <div className="rounded-2xl border border-amber-200 bg-amber-50/70 p-4 text-sm font-medium leading-6 text-amber-900">
-                No payout destination is exposed here yet. When backend wallet services are ready, your verified payout destination will appear on this page.
+                No payout destination is shown here yet. Your verified payout destination will appear when payouts become available.
               </div>
             )}
           </div>

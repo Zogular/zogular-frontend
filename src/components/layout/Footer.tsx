@@ -43,7 +43,7 @@ export function Footer() {
   }
 
   return (
-    <footer className="relative border-t border-zinc-900 bg-zinc-900 pt-10 pb-6 text-zinc-300">
+    <footer className="relative border-t border-zinc-900 bg-zinc-900 pt-10 pb-[max(1.5rem,env(safe-area-inset-bottom))] text-zinc-300">
 
       <div className="container mx-auto max-w-7xl px-4 md:px-6">
         

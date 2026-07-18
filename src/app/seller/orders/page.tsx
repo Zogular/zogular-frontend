@@ -1,8 +1,9 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
-import { 
+import { useRouter, useSearchParams, usePathname } from "next/navigation";
+import {
   Search, Clock3, Package, Truck, CheckCircle2, Download, MoreHorizontal, 
   MapPin, XCircle, RotateCcw, CreditCard, Phone, Copy, AlertCircle 
 } from "lucide-react";
@@ -25,11 +26,16 @@ import {
   type SellerOrderSummary,
   type SellerPaymentStatus,
 } from "@/services/seller-orders";
+import { rememberListScroll, useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 
 // ============================================================================
 // 1. DATA CONTRACTS
 // ============================================================================
 type DateFilter = "today" | "7days" | "30days" | "all";
+
+const SELLER_ORDERS_QUERY_KEY = ["seller", "orders", "summaries"] as const;
+const EMPTY_ORDERS: SellerOrderSummary[] = [];
 
 // ============================================================================
 // 3. UI CONFIG & LOGIC HELPERS
@@ -45,6 +51,20 @@ const STATUS_COLUMNS = [
   { id: "unknown", title: "Status unavailable", icon: AlertCircle, color: "text-zinc-600", bg: "bg-zinc-100", border: "border-zinc-200" },
 ] as const;
 
+function getOrderStatusFilter(value: string | null): SellerOrderStatus | "all" {
+  return STATUS_COLUMNS.some((column) => column.id === value)
+    ? (value as SellerOrderStatus)
+    : "all";
+}
+
+function getDateFilter(value: string | null): DateFilter {
+  return value === "today" || value === "7days" || value === "all" ? value : "30days";
+}
+
+function getCollectionView(value: string | null): CollectionViewMode {
+  return value === "grid" ? "grid" : "list";
+}
+
 const PAYMENT_STYLES: Record<SellerPaymentStatus, string> = {
   paid: "bg-[#009E49]/10 text-[#009E49] border-[#009E49]/20",
   cod: "bg-zinc-100 text-zinc-700 border-zinc-200",
@@ -58,7 +78,7 @@ const PAYMENT_LABELS: Record<SellerPaymentStatus, string> = {
   cod: "COD",
   refunded: "Refunded",
   failed: "Failed",
-  unavailable: "Pending backend",
+  unavailable: "Not available",
 };
 
 function formatRelativeTime(value: string): string {
@@ -145,9 +165,13 @@ function OrderActionMenu({
 function OrderCard({
   order,
   onCancelOrder,
+  detailHref,
+  onBeforeNavigate,
 }: {
   order: SellerOrderSummary;
   onCancelOrder: (orderId: string) => void;
+  detailHref: string;
+  onBeforeNavigate: () => void;
 }) {
   const statusMeta = STATUS_COLUMNS.find(c => c.id === order.status);
   
@@ -189,7 +213,10 @@ function OrderCard({
         </div>
 
         <div className="flex items-center gap-2">
-          <Link href={`/seller/orders/${order.id}`}>
+          <Link
+            href={detailHref}
+            onClick={onBeforeNavigate}
+          >
             <Button size="sm" className="h-8 rounded-lg bg-zinc-900 px-3 text-xs font-bold text-white shadow-sm hover:bg-zinc-800">
               Manage
             </Button>
@@ -204,16 +231,85 @@ function OrderCard({
 // 5. MAIN PAGE EXPORT
 // ============================================================================
 export default function SellerOrdersPage() {
-  const [orders, setOrders] = useState<SellerOrderSummary[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
+  const searchParamsKey = searchParams.toString();
+  const listUrl = `${pathname}${searchParamsKey ? `?${searchParamsKey}` : ""}`;
 
-  const [statusFilter, setStatusFilter] = useState<SellerOrderStatus | "all">("all");
-  const [dateFilter, setDateFilter] = useState<DateFilter>("30days");
-  
-  const [searchQuery, setSearchQuery] = useState("");
+  const queryClient = useQueryClient();
+  const ordersQuery = useQuery({
+    queryKey: SELLER_ORDERS_QUERY_KEY,
+    queryFn: sellerOrdersApi.fetchSummaries,
+    staleTime: 60_000,
+  });
+  const refetchOrders = ordersQuery.refetch;
+  const orders = ordersQuery.data ?? EMPTY_ORDERS;
+  const loading = ordersQuery.isPending;
+  const error = ordersQuery.error instanceof Error
+    ? ordersQuery.error.message
+    : ordersQuery.error
+      ? "An unknown error occurred"
+      : null;
+
+  const [statusFilter, setStatusFilter] = useState(() => getOrderStatusFilter(searchParams.get("status")));
+  const [dateFilter, setDateFilter] = useState(() => getDateFilter(searchParams.get("date")));
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [mobileView, setMobileView] = useState<CollectionViewMode>("list");
+  const [mobileView, setMobileView] = useState(() => getCollectionView(searchParams.get("view")));
+  const [searchQuery, setSearchQuery] = useState(searchParams.get("search") ?? "");
+  const lastWrittenQueryRef = useRef<string | null>(null);
+  const applyingExternalRouteRef = useRef(false);
+
+  const replaceRouteParam = useCallback((key: string, value: string, defaultValue = "") => {
+    const params = new URLSearchParams(window.location.search);
+    if (!value || value === defaultValue) params.delete(key);
+    else params.set(key, value);
+
+    const query = params.toString();
+    lastWrittenQueryRef.current = query;
+    router.replace(`${pathname}${query ? `?${query}` : ""}`, { scroll: false });
+  }, [pathname, router]);
+
+  const getOrderDetailHref = useCallback((orderId: string) => {
+    const returnTo = `${pathname}${searchParamsKey ? `?${searchParamsKey}` : ""}`;
+    return `/seller/orders/${orderId}?returnTo=${encodeURIComponent(returnTo)}`;
+  }, [pathname, searchParamsKey]);
+
+  const rememberOrderListScroll = useCallback(() => {
+    rememberListScroll(listUrl);
+  }, [listUrl]);
+
+  useEffect(() => {
+    if (searchParamsKey === lastWrittenQueryRef.current) {
+      lastWrittenQueryRef.current = null;
+      return;
+    }
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      applyingExternalRouteRef.current = true;
+      setSearchQuery(searchParams.get("search") ?? "");
+      setStatusFilter(getOrderStatusFilter(searchParams.get("status")));
+      setDateFilter(getDateFilter(searchParams.get("date")));
+      setMobileView(getCollectionView(searchParams.get("view")));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [searchParams, searchParamsKey]);
+
+  useEffect(() => {
+    if (applyingExternalRouteRef.current) {
+      applyingExternalRouteRef.current = false;
+      return;
+    }
+    if (searchQuery === (searchParams.get("search") ?? "")) return;
+    const timeoutId = window.setTimeout(() => {
+      replaceRouteParam("search", searchQuery);
+    }, 250);
+    return () => window.clearTimeout(timeoutId);
+  }, [replaceRouteParam, searchParams, searchQuery]);
 
   const handleCancelOrder = useCallback(async (orderId: string) => {
     const target = orders.find((order) => order.id === orderId);
@@ -229,8 +325,9 @@ export default function SellerOrdersPage() {
     }
     try {
       await sellerOrdersApi.cancelOrder(orderId);
-      setOrders((prev) =>
-        prev.map((order) =>
+      queryClient.setQueryData<SellerOrderSummary[]>(
+        SELLER_ORDERS_QUERY_KEY,
+        (current = []) => current.map((order) =>
           order.id === orderId ? { ...order, status: "cancelled" } : order,
         ),
       );
@@ -238,25 +335,12 @@ export default function SellerOrdersPage() {
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to cancel order.");
     }
-  }, [orders]);
+  }, [orders, queryClient]);
 
   // --- API DATA FETCHING ---
-  const loadOrders = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await sellerOrdersApi.fetchSummaries();
-      setOrders(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "An unknown error occurred");
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    loadOrders();
-  }, [loadOrders]);
+  const loadOrders = useCallback(() => {
+    void refetchOrders();
+  }, [refetchOrders]);
 
   // --- FILTERING ENGINE ---
   const filteredOrders = useMemo(() => {
@@ -268,6 +352,8 @@ export default function SellerOrdersPage() {
       return matchesStatus && matchesDate && matchesQuery;
     });
   }, [orders, dateFilter, searchQuery, statusFilter]);
+
+  useListScrollRestoration(listUrl, !loading);
 
   // --- CSV EXPORT ENGINE ---
   const handleExportCSV = () => {
@@ -341,8 +427,8 @@ export default function SellerOrdersPage() {
 
       <FeaturePendingNotice
         compact
-        title="Payment and settlement fields are limited"
-        description="Totals on this page cover only the seller-visible line items. Payment method, payment status, commission, and seller net stay hidden or marked pending until seller finance endpoints return them."
+        title="Some payment details are not available yet"
+        description="These totals show only your products in each order. Final seller earnings and payment settlement details are not available yet."
       />
 
       {/* 2. FILTERS & SEARCH */}
@@ -362,7 +448,7 @@ export default function SellerOrdersPage() {
               <div className="max-h-75 space-y-1 overflow-y-auto p-2">
                 {filteredOrders.length > 0 ? (
                   filteredOrders.map(order => (
-                    <Link key={order.id} href={`/seller/orders/${order.id}`} className="flex items-center justify-between rounded-lg border border-transparent p-3 transition-colors hover:border-zinc-100 hover:bg-zinc-50">
+                    <Link key={order.id} href={getOrderDetailHref(order.id)} onClick={rememberOrderListScroll} className="flex items-center justify-between rounded-lg border border-transparent p-3 transition-colors hover:border-zinc-100 hover:bg-zinc-50">
                       <div>
                         <p className="text-xs font-black text-zinc-900">{order.id}</p>
                         <p className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.customer}</p>
@@ -385,7 +471,11 @@ export default function SellerOrdersPage() {
             aria-label="Filter orders by status"
             value={statusFilter} 
             title="Filter by status"
-            onChange={(e) => setStatusFilter(e.target.value as SellerOrderStatus | "all")} 
+            onChange={(e) => {
+              const value = getOrderStatusFilter(e.target.value);
+              setStatusFilter(value);
+              replaceRouteParam("status", value, "all");
+            }}
             className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] md:w-40"
           >
             <option value="all">All Statuses</option>
@@ -396,7 +486,11 @@ export default function SellerOrdersPage() {
             aria-label="Filter orders by date range"
             value={dateFilter} 
             title="Filter by date range"
-            onChange={(e) => setDateFilter(e.target.value as DateFilter)} 
+            onChange={(e) => {
+              const value = getDateFilter(e.target.value);
+              setDateFilter(value);
+              replaceRouteParam("date", value, "30days");
+            }}
             className="h-11 w-full cursor-pointer appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] md:w-32"
           >
             <option value="today">Today</option>
@@ -409,7 +503,10 @@ export default function SellerOrdersPage() {
 
       <CollectionViewToggle
         value={mobileView}
-        onChange={setMobileView}
+        onChange={(value) => {
+          setMobileView(value);
+          replaceRouteParam("view", value, "list");
+        }}
         className="md:hidden"
       />
 
@@ -432,7 +529,7 @@ export default function SellerOrdersPage() {
 
               <div className="flex flex-col gap-3">
                 {columnOrders.map(order => (
-                  <OrderCard key={order.id} order={order} onCancelOrder={handleCancelOrder} />
+                  <OrderCard key={order.id} order={order} onCancelOrder={handleCancelOrder} detailHref={getOrderDetailHref(order.id)} onBeforeNavigate={rememberOrderListScroll} />
                 ))}
                 {columnOrders.length === 0 && (
                   <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-white/50 p-6 text-center">
@@ -491,7 +588,7 @@ export default function SellerOrdersPage() {
                           <span className="text-sm font-black text-zinc-900">K{order.total.toLocaleString()}</span>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Link href={`/seller/orders/${order.id}`}>
+                          <Link href={getOrderDetailHref(order.id)} onClick={rememberOrderListScroll}>
                             <Button size="sm" className="h-8 rounded-xl bg-zinc-900 px-3 text-[10px] font-bold text-white hover:bg-zinc-800">
                               Manage
                             </Button>
@@ -524,7 +621,7 @@ export default function SellerOrdersPage() {
 
                   <div className="flex flex-col gap-3">
                     {columnOrders.map((order) => (
-                      <OrderCard key={order.id} order={order} onCancelOrder={handleCancelOrder} />
+                      <OrderCard key={order.id} order={order} onCancelOrder={handleCancelOrder} detailHref={getOrderDetailHref(order.id)} onBeforeNavigate={rememberOrderListScroll} />
                     ))}
                     {columnOrders.length === 0 ? (
                       <div className="rounded-2xl border-2 border-dashed border-zinc-200 bg-white/50 p-6 text-center">

@@ -1,7 +1,6 @@
 "use client";
 
-import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { ShieldAlert } from "lucide-react";
 import { toast } from "sonner";
@@ -18,10 +17,12 @@ import { SellerProductPreview } from "./_components/SellerProductPreview";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import { hasSellerCapability } from "@/services/vendor-application";
 import { isSellerProductBuyerVisibleStatus, isSellerProductNeedsChangesStatus } from "@/services/product-moderation";
+import { sanitizeInternalNextPath } from "@/services/auth-intent";
 
 export default function SellerProductPreviewPage() {
   const params = useParams<{ id: string }>();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { application } = useSellerApplication();
   const productId = decodeURIComponent(params.id);
   const [product, setProduct] = useState<SellerProductListing | null>(null);
@@ -29,6 +30,11 @@ export default function SellerProductPreviewPage() {
   const sellerStatus = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
   const canSubmitProductForReview = hasSellerCapability(sellerStatus, "canSubmitProductForReview");
+  const returnTo = sanitizeInternalNextPath(searchParams.get("returnTo"));
+  const handleBack = () => {
+    if (returnTo?.startsWith("/seller/products")) router.back();
+    else router.push("/seller/products");
+  };
 
   useEffect(() => {
     if (!application || !canCreateDraftProduct) return;
@@ -138,9 +144,7 @@ export default function SellerProductPreviewPage() {
       <div className="rounded-3xl border border-red-100 bg-red-50 p-6 text-center">
         <ShieldAlert className="mx-auto mb-3 h-8 w-8 text-red-500" />
         <h1 className="text-lg font-black text-red-900">Product not found</h1>
-        <Link href="/seller/products">
-          <Button className="mt-4 rounded-xl">Back to Products</Button>
-        </Link>
+        <Button onClick={handleBack} className="mt-4 rounded-xl">Back to Products</Button>
       </div>
     );
   }
@@ -164,6 +168,7 @@ export default function SellerProductPreviewPage() {
       onSubmit={() => handleSubmit("Product submitted for review.")}
       onUnpublish={() => handleUnpublish(pauseListingLabel)}
       onWithdraw={() => handleWithdraw("Review withdrawn. Product moved back to drafts.")}
+      onBack={handleBack}
     />
   );
 }
