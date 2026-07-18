@@ -18,6 +18,8 @@ import { NavbarSearch } from "@/components/layout/NavbarSearch";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
 import { getStoredAuthSession, logout } from "@/services/auth";
+import { appendNextPath } from "@/services/auth-intent";
+import { getMyVendorApplication } from "@/services/vendor-application";
 import { AUTH_SESSION_CHANGED_EVENT, getAuthSessionSnapshot } from "@/services/auth-session";
 import type { CategorySummary } from "@/types/category";
 import type { AuthUser } from "@/types/auth";
@@ -220,15 +222,29 @@ function isDesktopViewport() {
   return typeof window !== "undefined" && window.innerWidth >= 1024;
 }
 
-function TopBar() {
+function subscribeToBrowserLocation(onStoreChange: () => void) {
+  window.addEventListener("popstate", onStoreChange);
+  window.addEventListener("hashchange", onStoreChange);
+
+  return () => {
+    window.removeEventListener("popstate", onStoreChange);
+    window.removeEventListener("hashchange", onStoreChange);
+  };
+}
+
+function getBrowserLocationSnapshot() {
+  return `${window.location.pathname}${window.location.search}${window.location.hash}`;
+}
+
+function TopBar({ sellerEntry }: { sellerEntry: NavLink }) {
   return (
     <div className="hidden h-8 w-full items-center justify-between bg-zinc-950 px-6 text-[11px] font-medium text-zinc-300 xl:px-12 lg:flex">
       <div className="flex items-center gap-6">
         <Link
-          href="/sell"
+          href={sellerEntry.href}
           className="flex items-center gap-1.5 font-bold uppercase tracking-wider text-[#009E49] transition-colors hover:text-[#00c95d]"
         >
-          <Store className="h-3.5 w-3.5" /> Sell on Zogular
+          <Store className="h-3.5 w-3.5" /> {sellerEntry.label}
         </Link>
         <Link href="/track" className="flex cursor-pointer items-center gap-1.5 rounded-sm transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950">
           <MapPin className="h-3.5 w-3.5" /> Deliver to Lusaka
@@ -251,17 +267,25 @@ function TopBar() {
   );
 }
 
-function LoggedOutMenu({ onDevToggleAuth }: { onDevToggleAuth: () => void }) {
+function LoggedOutMenu({
+  loginHref,
+  registerHref,
+  onDevToggleAuth,
+}: {
+  loginHref: string;
+  registerHref: string;
+  onDevToggleAuth: () => void;
+}) {
   return (
     <>
-      <Link href="/auth/login" className="mb-2 block">
+      <Link href={loginHref} className="mb-2 block">
         <Button className="w-full rounded-xl bg-[#009E49] font-bold text-white shadow-md hover:bg-[#00853d]">
           Sign In
         </Button>
       </Link>
       <p className="mb-2 text-center text-xs text-zinc-500">
         Don&apos;t have an account?{" "}
-        <Link href="/auth/register" className="font-bold text-[#FF6B00] hover:underline">
+        <Link href={registerHref} className="font-bold text-[#FF6B00] hover:underline">
           Register
         </Link>
       </p>
@@ -333,6 +357,8 @@ type AccountDropdownProps = {
   onMobileToggle: () => void;
   onSignOut: () => void;
   onDevToggleAuth: () => void;
+  loginHref: string;
+  registerHref: string;
 };
 
 function AccountDropdown({
@@ -345,6 +371,8 @@ function AccountDropdown({
   onMobileToggle,
   onSignOut,
   onDevToggleAuth,
+  loginHref,
+  registerHref,
 }: AccountDropdownProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const isOpen = desktopOpen || mobileOpen;
@@ -398,7 +426,11 @@ function AccountDropdown({
           {isLoggedIn && user ? (
             <LoggedInMenu user={user} onSignOut={onSignOut} onDevToggleAuth={onDevToggleAuth} />
           ) : (
-            <LoggedOutMenu onDevToggleAuth={onDevToggleAuth} />
+            <LoggedOutMenu
+              loginHref={loginHref}
+              registerHref={registerHref}
+              onDevToggleAuth={onDevToggleAuth}
+            />
           )}
         </div>
       </div>
@@ -637,6 +669,7 @@ type MobileDrawerProps = {
   onCategorySelect: (category: CategoryLink) => void;
   categoryView: "root" | "category";
   onCategoryViewChange: (view: "root" | "category") => void;
+  sellerEntry: NavLink;
 };
 
 function MobileDrawer({
@@ -647,6 +680,7 @@ function MobileDrawer({
   onCategorySelect,
   categoryView,
   onCategoryViewChange,
+  sellerEntry,
 }: MobileDrawerProps) {
   const handleCategoryOpen = (category: CategoryLink) => {
     onCategorySelect(category);
@@ -775,7 +809,11 @@ function MobileDrawer({
               <div className="mt-4 space-y-2 border-t border-white/40 pt-3">
                 <SectionHeading>Quick Links</SectionHeading>
                 <div className="grid grid-cols-1 gap-1.5">
-                  {MOBILE_UTILITY_LINKS.map(({ label, href, icon: Icon }) => (
+                  {MOBILE_UTILITY_LINKS.map((link) => {
+                    const { label, href, icon: Icon } = link.href === "/sell"
+                      ? { ...link, ...sellerEntry }
+                      : link;
+                    return (
                     <Link
                       key={href}
                       href={href}
@@ -785,7 +823,8 @@ function MobileDrawer({
                       <Icon className="h-4 w-4 shrink-0 text-zinc-400" />
                       <span className="truncate">{label}</span>
                     </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -840,14 +879,49 @@ export default function Navbar() {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [desktopAccountOpen, setDesktopAccountOpen] = useState(false);
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
+  const [mobileSearchFocused, setMobileSearchFocused] = useState(false);
+  const [hasEstablishedSellerAccount, setHasEstablishedSellerAccount] = useState(false);
+  const authReturnPath = useSyncExternalStore(
+    subscribeToBrowserLocation,
+    getBrowserLocationSnapshot,
+    () => pathname || "/",
+  );
   const [mobileActiveCategory, setMobileActiveCategory] = useState<CategoryLink>({
     label: "Categories",
     href: "/categories",
     children: [],
   });
   const [mobileCategoryView, setMobileCategoryView] = useState<"root" | "category">("root");
+  const collapseMobileSearch =
+    pathname !== "/" &&
+    isScrolled &&
+    !mobileSearchFocused &&
+    !isMobileMenuOpen &&
+    !mobileAccountOpen;
 
   const hiddenRoutes = useMemo(() => ["/auth", "/verify-email", "/sell", "/seller"], []);
+  const sellerEntry = isLoggedIn && user?.role === "seller" && hasEstablishedSellerAccount
+    ? { label: "Seller Dashboard", href: "/seller" }
+    : { label: "Sell on Zogular", href: "/sell" };
+  const loginHref = appendNextPath("/auth/login", authReturnPath);
+  const registerHref = appendNextPath("/auth/register", authReturnPath);
+
+  useEffect(() => {
+    let active = true;
+    if (!isLoggedIn || user?.role !== "seller") {
+      return () => { active = false; };
+    }
+
+    void getMyVendorApplication()
+      .then((application) => {
+        if (active) setHasEstablishedSellerAccount(application.status === "APPROVED" || application.status === "PROVISIONAL");
+      })
+      .catch(() => {
+        if (active) setHasEstablishedSellerAccount(false);
+      });
+
+    return () => { active = false; };
+  }, [isLoggedIn, user?.role]);
 
   useEffect(() => {
     let active = true;
@@ -885,7 +959,7 @@ export default function Navbar() {
           isScrolled && "lg:-top-8 shadow-[0_18px_40px_rgba(15,23,42,0.10)]",
         )}
       >
-        <TopBar />
+        <TopBar sellerEntry={sellerEntry} />
         <div
           className={cn(
             "relative z-20 w-full border-b transition-all duration-300 pt-safe",
@@ -929,6 +1003,8 @@ export default function Navbar() {
                 onMobileToggle={() => setMobileAccountOpen((prev) => !prev)}
                 onSignOut={signOut}
                 onDevToggleAuth={toggleDevAuth}
+                loginHref={loginHref}
+                registerHref={registerHref}
               />
               <CartButton
                 itemCount={hasHydrated ? itemCount : 0}
@@ -937,7 +1013,21 @@ export default function Navbar() {
             </div>
           </div>
 
-          <div className="relative z-10 px-4 pb-4 pt-1 md:hidden">
+          <div
+            aria-hidden={collapseMobileSearch}
+            onFocusCapture={() => setMobileSearchFocused(true)}
+            onBlurCapture={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget)) {
+                setMobileSearchFocused(false);
+              }
+            }}
+            className={cn(
+              "relative z-10 overflow-hidden px-4 transition-[max-height,opacity,padding,transform] duration-200 ease-out md:hidden",
+              collapseMobileSearch
+                ? "pointer-events-none max-h-0 -translate-y-2 pb-0 pt-0 opacity-0"
+                : "max-h-24 translate-y-0 pb-4 pt-1 opacity-100",
+            )}
+          >
             <NavbarSearch mobile />
           </div>
         </div>
@@ -961,6 +1051,7 @@ export default function Navbar() {
         onCategorySelect={setMobileActiveCategory}
         categoryView={mobileCategoryView}
         onCategoryViewChange={setMobileCategoryView}
+        sellerEntry={sellerEntry}
       />
     </>
   );

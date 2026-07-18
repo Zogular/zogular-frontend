@@ -8,13 +8,14 @@ import { GrowthChecklist } from "../components/GrowthChecklist";
 import { HubQuickActions } from "../components/HubQuickActions";
 import { hasSellerCapability } from "@/services/vendor-application";
 import { fetchSellerCatalogProducts } from "@/services/seller-catalog";
+import { cn } from "@/lib/utils";
 
 export function SellerOperatingHub({ application }: { application: VendorApplication }) {
   const [productProbe, setProductProbe] = useState<"loading" | "has-products" | "empty" | "unavailable">("loading");
   const canCreateDraft = hasSellerCapability(application.status, "canCreateDraftProduct");
   let introCopy = "Complete your seller application to unlock the marketplace hub.";
   if (application.status === "APPROVED") {
-    introCopy = "Manage products and orders from here. In-app support is available, while payouts still depend on backend ledger services.";
+    introCopy = "Manage products and orders from here. Seller support is available, while payouts are not available yet.";
   } else if (application.status === "PROVISIONAL") {
     introCopy = "Create draft products and prepare your storefront. Product submission, orders, payouts, and live selling remain blocked until full approval.";
   } else if (application.status === "SUBMITTED" || application.status === "NEEDS_INFO") {
@@ -35,6 +36,20 @@ export function SellerOperatingHub({ application }: { application: VendorApplica
     }
     checkProducts();
   }, [canCreateDraft]);
+
+  const showGrowthChecklist =
+    productProbe !== "loading" &&
+    (productProbe === "unavailable" ||
+      productProbe !== "has-products" ||
+      !application.payoutProvider ||
+      application.status !== "APPROVED");
+  const showTrustPassport =
+    !application.businessEmail ||
+    !application.businessPhone ||
+    !application.nrcFrontUrl ||
+    !application.shopPhotoUrl ||
+    !application.payoutProvider ||
+    application.status !== "APPROVED";
 
   return (
     <div className="mx-auto max-w-4xl animate-in space-y-6 fade-in slide-in-from-bottom-4 duration-500">
@@ -58,11 +73,17 @@ export function SellerOperatingHub({ application }: { application: VendorApplica
       {/* Quick Actions */}
       <HubQuickActions application={application} />
 
-      {/* Two-Column Setup for Growth & Trust */}
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <GrowthChecklist application={application} productProbe={productProbe} />
-        <TrustPassport application={application} />
-      </div>
+      {showGrowthChecklist || showTrustPassport ? (
+        <div
+          className={cn(
+            "grid grid-cols-1 gap-4",
+            showGrowthChecklist && showTrustPassport && "md:grid-cols-2",
+          )}
+        >
+          {showGrowthChecklist ? <GrowthChecklist application={application} productProbe={productProbe} /> : null}
+          {showTrustPassport ? <TrustPassport application={application} /> : null}
+        </div>
+      ) : null}
       
     </div>
   );

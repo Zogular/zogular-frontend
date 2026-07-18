@@ -446,7 +446,7 @@ export default function CheckoutPage() {
             <div className="sticky top-28 rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-[0_20px_60px_rgba(15,23,42,0.08)] md:p-8">
               <h3 className="mb-6 text-xl font-black text-zinc-900">Order Summary</h3>
 
-              <div className="hide-scrollbar mb-6 max-h-75 space-y-4 overflow-y-auto pr-2">
+              <div className="hide-scrollbar mb-6 max-h-75 space-y-4 overflow-y-auto pb-1 pr-2 pt-2">
                 {items.map((item) => (
                   <div key={`${item.id}-${item.variant ?? "default"}`} className="flex gap-4">
                     <div className="relative h-16 w-16 shrink-0 rounded-xl border border-zinc-200/50 bg-zinc-50 p-1">

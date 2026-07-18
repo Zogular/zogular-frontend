@@ -20,7 +20,7 @@ export function OperationsSettings({
         <div className="mb-5 space-y-1">
           <h2 className="text-sm font-black uppercase tracking-wider text-amber-900">Availability Controls Preview</h2>
           <p className="text-xs font-medium text-amber-700">
-            Store visibility and operational toggles still require backend support. This section is reference-only for now.
+            Store visibility and operating controls are read-only for now.
           </p>
         </div>
 
@@ -40,7 +40,7 @@ export function OperationsSettings({
 
         {settings.operations.vacationMode && (
           <div className="mt-4 animate-in fade-in slide-in-from-top-2">
-            <p className="text-xs font-bold text-amber-900">Preview only: backend store visibility controls are still pending.</p>
+            <p className="text-xs font-bold text-amber-900">Preview only: store visibility controls are not available yet.</p>
           </div>
         )}
       </div>

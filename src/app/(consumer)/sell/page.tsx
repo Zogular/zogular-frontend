@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
   ArrowRight,
@@ -14,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { getCurrentUser } from "@/services/auth";
 import { appendNextPath } from "@/services/auth-intent";
 
 const SELLER_ONBOARDING_PATH = "/seller/onboarding?start=1";
@@ -104,8 +107,25 @@ const FAQS = [
 ];
 
 export default function SellOnZogularPage() {
+  const router = useRouter();
   const primaryHref = SELLER_REGISTER_PATH;
   const secondaryHref = SELLER_LOGIN_PATH;
+
+  useEffect(() => {
+    let active = true;
+
+    void getCurrentUser()
+      .then((user) => {
+        if (active && user.role === "seller") router.replace("/seller");
+      })
+      .catch(() => {
+        // Guests and expired sessions remain on the public seller information page.
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [router]);
 
   return (
     <main className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">

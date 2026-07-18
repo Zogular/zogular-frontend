@@ -20,7 +20,7 @@ export function BusinessInfoForm({
         <div className="mb-5 space-y-1">
           <h2 className="text-sm font-black uppercase tracking-wider text-zinc-900">Business & Contact Reference</h2>
           <p className="text-xs font-medium text-zinc-500">
-            These fields are shown for seller profile context only until backend store settings persistence is available.
+            These details are read-only for now. Editing will become available in a future update.
           </p>
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

@@ -162,7 +162,7 @@ export function SellerProductSpecs({ product }: { product: SellerProductListing 
       </GlassPanel>
 
       <GlassPanel title="Dynamic Category Attributes">
-        <SpecGrid items={attributes.map((attribute) => ({ name: attribute.name, value: attribute.value }))} empty="No backend category attributes captured for this product." />
+        <SpecGrid items={attributes.map((attribute) => ({ name: attribute.name, value: attribute.value }))} empty="No category details were added for this product." />
       </GlassPanel>
 
       <GlassPanel title="Variants">
