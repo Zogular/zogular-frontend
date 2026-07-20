@@ -1,7 +1,46 @@
 import { apiClient } from "@/services/api";
 
-export type SellerOrderStatus = "new" | "confirmed" | "processing" | "shipped" | "delivered" | "cancelled" | "refund" | "unknown";
+export type SellerOrderStatus =
+  | "new"
+  | "confirmed"
+  | "processing"
+  | "shipped"
+  | "delivered"
+  | "cancelled"
+  | "refund"
+  | "unknown";
 export type SellerPaymentStatus = "paid" | "cod" | "refunded" | "failed" | "unavailable";
+export type SellerOrderSort = "newest" | "oldest" | "recently-updated" | "order-number";
+
+export interface SellerOrderQuery {
+  page: number;
+  limit: number;
+  search?: string;
+  status?: Exclude<SellerOrderStatus, "unknown">;
+  createdFrom?: string;
+  createdTo?: string;
+  sort: SellerOrderSort;
+}
+
+export interface SellerOrderPagination {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface SellerOrderStatusFacet {
+  status: SellerOrderStatus;
+  count: number;
+}
+
+export interface SellerOrdersSummary {
+  totalOrders: number;
+  activeOrders: number;
+  completedOrders: number;
+  cancelledOrders: number;
+  refundedOrders: number;
+}
 
 export interface SellerOrderEarningsPreview {
   productSubtotal: number;
@@ -14,7 +53,7 @@ export interface SellerOrderEarningsPreview {
 export interface SellerOrderItem {
   id: string;
   name: string;
-  brand: string;
+  brand: string | null;
   price: number;
   quantity: number;
   image: string | null;
@@ -23,49 +62,42 @@ export interface SellerOrderItem {
 
 export interface SellerOrderSummary {
   id: string;
+  orderNumber: string;
   customer: string;
   phone: string;
   items: number;
   total: number;
   status: SellerOrderStatus;
+  allowedTransitions: SellerOrderStatus[];
   paymentStatus: SellerPaymentStatus;
   location: string;
   createdAt: string;
+  updatedAt: string;
 }
 
-export interface SellerOrderDetail {
-  id: string;
-  status: SellerOrderStatus;
-  createdAt: string;
-  paymentStatus: SellerPaymentStatus;
+export interface SellerOrderDetail extends Omit<SellerOrderSummary, "customer" | "items"> {
   paymentMethod: string | null;
   customer: { name: string; phone: string; email: string };
-  shipping: { address: string; area: string; city: string; instructions?: string; method: string; fee: number | null };
+  itemCount: number;
   items: SellerOrderItem[];
+  shipping: {
+    address: string;
+    area: string;
+    city: string;
+    instructions?: string;
+    method: string;
+    fee: number | null;
+  };
+  orderItems: SellerOrderItem[];
   totals: { subtotal: number; shipping: number | null; discount: number | null; total: number };
   earnings: SellerOrderEarningsPreview;
 }
 
-// Backend Response Types
-interface BackendOrderResponse {
-  status: string;
-  data: {
-    order: BackendOrder;
-  }
-}
-
-interface BackendOrdersResponse {
-  status: string;
-  results: number;
-  data: {
-    orders: BackendOrder[];
-  }
-}
-
-interface BackendShippingAddress {
-  street?: string;
-  area?: string;
-  city?: string;
+export interface SellerOrdersPageResult {
+  orders: SellerOrderSummary[];
+  pagination: SellerOrderPagination;
+  summary: SellerOrdersSummary;
+  facets: { statuses: SellerOrderStatusFacet[] };
 }
 
 interface BackendProductImage {
@@ -75,20 +107,54 @@ interface BackendProductImage {
 interface BackendOrder {
   id: string;
   orderNumber: string;
+  status: string;
+  sellerStatus: string;
+  allowedSellerTransitions?: string[];
   totalAmount: number;
   paymentMethod?: string | null;
   paymentStatus?: string | null;
   sellerCommissionAmount?: number | null;
   sellerNetAmount?: number | null;
-  shippingAddress: BackendShippingAddress | null;
-  deliveryMethod: string;
-  status: string;
   createdAt: string;
-  user: {
-    firstName: string;
-    lastName: string;
-    email: string;
-    phone?: string;
+  updatedAt: string;
+  deliveryMethod: string;
+  notes?: string | null;
+  shippingAddress?: {
+    addressLine?: string | null;
+    street?: string | null;
+    area?: string | null;
+    district?: string | null;
+    city?: string | null;
+  } | null;
+  shipping?: {
+    addressLine?: string | null;
+    street?: string | null;
+    area?: string | null;
+    district?: string | null;
+    city?: string | null;
+    method?: string | null;
+    fee?: number | null;
+    instructions?: string | null;
+  } | null;
+  customer?: {
+    name?: string | null;
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    phone?: string | null;
+  };
+  user?: {
+    firstName?: string | null;
+    lastName?: string | null;
+    email?: string | null;
+    telephone?: string | null;
+    phone?: string | null;
+  };
+  sellerVisibleTotals?: {
+    subtotal?: number | null;
+    shipping?: number | null;
+    discount?: number | null;
+    total?: number | null;
   };
   items: Array<{
     id: string;
@@ -98,151 +164,213 @@ interface BackendOrder {
     product: {
       id: string;
       title: string;
-      images: BackendProductImage[];
-      category: string;
-    }
+      images?: BackendProductImage[];
+      category?: string | null;
+      brand?: string | null;
+    };
   }>;
 }
 
-function getSellerVisibleItemsTotal(items: BackendOrder["items"]): number {
-  return items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+interface BackendOrderResponse {
+  status: string;
+  data: { order: BackendOrder };
+}
+
+interface BackendOrdersResponse {
+  status: string;
+  results: number;
+  pagination: SellerOrderPagination;
+  data: {
+    orders: BackendOrder[];
+    summary: SellerOrdersSummary;
+    facets: { statuses: Array<{ status: string; count: number }> };
+  };
+}
+
+function mapVendorStatus(status?: string | null): SellerOrderStatus {
+  switch (status?.trim().toUpperCase()) {
+    case "PENDING": return "new";
+    case "CONFIRMED": return "confirmed";
+    case "PROCESSING": return "processing";
+    case "SHIPPED": return "shipped";
+    case "DELIVERED": return "delivered";
+    case "CANCELLED": return "cancelled";
+    case "REFUNDED": return "refund";
+    default: return "unknown";
+  }
+}
+
+function toBackendVendorStatus(status: SellerOrderStatus): string {
+  const statuses: Partial<Record<SellerOrderStatus, string>> = {
+    new: "PENDING",
+    confirmed: "CONFIRMED",
+    processing: "PROCESSING",
+    shipped: "SHIPPED",
+    delivered: "DELIVERED",
+    cancelled: "CANCELLED",
+    refund: "REFUNDED",
+  };
+  const mapped = statuses[status];
+  if (!mapped) throw new Error(`Seller order status ${status} cannot be submitted`);
+  return mapped;
 }
 
 function mapPaymentStatus(status?: string | null): SellerPaymentStatus {
   const normalized = status?.trim().toUpperCase();
-  if (normalized === "PAID" || normalized === "SUCCESSFUL" || normalized === "COMPLETED") return "paid";
-  if (normalized === "COD" || normalized === "CASH_ON_DELIVERY") return "cod";
+  if (["PAID", "SUCCESSFUL", "COMPLETED"].includes(normalized ?? "")) return "paid";
+  if (["COD", "CASH_ON_DELIVERY"].includes(normalized ?? "")) return "cod";
   if (normalized === "REFUNDED") return "refunded";
   if (normalized === "FAILED") return "failed";
   return "unavailable";
 }
 
-function normalizePaymentMethod(value?: string | null): string | null {
-  const trimmed = value?.trim();
-  return trimmed ? trimmed : null;
+function getCustomerName(order: BackendOrder): string {
+  const name = order.customer?.name?.trim();
+  if (name) return name;
+  const composed = `${order.user?.firstName ?? ""} ${order.user?.lastName ?? ""}`.trim();
+  return composed || "Customer";
 }
 
-function mapSettlementPreview(order: BackendOrder, subtotal: number, categorySlug?: string): SellerOrderEarningsPreview {
-  void categorySlug;
-  const hasCommission = typeof order.sellerCommissionAmount === "number";
-  const hasSellerNet = typeof order.sellerNetAmount === "number";
-
-  return {
-    productSubtotal: subtotal,
-    commission: hasCommission ? order.sellerCommissionAmount ?? null : null,
-    sellerBorneAdjustments: null,
-    sellerNet: hasSellerNet ? order.sellerNetAmount ?? null : null,
-    backendConfirmed: hasCommission || hasSellerNet,
-  };
-}
-
-function mapVendorStatus(status: string): SellerOrderStatus {
-  const s = status.toUpperCase();
-  if (s === "PENDING") return "new";
-  if (s === "CONFIRMED") return "confirmed";
-  if (s === "PROCESSING") return "processing";
-  if (s === "SHIPPED") return "shipped";
-  if (s === "DELIVERED") return "delivered";
-  if (s === "CANCELLED") return "cancelled";
-  if (s === "REFUNDED") return "refund";
-  return "unknown";
-}
-
-function mapToBackendVendorStatus(status: SellerOrderStatus): string {
-  if (status === "new") return "PENDING";
-  if (status === "confirmed") return "CONFIRMED";
-  if (status === "processing") return "PROCESSING";
-  if (status === "shipped") return "SHIPPED";
-  if (status === "delivered") return "DELIVERED";
-  if (status === "cancelled") return "CANCELLED";
-  if (status === "refund") return "REFUNDED";
-  throw new Error(`Seller order status ${status} cannot be submitted`);
+function getSellerVisibleTotal(order: BackendOrder): number {
+  if (typeof order.sellerVisibleTotals?.total === "number") return order.sellerVisibleTotals.total;
+  return order.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 }
 
 function mapOrderToSummary(order: BackendOrder): SellerOrderSummary {
-  const itemsCount = order.items.reduce((sum, item) => sum + item.quantity, 0);
-  const total = getSellerVisibleItemsTotal(order.items);
-  
-  // A vendor order might have multiple items with different statuses. We'll take the lowest status, or just the first item's status.
-  const status = mapVendorStatus(order.items[0]?.vendorStatus || "PENDING");
-
+  const shipping = order.shipping ?? order.shippingAddress;
   return {
     id: order.id,
-    customer: `${order.user?.firstName || "Guest"} ${order.user?.lastName || ""}`.trim(),
-    phone: order.user?.phone || "N/A",
-    items: itemsCount,
-    total,
-    status,
+    orderNumber: order.orderNumber,
+    customer: getCustomerName(order),
+    phone: order.customer?.phone ?? order.user?.phone ?? order.user?.telephone ?? "Not provided",
+    items: order.items.reduce((sum, item) => sum + item.quantity, 0),
+    total: getSellerVisibleTotal(order),
+    status: mapVendorStatus(order.sellerStatus),
+    allowedTransitions: (order.allowedSellerTransitions ?? []).map(mapVendorStatus),
     paymentStatus: mapPaymentStatus(order.paymentStatus),
-    location: order.shippingAddress?.city || "Unknown",
+    location: shipping?.district ?? shipping?.area ?? shipping?.city ?? "Not provided",
     createdAt: order.createdAt,
+    updatedAt: order.updatedAt,
   };
 }
 
 function mapOrderToDetail(order: BackendOrder): SellerOrderDetail {
-  const subtotal = getSellerVisibleItemsTotal(order.items);
-  const status = mapVendorStatus(order.items[0]?.vendorStatus || "PENDING");
-  const primaryCategorySlug = order.items[0]?.product.category;
+  const summary = mapOrderToSummary(order);
+  const shipping = order.shipping ?? order.shippingAddress;
+  const subtotal = order.sellerVisibleTotals?.subtotal ?? summary.total;
+  const commission = typeof order.sellerCommissionAmount === "number" ? order.sellerCommissionAmount : null;
+  const sellerNet = typeof order.sellerNetAmount === "number" ? order.sellerNetAmount : null;
+
+  const items = order.items.map((item) => ({
+    id: item.id,
+    name: item.product.title,
+    brand: item.product.brand?.trim() || null,
+    price: item.price,
+    quantity: item.quantity,
+    image: item.product.images?.[0]?.url ?? null,
+    categorySlug: item.product.category ?? "others",
+  }));
 
   return {
-    id: order.id,
-    status,
-    createdAt: order.createdAt,
-    paymentStatus: mapPaymentStatus(order.paymentStatus),
-    paymentMethod: normalizePaymentMethod(order.paymentMethod),
-    customer: { 
-      name: `${order.user?.firstName || "Guest"} ${order.user?.lastName || ""}`.trim(), 
-      phone: order.user?.phone || "N/A", 
-      email: order.user?.email || "N/A" 
+    ...summary,
+    itemCount: summary.items,
+    paymentMethod: order.paymentMethod?.trim() || null,
+    customer: {
+      name: summary.customer,
+      phone: summary.phone,
+      email: order.customer?.email ?? order.user?.email ?? "Not provided",
     },
-    shipping: { 
-      address: order.shippingAddress?.street || "N/A", 
-      area: order.shippingAddress?.area || "N/A", 
-      city: order.shippingAddress?.city || "Unknown", 
-      method: order.deliveryMethod || "Standard", 
-      fee: null,
+    shipping: {
+      address: shipping?.addressLine ?? shipping?.street ?? "Not provided",
+      area: shipping?.district ?? shipping?.area ?? "Not provided",
+      city: shipping?.city ?? "Not provided",
+      instructions: order.shipping?.instructions ?? order.notes ?? undefined,
+      method: order.shipping?.method ?? order.deliveryMethod ?? "Standard",
+      fee: order.sellerVisibleTotals?.shipping ?? order.shipping?.fee ?? null,
     },
-    items: order.items.map(item => ({
-      id: item.id, // Using the orderItem id
-      name: item.product.title,
-      brand: "Zogular", // Could extract from product if needed
-      price: item.price,
-      quantity: item.quantity,
-      image: item.product.images?.[0]?.url || null,
-      categorySlug: item.product.category || "others"
-    })),
+    items,
+    orderItems: items,
     totals: {
       subtotal,
-      shipping: null,
-      discount: null,
-      total: subtotal,
+      shipping: order.sellerVisibleTotals?.shipping ?? null,
+      discount: order.sellerVisibleTotals?.discount ?? null,
+      total: order.sellerVisibleTotals?.total ?? summary.total,
     },
-    earnings: mapSettlementPreview(order, subtotal, primaryCategorySlug),
+    earnings: {
+      productSubtotal: subtotal,
+      commission,
+      sellerBorneAdjustments: null,
+      sellerNet,
+      backendConfirmed: commission !== null || sellerNet !== null,
+    },
   };
 }
 
+function mapSort(sort: SellerOrderSort) {
+  switch (sort) {
+    case "oldest": return { sortBy: "createdAt", sortOrder: "asc" } as const;
+    case "recently-updated": return { sortBy: "updatedAt", sortOrder: "desc" } as const;
+    case "order-number": return { sortBy: "orderNumber", sortOrder: "asc" } as const;
+    default: return { sortBy: "createdAt", sortOrder: "desc" } as const;
+  }
+}
+
+export const sellerOrderQueryKeys = {
+  all: ["seller", "orders"] as const,
+  lists: () => [...sellerOrderQueryKeys.all, "list"] as const,
+  list: (query: SellerOrderQuery) => [...sellerOrderQueryKeys.lists(), query] as const,
+  detail: (orderId: string) => [...sellerOrderQueryKeys.all, "detail", orderId] as const,
+};
+
 export const sellerOrdersApi = {
-  async fetchSummaries(): Promise<SellerOrderSummary[]> {
+  async fetchPage(query: SellerOrderQuery): Promise<SellerOrdersPageResult> {
+    const sort = mapSort(query.sort);
     const response = await apiClient<BackendOrdersResponse>("/vendor/orders", {
       method: "GET",
+      query: {
+        page: query.page,
+        limit: query.limit,
+        search: query.search,
+        status: query.status ? toBackendVendorStatus(query.status) : undefined,
+        createdFrom: query.createdFrom,
+        createdTo: query.createdTo,
+        ...sort,
+      },
     });
-    return response.data.orders.map(mapOrderToSummary);
+    return {
+      orders: response.data.orders.map(mapOrderToSummary),
+      pagination: response.pagination,
+      summary: response.data.summary,
+      facets: {
+        statuses: response.data.facets.statuses.map((facet) => ({
+          status: mapVendorStatus(facet.status),
+          count: facet.count,
+        })),
+      },
+    };
   },
+
+  async fetchSummaries(): Promise<SellerOrderSummary[]> {
+    const page = await this.fetchPage({ page: 1, limit: 20, sort: "newest" });
+    return page.orders;
+  },
+
   async fetchById(orderId: string): Promise<SellerOrderDetail> {
     const response = await apiClient<BackendOrderResponse>(`/vendor/orders/${orderId}`, {
       method: "GET",
     });
     return mapOrderToDetail(response.data.order);
   },
+
   async updateStatus(orderId: string, status: SellerOrderStatus): Promise<SellerOrderDetail> {
-    const backendStatus = mapToBackendVendorStatus(status);
     const response = await apiClient<BackendOrderResponse>(`/vendor/orders/${orderId}/status`, {
       method: "PATCH",
-      body: JSON.stringify({ status: backendStatus }),
+      body: JSON.stringify({ status: toBackendVendorStatus(status) }),
       csrf: true,
     });
     return mapOrderToDetail(response.data.order);
   },
+
   async cancelOrder(orderId: string): Promise<SellerOrderDetail> {
     return this.updateStatus(orderId, "cancelled");
   },
