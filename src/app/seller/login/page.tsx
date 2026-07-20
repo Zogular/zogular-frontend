@@ -16,7 +16,7 @@ import {
 } from "@/services/auth-intent";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
-const SELLER_ONBOARDING_FALLBACK = "/seller/onboarding?start=1";
+const SELLER_ONBOARDING_FALLBACK = "/seller";
 
 export default function SellerLoginPage() {
   return (
