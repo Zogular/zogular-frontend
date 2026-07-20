@@ -5,8 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
   Store, Package, LifeBuoy, LogOut, Menu, X, Sparkles, FolderTree,
-  Truck, LayoutDashboard, Users, ShieldCheck, FileText, Megaphone,
-  Scale, Landmark, ServerCog,
+  Truck, LayoutDashboard, Users, ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
@@ -30,17 +29,12 @@ type NavItem = { name: string; href: string; icon: React.ComponentType<{ classNa
 const NAV_ITEMS: NavItem[] = [
   { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
   { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
-  { name: "Buyers", href: "/admin/buyers", icon: Users, permission: "view_buyers", pending: true },
+  { name: "Buyers", href: "/admin/buyers", icon: Users, permission: "view_buyers" },
   { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
   { name: "Order Queue", href: "/admin/orders", icon: Truck, permission: "view_orders" },
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
   { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
-  { name: "Access Control", href: "/admin/access", icon: ShieldCheck, permission: "manage_admins", pending: true },
-  { name: "Reports", href: "/admin/reports", icon: FileText, permission: "view_financial_reports", pending: true },
-  { name: "Content", href: "/admin/content", icon: Megaphone, permission: "manage_content", pending: true },
-  { name: "Disputes", href: "/admin/disputes", icon: Scale, permission: "manage_disputes", pending: true },
-  { name: "Finance", href: "/admin/finance", icon: Landmark, permission: "view_treasury", pending: true },
-  { name: "System", href: "/admin/system", icon: ServerCog, permission: "view_system_logs", pending: true },
+  { name: "Access Control", href: "/admin/access", icon: ShieldCheck, permission: "manage_admins" },
 ];
 
 function getAdminPageTitle(pathname: string) {
