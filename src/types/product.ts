@@ -14,6 +14,10 @@ export interface Product {
   rating: number;
   reviews: number;
   image: string;
+  stock?: number;
+  moderationStatus?: "approved" | "pending" | "rejected";
+  sellerVisibility?: "visible" | "hidden";
+  storeName?: string;
 }
 
 export interface ProductVariant {

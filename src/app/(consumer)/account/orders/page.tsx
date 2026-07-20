@@ -215,7 +215,7 @@ export default function OrdersPage() {
                   <div className="space-y-4">
                     {order.items.map((item, index) => (
                       <div key={`${order.id}-${index}`} className="flex gap-4">
-                        <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 md:h-20 md:w-20">
+                        <div className="relative w-14 shrink-0 aspect-[3/4] overflow-hidden rounded-xl border border-zinc-100 bg-zinc-50 md:w-16">
                           <Image
                             src={item.image}
                             alt={item.name}

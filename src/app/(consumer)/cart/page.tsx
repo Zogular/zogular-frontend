@@ -56,7 +56,7 @@ export default function CartPage() {
                     <div key={`${item.id}-${item.variant ?? "default"}`} className="flex gap-4 p-4 md:p-5">
                       <Link
                         href={`/product/${item.slug}`}
-                        className="relative h-22 w-22 shrink-0 overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50"
+                        className="relative w-20 shrink-0 aspect-[3/4] overflow-hidden rounded-2xl border border-zinc-200 bg-zinc-50"
                       >
                         <Image
                           src={item.image}

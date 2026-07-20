@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import Image from "next/image";
 import {
   ArrowLeft, CheckCircle2, Minus, Plus, Share2, ShieldCheck, Star, Store, Truck,
@@ -65,6 +66,7 @@ function ProductImageGallery({
   wishlistProduct: Product;
 }) {
   const [activeImage, setActiveImage] = React.useState(images[0]);
+  const router = useRouter();
 
   React.useEffect(() => {
     setActiveImage(images[0]);
@@ -74,13 +76,11 @@ function ProductImageGallery({
     <div className="space-y-4 md:sticky md:top-25 group">
       <div className="md:hidden">
         <div className="space-y-3">
-          <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden bg-zinc-50">
+          <div className="relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden bg-zinc-50">
             <div className="pointer-events-none absolute left-4 top-4 z-30 flex items-center gap-2">
-              <Link href="/" className="pointer-events-auto">
-                <Button variant="ghost" size="icon" title="Go back" aria-label="Go back" className="h-8 w-8 rounded-full bg-white/80 text-zinc-900 shadow-sm backdrop-blur-md hover:bg-white">
-                  <ArrowLeft className="h-4 w-4" />
-                </Button>
-              </Link>
+              <Button onClick={() => router.back()} variant="ghost" size="icon" title="Go back" aria-label="Go back" className="pointer-events-auto h-8 w-8 rounded-full bg-white/80 text-zinc-900 shadow-sm backdrop-blur-md hover:bg-white">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
               {badge ? (
                 <Badge className="pointer-events-auto border-none bg-[#FF6B00] px-3 py-1 text-[10px] uppercase tracking-widest shadow-md">
                   {badge}
@@ -103,7 +103,7 @@ function ProductImageGallery({
               fill
               sizes="100vw"
               unoptimized
-              className="object-cover"
+              className="object-contain"
             />}
           </div>
           <div className="hide-scrollbar flex gap-2 overflow-x-auto px-4 pb-1">
@@ -130,7 +130,7 @@ function ProductImageGallery({
         </div>
       </div>
 
-      <div className="hidden md:block relative aspect-square w-full overflow-hidden rounded-3xl border border-zinc-200/50 bg-zinc-50 shadow-sm">
+      <div className="hidden md:block relative aspect-[3/4] max-h-[800px] w-full overflow-hidden rounded-3xl border border-zinc-200/50 bg-zinc-50 shadow-sm">
         <div className="pointer-events-none absolute left-4 top-4 z-30 flex items-center gap-2">
           {badge ? (
             <Badge className="pointer-events-auto border-none bg-[#FF6B00] px-3 py-1 text-[10px] uppercase tracking-widest shadow-md">
@@ -154,7 +154,7 @@ function ProductImageGallery({
           fill
           sizes="(min-width: 768px) 700px, 100vw"
           unoptimized
-          className="object-cover transition-transform duration-700 hover:scale-[1.03]"
+          className="object-contain transition-transform duration-700 hover:scale-[1.03]"
         />}
       </div>
 
@@ -174,7 +174,7 @@ function ProductImageGallery({
               width={160}
               height={160}
               unoptimized
-              className="h-full w-full object-cover"
+              className="h-full w-full object-contain"
             />}
           </button>
         ))}
