@@ -1,7 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { AdminPageHeader, AdminDataGrid, AdminDetailSheet, AdminEmptyState, AdminBadge } from "@/components/admin/AdminPrimitives";
+import {
+  AdminPageHeader,
+  AdminDetailSheet,
+  AdminEmptyState,
+  AdminStatusBadge,
+} from "@/components/admin/AdminPrimitives";
 import { adminAccessApi, AdminUserRecord } from "@/services/admin/access";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
@@ -50,7 +55,7 @@ export default function AdminAccessPage() {
     }
   };
 
-  const isSuperAdmin = identity?.claims.role === "SUPER_ADMIN";
+  const isSuperAdmin = identity?.claims.role === "super_admin";
 
   return (
     <div className="mx-auto max-w-[96rem] space-y-5 pb-12">
@@ -60,47 +65,67 @@ export default function AdminAccessPage() {
         <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{error}</div>
       ) : null}
 
-      <AdminDataGrid
-        items={admins}
-        loading={loading}
-        onRowClick={setSelectedAdmin}
-        emptyState={{ title: "No admins found", description: "No administrator accounts match the query." }}
-        columns={[
-          {
-            header: "Administrator",
-            cell: (admin) => (
-              <div>
-                <p className="font-black text-zinc-950">{admin.firstName} {admin.lastName}</p>
-                <p className="text-xs font-semibold text-zinc-500">{admin.email}</p>
-              </div>
-            ),
-          },
-          {
-            header: "Role",
-            cell: (admin) => (
-              <span className="text-xs font-bold uppercase tracking-wider text-zinc-700">{admin.role.replace(/_/g, " ")}</span>
-            ),
-          },
-          {
-            header: "Status",
-            cell: (admin) => (
-              <AdminBadge variant={admin.isActive ? "success" : "danger"}>
-                {admin.isActive ? "Active" : "Revoked"}
-              </AdminBadge>
-            ),
-          },
-          {
-            header: "Joined",
-            cell: (admin) => <span className="text-sm font-bold text-zinc-700">{formatAdminDateTime(admin.createdAt)}</span>,
-          },
-        ]}
-      />
+      <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
+        <div className="overflow-x-auto">
+          <table className="min-w-[640px] w-full text-sm">
+            <thead>
+              <tr className="bg-zinc-50 text-left text-xs font-black uppercase tracking-wider text-zinc-500">
+                <th className="rounded-tl-3xl px-5 py-4">Administrator</th>
+                <th className="px-5 py-4">Role</th>
+                <th className="px-5 py-4">Status</th>
+                <th className="rounded-tr-3xl px-5 py-4">Joined</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-zinc-100">
+              {loading ? (
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={`loading-${i}`}>
+                    <td colSpan={4} className="px-5 py-4">
+                      <div className="h-10 w-full animate-pulse rounded-xl bg-zinc-200/50" />
+                    </td>
+                  </tr>
+                ))
+              ) : admins.length === 0 ? (
+                <tr>
+                  <td colSpan={4}>
+                    <AdminEmptyState title="No admins found" description="No administrator accounts match the query." />
+                  </td>
+                </tr>
+              ) : (
+                admins.map((admin) => (
+                  <tr
+                    key={admin.id}
+                    onClick={() => setSelectedAdmin(admin)}
+                    className="cursor-pointer transition-colors hover:bg-zinc-50"
+                  >
+                    <td className="px-5 py-4">
+                      <p className="font-black text-zinc-950">{admin.firstName} {admin.lastName}</p>
+                      <p className="text-xs font-semibold text-zinc-500">{admin.email}</p>
+                    </td>
+                    <td className="px-5 py-4">
+                      <span className="text-xs font-bold uppercase tracking-wider text-zinc-700">
+                        {admin.role.replace(/_/g, " ")}
+                      </span>
+                    </td>
+                    <td className="px-5 py-4">
+                      <AdminStatusBadge tone={admin.isActive ? "emerald" : "rose"}>
+                        {admin.isActive ? "Active" : "Revoked"}
+                      </AdminStatusBadge>
+                    </td>
+                    <td className="px-5 py-4 text-sm font-bold text-zinc-700">{formatAdminDateTime(admin.createdAt)}</td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
 
       <AdminDetailSheet
-        isOpen={selectedAdmin !== null}
-        onClose={() => setSelectedAdmin(null)}
+        open={selectedAdmin !== null}
+        onOpenChange={(open) => { if (!open) setSelectedAdmin(null); }}
         title={selectedAdmin ? "Administrator Context" : "Loading..."}
-        badge={selectedAdmin?.isActive ? "Active account" : "Revoked"}
+        description={selectedAdmin ? `${selectedAdmin.email} · ${selectedAdmin.isActive ? "Active" : "Revoked"}` : "Select an admin to view details."}
       >
         {selectedAdmin ? (
           <div className="space-y-4">
@@ -114,7 +139,7 @@ export default function AdminAccessPage() {
               </div>
             </div>
 
-            {isSuperAdmin && identity.claims.sub !== selectedAdmin.id && selectedAdmin.role !== "SUPER_ADMIN" ? (
+            {isSuperAdmin && identity.id !== selectedAdmin.id && selectedAdmin.role !== "super_admin" ? (
               <div className="rounded-3xl border border-sky-200 bg-sky-50/60 p-4">
                 <h3 className="text-sm font-black text-sky-950">Security Control</h3>
                 <div className="mt-4">
