@@ -190,7 +190,13 @@ export default function AdminSupportPage() {
         {!requestError ? (
         <>
         <div className="space-y-3 p-3 lg:hidden">
-          {loading ? <div className="px-3 py-10 text-center text-sm font-bold text-zinc-500">Loading support inbox...</div> : tickets.length === 0 ? <AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /> : tickets.map((ticket) => (
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-28 animate-pulse rounded-2xl bg-zinc-200/50" />
+              ))}
+            </div>
+          ) : tickets.length === 0 ? <AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /> : tickets.map((ticket) => (
             <article key={ticket.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
               <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black text-zinc-950">{ticket.subject}</p><p className="mt-1 text-xs font-semibold text-zinc-500">{ticket.seller.displayName}</p></div><AdminStatusBadge tone={statusTone[ticket.status]}>{toTitleCase(ticket.status.replace('-', ' '))}</AdminStatusBadge></div>
               <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs font-medium text-zinc-500">Updated {formatAdminDateTime(ticket.updatedAt)}</p><Button variant="outline" onClick={() => openTicket(ticket.id)} className="h-9 rounded-xl text-xs font-black">Open</Button></div>
@@ -210,7 +216,13 @@ export default function AdminSupportPage() {
             </thead>
             <tbody className="divide-y divide-zinc-100">
               {loading ? (
-                <tr><td colSpan={5} className="px-5 py-12 text-center text-sm font-bold text-zinc-500">Loading support inbox...</td></tr>
+                Array.from({ length: 5 }).map((_, i) => (
+                  <tr key={`loading-${i}`}>
+                    <td colSpan={5} className="px-5 py-4">
+                      <div className="h-14 w-full animate-pulse rounded-xl bg-zinc-200/50" />
+                    </td>
+                  </tr>
+                ))
               ) : tickets.length === 0 ? (
                 <tr><td colSpan={5}><AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /></td></tr>
               ) : tickets.map((ticket) => (
@@ -277,7 +289,14 @@ export default function AdminSupportPage() {
         description={selectedTicketDetail ? `${selectedTicketDetail.id} · ${selectedTicketDetail.seller.storeName || selectedTicketDetail.seller.displayName}` : "Support ticket details"}
       >
         {detailLoading ? (
-          <div className="py-12 text-center text-sm font-bold text-zinc-500">Loading ticket details...</div>
+          <div className="space-y-6">
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="h-24 animate-pulse rounded-3xl bg-zinc-100" />
+              <div className="h-24 animate-pulse rounded-3xl bg-zinc-100" />
+            </div>
+            <div className="h-64 animate-pulse rounded-3xl bg-zinc-100" />
+            <div className="h-32 animate-pulse rounded-3xl bg-zinc-100" />
+          </div>
         ) : selectedTicketDetail ? (
           <div className="space-y-6">
             <div className="grid gap-3 md:grid-cols-2">

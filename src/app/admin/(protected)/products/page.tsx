@@ -175,8 +175,19 @@ export default function AdminProductsPage() {
 
   if (loading) {
     return (
-      <div className="flex h-96 w-full items-center justify-center rounded-3xl border border-zinc-200 bg-zinc-50">
-        <p className="text-sm font-bold text-zinc-500">Loading product moderation queue...</p>
+      <div className="space-y-6">
+        <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+          <div className="space-y-2">
+            <div className="h-8 w-64 animate-pulse rounded-xl bg-zinc-200/60" />
+            <div className="h-4 w-96 animate-pulse rounded-lg bg-zinc-200/60" />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 md:gap-4 xl:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="h-[7.5rem] animate-pulse rounded-[1.55rem] bg-zinc-200/60 md:min-h-[8.5rem]" />
+          ))}
+        </div>
+        <div className="h-96 animate-pulse rounded-3xl bg-zinc-200/60" />
       </div>
     );
   }
