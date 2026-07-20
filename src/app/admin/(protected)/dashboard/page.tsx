@@ -75,7 +75,7 @@ export default function AdminDashboardPage() {
             <article key={key} className="min-w-0 rounded-2xl border border-white/80 bg-white/85 p-4 shadow-[0_14px_40px_rgba(15,23,42,0.07)]">
               <div className="flex items-center justify-between gap-2"><Icon className="h-4 w-4 text-zinc-500" />{metric.status === "ready" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" /> : null}</div>
               <p className="mt-3 text-[10px] font-black uppercase tracking-[0.16em] text-zinc-500">{label}</p>
-              {metric.status === "loading" ? <p className="mt-2 text-sm font-bold text-zinc-400">Loading...</p> : null}
+              {metric.status === "loading" ? <div className="mt-2 h-12 w-24 animate-pulse rounded-lg bg-zinc-200/60" /> : null}
               {metric.status === "ready" ? <><p className="mt-1 text-3xl font-black text-zinc-950">{metric.value?.toLocaleString()}</p><p className="mt-1 text-xs font-semibold text-zinc-500">{metric.detail}</p></> : null}
               {metric.status === "error" ? <p className="mt-2 text-sm font-black text-rose-700">Source unavailable</p> : null}
               {metric.status === "unauthorized" ? <p className="mt-2 text-sm font-black text-zinc-500">Not permitted</p> : null}
