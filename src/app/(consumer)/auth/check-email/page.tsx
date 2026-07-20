@@ -2,14 +2,23 @@
 
 import Link from "next/link";
 import { ArrowLeft, Loader2, MailCheck, RefreshCcw, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getDemoVerificationEmail, resendVerificationEmail } from "@/services/auth";
 import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
 export default function CheckEmailPage() {
+  return (
+    <Suspense fallback={<AuthLoadingSkeleton />}>
+      <CheckEmailContent />
+    </Suspense>
+  );
+}
+
+function CheckEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = useMemo(

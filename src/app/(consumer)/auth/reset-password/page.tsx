@@ -2,14 +2,23 @@
 
 import Link from "next/link";
 import { Eye, EyeOff, ArrowLeft, X, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getDemoVerificationEmail, resetPassword } from "@/services/auth";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
 export default function ResetPasswordPage() {
+  return (
+    <Suspense fallback={<AuthLoadingSkeleton />}>
+      <ResetPasswordContent />
+    </Suspense>
+  );
+}
+
+function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? getDemoVerificationEmail();
