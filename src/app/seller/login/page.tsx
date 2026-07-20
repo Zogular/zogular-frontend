@@ -14,12 +14,13 @@ import {
   sanitizeInternalNextPath,
   storeAuthRedirectIntent,
 } from "@/services/auth-intent";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
-const SELLER_ONBOARDING_FALLBACK = "/seller";
+const SELLER_ONBOARDING_FALLBACK = "/seller/onboarding?start=1";
 
 export default function SellerLoginPage() {
   return (
-    <Suspense fallback={<SellerLoginFallback />}>
+    <Suspense fallback={<AuthLoadingSkeleton />}>
       <SellerLoginContent />
     </Suspense>
   );
@@ -195,13 +196,4 @@ function SellerLoginContent() {
   );
 }
 
-function SellerLoginFallback() {
-  return (
-    <main data-centered-auth className="auth-viewport flex items-center justify-center bg-[#101010] px-6 text-white">
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading seller sign in...
-      </div>
-    </main>
-  );
-}
+

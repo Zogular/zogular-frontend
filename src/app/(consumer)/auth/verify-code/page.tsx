@@ -2,13 +2,22 @@
 
 import Link from "next/link";
 import { ArrowLeft, X, Loader2 } from "lucide-react";
-import { useState, useRef } from "react";
+import { useState, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getDemoVerificationEmail, verifyResetCode } from "@/services/auth";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
 export default function VerifyCodePage() {
+  return (
+    <Suspense fallback={<AuthLoadingSkeleton />}>
+      <VerifyCodeContent />
+    </Suspense>
+  );
+}
+
+function VerifyCodeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? getDemoVerificationEmail();

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { Eye, EyeOff, ArrowLeft, X, Loader2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -13,8 +13,17 @@ import {
   sanitizeInternalNextPath,
   storeAuthRedirectIntent,
 } from "@/services/auth-intent";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
 export default function RegisterPage() {
+  return (
+    <Suspense fallback={<AuthLoadingSkeleton />}>
+      <RegisterContent />
+    </Suspense>
+  );
+}
+
+function RegisterContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = sanitizeInternalNextPath(searchParams.get("next"));

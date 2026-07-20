@@ -10,10 +10,11 @@ import { getDemoVerificationEmail, resendVerificationEmail } from "@/services/au
 import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
 
 const SELLER_ONBOARDING_FALLBACK = "/seller/onboarding?start=1";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
 export default function SellerCheckEmailPage() {
   return (
-    <Suspense fallback={<SellerCheckEmailFallback />}>
+    <Suspense fallback={<AuthLoadingSkeleton />}>
       <SellerCheckEmailContent />
     </Suspense>
   );
@@ -137,13 +138,4 @@ function SellerCheckEmailContent() {
   );
 }
 
-function SellerCheckEmailFallback() {
-  return (
-    <main data-centered-auth className="auth-viewport flex items-center justify-center bg-[#101010] px-6 text-white">
-      <div className="flex items-center gap-3 rounded-2xl border border-white/10 bg-white/5 px-4 py-3 text-sm font-bold">
-        <Loader2 className="h-4 w-4 animate-spin" />
-        Loading email check...
-      </div>
-    </main>
-  );
-}
+
