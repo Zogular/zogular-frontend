@@ -25,6 +25,10 @@ export function normalizeProduct(input: ProductInput): Product {
     rating: input.rating ?? 0,
     reviews: input.reviews ?? 0,
     image: input.image,
+    stock: input.stock,
+    moderationStatus: input.moderationStatus,
+    sellerVisibility: input.sellerVisibility,
+    storeName: input.storeName,
   };
 }
 

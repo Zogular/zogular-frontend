@@ -107,8 +107,8 @@ export function SellerProductGallery({ product }: { product: SellerProductListin
 
   return (
     <section className="min-w-0 overflow-hidden border-y border-white/70 bg-white/80 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:rounded-3xl md:border-x">
-      <div className="relative aspect-square bg-zinc-100 md:aspect-16/10">
-        {primary ? <Image src={primary.url} alt={product.title} fill sizes="(max-width: 768px) 100vw, 760px" unoptimized className="object-cover" /> : null}
+      <div className="relative aspect-[3/4] max-h-[600px] w-full bg-zinc-100">
+        {primary ? <Image src={primary.url} alt={product.title} fill sizes="(max-width: 768px) 100vw, 760px" unoptimized className="object-contain" /> : null}
       </div>
       {product.images.length > 1 ? (
         <div className="flex gap-2 overflow-x-auto p-3">
