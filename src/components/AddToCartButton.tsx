@@ -13,6 +13,7 @@ type AddToCartButtonProps = {
   iconOnly?: boolean;
   className?: string;
   size?: "default" | "sm" | "icon";
+  disabled?: boolean;
 };
 
 export function AddToCartButton({
@@ -22,6 +23,7 @@ export function AddToCartButton({
   iconOnly = false,
   className,
   size = "default",
+  disabled = false,
 }: AddToCartButtonProps) {
   const { addItem } = useCart();
 
@@ -30,6 +32,7 @@ export function AddToCartButton({
       type="button"
       size={size}
       className={className}
+      disabled={disabled}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();

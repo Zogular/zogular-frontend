@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { Star } from "lucide-react";
 import { AddToCartButton } from "@/components/AddToCartButton";
 import { Badge } from "@/components/ui/badge";
@@ -29,16 +30,42 @@ export function ProductCard({ product }: { product: Product }) {
   const displayOldPrice = getProductOldPrice(product);
   const displayBadge = product.badge ?? (product.isNew ? "New" : null);
   const productHref = `/product/${product.slug}`;
+  const isOutOfStock = product.stock !== undefined && product.stock <= 0;
+  const isPending = product.moderationStatus === "pending";
+  const isRejected = product.moderationStatus === "rejected";
+  const isHidden = product.sellerVisibility === "hidden";
 
   return (
     <div className="group relative flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_2px_15px_rgba(0,0,0,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
       <div className="p-2 pb-0">
-        <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-2xl bg-zinc-50">
-          {displayBadge ? (
-            <Badge className={`absolute left-2 top-2 z-10 border-none px-2.5 py-0.5 text-[10px] font-bold shadow-sm ${getBadgeColor(displayBadge)}`}>
-              {displayBadge}
-            </Badge>
-          ) : null}
+        <div className={`relative flex aspect-[3/4] w-full items-center justify-center overflow-hidden rounded-2xl bg-zinc-50 ${isHidden ? "opacity-50" : ""}`}>
+          <div className="absolute left-2 top-2 z-10 flex flex-col gap-1">
+            {displayBadge && !isOutOfStock ? (
+              <Badge className={`border-none px-2.5 py-0.5 text-[10px] font-bold shadow-sm ${getBadgeColor(displayBadge)}`}>
+                {displayBadge}
+              </Badge>
+            ) : null}
+            {isOutOfStock ? (
+              <Badge className="border-none bg-red-600 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                Out of Stock
+              </Badge>
+            ) : null}
+            {isPending ? (
+              <Badge className="border-none bg-amber-500 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                Pending
+              </Badge>
+            ) : null}
+            {isRejected ? (
+              <Badge className="border-none bg-red-800 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                Rejected
+              </Badge>
+            ) : null}
+            {isHidden ? (
+              <Badge className="border-none bg-zinc-700 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
+                Hidden
+              </Badge>
+            ) : null}
+          </div>
 
           <WishlistButton
             product={product}
@@ -47,20 +74,36 @@ export function ProductCard({ product }: { product: Product }) {
           />
 
           <Link href={productHref} className="absolute inset-2 block">
-            {product.image === "/file.svg" ? (
+            {product.image === "/file.svg" || !product.image ? (
               <ProductImageUnavailable className="rounded-xl" />
             ) : (
-              <div className="h-full w-full bg-cover bg-center bg-no-repeat transition-transform duration-500 group-hover:scale-105" style={{ backgroundImage: `url('${product.image}')` }} />
+              <Image
+                src={product.image}
+                alt={displayTitle}
+                fill
+                sizes="(max-width: 768px) 50vw, 33vw"
+                unoptimized
+                className="object-contain p-2 transition-transform duration-500 group-hover:scale-105"
+              />
             )}
           </Link>
         </div>
       </div>
 
       <div className="flex flex-1 flex-col p-4 pt-3">
-        {displayCategory ? (
-          <span className="mb-1 text-[9px] font-bold uppercase tracking-wider text-[#009E49] md:text-[10px]">
-            {displayCategory}
-          </span>
+        {displayCategory || product.storeName ? (
+          <div className="mb-1 flex items-center justify-between">
+            {displayCategory && (
+              <span className="text-[9px] font-bold uppercase tracking-wider text-[#009E49] md:text-[10px]">
+                {displayCategory}
+              </span>
+            )}
+            {product.storeName && (
+              <span className="text-[9px] font-medium text-zinc-500 md:text-[10px] truncate max-w-[50%]">
+                {product.storeName}
+              </span>
+            )}
+          </div>
         ) : null}
 
         <Link
@@ -92,7 +135,8 @@ export function ProductCard({ product }: { product: Product }) {
             product={product}
             iconOnly
             size="icon"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-900 transition-colors hover:bg-[#009E49] hover:text-white md:h-9 md:w-9"
+            disabled={isOutOfStock || isPending || isRejected}
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-900 transition-colors hover:bg-[#009E49] hover:text-white md:h-9 md:w-9 disabled:opacity-50 disabled:hover:bg-zinc-100 disabled:hover:text-zinc-900"
           />
         </div>
       </div>
