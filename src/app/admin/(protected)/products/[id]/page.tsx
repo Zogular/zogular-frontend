@@ -92,7 +92,22 @@ export default function AdminProductModerationPage() {
     }
   }
 
-  if (loading) return <div className="rounded-3xl border border-white/70 bg-white/80 p-6 text-sm font-bold text-zinc-500">Loading product...</div>;
+  if (loading) {
+    return (
+      <div className="space-y-6">
+        <div className="h-12 w-64 animate-pulse rounded-2xl bg-zinc-200/60" />
+        <div className="flex gap-6">
+          <div className="min-w-0 flex-1 space-y-6">
+            <div className="aspect-[4/3] w-full animate-pulse rounded-3xl bg-zinc-200/60" />
+            <div className="h-40 w-full animate-pulse rounded-3xl bg-zinc-200/60" />
+          </div>
+          <div className="w-80 space-y-6">
+            <div className="h-64 w-full animate-pulse rounded-3xl bg-zinc-200/60" />
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!product) {
     return (

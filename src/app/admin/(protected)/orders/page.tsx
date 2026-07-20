@@ -201,8 +201,10 @@ export default function AdminOrdersPage() {
 
       <div className="grid gap-3 lg:hidden">
         {loading ? (
-          <div className="rounded-3xl border border-white/70 bg-white/80 px-5 py-12 text-center text-sm font-bold text-zinc-500 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
-            Loading launch order queue...
+          <div className="space-y-3">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <div key={i} className="h-32 animate-pulse rounded-3xl bg-white/60 shadow-sm" />
+            ))}
           </div>
         ) : requestError ? (
           <div className="rounded-3xl border border-white/70 bg-white/80 p-5 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
@@ -299,14 +301,16 @@ export default function AdminOrdersPage() {
                 <th className="rounded-tr-3xl px-5 py-4 text-right font-black">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {loading ? (
-                <tr>
-                  <td colSpan={6} className="px-5 py-12 text-center text-sm font-bold text-zinc-500">
-                    Loading launch order queue...
-                  </td>
-                </tr>
-              ) : requestError ? (
+              <tbody className="divide-y divide-zinc-100">
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={`loading-${i}`}>
+                      <td colSpan={6} className="px-5 py-4">
+                        <div className="h-12 w-full animate-pulse rounded-xl bg-zinc-200/50" />
+                      </td>
+                    </tr>
+                  ))
+                ) : requestError ? (
                 <tr>
                   <td colSpan={6} className="px-5 py-12">
                     <div className="flex flex-col items-center gap-4 text-center">
