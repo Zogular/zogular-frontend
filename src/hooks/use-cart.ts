@@ -24,6 +24,7 @@ interface CartStore {
   hasHydrated: boolean;
   syncStatus: CartSyncStatus;
   syncError: string | null;
+  pendingDeletions: string[];
   setHasHydrated: (value: boolean) => void;
   addItem: (item: CartItem) => void;
   removeItem: (identity: CartItemIdentity) => void;
@@ -93,9 +94,28 @@ async function pullBackendCartIntoStore(
   get: () => CartStore,
 ): Promise<void> {
   const backendItems = await getBackendCart();
-  const nextItems = reconcileBackendItems(backendItems, get().items);
+  const currentPendingDeletions = get().pendingDeletions || [];
+  const actuallyDeleteNow: string[] = [];
+
+  const filteredBackendItems = backendItems.filter(item => {
+    if (currentPendingDeletions.includes(String(item.id))) {
+      if (item.serverCartItemId) actuallyDeleteNow.push(item.serverCartItemId);
+      return false;
+    }
+    return true;
+  });
+
+  actuallyDeleteNow.forEach(serverId => {
+    removeBackendCartItem(serverId).catch(console.error);
+  });
+
+  const nextItems = reconcileBackendItems(filteredBackendItems, get().items);
+  const backendProductIds = new Set(backendItems.map(i => String(i.id)));
+  const nextPendingDeletions = currentPendingDeletions.filter(id => backendProductIds.has(id));
+
   set({
     ...buildCartState(nextItems),
+    pendingDeletions: nextPendingDeletions,
     syncStatus: "idle",
     syncError: null,
   });
@@ -133,6 +153,7 @@ export const useCart = create<CartStore>()(
       hasHydrated: false,
       syncStatus: "idle",
       syncError: null,
+      pendingDeletions: [],
 
       setHasHydrated: (value) => set({ hasHydrated: value }),
 
@@ -191,6 +212,9 @@ export const useCart = create<CartStore>()(
           runBackendMutation(set, get, () =>
             removeBackendCartItem(targetItem.serverCartItemId!),
           );
+        } else if (targetItem && canSyncCartItem(targetItem)) {
+          const nextDeletions = [...get().pendingDeletions, String(targetItem.id)];
+          set({ pendingDeletions: Array.from(new Set(nextDeletions)) });
         }
       },
 
@@ -241,6 +265,9 @@ export const useCart = create<CartStore>()(
             runBackendMutation(set, get, () =>
               removeBackendCartItem(targetItem.serverCartItemId!),
             );
+          } else if (canSyncCartItem(targetItem)) {
+            const nextDeletions = [...get().pendingDeletions, String(targetItem.id)];
+            set({ pendingDeletions: Array.from(new Set(nextDeletions)) });
           }
           return;
         }
@@ -274,6 +301,7 @@ export const useCart = create<CartStore>()(
 
         try {
           set({ syncStatus: "syncing", syncError: null });
+          await pullBackendCartIntoStore(set, get);
           await pushLocalCartToBackend(get().items);
           await pullBackendCartIntoStore(set, get);
         } catch (error) {
@@ -302,7 +330,7 @@ export const useCart = create<CartStore>()(
     }),
     {
       name: CART_STORAGE_KEY,
-      partialize: (state) => ({ items: state.items }),
+      partialize: (state) => ({ items: state.items, pendingDeletions: state.pendingDeletions }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
 
@@ -310,6 +338,7 @@ export const useCart = create<CartStore>()(
         state.items = restoredState.items;
         state.itemCount = restoredState.itemCount;
         state.totalAmount = restoredState.totalAmount;
+        state.pendingDeletions = state.pendingDeletions || [];
         state.setHasHydrated(true);
       },
     },
