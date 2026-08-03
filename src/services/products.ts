@@ -7,7 +7,7 @@ import type {
   ProductPaginationMeta,
   CategorySortOption,
 } from "@/types/category";
-import type { Product, ProductDetail } from "@/types/product";
+import type { Product, ProductDetail, ProductSeller } from "@/types/product";
 
 const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
   "phones-and-tablets":
@@ -101,50 +101,37 @@ type BackendProduct = {
   model?: string | null;
   ram?: string | null;
   storage?: string | null;
-  batteryHealth?: string | null;
   size?: string | null;
   color?: string | null;
-  material?: string | null;
-  compatibility?: string | null;
+  status?: string | null;
+  moderationStatus?: string | null;
+  sellerVisibility?: string | null;
   isSold?: boolean | null;
-  createdAt?: string | null;
-  views?: number | null;
   user?: BackendProductUser | null;
   reviews?: BackendReview[] | null;
   attributeValues?: BackendAttributeValue[] | null;
+  attributes?: BackendAttributeValue[] | null;
+  createdAt?: string | null;
+  updatedAt?: string | null;
 };
 
 type BackendProductListResponse = {
-  pagination?: {
-    total?: number;
-    page?: number;
-    limit?: number;
-    pages?: number;
-  };
+  status?: string;
   data?: {
     products?: BackendProduct[];
     product?: BackendProduct;
   };
+  pagination?: {
+    page?: number;
+    limit?: number;
+    total?: number;
+  };
 };
 
-function titleFromSlug(slug: string): string {
-  return decodeURIComponent(slug)
-    .replace(/-/g, " ")
-    .replace(/\b\w/g, (char) => char.toUpperCase());
-}
-
-function getFallbackCategoryMeta(slug: string): CategoryPageData["meta"] {
-  return {
-    title: titleFromSlug(slug),
-    description:
-      CATEGORY_DESCRIPTION_FALLBACKS[slug] ??
-      `Explore the best deals on ${titleFromSlug(slug).toLowerCase()} in Lusaka. Fast delivery, trusted sellers.`,
-    subcategories: [{ id: "all", slug: "all", name: "All" }],
-  };
-}
-
 function asString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+  if (typeof value === "string" && value.trim().length > 0) return value.trim();
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  return undefined;
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -156,185 +143,167 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function parseBackendImages(value: unknown): string[] {
-  let candidate = value;
-  if (typeof value === "string" && value.trim().startsWith("[")) {
-    try {
-      candidate = JSON.parse(value) as unknown;
-    } catch {
-      candidate = [];
-    }
+function parseBackendImages(images: unknown): string[] {
+  if (Array.isArray(images)) {
+    return images
+      .map((img) => (typeof img === "string" ? img.trim() : ""))
+      .filter((img) => img.length > 0);
   }
-  if (!Array.isArray(candidate)) return [];
-  return candidate
-    .map((item) => {
-      if (typeof item === "string") return asString(item);
-      if (item && typeof item === "object" && "url" in item) {
-        return asString((item as { url?: unknown }).url);
+
+  if (typeof images === "string" && images.trim().length > 0) {
+    const trimmed = images.trim();
+    if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
+      try {
+        const parsed = JSON.parse(trimmed);
+        if (Array.isArray(parsed)) {
+          return parsed
+            .map((img) => (typeof img === "string" ? img.trim() : ""))
+            .filter((img) => img.length > 0);
+        }
+      } catch {
+        // Fall back to raw string split if JSON parsing fails
       }
-      return undefined;
-    })
-    .filter((item): item is string => Boolean(item));
-}
-
-function getBackendCategoryMeta(category?: string | null) {
-  const key = asString(category)?.toUpperCase() ?? "OTHERS";
-  return FRONTEND_CATEGORY_BY_BACKEND[key] ?? FRONTEND_CATEGORY_BY_BACKEND.OTHERS;
-}
-
-function getProductCategoryMeta(product: BackendProduct) {
-  const categoryRefName = asString(product.categoryRef?.name);
-  const categoryRefSlug = asString(product.categoryRef?.slug);
-  if (categoryRefName && categoryRefSlug) {
-    return { name: categoryRefName, slug: categoryRefSlug };
+    }
+    return trimmed
+      .split(",")
+      .map((img) => img.trim())
+      .filter((img) => img.length > 0);
   }
 
-  const fallback = getBackendCategoryMeta(product.category);
-  return {
-    name: categoryRefName ?? fallback.name,
-    slug: categoryRefSlug ?? fallback.slug,
-  };
-}
-
-function getBackendPriceQuery(filter: CategoryFilterOption) {
-  if (filter === "under-500") return { maxPrice: 499 };
-  if (filter === "500-2000") return { minPrice: 500, maxPrice: 2000 };
-  if (filter === "over-2000") return { minPrice: 2001 };
-  return {};
-}
-
-function isRecentProduct(createdAt?: string | null): boolean {
-  if (!createdAt) return false;
-  const created = new Date(createdAt).getTime();
-  if (!Number.isFinite(created)) return false;
-  return Date.now() - created <= 14 * 24 * 60 * 60 * 1000;
-}
-
-function getAverageRating(reviews?: BackendReview[] | null): number {
-  if (!reviews?.length) return 0;
-  const total = reviews.reduce((sum, review) => sum + toNumber(review.rating), 0);
-  return Number((total / reviews.length).toFixed(1));
+  return [];
 }
 
 function normalizeToSlug(value: string): string {
   return value
     .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9\s-]/g, "")
     .trim()
-    .replace(/\s+/g, "-");
+    .replace(/[^a-z0-9\s-]/g, "")
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-");
 }
 
-function getDisplayPricing(product: BackendProduct) {
-  const regularPrice = toNumber(product.price);
-  const salePrice = toNumber(product.salePrice, Number.NaN);
-  const hasSalePrice = Number.isFinite(salePrice) && salePrice > 0 && salePrice < regularPrice;
+function getProductCategoryMeta(product: BackendProduct): { name: string; slug: string } {
+  if (product.categoryRef?.name && product.categoryRef?.slug) {
+    return { name: product.categoryRef.name, slug: product.categoryRef.slug };
+  }
 
-  return {
-    currentPrice: hasSalePrice ? salePrice : regularPrice,
-    originalPrice: hasSalePrice ? regularPrice : null,
-    discount: hasSalePrice ? Math.round(((regularPrice - salePrice) / regularPrice) * 100) : null,
-  };
+  if (product.categorySlug) {
+    const matchedFallback = Object.values(FRONTEND_CATEGORY_BY_BACKEND).find(
+      (cat) => cat.slug === product.categorySlug,
+    );
+    if (matchedFallback) return matchedFallback;
+
+    const formattedName = product.categorySlug
+      .split("-")
+      .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+      .join(" ");
+
+    return { name: formattedName, slug: product.categorySlug };
+  }
+
+  if (product.category && FRONTEND_CATEGORY_BY_BACKEND[product.category]) {
+    return FRONTEND_CATEGORY_BY_BACKEND[product.category];
+  }
+
+  return { name: "Other Finds", slug: "products" };
 }
 
-function normalizeAttributeValues(product: BackendProduct): ProductDetail["specs"] {
-  if (!Array.isArray(product.attributeValues)) return [];
+function calculateAverageRating(reviews?: BackendReview[] | null): number {
+  if (!reviews || reviews.length === 0) return 0;
+  const valid = reviews
+    .map((r) => r.rating)
+    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating));
+  if (valid.length === 0) return 0;
+  const sum = valid.reduce((acc, curr) => acc + curr, 0);
+  return Math.round((sum / valid.length) * 10) / 10;
+}
 
-  return product.attributeValues
-    .map((attribute) => {
-      const label = asString(attribute.name) ?? asString(attribute.attribute?.name);
-      const value = asString(attribute.value);
-      return label && value ? { label, value } : null;
-    })
-    .filter((spec): spec is ProductDetail["specs"][number] => Boolean(spec));
+function titleFromSlug(slug?: string | null): string {
+  if (!slug) return "Marketplace Item";
+  return slug
+    .split("-")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+}
+
+function normalizeAttributeValues(product: BackendProduct): Array<{ label: string; value: string }> {
+  const source = product.attributeValues ?? product.attributes;
+  if (!Array.isArray(source)) return [];
+
+  const specs: Array<{ label: string; value: string }> = [];
+
+  for (const item of source) {
+    const rawLabel = item.attribute?.name ?? item.name;
+    const rawValue = item.value ?? item.name;
+    const label = asString(rawLabel);
+    const value = asString(rawValue);
+
+    if (label && value) {
+      specs.push({ label, value });
+    }
+  }
+
+  return specs;
+}
+
+function parseModerationStatus(status?: string | null): "approved" | "pending" | "rejected" | undefined {
+  const str = asString(status);
+  if (str === "approved" || str === "pending" || str === "rejected") return str;
+  return undefined;
+}
+
+function parseSellerVisibility(visibility?: string | null): "visible" | "hidden" | undefined {
+  const str = asString(visibility);
+  if (str === "visible" || str === "hidden") return str;
+  return undefined;
 }
 
 function normalizeBackendProduct(product: BackendProduct): Product {
-  const title = asString(product.title) ?? titleFromSlug(asString(product.slug) ?? "product");
-  const slug = asString(product.slug) ?? normalizeToSlug(title);
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
-  const reviews = product.reviews?.length ?? 0;
-  const pricing = getDisplayPricing(product);
+  const mainImage = images[0] ?? PRODUCT_IMAGE_PLACEHOLDER;
+  const rawPrice = toNumber(product.price, 0);
+  const rawSalePrice = product.salePrice !== null && product.salePrice !== undefined
+    ? toNumber(product.salePrice, rawPrice)
+    : rawPrice;
+  const currentPrice = rawSalePrice > 0 && rawSalePrice < rawPrice ? rawSalePrice : rawPrice;
+  const originalPrice = rawSalePrice > 0 && rawSalePrice < rawPrice ? rawPrice : undefined;
+  const discount = originalPrice && originalPrice > currentPrice
+    ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
+    : undefined;
+
+  const sellerName = [product.user?.firstName, product.user?.lastName]
+    .map((part) => asString(part))
+    .filter(Boolean)
+    .join(" ");
+
+  const rawReviews = product.reviews ?? [];
+  const reviewCount = rawReviews.length;
+  const rating = calculateAverageRating(rawReviews);
+  const idStr = String(product.id ?? "item");
+  const slugStr = asString(product.slug) ?? normalizeToSlug(asString(product.title) ?? `item-${idStr}`);
 
   return normalizeProduct({
-    id: asString(product.id) ?? slug,
-    slug,
-    title,
-    name: title,
+    id: idStr,
+    name: asString(product.title) ?? titleFromSlug(slugStr),
+    price: currentPrice,
+    originalPrice,
+    discount,
+    rating,
+    reviews: reviewCount,
+    image: mainImage,
+    images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
     categoryName: category.name,
-    subcategoryName: asString(product.subcategorySlug)
-      ? titleFromSlug(asString(product.subcategorySlug)!)
-      : undefined,
-    price: pricing.currentPrice,
-    originalPrice: pricing.originalPrice,
-    discount: pricing.discount,
-    badge: pricing.discount ? `${pricing.discount}% OFF` : isRecentProduct(product.createdAt) ? "New" : null,
-    isNew: isRecentProduct(product.createdAt),
-    rating: getAverageRating(product.reviews),
-    reviews,
-    image: images[0] ?? PRODUCT_IMAGE_PLACEHOLDER,
+    categorySlug: category.slug,
+    subcategorySlug: asString(product.subcategorySlug),
+    slug: slugStr,
+    badge: discount && discount > 0 ? `${discount}% OFF` : undefined,
+    isNew: false,
+    storeName: sellerName || undefined,
+    stock: product.isSold ? 0 : toNumber(product.stock, 0),
+    moderationStatus: parseModerationStatus(product.moderationStatus),
+    sellerVisibility: parseSellerVisibility(product.sellerVisibility),
   });
-}
-
-function getBackendProducts(payload: BackendProductListResponse): BackendProduct[] {
-  return Array.isArray(payload.data?.products) ? payload.data.products : [];
-}
-
-function toPaginationMeta(
-  payload: BackendProductListResponse,
-  fallbackPage: number,
-  fallbackPageSize: number,
-  productCount: number,
-): ProductPaginationMeta {
-  const total = payload.pagination?.total ?? productCount;
-  const page = payload.pagination?.page ?? fallbackPage;
-  const pageSize = payload.pagination?.limit ?? fallbackPageSize;
-  const totalPages = payload.pagination?.pages ?? Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
-  const startItem = total ? (page - 1) * pageSize + 1 : 0;
-  const endItem = total ? Math.min(startItem + productCount - 1, total) : 0;
-
-  return {
-    page,
-    pageSize,
-    total,
-    totalPages,
-    startItem,
-    endItem,
-  };
-}
-
-async function fetchBackendProducts(
-  query: Record<string, string | number | boolean | null | undefined>,
-): Promise<{ products: Product[]; pagination: ProductPaginationMeta }> {
-  const payload = await apiClient<BackendProductListResponse>("/products", {
-    method: "GET",
-    authMode: "omit",
-    cache: "no-store",
-    query,
-  });
-  const backendProducts = getBackendProducts(payload);
-  const products = backendProducts.map(normalizeBackendProduct);
-  const page = toNumber(query.page, 1);
-  const pageSize = toNumber(query.limit, products.length || 20);
-
-  return {
-    products,
-    pagination: toPaginationMeta(payload, page, pageSize, products.length),
-  };
-}
-
-async function fetchBackendProductCollection(
-  endpoint: string,
-  query: Record<string, string | number | boolean | null | undefined>,
-): Promise<Product[]> {
-  const payload = await apiClient<BackendProductListResponse>(endpoint, {
-    method: "GET",
-    authMode: "omit",
-    cache: "no-store",
-    query,
-  });
-  return getBackendProducts(payload).map(normalizeBackendProduct);
 }
 
 function buildBackendProductSpecs(product: BackendProduct): ProductDetail["specs"] {
@@ -342,30 +311,24 @@ function buildBackendProductSpecs(product: BackendProduct): ProductDetail["specs
   const existingLabels = new Set(attributeSpecs.map((spec) => spec.label.trim().toLowerCase()));
   const legacySpecs = [
     { label: "Category", value: getProductCategoryMeta(product).name },
-    { label: "Condition", value: asString(product.condition) ?? "Seller provided" },
-    { label: "Location", value: asString(product.location) ?? "Confirmed at checkout" },
-    { label: "Brand", value: asString(product.brand) ?? "Not specified" },
-    { label: "Model", value: asString(product.model) ?? "Not specified" },
-    { label: "RAM", value: asString(product.ram) ?? "Not specified" },
-    { label: "Storage", value: asString(product.storage) ?? "Not specified" },
-    { label: "Size", value: asString(product.size) ?? "Not specified" },
-    { label: "Color", value: asString(product.color) ?? "Not specified" },
-  ].filter((spec) => spec.value !== "Not specified" && !existingLabels.has(spec.label.toLowerCase()));
+    { label: "Condition", value: asString(product.condition) },
+    { label: "Location", value: asString(product.location) },
+    { label: "Brand", value: asString(product.brand) },
+    { label: "Model", value: asString(product.model) },
+    { label: "RAM", value: asString(product.ram) },
+    { label: "Storage", value: asString(product.storage) },
+    { label: "Size", value: asString(product.size) },
+    { label: "Color", value: asString(product.color) },
+  ].filter((spec): spec is { label: string; value: string } => Boolean(spec.value) && !existingLabels.has(spec.label.toLowerCase()));
 
   return [...attributeSpecs, ...legacySpecs];
 }
 
-function buildBackendProductVariants(product: BackendProduct): ProductDetail["variants"] {
-  const variants = [
-    asString(product.color)
-      ? { id: "color", label: "Color", value: asString(product.color)!, swatchClass: "bg-white border-[#FF6B00]" }
-      : null,
-    asString(product.size)
-      ? { id: "size", label: "Size", value: asString(product.size)!, swatchClass: "bg-zinc-100 border-[#FF6B00]" }
-      : null,
-  ].filter((variant): variant is ProductDetail["variants"][number] => Boolean(variant));
-
-  return variants;
+function buildBackendProductVariants(): ProductDetail["variants"] {
+  // Variant Rule: Backend schema currently uses scalar fields for color/size.
+  // Do not synthesize fake variants from scalar fields.
+  // Return empty array until authoritative backend variant model exists.
+  return [];
 }
 
 function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
@@ -373,51 +336,60 @@ function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
   const title = summary.title ?? summary.name ?? titleFromSlug(summary.slug);
+  const brand = asString(product.brand);
+  const sku = asString(product.sku);
+
   const sellerName = [product.user?.firstName, product.user?.lastName]
     .map((part) => asString(part))
     .filter(Boolean)
     .join(" ");
-  const brand = asString(product.brand) ?? "Zogular";
+
+  const seller: ProductSeller | undefined = sellerName
+    ? {
+        name: sellerName,
+      }
+    : undefined;
 
   return {
     id: summary.id,
-    slug: summary.slug,
     title,
     brand,
-    category: { name: category.name, href: `/category/${category.slug}` },
-    subcategory: {
-      name: asString(product.subcategorySlug)
-        ? titleFromSlug(asString(product.subcategorySlug)!)
-        : category.name,
-      href: asString(product.subcategorySlug)
-        ? `/category/${category.slug}?subcategory=${asString(product.subcategorySlug)!}`
-        : `/category/${category.slug}`,
+    slug: summary.slug,
+    category: {
+      name: category.name,
+      href: `/category/${category.slug}`,
     },
-    sku: asString(product.sku) ?? `ZM-${String(summary.id).replace(/[^a-zA-Z0-9]/g, "").slice(-8).toUpperCase() || "ITEM"}`,
+    subcategory: product.subcategorySlug
+      ? {
+          name: titleFromSlug(product.subcategorySlug),
+          href: `/category/${category.slug}?subcategory=${asString(product.subcategorySlug)!}`,
+        }
+      : {
+          name: category.name,
+          href: `/category/${category.slug}`,
+        },
+    sku,
     price: summary.price,
     originalPrice: summary.originalPrice ?? summary.price,
     rating: summary.rating,
     reviewCount: summary.reviews,
     badge: summary.badge ?? null,
-    seller: {
-      name: sellerName || "Zogular Seller",
-      href: `/store/${normalizeToSlug(sellerName || "zogular-seller")}`,
-      avatar: "https://github.com/shadcn.png",
-      verified: false,
-      positiveRate: "Platform seller",
-      followers: asString(product.location) ?? "Zambia",
-    },
+    seller,
+    condition: asString(product.condition),
     stock: product.isSold ? 0 : toNumber(product.stock, 0),
-    shippingText: "Delivery options and exact availability are confirmed at checkout.",
     images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
-    variants: buildBackendProductVariants(product),
-    description: asString(product.description) ?? `${title} is available from a Zogular platform seller.`,
+    variants: buildBackendProductVariants(),
+    description: asString(product.description) ?? "No description provided.",
     specs: buildBackendProductSpecs(product),
-    boxItems: [title, "Seller provided packaging", "Zogular order receipt"],
+    boxItems: [],
   };
 }
 
+
+
 async function fetchBackendProductDetailBySlug(slug: string): Promise<ProductDetail | null> {
+
+
   try {
     const payload = await apiClient<BackendProductListResponse>(`/products/${encodeURIComponent(slug)}`, {
       method: "GET",
@@ -432,6 +404,68 @@ async function fetchBackendProductDetailBySlug(slug: string): Promise<ProductDet
   }
 }
 
+function extractBackendProducts(payload?: BackendProductListResponse | null): BackendProduct[] {
+  if (!payload?.data) return [];
+  if (Array.isArray(payload.data.products)) return payload.data.products;
+  if (payload.data.product) return [payload.data.product];
+  return [];
+}
+
+type FetchBackendProductsParams = {
+  page?: number;
+  limit?: number;
+  sort?: string;
+  categorySlug?: string;
+  subcategorySlug?: string;
+  search?: string;
+  minPrice?: number;
+  maxPrice?: number;
+};
+
+async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Promise<{
+  products: Product[];
+  pagination: ProductPaginationMeta;
+}> {
+
+  const payload = await apiClient<BackendProductListResponse>("/products", {
+    method: "GET",
+    authMode: "omit",
+    cache: "no-store",
+    query: {
+      page: params.page ?? 1,
+      limit: params.limit ?? 24,
+      sort: params.sort,
+      categorySlug: params.categorySlug,
+      subcategorySlug: params.subcategorySlug,
+      search: params.search,
+      minPrice: params.minPrice,
+      maxPrice: params.maxPrice,
+    },
+  });
+
+  const rawProducts = extractBackendProducts(payload);
+  const products = rawProducts.map(normalizeBackendProduct);
+  const paginationRaw = payload.data?.products ? payload.pagination : undefined;
+  const page = paginationRaw?.page ?? params.page ?? 1;
+  const limit = paginationRaw?.limit ?? params.limit ?? 24;
+  const total = paginationRaw?.total ?? products.length;
+  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
+  const endItem = Math.min(page * limit, total);
+
+  return {
+    products,
+    pagination: {
+      page,
+      pageSize: limit,
+      total,
+      totalPages,
+      startItem,
+      endItem,
+    },
+  };
+}
+
 async function fetchBackendRelatedProducts(
   productId: string | number,
   limit: number,
@@ -443,24 +477,67 @@ async function fetchBackendRelatedProducts(
       cache: "no-store",
       query: { limit },
     });
-    const products = getBackendProducts(payload).map(normalizeBackendProduct);
+    const products = extractBackendProducts(payload).map(normalizeBackendProduct);
     return products.length ? products : null;
   } catch {
     return null;
   }
 }
 
-export async function getTrendingProducts(): Promise<Product[]> {
-  const backendProducts = await fetchBackendProductCollection("/products/featured", { limit: 10 });
-  return backendProducts;
+async function fetchBackendProductCollection(
+  endpoint: string,
+  query?: Record<string, string | number | boolean | null | undefined>,
+): Promise<Product[]> {
+  const payload = await apiClient<BackendProductListResponse>(endpoint, {
+    method: "GET",
+    authMode: "omit",
+    cache: "no-store",
+    query,
+  });
+  return extractBackendProducts(payload).map(normalizeBackendProduct);
 }
 
-export async function getFlashSaleProducts(): Promise<Product[]> {
-  const backendProducts = await fetchBackendProductCollection("/products", {
-    limit: 50,
-    sort: "newest",
-  });
-  return backendProducts.filter((product) => (product.discount ?? 0) > 0).slice(0, 8);
+export async function getTrendingProducts(options: { allowOptionalFallback?: boolean } = {}): Promise<Product[]> {
+  try {
+    const backendProducts = await fetchBackendProductCollection("/products/featured", { limit: 10 });
+    return backendProducts;
+  } catch (error) {
+    if (options.allowOptionalFallback) return [];
+    throw error;
+  }
+}
+
+export async function getFlashSaleProducts(options: { allowOptionalFallback?: boolean } = {}): Promise<Product[]> {
+  try {
+    const backendProducts = await fetchBackendProductCollection("/products", {
+      limit: 50,
+      sort: "newest",
+    });
+    return backendProducts.filter((product) => (product.discount ?? 0) > 0).slice(0, 8);
+  } catch (error) {
+    if (options.allowOptionalFallback) return [];
+    throw error;
+  }
+}
+
+function getBackendPriceQuery(filter: CategoryFilterOption) {
+  if (filter === "under-500") return { maxPrice: 500 };
+  if (filter === "500-2000") return { minPrice: 500, maxPrice: 2000 };
+  if (filter === "over-2000") return { minPrice: 2000 };
+  return {};
+}
+
+function getFallbackCategoryMeta(slug: string) {
+  const formattedName = slug
+    .split("-")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+  return {
+    title: formattedName,
+    description: CATEGORY_DESCRIPTION_FALLBACKS[slug] ?? `Browse ${formattedName} on Zogular.`,
+    subcategories: [],
+  };
 }
 
 export async function getCategoryPageData(
@@ -507,14 +584,13 @@ export async function getProductDetailBySlug(slug: string): Promise<ProductDetai
   return backendProductDetail;
 }
 
-export async function getSellerProducts(options: { excludeSlug?: string } = {}): Promise<Product[]> {
-  const backendData = await fetchBackendProducts({
-    page: 1,
-    limit: 8,
-    sort: "newest",
-  });
-  return backendData.products.filter((product) => product.slug !== options.excludeSlug);
+export async function getSellerProducts(_options?: { excludeSlug?: string }): Promise<Product[]> {
+  // Seller product filtering is not currently supported in backend schema API contract.
+  // Return empty array to prevent displaying general marketplace products under a false seller label.
+  void _options;
+  return [];
 }
+
 export async function getRelatedProducts(
   options: { excludeSlug?: string; categoryName?: string } = {},
 ): Promise<Product[]> {
@@ -529,37 +605,22 @@ export async function getRelatedProducts(
   return [];
 }
 
+export async function searchProducts(query: string, limit = 50): Promise<Product[]> {
+  const backendData = await fetchBackendProducts({ search: query, limit });
+  return backendData.products;
+}
+
 export async function getSearchableProducts(): Promise<Product[]> {
-  const backendData = await fetchBackendProducts({
-    page: 1,
-    limit: 100,
-    sort: "newest",
-  });
-  return backendData?.products ?? [];
+  const backendData = await fetchBackendProducts({ limit: 100 });
+  return backendData.products;
 }
 
-export async function searchProducts(query: string, limit = 24): Promise<Product[]> {
-  const trimmedQuery = query.trim();
-  if (!trimmedQuery) return [];
-
-  const backendData = await fetchBackendProducts({
-    page: 1,
-    limit,
-    sort: "newest",
-    search: trimmedQuery,
-  });
-
-  return backendData?.products ?? [];
-}
-
-export async function getAllProductsPageData(
-  options: {
-    filter?: CategoryFilterOption;
-    sort?: CategorySortOption;
-    page?: number;
-    pageSize?: number;
-  } = {},
-): Promise<{ products: Product[]; pagination: ProductPaginationMeta }> {
+export async function getAllProductsPageData(options: {
+  filter?: CategoryFilterOption;
+  sort?: CategorySortOption;
+  page?: number;
+  pageSize?: number;
+} = {}): Promise<CategoryPageData> {
   const activeFilter = options.filter ?? "all";
   const activeSort = options.sort ?? "recommended";
   const activePage = options.page ?? 1;
@@ -567,23 +628,20 @@ export async function getAllProductsPageData(
   const backendPriceQuery = getBackendPriceQuery(activeFilter);
 
   const backendData = await fetchBackendProducts({
+    sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
     page: activePage,
     limit: activePageSize,
-    sort: BACKEND_SORT_BY_CATEGORY_SORT[activeSort],
     ...backendPriceQuery,
   });
 
-  if (backendData) return backendData;
-
   return {
-    products: [],
-    pagination: {
-      page: 1,
-      pageSize: activePageSize,
-      total: 0,
-      totalPages: 1,
-      startItem: 0,
-      endItem: 0,
+    slug: "products",
+    meta: {
+      title: "All Products",
+      description: "Browse all items available on Zogular.",
+      subcategories: [],
     },
+    products: backendData.products,
+    pagination: backendData.pagination,
   };
 }
