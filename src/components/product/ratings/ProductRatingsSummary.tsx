@@ -1,13 +1,27 @@
 import * as React from "react";
 import { Star } from "lucide-react";
-import { Progress } from "@/components/ui/progress";
 import type { ProductDetail } from "@/types/product";
 
 export function ProductRatingsSummary({ productData }: { productData: ProductDetail }) {
-  const ratingBreakdownRows = [5, 4, 3, 2, 1].map((stars) => ({ stars, pct: 0, count: 0 }));
+  if (productData.reviewCount === 0) {
+    return (
+      <section
+        id="product-reviews"
+        className="scroll-mt-28 rounded-2xl border border-zinc-100 bg-white p-5 shadow-sm md:p-6 lg:border-zinc-200 lg:p-4 lg:shadow-none"
+      >
+        <h2 className="text-lg font-bold text-zinc-900">Ratings &amp; Reviews</h2>
+        <div className="mt-4 rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 px-5 py-6 text-center lg:px-4 lg:py-5">
+          <p className="text-base font-semibold text-zinc-900">No verified reviews yet</p>
+          <p className="mt-1 text-sm text-zinc-500">
+            Be the first verified buyer to review this product.
+          </p>
+        </div>
+      </section>
+    );
+  }
 
   return (
-    <section className="rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm md:p-8">
+    <section id="product-reviews" className="scroll-mt-28 rounded-3xl border border-zinc-100 bg-white p-6 shadow-sm md:p-8 lg:rounded-2xl lg:border-zinc-200 lg:p-5 lg:shadow-none">
       <h2 className="mb-6 text-xl font-bold text-zinc-900">Ratings & Reviews</h2>
       <div className="grid grid-cols-1 items-center gap-8 md:grid-cols-[1fr_2fr]">
         <div className="flex flex-col items-center justify-center space-y-2 text-center">
@@ -23,25 +37,12 @@ export function ProductRatingsSummary({ productData }: { productData: ProductDet
               />
             ))}
           </div>
-          <span className="mt-2 text-sm text-zinc-500">({productData.reviewCount} Verified Ratings)</span>
+          <span className="mt-2 text-sm text-zinc-500">{productData.reviewCount} customer reviews</span>
         </div>
         <div className="space-y-3">
-          {productData.reviewCount > 0 ? (
-            <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-4 text-sm font-medium text-zinc-500">
-              Detailed rating breakdown is not available yet.
-            </div>
-          ) : (
-            ratingBreakdownRows.map((row) => (
-              <div key={row.stars} className="flex items-center gap-4">
-                <div className="flex w-12 shrink-0 items-center justify-end gap-1">
-                  <span className="text-sm font-bold text-zinc-700">{row.stars}</span>
-                  <Star className="h-3 w-3 fill-zinc-400 text-zinc-400" />
-                </div>
-                <Progress value={row.pct} className="h-2.5 flex-1 bg-zinc-100 [&>div]:bg-[#009E49]" />
-                <span className="w-8 text-xs font-medium text-zinc-500">{row.count}</span>
-              </div>
-            ))
-          )}
+          <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-4 text-sm font-medium text-zinc-500">
+            Detailed rating breakdown is not available yet.
+          </div>
         </div>
       </div>
     </section>

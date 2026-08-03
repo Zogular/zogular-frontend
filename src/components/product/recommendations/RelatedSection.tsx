@@ -14,9 +14,11 @@ export function RelatedSection({
   linkLabel?: string;
   products: Product[];
 }) {
+  if (!products || products.length === 0) return null;
+
   return (
     <section>
-      <div className="mb-6 flex items-center justify-between">
+      <div className="mb-6 flex items-center justify-between lg:mb-4">
         <h2 className="text-xl font-bold text-zinc-900">{title}</h2>
         {href && linkLabel ? (
           <Link href={href} className="text-sm font-bold text-[#009E49] hover:underline">

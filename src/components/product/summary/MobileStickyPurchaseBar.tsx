@@ -1,9 +1,7 @@
 import * as React from "react";
-import Link from "next/link";
-import { Store } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { AddToCartButton } from "@/components/AddToCartButton";
 import { QuantitySelector } from "./QuantitySelector";
+import { formatCurrency } from "./ProductPurchaseSummary";
 import type { Product, ProductDetail } from "@/types/product";
 
 export function MobileStickyPurchaseBar({
@@ -21,21 +19,41 @@ export function MobileStickyPurchaseBar({
   decrementQuantity: () => void;
   wishlistProduct: Product;
 }) {
+  const isUnavailable = productData.stock <= 0;
+
   return (
-    <div className="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-200/50 bg-white/85 p-4 shadow-[0_-15px_40px_rgba(0,0,0,0.08)] backdrop-blur-2xl md:hidden">
-      <div className="flex items-center gap-3">
-        <Link href={productData.seller.href}>
-          <Button variant="outline" title="Visit store" aria-label="Visit store" className="h-12 w-12 shrink-0 rounded-2xl border-zinc-300 bg-white/50 shadow-sm backdrop-blur-md">
-            <Store className="h-5 w-5 text-zinc-600" />
-          </Button>
-        </Link>
-        <div className="flex min-w-0 flex-1 items-center gap-3">
-          <QuantitySelector value={quantity} onDecrease={decrementQuantity} onIncrease={incrementQuantity} />
+    <div
+      data-testid="mobile-sticky-purchase-bar"
+      className="fixed bottom-0 left-0 z-50 w-full border-t border-zinc-200/60 bg-white/90 px-3 pt-2 shadow-[0_-8px_24px_rgba(0,0,0,0.07)] backdrop-blur-2xl md:hidden"
+      style={{ paddingBottom: "calc(0.5rem + env(safe-area-inset-bottom))" }}
+    >
+      <div className="flex items-center justify-between gap-2 sm:gap-3">
+        <div className="flex max-w-[72px] shrink-0 flex-col sm:max-w-none">
+          <span className="truncate text-[15px] font-extrabold leading-tight tracking-tight text-[#009E49] sm:text-base">
+            {formatCurrency(productData.price)}
+          </span>
+          {productData.originalPrice > productData.price && (
+            <span className="text-[10px] font-medium text-zinc-400 line-through">
+              {formatCurrency(productData.originalPrice)}
+            </span>
+          )}
+        </div>
+        <div className="flex flex-1 items-center justify-end gap-1.5 sm:gap-2 min-w-0">
+          <div className="h-10 w-[78px] shrink-0 sm:w-[88px]">
+            <QuantitySelector
+              value={quantity}
+              max={productData.stock}
+              disabled={isUnavailable}
+              onDecrease={decrementQuantity}
+              onIncrease={incrementQuantity}
+            />
+          </div>
           <AddToCartButton
             product={wishlistProduct}
             quantity={quantity}
             variant={selectedVariant?.value}
-            className="h-12 flex-1 rounded-2xl bg-[#FF6B00] text-base font-bold text-white shadow-xl shadow-[#FF6B00]/30 transition-all hover:bg-[#e66000] active:scale-95"
+            disabled={isUnavailable}
+            className="h-10 min-w-[84px] flex-1 rounded-lg bg-[#FF6B00] px-2 text-sm font-bold text-white shadow-[0_4px_12px_rgba(255,107,0,0.2)] transition-all hover:bg-[#e66000] active:scale-95 sm:min-w-[112px]"
           />
         </div>
       </div>

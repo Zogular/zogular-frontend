@@ -872,6 +872,7 @@ function MobileDrawer({
 export default function Navbar() {
   const pathname = usePathname();
   const isScrolled = useScrolled();
+  const isMobileSearchPastHideThreshold = useScrolled(144, 32);
   const { isLoggedIn, user, signOut, toggleDevAuth } = useAuthState();
   const { itemCount = 0, totalAmount = 0, hasHydrated = false } = useCart();
 
@@ -894,7 +895,7 @@ export default function Navbar() {
   const [mobileCategoryView, setMobileCategoryView] = useState<"root" | "category">("root");
   const collapseMobileSearch =
     pathname !== "/" &&
-    isScrolled &&
+    isMobileSearchPastHideThreshold &&
     !mobileSearchFocused &&
     !isMobileMenuOpen &&
     !mobileAccountOpen;
@@ -1014,6 +1015,7 @@ export default function Navbar() {
           </div>
 
           <div
+            data-testid="mobile-navbar-search"
             aria-hidden={collapseMobileSearch}
             onFocusCapture={() => setMobileSearchFocused(true)}
             onBlurCapture={(event) => {

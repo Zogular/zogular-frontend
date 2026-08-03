@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { ProductDetailsClient } from "@/components/product/ProductDetailsClient";
-import { getProductDetailBySlug, getRelatedProducts, getSellerProducts } from "@/services/products";
+import { getProductDetailBySlug, getRelatedProducts } from "@/services/products";
 
 export const dynamic = "force-dynamic";
 
@@ -11,7 +11,12 @@ interface ProductDetailsPageProps {
 
 export async function generateMetadata({ params }: ProductDetailsPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const product = await getProductDetailBySlug(slug);
+  let product = null;
+  try {
+    product = await getProductDetailBySlug(slug);
+  } catch {
+    // Allow error to be handled by the page component and error.tsx
+  }
 
   if (!product) return {};
 
@@ -34,18 +39,14 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
     notFound();
   }
 
-  const [sellerProducts, relatedProducts] = await Promise.all([
-    getSellerProducts({ excludeSlug: productData.slug }),
-    getRelatedProducts({
-      excludeSlug: productData.slug,
-      categoryName: productData.category.name,
-    }),
-  ]);
+  const relatedProducts = await getRelatedProducts({
+    excludeSlug: productData.slug,
+    categoryName: productData.category.name,
+  });
 
   return (
     <ProductDetailsClient
       productData={productData}
-      sellerProducts={sellerProducts}
       relatedProducts={relatedProducts}
     />
   );
