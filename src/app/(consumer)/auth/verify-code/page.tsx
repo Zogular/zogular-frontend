@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getDemoVerificationEmail, verifyResetCode } from "@/services/auth";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
+import { appendNextPath, sanitizeInternalNextPath } from "@/services/auth-intent";
 
 export default function VerifyCodePage() {
   return (
@@ -21,6 +22,7 @@ function VerifyCodeContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? getDemoVerificationEmail();
+  const nextPath = sanitizeInternalNextPath(searchParams.get("next"));
   const [otp, setOtp] = useState(["", "", "", "", "", ""]);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -48,8 +50,8 @@ function VerifyCodeContent() {
     try {
       setIsSubmitting(true);
       setError(null);
-      const result = await verifyResetCode({ email, code });
-      router.push(result.nextPath ?? `/auth/reset-password?email=${encodeURIComponent(email)}&code=${encodeURIComponent(code)}`);
+      const result = await verifyResetCode({ email, code, next: nextPath });
+      router.push(result.nextPath ?? appendNextPath(`/auth/reset-password?email=${encodeURIComponent(email)}`, nextPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to verify code.");
     } finally {
@@ -64,7 +66,7 @@ function VerifyCodeContent() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
       <div className="auth-panel relative z-10 flex flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Link href="/auth/forgot-password">
+        <Link href={appendNextPath(`/auth/forgot-password?email=${encodeURIComponent(email)}`, nextPath)}>
           <Button data-auth-back aria-label="Go back" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -87,7 +89,7 @@ function VerifyCodeContent() {
           </div>
 
           <form className="space-y-6" onSubmit={handleSubmit}>
-            <div className="flex justify-between gap-2">
+            <div className="grid grid-cols-6 gap-1.5 sm:gap-2">
               {otp.map((digit, index) => (
                 <input
                   key={index}
@@ -101,7 +103,7 @@ function VerifyCodeContent() {
                   value={digit}
                   onChange={(event) => handleChange(index, event.target.value)}
                   onKeyDown={(event) => handleKeyDown(index, event)}
-                  className="h-14 w-12 rounded-xl border border-white/10 bg-white/5 text-center text-xl font-bold text-white shadow-inner backdrop-blur-md transition-all focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#009E49]"
+                  className="h-12 min-w-0 w-full rounded-xl border border-white/10 bg-white/5 text-center text-xl font-bold text-white shadow-inner backdrop-blur-md transition-all focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#009E49] sm:h-14"
                 />
               ))}
             </div>
@@ -119,7 +121,7 @@ function VerifyCodeContent() {
 
           <div className="mt-8 space-y-2 text-center">
             <p className="text-xs font-medium text-zinc-300">Didn&apos;t receive the code?</p>
-            <Link href={`/auth/forgot-password?email=${encodeURIComponent(email)}`} className="text-xs font-extrabold text-[#FF6B00] underline-offset-4 transition-all drop-shadow-md hover:text-[#e66000] hover:underline">
+            <Link href={appendNextPath(`/auth/forgot-password?email=${encodeURIComponent(email)}`, nextPath)} className="text-xs font-extrabold text-[#FF6B00] underline-offset-4 transition-all drop-shadow-md hover:text-[#e66000] hover:underline">
               Resend Code
             </Link>
           </div>
@@ -127,7 +129,7 @@ function VerifyCodeContent() {
       </div>
 
       <div className="relative z-10 hidden flex-col justify-end p-16 lg:flex xl:p-24">
-        <Link href="/">
+        <Link href={nextPath ?? "/"}>
           <Button aria-label="Close verification page" variant="ghost" size="icon" className="absolute right-6 top-6 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
             <X className="h-5 w-5" />
           </Button>

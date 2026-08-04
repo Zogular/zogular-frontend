@@ -236,7 +236,8 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   const isAuthRoute =
     pathname.startsWith("/seller/login") ||
     pathname.startsWith("/seller/register") ||
-    pathname.startsWith("/seller/check-email");
+    pathname.startsWith("/seller/check-email") ||
+    pathname.startsWith("/seller/verify-phone");
   const sellerStatus: SellerApplicationStatus | null = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
   const sellerDisplayName = getSellerDisplayName(application);
@@ -447,7 +448,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       {/* =========================================
           1. MOBILE HEADER (Sticky Top)
           ========================================= */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#143320] bg-[#0A1A10] p-4 text-white shadow-sm md:hidden">
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#143320] bg-[#0A1A10] px-4 pb-4 pt-safe text-white shadow-sm md:hidden">
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">

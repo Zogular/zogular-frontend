@@ -2,16 +2,30 @@
 
 import Link from "next/link";
 import { ArrowLeft, X, Mail, Loader2 } from "lucide-react";
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { requestPasswordReset } from "@/services/auth";
+import { appendNextPath, sanitizeInternalNextPath } from "@/services/auth-intent";
+import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
 export default function ForgotPasswordPage() {
+  return (
+    <Suspense fallback={<AuthLoadingSkeleton />}>
+      <ForgotPasswordContent />
+    </Suspense>
+  );
+}
+
+function ForgotPasswordContent() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const searchParams = useSearchParams();
+  const nextPath = sanitizeInternalNextPath(searchParams.get("next"));
+  const loginPath = nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+  const loginHref = appendNextPath(loginPath, nextPath);
+  const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -20,8 +34,8 @@ export default function ForgotPasswordPage() {
     try {
       setIsSubmitting(true);
       setError(null);
-      const result = await requestPasswordReset({ email });
-      router.push(result.nextPath ?? `/auth/verify-code?email=${encodeURIComponent(email)}`);
+      const result = await requestPasswordReset({ email, next: nextPath });
+      router.push(result.nextPath ?? appendNextPath(`/auth/verify-code?email=${encodeURIComponent(email)}`, nextPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send reset code.");
     } finally {
@@ -36,7 +50,7 @@ export default function ForgotPasswordPage() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
       <div className="auth-panel relative z-10 flex flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Link href="/auth/login">
+        <Link href={loginHref}>
           <Button data-auth-back aria-label="Go back" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -67,7 +81,7 @@ export default function ForgotPasswordPage() {
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder="banda@example.com"
-                  className="h-11 rounded-xl border-white/10 bg-white/5 pl-10 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]"
+                  className="h-11 rounded-xl border-white/10 bg-white/5 pl-10 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
                 />
                 <Mail className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-white/50" />
               </div>
@@ -86,7 +100,7 @@ export default function ForgotPasswordPage() {
 
           <p className="mt-8 text-center text-xs font-medium text-zinc-300">
             Remember your password?{" "}
-            <Link href="/auth/login" className="font-extrabold text-[#FF6B00] underline-offset-4 drop-shadow-md hover:text-[#e66000] hover:underline">
+            <Link href={loginHref} className="font-extrabold text-[#FF6B00] underline-offset-4 drop-shadow-md hover:text-[#e66000] hover:underline">
               Sign in
             </Link>
           </p>
