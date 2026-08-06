@@ -1,9 +1,19 @@
-import { AlertCircle, CheckCircle2, Send, ShieldCheck } from "lucide-react";
+import { AlertCircle, CheckCircle2, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import type { ChecklistItem, SellerOnboardingViewModel } from "../types/seller-onboarding.types";
-import Link from "next/link";
+import { AccountChecksList } from "./account-checks-list";
 import { StatusBadge } from "./shared/status-badge";
+
+const applicationDateFormatter = new Intl.DateTimeFormat("en-ZM", {
+  dateStyle: "medium",
+  timeZone: "UTC",
+});
+
+function formatApplicationDate(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : applicationDateFormatter.format(date);
+}
 
 export function ApplicationReviewRail({
   viewModel,
@@ -23,16 +33,21 @@ export function ApplicationReviewRail({
   return (
     <aside className="sticky top-24 space-y-4">
       <ReadinessChecklist items={viewModel.readiness} />
-      <TrustControlsCard items={viewModel.trustControls} />
-      <MissingItemsCard items={viewModel.missingItems} />
-      <SubmitControlCard
-        viewModel={viewModel}
-        onSave={onSave}
-        onSubmit={onSubmit}
-        saving={saving}
-        submitting={submitting}
-        uploading={uploading}
-      />
+      <div className="scroll-mt-24 space-y-4" data-onboarding-target="submit">
+        <TrustControlsCard
+          items={viewModel.trustControls}
+          accountActive={viewModel.application?.user?.isActive ?? null}
+        />
+        <MissingItemsCard items={viewModel.missingItems} />
+        <SubmitControlCard
+          viewModel={viewModel}
+          onSave={onSave}
+          onSubmit={onSubmit}
+          saving={saving}
+          submitting={submitting}
+          uploading={uploading}
+        />
+      </div>
     </aside>
   );
 }
@@ -83,42 +98,16 @@ function ReadinessChecklist({ items }: { items: ChecklistItem[] }) {
   );
 }
 
-function TrustControlsCard({ items }: { items: ChecklistItem[] }) {
+function TrustControlsCard({
+  items,
+  accountActive,
+}: {
+  items: ChecklistItem[];
+  accountActive: boolean | null;
+}) {
   return (
     <RailCard eyebrow="Trust checks" title="Account checks">
-      <div className="space-y-3">
-        {items.map((item) => {
-          const isPhone = item.label.toLowerCase().includes("phone");
-          const isEmail = item.label.toLowerCase().includes("email");
-          const isVerified = item.status === "verified" || item.status === "ready";
-          const href = isPhone ? "/seller/verify-phone" : isEmail ? "/auth/check-email" : undefined;
-          const ctaLabel = isPhone ? "Verify phone" : isEmail ? "Verify email" : "Verify";
-
-          return (
-            <div key={item.label} className="flex items-start gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl bg-[#E9F8EF] text-[#0A7A42]">
-                <ShieldCheck className="h-4 w-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-sm font-black text-[#1F1A14]">{item.label}</p>
-                  <StatusBadge status={item.status} />
-                </div>
-                <p className="mt-1 text-xs font-medium leading-5 text-[#6F6A62]">{item.description}</p>
-                {!isVerified && href ? (
-                  <div className="mt-2">
-                    <Link href={href}>
-                      <Button variant="outline" size="sm" className="h-7 rounded-lg border-[#D8C9B8] px-3 text-xs font-bold text-[#1F1A14] hover:bg-white">
-                        {ctaLabel}
-                      </Button>
-                    </Link>
-                  </div>
-                ) : null}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <AccountChecksList items={items} accountActive={accountActive} />
     </RailCard>
   );
 }
@@ -161,6 +150,12 @@ function SubmitControlCard({
   uploading: boolean;
 }) {
   const submitDisabled = !viewModel.canSubmit || saving || submitting || uploading;
+  const submittedDate = viewModel.application?.submittedAt
+    ? formatApplicationDate(viewModel.application.submittedAt)
+    : null;
+  const reviewedDate = viewModel.application?.reviewedAt
+    ? formatApplicationDate(viewModel.application.reviewedAt)
+    : null;
 
   return (
     <RailCard eyebrow="Send application" title="Ready to send">
@@ -172,6 +167,16 @@ function SubmitControlCard({
         <p className="mt-2 text-sm font-medium leading-6 text-[#6F6A62]">
           {viewModel.submitDisabledReason}
         </p>
+        {submittedDate ? (
+          <p className="mt-2 text-xs font-semibold text-[#6F6A62]">
+            Submitted {submittedDate}
+          </p>
+        ) : null}
+        {reviewedDate ? (
+          <p className="mt-1 text-xs font-semibold text-[#6F6A62]">
+            Reviewed {reviewedDate}
+          </p>
+        ) : null}
       </div>
       <Separator className="my-4 bg-[#E9E1D6]" />
       <div className="space-y-3">

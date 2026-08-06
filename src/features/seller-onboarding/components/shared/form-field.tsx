@@ -15,7 +15,7 @@ export function FormField({
   error?: string;
 }) {
   return (
-    <label className="block space-y-1.5">
+    <label className="block space-y-1.5 w-full max-w-full min-w-0 overflow-hidden">
       <span className={`${sellerOnboardingClasses.label} text-[#8F6B34]`}>
         {label}
         {required ? " *" : ""}

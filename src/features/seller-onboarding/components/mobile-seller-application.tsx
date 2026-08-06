@@ -1,6 +1,7 @@
 import type { FieldErrors, UseFormRegister, UseFormSetValue, UseFormWatch } from "react-hook-form";
 import type { SellerOnboardingDocumentConfig, SellerOnboardingFormValues, SellerOnboardingViewModel } from "../types/seller-onboarding.types";
 import { MobileApplicationAccordion } from "./mobile-application-accordion";
+import { MobileAccountChecks } from "./mobile-account-checks";
 import { MobileHero } from "./mobile-hero";
 import { MobileProgressStrip } from "./mobile-progress-strip";
 import { StickyMobileActionBar } from "./sticky-mobile-action-bar";
@@ -65,6 +66,7 @@ export function MobileSellerApplication({
         uploadingDocuments={uploadingDocuments}
         onSelectDocument={onSelectDocument}
       />
+      <MobileAccountChecks viewModel={viewModel} />
       <StickyMobileActionBar
         viewModel={viewModel}
         onSave={onSave}
