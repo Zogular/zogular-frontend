@@ -95,3 +95,8 @@ Frontend must not own backend finance truth. Required docs:
 - Do not dump complex logic into `page.tsx`.
 - Use feature folders and split UI, hooks, services, types, utils, and config by responsibility.
 - Do not run migrations, database reset, `prisma db push`, production setting changes, or `npm audit fix`.
+- Never reset, seed, wipe, bulk-delete, or mutate shared/staging/Neon/production data or user identities for frontend development or QA.
+- Never change passwords, verification states, roles, seller status, products, or account data to make a frontend flow pass.
+- Never copy backend `.env` files or database URLs into frontend scripts, temporary worktrees, or QA helpers.
+- "Security quarantine," "runtime verification," and "test setup" do not authorize persisted-data or credential mutation.
+- If QA requires a data write beyond normal user actions through existing application APIs, stop and request explicit approval identifying the exact environment and records.
