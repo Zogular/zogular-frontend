@@ -7,6 +7,7 @@ import type {
   VendorApplication,
   VendorApplicationInput,
 } from "@/types/seller";
+import { normalizePayoutDestination, parsePayoutMode } from "@/lib/payout-destination";
 
 const VENDOR_APPLICATION_ENDPOINT = "/vendor/applications";
 
@@ -42,6 +43,10 @@ function asString(value: unknown): string {
 function asNullableString(value: unknown): string | null {
   const normalized = asString(value);
   return normalized ? normalized : null;
+}
+
+function asBoolean(value: unknown): boolean {
+  return value === true;
 }
 
 function asStringArray(value: unknown): string[] {
@@ -108,14 +113,56 @@ function normalizeStatus(value: unknown): SellerApplicationStatus {
   }
 }
 
+function normalizeApplicationUser(
+  value: unknown,
+): NonNullable<VendorApplication["user"]> | null {
+  const record = asRecord(value);
+  if (!record) return null;
+
+  const id = asString(record.id);
+  const email = asString(record.email);
+  if (!id || !email) return null;
+
+  return {
+    id,
+    firstName: asString(record.firstName),
+    lastName: asString(record.lastName),
+    email,
+    telephone: asString(record.telephone),
+    role: asString(record.role),
+    emailVerified: asBoolean(record.emailVerified),
+    phoneVerifiedAt: asNullableString(record.phoneVerifiedAt),
+    isActive: asBoolean(record.isActive),
+  };
+}
+
 function normalizeVendorApplication(payload: unknown): VendorApplication {
   const record = findApplicationRecord(payload);
   if (!record) {
     throw new ApiError("Vendor application response was not recognized.", 500, payload);
   }
 
+  const payoutProvider = asString(record.payoutProvider);
+  const payoutPhone = asString(record.payoutPhone);
+  const payoutAccountName = asString(record.payoutAccountName);
+
+  const payout = normalizePayoutDestination({
+    payoutMode: parsePayoutMode(record.payoutMode),
+    payoutProvider,
+    payoutPhone,
+    payoutAccountName,
+    momoProvider: asString(record.momoProvider),
+    momoPhone: asString(record.momoPhone),
+    momoAccountName: asString(record.momoAccountName),
+    bankName: asString(record.bankName),
+    bankAccountNumber: asString(record.bankAccountNumber),
+    bankAccountName: asString(record.bankAccountName),
+    bankBranch: asString(record.bankBranch),
+  });
+
   return {
     id: asString(record.id) || "vendor-application",
+    userId: asString(record.userId) || undefined,
     sellerType: normalizeSellerType(record.sellerType),
     status: normalizeStatus(record.status),
     ownerFullName: asString(record.ownerFullName),
@@ -134,9 +181,17 @@ function normalizeVendorApplication(payload: unknown): VendorApplication {
     pacraNumber: asString(record.pacraNumber),
     pacraDocumentUrl: asString(record.pacraDocumentUrl),
     tpin: asString(record.tpin),
-    payoutProvider: asString(record.payoutProvider),
-    payoutPhone: asString(record.payoutPhone),
-    payoutAccountName: asString(record.payoutAccountName),
+    payoutProvider,
+    payoutPhone,
+    payoutAccountName,
+    payoutMode: payout.mode,
+    momoProvider: payout.momoProvider || null,
+    momoPhone: payout.momoPhone || null,
+    momoAccountName: payout.momoAccountName || null,
+    bankName: payout.bankName || null,
+    bankAccountNumber: payout.bankAccountNumber || null,
+    bankAccountName: payout.bankAccountName || null,
+    bankBranch: payout.bankBranch || null,
     submittedAt: asNullableString(record.submittedAt),
     reviewedAt: asNullableString(record.reviewedAt),
     reviewedBy: asNullableString(record.reviewedBy),
@@ -145,14 +200,50 @@ function normalizeVendorApplication(payload: unknown): VendorApplication {
     needsInfoReason: asNullableString(record.needsInfoReason),
     createdAt: asString(record.createdAt),
     updatedAt: asString(record.updatedAt),
+    user: normalizeApplicationUser(record.user),
   };
 }
 
 function normalizePayload(input: VendorApplicationInput) {
-  return {
-    ...input,
+  const {
+    payoutProvider,
+    payoutPhone,
+    payoutAccountName,
+    payoutMode: rawPayoutMode,
+    momoProvider,
+    momoPhone,
+    momoAccountName,
+    bankName,
+    bankAccountNumber,
+    bankAccountName,
+    bankBranch,
+    ...rest
+  } = input;
+  void payoutProvider;
+  void payoutPhone;
+  void payoutAccountName;
+  const payoutMode = parsePayoutMode(rawPayoutMode);
+  const payload: VendorApplicationInput = {
+    ...rest,
     productCategories: input.productCategories?.filter(Boolean) ?? [],
   };
+
+  if (!payoutMode) return payload;
+
+  payload.payoutMode = payoutMode;
+  if (payoutMode === "MOBILE_MONEY" || payoutMode === "BOTH") {
+    payload.momoProvider = momoProvider?.trim();
+    payload.momoPhone = momoPhone?.trim();
+    payload.momoAccountName = momoAccountName?.trim();
+  }
+  if (payoutMode === "BANK_ACCOUNT" || payoutMode === "BOTH") {
+    payload.bankName = bankName?.trim();
+    payload.bankAccountNumber = bankAccountNumber?.trim();
+    payload.bankAccountName = bankAccountName?.trim();
+    payload.bankBranch = bankBranch?.trim();
+  }
+
+  return payload;
 }
 
 export function isSellerBlockedStatus(status?: SellerApplicationStatus | null): boolean {
@@ -334,6 +425,14 @@ export function getEmptyVendorApplication(
     payoutProvider: "",
     payoutPhone: "",
     payoutAccountName: "",
+    payoutMode: "MOBILE_MONEY",
+    momoProvider: "",
+    momoPhone: "",
+    momoAccountName: "",
+    bankName: "",
+    bankAccountNumber: "",
+    bankAccountName: "",
+    bankBranch: "",
   };
 }
 

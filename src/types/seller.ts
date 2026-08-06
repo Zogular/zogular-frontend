@@ -45,6 +45,8 @@ export interface SellerDocumentUploadState {
   fileKind?: "image" | "pdf" | null;
 }
 
+export type PayoutMode = "MOBILE_MONEY" | "BANK_ACCOUNT" | "BOTH";
+
 export interface VendorApplication {
   id: string;
   userId?: string;
@@ -69,6 +71,14 @@ export interface VendorApplication {
   payoutProvider: string;
   payoutPhone: string;
   payoutAccountName: string;
+  payoutMode?: PayoutMode | null;
+  momoProvider?: string | null;
+  momoPhone?: string | null;
+  momoAccountName?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountName?: string | null;
+  bankBranch?: string | null;
   submittedAt: string | null;
   reviewedAt: string | null;
   reviewedBy: string | null;
@@ -112,6 +122,14 @@ export interface VendorApplicationInput {
   payoutProvider?: string;
   payoutPhone?: string;
   payoutAccountName?: string;
+  payoutMode?: PayoutMode | null;
+  momoProvider?: string | null;
+  momoPhone?: string | null;
+  momoAccountName?: string | null;
+  bankName?: string | null;
+  bankAccountNumber?: string | null;
+  bankAccountName?: string | null;
+  bankBranch?: string | null;
 }
 
 export interface SellerStatusMeta {

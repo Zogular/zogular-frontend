@@ -6,6 +6,7 @@ import type {
   SellerType,
   VendorApplication,
 } from "@/types/seller";
+import { normalizePayoutDestination, parsePayoutMode } from "@/lib/payout-destination";
 
 const ADMIN_VENDOR_APPLICATIONS_ENDPOINT = "/admin/vendor-applications";
 
@@ -131,6 +132,23 @@ function normalizeVendorApplicationRecord(record: Record<string, unknown>): Vend
   const nrcFrontUrl = asString(record.nrcFrontUrl) || asString(record.idDocument);
   const shopPhotoUrl = asString(record.shopPhotoUrl) || asString(record.userPic);
 
+  const payoutProvider = asString(record.payoutProvider);
+  const payoutPhone = asString(record.payoutPhone);
+  const payoutAccountName = asString(record.payoutAccountName);
+  const payout = normalizePayoutDestination({
+    payoutMode: parsePayoutMode(record.payoutMode),
+    payoutProvider,
+    payoutPhone,
+    payoutAccountName,
+    momoProvider: asString(record.momoProvider),
+    momoPhone: asString(record.momoPhone),
+    momoAccountName: asString(record.momoAccountName),
+    bankName: asString(record.bankName),
+    bankAccountNumber: asString(record.bankAccountNumber),
+    bankAccountName: asString(record.bankAccountName),
+    bankBranch: asString(record.bankBranch),
+  });
+
   return {
     id: asString(record.id) || "vendor-application",
     userId: asNullableString(record.userId) || undefined,
@@ -152,9 +170,17 @@ function normalizeVendorApplicationRecord(record: Record<string, unknown>): Vend
     pacraNumber: asString(record.pacraNumber),
     pacraDocumentUrl: asString(record.pacraDocumentUrl),
     tpin: asString(record.tpin),
-    payoutProvider: asString(record.payoutProvider),
-    payoutPhone: asString(record.payoutPhone),
-    payoutAccountName: asString(record.payoutAccountName),
+    payoutProvider,
+    payoutPhone,
+    payoutAccountName,
+    payoutMode: payout.mode,
+    momoProvider: payout.momoProvider || null,
+    momoPhone: payout.momoPhone || null,
+    momoAccountName: payout.momoAccountName || null,
+    bankName: payout.bankName || null,
+    bankAccountNumber: payout.bankAccountNumber || null,
+    bankAccountName: payout.bankAccountName || null,
+    bankBranch: payout.bankBranch || null,
     submittedAt: asNullableString(record.submittedAt),
     reviewedAt: asNullableString(record.reviewedAt),
     reviewedBy: asNullableString(record.reviewedBy),

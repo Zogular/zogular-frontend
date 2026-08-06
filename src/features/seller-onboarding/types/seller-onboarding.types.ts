@@ -1,6 +1,7 @@
 import type { ComponentType } from "react";
 import type { LucideProps } from "lucide-react";
 import type {
+  PayoutMode,
   SellerApplicationStatus,
   SellerDocumentField,
   SellerDocumentType,
@@ -80,6 +81,14 @@ export type SellerOnboardingFormValues = {
   payoutProvider: string;
   payoutPhone: string;
   payoutAccountName: string;
+  payoutMode: PayoutMode;
+  momoProvider: string;
+  momoPhone: string;
+  momoAccountName: string;
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountName: string;
+  bankBranch: string;
   nrcFrontUrl: string;
   nrcBackUrl: string;
   shopPhotoUrl: string;
