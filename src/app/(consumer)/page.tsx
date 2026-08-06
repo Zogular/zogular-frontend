@@ -8,8 +8,8 @@ export default async function HomePage() {
   const [categories, heroBanners, flashSaleProducts, trendingProducts] = await Promise.all([
     getHomeCategories(),
     getHomeHeroBanners(),
-    getFlashSaleProducts(),
-    getTrendingProducts(),
+    getFlashSaleProducts({ allowOptionalFallback: true }),
+    getTrendingProducts({ allowOptionalFallback: true }),
   ]);
 
   return (
