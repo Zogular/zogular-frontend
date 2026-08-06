@@ -35,7 +35,7 @@ export function CartSyncBridge() {
   const syncWithBackend = useCart((state) => state.syncWithBackend);
 
   React.useEffect(() => {
-    if (!hasHydrated || !authSnapshot) return;
+    if (!hasHydrated) return;
     void syncWithBackend();
   }, [authSnapshot, hasHydrated, syncWithBackend]);
 

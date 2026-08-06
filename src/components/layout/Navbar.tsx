@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useState, useEffect, useRef, useMemo, useSyncExternalStore, type ComponentType, type ReactNode } from "react";
+import { useState, useEffect, useRef, useMemo, useSyncExternalStore, type ComponentType, type ReactNode, type RefObject } from "react";
 import {
   ShoppingCart, User, MapPin, HelpCircle, Store, ChevronDown, Flame, Menu, X, Heart, Package, LogOut,
   Settings, FolderOpen, ChevronRight, ArrowLeft, Info,
@@ -10,6 +10,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Sheet, SheetClose, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 
 import { useCart } from "@/hooks/use-cart";
@@ -664,6 +665,7 @@ function CategoryBar({
 type MobileDrawerProps = {
   isOpen: boolean;
   onClose: () => void;
+  triggerRef: RefObject<HTMLButtonElement | null>;
   categoryLinks: CategoryLink[];
   activeCategory: CategoryLink;
   onCategorySelect: (category: CategoryLink) => void;
@@ -675,6 +677,7 @@ type MobileDrawerProps = {
 function MobileDrawer({
   isOpen,
   onClose,
+  triggerRef,
   categoryLinks,
   activeCategory,
   onCategorySelect,
@@ -688,20 +691,18 @@ function MobileDrawer({
   };
 
   return (
-    <div className={cn("fixed inset-0 z-50 transition-all duration-300 md:hidden", isOpen ? "visible opacity-100" : "invisible opacity-0")}>
-      <div
-        className={cn(
-          "absolute inset-0 bg-black/55 transition-opacity duration-300",
-          isOpen ? "opacity-100" : "opacity-0",
-        )}
-        onClick={onClose}
-      />
-      <div
-        className={cn(
-          "absolute left-0 top-0 flex h-full w-80 max-w-[88vw] flex-col border-r border-white/40 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(255,255,255,0.72))] shadow-[0_24px_54px_rgba(15,23,42,0.2)] backdrop-blur-3xl transition-transform duration-300",
-          isOpen ? "translate-x-0" : "-translate-x-full",
-        )}
+    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <SheetContent
+        side="left"
+        showCloseButton={false}
+        onCloseAutoFocus={(event) => {
+          event.preventDefault();
+          triggerRef.current?.focus();
+        }}
+        style={{ width: "min(20rem, 88vw)", maxWidth: "88vw" }}
+        className="h-dvh w-80 max-w-[88vw] gap-0 overflow-hidden border-r border-white/40 bg-[linear-gradient(180deg,rgba(255,255,255,0.88),rgba(255,255,255,0.72))] p-0 shadow-[0_24px_54px_rgba(15,23,42,0.2)] backdrop-blur-3xl md:hidden"
       >
+        <SheetTitle className="sr-only">Shop menu</SheetTitle>
         <div className="flex h-18 items-center justify-between border-b border-white/45 bg-white/30 px-4 backdrop-blur-xl">
           <Link href="/" className="flex items-center gap-2" onClick={onClose}>
             <BrandLogo mode="icon" imageClassName="h-8 w-8 rounded-xl shadow-md" />
@@ -710,9 +711,11 @@ function MobileDrawer({
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Shop Menu</p>
             </div>
           </Link>
-          <Button aria-label="Close menu" variant="ghost" size="icon" className="rounded-full text-zinc-500 hover:bg-white/45" onClick={onClose}>
-            <X className="h-5 w-5" />
-          </Button>
+          <SheetClose asChild>
+            <Button aria-label="Close menu" variant="ghost" size="icon" className="rounded-full text-zinc-500 hover:bg-white/45">
+              <X className="h-5 w-5" />
+            </Button>
+          </SheetClose>
         </div>
 
         <div className="border-b border-white/35 bg-white/22 px-4 py-3.5 backdrop-blur-xl">
@@ -748,7 +751,7 @@ function MobileDrawer({
               categoryView === "category" ? "-translate-x-1/2" : "translate-x-0"
             )}
           >
-            <div className="flex w-1/2 min-h-0 flex-col px-4 pb-4 pt-3">
+            <div className="flex w-1/2 min-h-0 flex-col px-4 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom))]">
               <div className="min-h-0 space-y-4 overflow-y-auto pr-1">
                 <div className="space-y-2.5">
                   <SectionHeading>Top Categories</SectionHeading>
@@ -829,7 +832,7 @@ function MobileDrawer({
               </div>
             </div>
 
-            <div className="w-1/2 overflow-y-auto px-4 py-3">
+            <div className="w-1/2 overflow-y-auto px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               <div className="rounded-2xl border border-white/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.5),rgba(255,255,255,0.34))] p-4 backdrop-blur-2xl">
                 <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
                   Browse {activeCategory.label}
@@ -864,8 +867,8 @@ function MobileDrawer({
             </div>
           </div>
         </div>
-      </div>
-    </div>
+      </SheetContent>
+    </Sheet>
   );
 }
 
@@ -878,6 +881,7 @@ export default function Navbar() {
 
   const [categoryLinks, setCategoryLinks] = useState<CategoryLink[]>([]);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const mobileMenuTriggerRef = useRef<HTMLButtonElement>(null);
   const [desktopAccountOpen, setDesktopAccountOpen] = useState(false);
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
   const [mobileSearchFocused, setMobileSearchFocused] = useState(false);
@@ -972,6 +976,7 @@ export default function Navbar() {
           <div className="relative z-30 flex h-16 items-center justify-between gap-4 px-4 md:h-20 md:px-6 xl:px-12">
             <div className="flex items-center gap-3 md:gap-0">
               <Button
+                ref={mobileMenuTriggerRef}
                 variant="ghost"
                 size="icon"
                 aria-label="Open menu"
@@ -1044,6 +1049,7 @@ export default function Navbar() {
 
       <MobileDrawer
         isOpen={isMobileMenuOpen}
+        triggerRef={mobileMenuTriggerRef}
         onClose={() => {
           setMobileCategoryView("root");
           setIsMobileMenuOpen(false);
