@@ -31,7 +31,7 @@ export function MobileHero({
           onClick={onToggleMenu}
           aria-label={menuOpen ? "Close menu" : "Open menu"}
           title={menuOpen ? "Close menu" : "Open menu"}
-          className={`h-10 w-10 rounded-2xl border-0 bg-[#FFFCF8]/75 text-[#1F1A14] shadow-none transition-opacity hover:bg-white ${menuOpen ? "pointer-events-none opacity-0" : "opacity-100"}`}
+          className="h-10 w-10 rounded-2xl border border-[#E9E1D6] bg-[#FFFCF8] text-[#1F1A14] shadow-none hover:bg-white"
         >
           {menuOpen ? <PanelLeftClose className="h-4.5 w-4.5" /> : <PanelLeftOpen className="h-4.5 w-4.5" />}
         </Button>
@@ -50,7 +50,7 @@ export function MobileHero({
           </div>
         </div>
         <Button type="button" onClick={onContinue} className="mt-5 h-11 w-full rounded-2xl bg-[#0EA85B] font-black text-white hover:bg-[#0B8E4D]">
-          Continue
+          {viewModel.canEdit ? "Continue" : "View status"}
           <ArrowRight className="ml-2 h-4 w-4" />
         </Button>
       </div>

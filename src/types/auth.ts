@@ -14,11 +14,13 @@ export interface RegisterInput {
 
 export interface ForgotPasswordInput {
   email: string;
+  next?: string | null;
 }
 
 export interface VerifyCodeInput {
   email: string;
   code: string;
+  next?: string | null;
 }
 
 export interface ResetPasswordInput {
@@ -26,6 +28,7 @@ export interface ResetPasswordInput {
   code: string;
   password: string;
   confirmPassword: string;
+  next?: string | null;
 }
 
 export interface PermissionPreferencesInput {
@@ -43,6 +46,7 @@ export interface AuthUser {
   role?: AuthRole;
   phone?: string;
   emailVerified?: boolean;
+  emailVerifiedAt?: string | null;
   phoneVerifiedAt?: string | null;
   avatarUrl?: string;
 }
@@ -54,8 +58,8 @@ export interface AuthSession {
 export interface AuthActionResult {
   success: true;
   message: string;
+  emailSent?: boolean;
   nextPath?: string;
-  developmentCode?: string;
 }
 
 export interface UpdateMeInput {

@@ -39,7 +39,7 @@ export function ApplicationMainColumn({
         uploadingDocuments={uploadingDocuments}
         onSelectDocument={onSelectDocument}
       />
-      <SettlementSection viewModel={viewModel} register={register} errors={errors} disabled={disabled} />
+      <SettlementSection viewModel={viewModel} register={register} errors={errors} watch={watch} setValue={setValue} disabled={disabled} />
     </div>
   );
 }

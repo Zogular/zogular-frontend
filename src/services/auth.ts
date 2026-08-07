@@ -190,11 +190,38 @@ function normalizeUser(payload: unknown, fallbackEmail?: string): AuthUser {
     emailVerified: asBoolean(
       records.find((record) => "emailVerified" in record)?.emailVerified,
     ),
+    emailVerifiedAt: asNullableIsoString(
+      records.find((record) => "emailVerifiedAt" in record)?.emailVerifiedAt,
+    ),
     phoneVerifiedAt: asNullableIsoString(
       records.find((record) => "phoneVerifiedAt" in record)?.phoneVerifiedAt,
     ),
     avatarUrl: getStringByKeys(records, ["avatarUrl", "avatar", "photoUrl"]),
   };
+}
+
+export function isEmailVerificationRequiredError(error: unknown): boolean {
+  if (!(error instanceof ApiError) || error.status !== 403) return false;
+
+  const records = collectCandidateRecords(error.details);
+  const contractCode = getStringByKeys(records, ["code", "errorCode", "reason", "action"])
+    ?.trim()
+    .toUpperCase();
+
+  if (contractCode) {
+    return contractCode === "EMAIL_VERIFICATION_REQUIRED" || contractCode === "VERIFY_EMAIL";
+  }
+
+  // The current backend has no machine-readable code for this 403. Keep the
+  // fallback deliberately exact so unrelated authorization failures never
+  // receive a verification-recovery action.
+  return error.message.trim().toLowerCase() === "please verify your email before logging in.";
+}
+
+let pendingPasswordReset: { email: string; code: string } | null = null;
+
+export function getPendingPasswordReset(): { email: string; code: string } | null {
+  return pendingPasswordReset ? { ...pendingPasswordReset } : null;
 }
 
 function appendSafeNext(path: string, nextPath?: string | null): string {
@@ -218,12 +245,14 @@ function buildActionResult(
   const payloadNextPath = sanitizeInternalNextPath(
     getStringByKeys(records, ["nextPath", "redirectPath", "redirectTo"]),
   );
+  const rawEmailSent = records.find((record) => "emailSent" in record)?.emailSent;
+  const emailSent = asBoolean(rawEmailSent);
 
   return {
     success: true,
     message: extractActionMessage(payload, fallbackMessage),
+    ...(emailSent !== undefined ? { emailSent } : {}),
     nextPath: payloadNextPath ?? sanitizeInternalNextPath(fallbackPath) ?? undefined,
-    developmentCode: getStringByKeys(records, ["developmentCode", "devCode"]),
   };
 }
 
@@ -313,7 +342,7 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
     body: JSON.stringify(buildRegisterPayload(input)),
   });
 
-  return buildActionResult(
+  const result = buildActionResult(
     payload,
     "Account created successfully. Please check your email to verify your account.",
     appendSafeNext(
@@ -321,6 +350,17 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
       input.next,
     ),
   );
+
+  if (result.emailSent === false && result.nextPath) {
+    const hasQuery = result.nextPath.includes("?");
+    const deliveryFailedPath = `${result.nextPath}${hasQuery ? "&" : "?"}delivery=failed`;
+    return {
+      ...result,
+      nextPath: deliveryFailedPath,
+    };
+  }
+
+  return result;
 }
 
 export async function logout(): Promise<AuthActionResult> {
@@ -393,14 +433,6 @@ export async function verifyPhoneOtp(
     body: JSON.stringify({ ...normalizePhoneOtpPayload(phone, code), purpose }),
   });
 
-  // Always refresh the stored user after a successful OTP verify so that
-  // phoneVerifiedAt is immediately available without a full page reload.
-  try {
-    await getCurrentUser();
-  } catch {
-    // Non-fatal: caller's UI will show the verified state from local optimistic update.
-  }
-
   return buildActionResult(payload, "Phone number verified successfully.");
 }
 
@@ -408,18 +440,19 @@ export async function requestPasswordReset(
   input: ForgotPasswordInput,
 ): Promise<AuthActionResult> {
   storeLastAuthEmail(input.email);
+  const safeNextPath = sanitizeInternalNextPath(input.next);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.forgotPassword, {
     method: "POST",
     authMode: "omit",
     csrf: true,
-    body: JSON.stringify(input),
+    body: JSON.stringify({ email: input.email }),
   });
 
   return buildActionResult(
     payload,
     "Verification code sent.",
-    `/auth/verify-code?email=${encodeURIComponent(input.email)}`,
+    appendSafeNext(`/auth/verify-code?email=${encodeURIComponent(input.email)}`, safeNextPath),
   );
 }
 
@@ -456,31 +489,47 @@ export async function resendVerificationEmail(
 export async function verifyResetCode(
   input: VerifyCodeInput,
 ): Promise<AuthActionResult> {
+  const safeNextPath = sanitizeInternalNextPath(input.next);
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.verifyCode, {
     method: "POST",
     authMode: "omit",
     csrf: true,
-    body: JSON.stringify(input),
+    body: JSON.stringify({ email: input.email, code: input.code }),
   });
+
+  pendingPasswordReset = { email: input.email, code: input.code };
 
   return buildActionResult(
     payload,
     "Code verified.",
-    `/auth/reset-password?email=${encodeURIComponent(input.email)}&code=${encodeURIComponent(input.code)}`,
+    appendSafeNext(`/auth/reset-password?email=${encodeURIComponent(input.email)}`, safeNextPath),
   );
 }
 
 export async function resetPassword(
   input: ResetPasswordInput,
 ): Promise<AuthActionResult> {
+  const safeNextPath = sanitizeInternalNextPath(input.next);
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resetPassword, {
     method: "POST",
     authMode: "omit",
     csrf: true,
-    body: JSON.stringify(input),
+    body: JSON.stringify({
+      email: input.email,
+      code: input.code,
+      password: input.password,
+      confirmPassword: input.confirmPassword,
+    }),
   });
 
-  return buildActionResult(payload, "Password updated successfully.", "/auth/login");
+  pendingPasswordReset = null;
+  const loginPath = safeNextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+
+  return buildActionResult(
+    payload,
+    "Password updated successfully.",
+    appendSafeNext(loginPath, safeNextPath),
+  );
 }
 
 export async function updateMe(input: UpdateMeInput): Promise<AuthUser> {

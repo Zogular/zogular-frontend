@@ -12,6 +12,11 @@ const nrcSchema = z
   .trim()
   .regex(/^\d{6}\/\d{2}\/\d{1}$/, "Enter your NRC like 123456/78/9.");
 
+const bankAccountSchema = z
+  .string()
+  .trim()
+  .regex(/^[a-zA-Z0-9\s-]{5,30}$/, "Enter a valid bank account number (5-30 alphanumeric characters).");
+
 export const sellerOnboardingDraftSchema = z.object({
   sellerType: z.enum(["INDIVIDUAL", "REGISTERED_BUSINESS"]),
   ownerFullName: z.string(),
@@ -26,6 +31,14 @@ export const sellerOnboardingDraftSchema = z.object({
   payoutProvider: z.string(),
   payoutPhone: z.string(),
   payoutAccountName: z.string(),
+  payoutMode: z.enum(["MOBILE_MONEY", "BANK_ACCOUNT", "BOTH"]),
+  momoProvider: z.string(),
+  momoPhone: z.string(),
+  momoAccountName: z.string(),
+  bankName: z.string(),
+  bankAccountNumber: z.string(),
+  bankAccountName: z.string(),
+  bankBranch: z.string(),
   nrcFrontUrl: z.string(),
   nrcBackUrl: z.string(),
   shopPhotoUrl: z.string(),
@@ -43,38 +56,88 @@ export const sellerOnboardingSubmitSchema = sellerOnboardingDraftSchema
     productCategoriesInput: z.string().trim().min(2, "Add at least one product category."),
     businessAddress: z.string().trim().min(5, "Enter your business address."),
     nrcNumber: nrcSchema,
-    payoutProvider: z.string().trim().min(2, "Choose a payout provider."),
-    payoutPhone: phoneSchema,
     nrcFrontUrl: z.string().trim().url("Upload the front of your NRC."),
     nrcBackUrl: z.string().trim().url("Upload the back of your NRC."),
     shopPhotoUrl: z.string().trim().url("Upload a shop photo."),
   })
   .superRefine((values, ctx) => {
-    if (values.sellerType !== "REGISTERED_BUSINESS") return;
+    if (values.sellerType === "REGISTERED_BUSINESS") {
+      if (!values.legalBusinessName.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["legalBusinessName"],
+          message: "Enter your registered business name.",
+        });
+      }
 
-    if (!values.legalBusinessName.trim()) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["legalBusinessName"],
-        message: "Enter your registered business name.",
-      });
+      if (!values.pacraNumber.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["pacraNumber"],
+          message: "Enter your PACRA number.",
+        });
+      }
+
+      const pacraUrl = z.string().trim().url().safeParse(values.pacraDocumentUrl);
+      if (!pacraUrl.success) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["pacraDocumentUrl"],
+          message: "Upload your PACRA document.",
+        });
+      }
     }
 
-    if (!values.pacraNumber.trim()) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["pacraNumber"],
-        message: "Enter your PACRA number.",
-      });
+    const mode = values.payoutMode;
+
+    if (mode === "MOBILE_MONEY" || mode === "BOTH") {
+      if (!values.momoProvider.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["momoProvider"],
+          message: "Select your Mobile Money provider / network.",
+        });
+      }
+      const momoPhoneParsed = phoneSchema.safeParse(values.momoPhone);
+      if (!momoPhoneParsed.success) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["momoPhone"],
+          message: "Enter a valid Mobile Money phone number.",
+        });
+      }
+      if (!values.momoAccountName.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["momoAccountName"],
+          message: "Enter Mobile Money account holder name.",
+        });
+      }
     }
 
-    const pacraUrl = z.string().trim().url().safeParse(values.pacraDocumentUrl);
-    if (!pacraUrl.success) {
-      ctx.addIssue({
-        code: "custom",
-        path: ["pacraDocumentUrl"],
-        message: "Upload your PACRA document.",
-      });
+    if (mode === "BANK_ACCOUNT" || mode === "BOTH") {
+      if (!values.bankName.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["bankName"],
+          message: "Select your bank name.",
+        });
+      }
+      const bankAccParsed = bankAccountSchema.safeParse(values.bankAccountNumber);
+      if (!bankAccParsed.success) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["bankAccountNumber"],
+          message: "Enter a valid bank account number.",
+        });
+      }
+      if (!values.bankAccountName.trim()) {
+        ctx.addIssue({
+          code: "custom",
+          path: ["bankAccountName"],
+          message: "Enter bank account holder name.",
+        });
+      }
     }
   });
 
@@ -88,10 +151,26 @@ export function categoriesInputToArray(value: string) {
 export function formValuesToVendorApplicationInput(
   values: SellerOnboardingFormValues,
 ): VendorApplicationInput {
+  const mode = values.payoutMode;
+
   const payload: VendorApplicationInput = {
     sellerType: values.sellerType,
     productCategories: categoriesInputToArray(values.productCategoriesInput),
+    payoutMode: mode,
   };
+
+  if (mode === "MOBILE_MONEY" || mode === "BOTH") {
+    payload.momoProvider = values.momoProvider.trim();
+    payload.momoPhone = values.momoPhone.trim();
+    payload.momoAccountName = values.momoAccountName.trim();
+  }
+
+  if (mode === "BANK_ACCOUNT" || mode === "BOTH") {
+    payload.bankName = values.bankName.trim();
+    payload.bankAccountNumber = values.bankAccountNumber.trim();
+    payload.bankAccountName = values.bankAccountName.trim();
+    payload.bankBranch = values.bankBranch.trim();
+  }
 
   const optionalTextFields = {
     ownerFullName: values.ownerFullName,
@@ -102,9 +181,6 @@ export function formValuesToVendorApplicationInput(
     district: values.district,
     businessAddress: values.businessAddress,
     nrcNumber: values.nrcNumber,
-    payoutProvider: values.payoutProvider,
-    payoutPhone: values.payoutPhone,
-    payoutAccountName: values.payoutAccountName,
     nrcFrontUrl: values.nrcFrontUrl,
     nrcBackUrl: values.nrcBackUrl,
     shopPhotoUrl: values.shopPhotoUrl,

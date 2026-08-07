@@ -78,7 +78,7 @@ export function MobileApplicationAccordion({
       value: "settlement",
       title: "Payouts",
       status: viewModel.sections.settlement.status,
-      content: <SettlementSection viewModel={viewModel} register={register} errors={errors} disabled={disabled} />,
+      content: <SettlementSection viewModel={viewModel} register={register} errors={errors} watch={watch} setValue={setValue} disabled={disabled} />,
     },
   ] as const;
 
@@ -86,7 +86,12 @@ export function MobileApplicationAccordion({
     <section className="px-4">
       <Accordion type="single" value={openSection} onValueChange={onOpenSectionChange} collapsible className="gap-3">
         {mobileSections.map((section) => (
-          <AccordionItem key={section.value} value={section.value} className="border-0">
+          <AccordionItem
+            key={section.value}
+            value={section.value}
+            data-onboarding-mobile-target={section.value}
+            className="scroll-mt-24 border-0"
+          >
             <AccordionTrigger className="rounded-3xl border border-[#E9E1D6] bg-[#FFFCF8] px-4 py-3 no-underline hover:no-underline">
               <span className="text-sm font-black text-[#1F1A14]">{section.title}</span>
               <StatusBadge status={statusMap[section.status]} />

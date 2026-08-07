@@ -59,8 +59,6 @@ export function uploadFileToCloudinary(
     formData.set("signature", uploadConfig.signature);
     formData.set("folder", uploadConfig.folder);
     formData.set("public_id", uploadConfig.publicId);
-    formData.set("allowed_formats", uploadConfig.allowedFormats.join(","));
-    formData.set("max_file_size", String(uploadConfig.maxFileSize));
 
     xhr.open("POST", uploadConfig.uploadUrl);
 
