@@ -46,12 +46,8 @@ const BACKEND_SORT_BY_CATEGORY_SORT: Record<CategorySortOption, "newest" | "pric
   "top-rated": "popular",
 };
 
-type BackendProductUser = {
+export type BackendProductUser = {
   id?: string;
-  firstName?: string | null;
-  lastName?: string | null;
-  email?: string | null;
-  telephone?: string | null;
 };
 
 type BackendReview = {
@@ -81,7 +77,7 @@ type BackendAttributeValue = {
   } | null;
 };
 
-type BackendProduct = {
+export type BackendProduct = {
   id?: string;
   slug?: string | null;
   title?: string | null;
@@ -258,7 +254,7 @@ function parseSellerVisibility(visibility?: string | null): "visible" | "hidden"
   return undefined;
 }
 
-function normalizeBackendProduct(product: BackendProduct): Product {
+export function normalizeBackendProduct(product: BackendProduct): Product {
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
   const mainImage = images[0] ?? PRODUCT_IMAGE_PLACEHOLDER;
@@ -271,11 +267,6 @@ function normalizeBackendProduct(product: BackendProduct): Product {
   const discount = originalPrice && originalPrice > currentPrice
     ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
     : undefined;
-
-  const sellerName = [product.user?.firstName, product.user?.lastName]
-    .map((part) => asString(part))
-    .filter(Boolean)
-    .join(" ");
 
   const rawReviews = product.reviews ?? [];
   const reviewCount = rawReviews.length;
@@ -299,7 +290,7 @@ function normalizeBackendProduct(product: BackendProduct): Product {
     slug: slugStr,
     badge: discount && discount > 0 ? `${discount}% OFF` : undefined,
     isNew: false,
-    storeName: sellerName || undefined,
+    storeName: undefined,
     stock: product.isSold ? 0 : toNumber(product.stock, 0),
     moderationStatus: parseModerationStatus(product.moderationStatus),
     sellerVisibility: parseSellerVisibility(product.sellerVisibility),
@@ -331,7 +322,7 @@ function buildBackendProductVariants(): ProductDetail["variants"] {
   return [];
 }
 
-function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
+export function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
   const summary = normalizeBackendProduct(product);
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
@@ -339,14 +330,10 @@ function normalizeBackendProductDetail(product: BackendProduct): ProductDetail {
   const brand = asString(product.brand);
   const sku = asString(product.sku);
 
-  const sellerName = [product.user?.firstName, product.user?.lastName]
-    .map((part) => asString(part))
-    .filter(Boolean)
-    .join(" ");
-
-  const seller: ProductSeller | undefined = sellerName
+  const ownerId = asString(product.user?.id);
+  const seller: ProductSeller | undefined = ownerId
     ? {
-        name: sellerName,
+        name: "Zogular Seller",
       }
     : undefined;
 

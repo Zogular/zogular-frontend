@@ -18,7 +18,7 @@ function sellerInitials(name: string) {
 function SellerContent({ seller, compact }: { seller: NonNullable<ProductDetail["seller"]>; compact: boolean }) {
   return (
     <>
-      <div className="flex min-w-0 items-center gap-3">
+      <div className="flex min-w-0 items-center gap-3" data-testid="product-seller-identity">
         <Avatar className={compact ? "h-9 w-9 border border-zinc-100" : "h-12 w-12 border-2 border-[#f4fbf6] shadow-sm"}>
           <AvatarFallback className="text-xs font-semibold">{sellerInitials(seller.name)}</AvatarFallback>
         </Avatar>
@@ -47,7 +47,7 @@ export function FulfillmentSellerRail({
 
   if (variant === "stacked") {
     return (
-      <div className={`grid grid-cols-1 gap-3 animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 [animation-delay:500ms] ${className}`}>
+      <div className={`grid grid-cols-1 gap-3 ${className}`}>
         <div className="flex items-start gap-3 rounded-2xl border border-zinc-100 bg-white/80 p-4 shadow-sm transition-shadow hover:shadow-md">
           <div className="mt-0.5 rounded-full bg-[#f4fbf6] p-2">
             <Truck className="h-5 w-5 text-[#009E49]" />
