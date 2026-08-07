@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useForm } from "react-hook-form";
+import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, PanelLeftClose, RefreshCw, Store } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -19,6 +20,7 @@ import {
   formValuesToVendorApplicationInput,
   validateSellerOnboardingForSubmit,
 } from "../utils/seller-onboarding-validation";
+import { mapSellerOnboardingToViewModel } from "../utils/seller-onboarding.mapper";
 import { MobileSellerApplication } from "./mobile-seller-application";
 import { SellerApplicationHero } from "./seller-application-hero";
 import { SellerApplicationWorkspace } from "./seller-application-workspace";
@@ -29,19 +31,41 @@ type UploadingDocumentState = Partial<
   Record<SellerOnboardingDocumentConfig["key"], { uploading: boolean; progress: number; error?: string }>
 >;
 
+const FIELD_SECTION: Partial<Record<keyof SellerOnboardingFormValues, string>> = {
+  sellerType: "operating-model",
+  ownerFullName: "identity",
+  storeName: "identity",
+  legalBusinessName: "identity",
+  businessPhone: "identity",
+  businessEmail: "identity",
+  district: "store-footprint",
+  productCategoriesInput: "store-footprint",
+  businessAddress: "store-footprint",
+  nrcNumber: "compliance",
+  nrcFrontUrl: "compliance",
+  nrcBackUrl: "compliance",
+  shopPhotoUrl: "compliance",
+  pacraNumber: "compliance",
+  pacraDocumentUrl: "compliance",
+  payoutMode: "settlement",
+  momoProvider: "settlement",
+  momoPhone: "settlement",
+  momoAccountName: "settlement",
+  bankName: "settlement",
+  bankAccountNumber: "settlement",
+  bankAccountName: "settlement",
+  bankBranch: "settlement",
+};
+
 function getApplicationResetKey(viewModel?: SellerOnboardingViewModel | null) {
   if (!viewModel?.application) return "no-application";
   const { id, status, updatedAt } = viewModel.application;
   return [id, status, updatedAt ?? ""].join(":");
 }
 
-function getLockedApplicationMessage(viewModel?: SellerOnboardingViewModel | null) {
-  if (viewModel?.status === "SUBMITTED") return "Your application is already under review.";
-  if (viewModel?.status === "APPROVED") return "Your seller account is already approved.";
-  return "This application cannot be changed right now.";
-}
 
 export function SellerAppShell() {
+  const router = useRouter();
   const onboardingQuery = useSellerOnboarding();
   const saveMutation = useSaveSellerOnboarding();
   const startMutation = useStartSellerOnboarding();
@@ -52,6 +76,7 @@ export function SellerAppShell() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const lastFormResetKeyRef = useRef<string | null>(null);
   const suppressFormResetRef = useRef(false);
+  const submitInFlightRef = useRef(false);
 
   const form = useForm<SellerOnboardingFormValues>({
     defaultValues: onboardingQuery.data?.formValues,
@@ -89,7 +114,24 @@ export function SellerAppShell() {
     };
   }, [mobileSidebarOpen]);
 
-  const viewModel = onboardingQuery.data;
+  const watchedFormValues = form.watch();
+
+  const viewModel = useMemo(() => {
+    if (!onboardingQuery.data) return null;
+    const mapped = mapSellerOnboardingToViewModel(
+      onboardingQuery.data.application,
+      (onboardingQuery.data.application?.user as unknown as import("@/types/auth").AuthUser) ?? null,
+      watchedFormValues,
+    );
+    if (mapped.status === "PROVISIONAL") {
+      return {
+        ...mapped,
+        submitDisabledReason: "Your shop has provisional access. Application edits are locked.",
+      };
+    }
+    return mapped;
+  }, [onboardingQuery.data, watchedFormValues]);
+
   const isSaving = saveMutation.isPending;
   const isSubmitting = submitMutation.isPending;
   const isUploading = uploadMutation.isPending || Object.values(uploadingDocuments).some((item) => item?.uploading);
@@ -97,12 +139,35 @@ export function SellerAppShell() {
 
   const currentPayload = () => formValuesToVendorApplicationInput(form.getValues());
 
+  const handleContinue = () => {
+    if (viewModel && !viewModel.canEdit && viewModel.status !== "NEEDS_INFO") {
+      router.push("/seller/status");
+      return;
+    }
+    scrollToSection();
+  };
+
   const scrollToSection = (sectionId?: string) => {
     const target = sectionId ?? viewModel?.firstIncompleteSectionId ?? "identity";
-    setOpenSection(target);
+    setOpenSection(target === "submit" ? "" : target);
     setMobileSidebarOpen(false);
     window.requestAnimationFrame(() => {
-      document.getElementById(target)?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const candidates = target === "submit"
+        ? Array.from(document.querySelectorAll<HTMLElement>('[data-onboarding-target="submit"]'))
+        : [
+            ...Array.from(
+              document.querySelectorAll<HTMLElement>(
+                `[data-onboarding-mobile-target="${target}"]`,
+              ),
+            ),
+            ...Array.from(document.querySelectorAll<HTMLElement>(`[id="${target}"]`)),
+          ];
+      const visibleTarget = candidates.find((element) => {
+        const styles = window.getComputedStyle(element);
+        const rect = element.getBoundingClientRect();
+        return styles.display !== "none" && styles.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
+      });
+      visibleTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
 
@@ -112,11 +177,16 @@ export function SellerAppShell() {
       await saveMutation.mutateAsync(currentPayload());
     } catch {
       suppressFormResetRef.current = false;
-      // The mutation hook owns seller-facing error copy.
     }
   };
 
   const handleSubmit = async () => {
+    if (submitInFlightRef.current || isSubmitting) return;
+    if (isUploading) {
+      toast.error("Wait for your document upload to finish before submitting.");
+      return;
+    }
+
     const values = form.getValues();
     const result = validateSellerOnboardingForSubmit(values);
 
@@ -129,7 +199,11 @@ export function SellerAppShell() {
         }
       }
       toast.error(firstIssue?.message ?? "Please finish the missing items first.");
-      scrollToSection(viewModel?.firstIncompleteSectionId);
+      const invalidField = firstIssue?.path[0];
+      const invalidSection = typeof invalidField === "string"
+        ? FIELD_SECTION[invalidField as keyof SellerOnboardingFormValues]
+        : undefined;
+      scrollToSection(invalidSection ?? viewModel?.firstIncompleteSectionId);
       return;
     }
 
@@ -140,56 +214,23 @@ export function SellerAppShell() {
     }
 
     try {
+      submitInFlightRef.current = true;
       suppressFormResetRef.current = true;
       await saveMutation.mutateAsync(currentPayload());
       await submitMutation.mutateAsync();
     } catch {
       suppressFormResetRef.current = false;
-      // The mutation hooks own seller-facing error copy.
+    } finally {
+      submitInFlightRef.current = false;
     }
-  };
-
-  const blockDocumentUpload = (
-    config: SellerOnboardingDocumentConfig,
-    targetViewModel?: SellerOnboardingViewModel | null,
-  ) => {
-    const message = getLockedApplicationMessage(targetViewModel);
-    setUploadingDocuments((current) => ({
-      ...current,
-      [config.key]: {
-        uploading: false,
-        progress: 0,
-        error: message,
-      },
-    }));
-    toast.info(message);
-  };
-
-  const ensureDocumentUploadAllowed = async (config: SellerOnboardingDocumentConfig) => {
-    if (!viewModel?.canEdit) {
-      blockDocumentUpload(config, viewModel);
-      return false;
-    }
-
-    const latest = await onboardingQuery.refetch();
-    const latestViewModel = latest.data;
-
-    if (!latestViewModel?.canEdit) {
-      blockDocumentUpload(config, latestViewModel);
-      return false;
-    }
-
-    return true;
   };
 
   const handleSelectDocument = async (config: SellerOnboardingDocumentConfig, file: File | null) => {
-    if (!file) return;
-
-    if (!(await ensureDocumentUploadAllowed(config))) return;
+    if (!file || disabled) return;
 
     setUploadingDocuments((current) => ({
       ...current,
-      [config.key]: { uploading: true, progress: 0 },
+      [config.key]: { uploading: true, progress: 5, error: undefined },
     }));
 
     try {
@@ -246,10 +287,24 @@ export function SellerAppShell() {
   } else {
     shellContent = (
       <>
-        <SellerOnboardingNotice viewModel={viewModel} onContinue={() => scrollToSection()} />
+        <div className="hidden" aria-hidden="true">
+          <input type="hidden" {...form.register("payoutMode")} />
+          <input type="hidden" {...form.register("momoProvider")} />
+          <input type="hidden" {...form.register("momoPhone")} />
+          <input type="hidden" {...form.register("momoAccountName")} />
+          <input type="hidden" {...form.register("bankName")} />
+          <input type="hidden" {...form.register("bankAccountNumber")} />
+          <input type="hidden" {...form.register("bankAccountName")} />
+          <input type="hidden" {...form.register("bankBranch")} />
+          <input type="hidden" {...form.register("payoutProvider")} />
+          <input type="hidden" {...form.register("payoutPhone")} />
+          <input type="hidden" {...form.register("payoutAccountName")} />
+        </div>
+
+        <SellerOnboardingNotice viewModel={viewModel} onContinue={handleContinue} />
         <SellerApplicationHero
           viewModel={viewModel}
-          onContinue={() => scrollToSection()}
+          onContinue={handleContinue}
           onSave={() => void handleSave()}
           saving={isSaving}
         />
@@ -294,7 +349,7 @@ export function SellerAppShell() {
           onOpenSectionChange={setOpenSection}
           uploadingDocuments={uploadingDocuments}
           onSelectDocument={handleSelectDocument}
-          onContinue={() => scrollToSection()}
+          onContinue={handleContinue}
           onSave={() => void handleSave()}
           onSubmit={() => void handleSubmit()}
           saving={isSaving}

@@ -1,4 +1,5 @@
 import type { AuthUser } from "@/types/auth";
+import { normalizePayoutDestination } from "@/lib/payout-destination";
 import type { SellerApplicationStatus, VendorApplication } from "@/types/seller";
 import type {
   ChecklistItem,
@@ -137,6 +138,13 @@ function documentState(
 export function getSellerOnboardingFormValues(
   application: VendorApplication | null,
 ): SellerOnboardingFormValues {
+  const payout = normalizePayoutDestination(application);
+  const legacyProvider = application?.payoutProvider ?? "";
+  const legacyPhone = application?.payoutPhone ?? "";
+  const legacyAccountName = application?.payoutAccountName ?? "";
+
+  const payoutMode = payout.mode ?? "MOBILE_MONEY";
+
   return {
     sellerType: application?.sellerType ?? "INDIVIDUAL",
     ownerFullName: application?.ownerFullName ?? "",
@@ -148,9 +156,17 @@ export function getSellerOnboardingFormValues(
     productCategoriesInput: application?.productCategories?.join(", ") ?? "",
     businessAddress: application?.businessAddress ?? "",
     nrcNumber: application?.nrcNumber ?? "",
-    payoutProvider: application?.payoutProvider ?? "MTN Mobile Money",
-    payoutPhone: application?.payoutPhone ?? "",
-    payoutAccountName: application?.payoutAccountName ?? "",
+    payoutProvider: legacyProvider,
+    payoutPhone: legacyPhone,
+    payoutAccountName: legacyAccountName,
+    payoutMode,
+    momoProvider: payout.momoProvider,
+    momoPhone: payout.momoPhone,
+    momoAccountName: payout.momoAccountName,
+    bankName: payout.bankName,
+    bankAccountNumber: payout.bankAccountNumber,
+    bankAccountName: payout.bankAccountName,
+    bankBranch: payout.bankBranch,
     nrcFrontUrl: application?.nrcFrontUrl ?? "",
     nrcBackUrl: application?.nrcBackUrl ?? "",
     shopPhotoUrl: application?.shopPhotoUrl ?? "",
@@ -159,11 +175,88 @@ export function getSellerOnboardingFormValues(
   };
 }
 
+export type PayoutReadinessResult = {
+  settlementReady: boolean;
+  payoutsDesc: string;
+  missingItemText: string | null;
+};
+
+export function derivePayoutReadiness(values: SellerOnboardingFormValues): PayoutReadinessResult {
+  const mode = values.payoutMode ?? "MOBILE_MONEY";
+  const momoReady =
+    filled(values.momoProvider) &&
+    filled(values.momoPhone) &&
+    filled(values.momoAccountName);
+  const bankReady =
+    filled(values.bankName) &&
+    filled(values.bankAccountNumber) &&
+    filled(values.bankAccountName);
+
+  if (mode === "BOTH") {
+    if (momoReady && bankReady) {
+      return {
+        settlementReady: true,
+        payoutsDesc: "Payout details are complete.",
+        missingItemText: null,
+      };
+    }
+    if (!momoReady && !bankReady) {
+      return {
+        settlementReady: false,
+        payoutsDesc: "Add both payout destinations.",
+        missingItemText: "Add both payout destinations",
+      };
+    }
+    if (!momoReady) {
+      return {
+        settlementReady: false,
+        payoutsDesc: "Add your Mobile Money payout details.",
+        missingItemText: "Add your Mobile Money payout details",
+      };
+    }
+    return {
+      settlementReady: false,
+      payoutsDesc: "Add your bank payout details.",
+      missingItemText: "Add your bank payout details",
+    };
+  }
+
+  if (mode === "BANK_ACCOUNT") {
+    if (bankReady) {
+      return {
+        settlementReady: true,
+        payoutsDesc: "Payout details are complete.",
+        missingItemText: null,
+      };
+    }
+    return {
+      settlementReady: false,
+      payoutsDesc: "Add your bank payout details.",
+      missingItemText: "Add your bank payout details",
+    };
+  }
+
+  // MOBILE_MONEY default
+  if (momoReady) {
+    return {
+      settlementReady: true,
+      payoutsDesc: "Payout details are complete.",
+      missingItemText: null,
+    };
+  }
+  return {
+    settlementReady: false,
+    payoutsDesc: "Add your Mobile Money payout details.",
+    missingItemText: "Add your Mobile Money payout details",
+  };
+}
+
 export function mapSellerOnboardingToViewModel(
   application: VendorApplication | null,
   user: AuthUser | null,
+  overrideFormValues?: SellerOnboardingFormValues | null,
 ): SellerOnboardingViewModel {
-  const formValues = getSellerOnboardingFormValues(application);
+  const formValues = overrideFormValues ?? getSellerOnboardingFormValues(application);
   const documents = Object.fromEntries(
     sellerOnboardingDocumentConfigs.map((config) => [
       config.key,
@@ -191,7 +284,8 @@ export function mapSellerOnboardingToViewModel(
     documents.nrcBack.status === "uploaded" &&
     (!isRegisteredBusiness || (filled(formValues.pacraNumber) && documents.pacraDocument.status === "uploaded"));
 
-  const settlementReady = filled(formValues.payoutProvider) && filled(formValues.payoutPhone);
+  const payoutReadiness = derivePayoutReadiness(formValues);
+  const settlementReady = payoutReadiness.settlementReady;
 
   const emailVerified = Boolean(user?.emailVerified ?? application?.user?.emailVerified);
   const phoneVerified = Boolean(user?.phoneVerifiedAt ?? application?.user?.phoneVerifiedAt);
@@ -271,11 +365,7 @@ export function mapSellerOnboardingToViewModel(
   };
 
   const getPayoutsDesc = () => {
-    if (settlementReady) return "Payout details are complete.";
-    const missing = [];
-    if (!filled(formValues.payoutProvider)) missing.push("provider");
-    if (!filled(formValues.payoutPhone)) missing.push("phone");
-    return `Add payout ${missing.join(" and ")}.`;
+    return payoutReadiness.payoutsDesc;
   };
 
   const getTrustDesc = () => {
@@ -442,7 +532,12 @@ function getMissingItemsFromReadiness(
       items.push(`${uploadVerb} PACRA document`);
     }
   }
-  if (readiness.settlement !== "ready") items.push("Add payout phone");
+  if (readiness.settlement !== "ready") {
+    const payoutInfo = derivePayoutReadiness(values);
+    if (payoutInfo.missingItemText) {
+      items.push(payoutInfo.missingItemText);
+    }
+  }
   if (readiness.trust !== "ready") {
     const missing = [];
     if (!emailVerified) missing.push("email");

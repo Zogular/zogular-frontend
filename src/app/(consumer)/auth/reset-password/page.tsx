@@ -7,8 +7,9 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { getDemoVerificationEmail, resetPassword } from "@/services/auth";
+import { getDemoVerificationEmail, getPendingPasswordReset, resetPassword } from "@/services/auth";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
+import { appendNextPath, sanitizeInternalNextPath } from "@/services/auth-intent";
 
 export default function ResetPasswordPage() {
   return (
@@ -22,7 +23,12 @@ function ResetPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const email = searchParams.get("email") ?? getDemoVerificationEmail();
-  const code = searchParams.get("code") ?? "";
+  const nextPath = sanitizeInternalNextPath(searchParams.get("next"));
+  const pendingReset = getPendingPasswordReset();
+  const code = pendingReset?.email.trim().toLowerCase() === email.trim().toLowerCase()
+    ? pendingReset.code
+    : "";
+  const restartHref = appendNextPath(`/auth/forgot-password?email=${encodeURIComponent(email)}`, nextPath);
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [password, setPassword] = useState("");
@@ -45,8 +51,10 @@ function ResetPasswordContent() {
         code,
         password,
         confirmPassword,
+        next: nextPath,
       });
-      router.push(result.nextPath ?? "/auth/login");
+      const loginPath = nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+      router.push(result.nextPath ?? appendNextPath(loginPath, nextPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to reset password.");
     } finally {
@@ -61,7 +69,7 @@ function ResetPasswordContent() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
       <div className="auth-panel relative z-10 flex flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Link href="/auth/login">
+        <Link href={appendNextPath(`/auth/verify-code?email=${encodeURIComponent(email)}`, nextPath)}>
           <Button data-auth-back aria-label="Go back" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
             <ArrowLeft className="h-4 w-4" />
           </Button>
@@ -84,6 +92,12 @@ function ResetPasswordContent() {
           </div>
 
           <form className="space-y-4" onSubmit={handleSubmit}>
+            {!code ? (
+              <div className="rounded-xl border border-amber-300/20 bg-amber-300/10 p-3 text-xs font-medium leading-5 text-amber-100">
+                For your security, restart password recovery to obtain and verify a new code.{" "}
+                <Link href={restartHref} className="font-bold underline underline-offset-2">Restart recovery</Link>
+              </div>
+            ) : null}
             <div className="space-y-1">
               <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">New Password</label>
               <div className="relative">
@@ -92,7 +106,7 @@ function ResetPasswordContent() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="••••••••"
-                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]"
+                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
                 />
                 <button
                   type="button"
@@ -114,7 +128,7 @@ function ResetPasswordContent() {
                   value={confirmPassword}
                   onChange={(event) => setConfirmPassword(event.target.value)}
                   placeholder="••••••••"
-                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]"
+                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
                 />
                 <button
                   type="button"
@@ -130,7 +144,7 @@ function ResetPasswordContent() {
             {error ? <p className="text-xs font-medium text-red-300">{error}</p> : null}
 
             <Button
-              disabled={isSubmitting || !password || !confirmPassword}
+              disabled={isSubmitting || !code || !password || !confirmPassword}
               className="mt-6 h-11 w-full rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]"
             >
               {isSubmitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
@@ -141,7 +155,7 @@ function ResetPasswordContent() {
       </div>
 
       <div className="relative z-10 hidden flex-col justify-end p-16 lg:flex xl:p-24">
-        <Link href="/">
+        <Link href={nextPath ?? "/"}>
           <Button aria-label="Close password reset page" variant="ghost" size="icon" className="absolute right-6 top-6 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
             <X className="h-5 w-5" />
           </Button>

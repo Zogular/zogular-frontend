@@ -4,7 +4,9 @@ export interface Product {
   title?: string;
   name?: string;
   categoryName?: string;
+  categorySlug?: string;
   subcategoryName?: string;
+  subcategorySlug?: string;
   price: number;
   oldPrice?: number | null;
   originalPrice?: number | null;
@@ -14,6 +16,7 @@ export interface Product {
   rating: number;
   reviews: number;
   image: string;
+  images?: string[];
   stock?: number;
   moderationStatus?: "approved" | "pending" | "rejected";
   sellerVisibility?: "visible" | "hidden";
@@ -34,29 +37,30 @@ export interface ProductSpec {
 
 export interface ProductSeller {
   name: string;
-  href: string;
-  avatar: string;
-  verified: boolean;
-  positiveRate: string;
-  followers: string;
+  href?: string;
+  avatar?: string;
+  verified?: boolean;
+  positiveRate?: string;
+  followers?: string;
 }
 
 export interface ProductDetail {
   id: number | string;
   slug: string;
   title: string;
-  brand: string;
+  brand?: string;
   category: { name: string; href: string };
   subcategory: { name: string; href: string };
-  sku: string;
+  sku?: string;
   price: number;
   originalPrice: number;
   rating: number;
   reviewCount: number;
-  badge: string | null;
-  seller: ProductSeller;
+  badge?: string | null;
+  seller?: ProductSeller;
+  condition?: string;
   stock: number;
-  shippingText: string;
+  shippingText?: string;
   images: string[];
   variants: ProductVariant[];
   description: string;

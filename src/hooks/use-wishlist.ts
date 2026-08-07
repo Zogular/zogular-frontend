@@ -74,19 +74,18 @@ export const useWishlist = create<WishlistStore>()(
 
       addItem: async (item) => {
         const normalizedId = normalizeWishlistId(item.id);
-        const currentItems = get().items;
-        const exists = currentItems.some((wishlistItem) => normalizeWishlistId(wishlistItem.id) === normalizedId);
-        if (exists) return;
+        if (get().items.some((wishlistItem) => normalizeWishlistId(wishlistItem.id) === normalizedId)) {
+          return;
+        }
 
-        const currentRemoteItemIds = get().remoteItemIds;
-        set(buildWishlistState([...currentItems, item], currentRemoteItemIds));
+        set(buildWishlistState([...get().items, item], get().remoteItemIds));
 
         const user = getStoredAuthUser();
         if (user) {
           try {
             const added = await apiAddWishlistItem(normalizedId);
             set(
-              buildWishlistState([...currentItems, item], {
+              buildWishlistState(get().items, {
                 ...get().remoteItemIds,
                 [normalizedId]: added.id,
               })
@@ -101,18 +100,17 @@ export const useWishlist = create<WishlistStore>()(
 
       removeItem: async (id) => {
         const normalizedId = normalizeWishlistId(id);
-        const currentItems = get().items;
-        const itemToRemove = currentItems.find((i) => normalizeWishlistId(i.id) === normalizedId);
+        const itemToRemove = get().items.find((i) => normalizeWishlistId(i.id) === normalizedId);
         if (!itemToRemove) return;
 
-        const currentRemoteItemIds = get().remoteItemIds;
-        const nextItems = currentItems.filter((item) => normalizeWishlistId(item.id) !== normalizedId);
-        set(buildWishlistState(nextItems, currentRemoteItemIds));
+        const nextItems = get().items.filter((item) => normalizeWishlistId(item.id) !== normalizedId);
+        set(buildWishlistState(nextItems, get().remoteItemIds));
 
         const user = getStoredAuthUser();
         if (user) {
           try {
-            const remoteId = currentRemoteItemIds[normalizedId];
+            // Need to look up remoteId BEFORE we delete it, but from the latest state
+            const remoteId = get().remoteItemIds[normalizedId];
             if (remoteId) {
               await apiRemoveWishlistItem(remoteId);
               const nextRemoteIds = { ...get().remoteItemIds };
@@ -121,8 +119,10 @@ export const useWishlist = create<WishlistStore>()(
             }
           } catch (e) {
             console.error("Failed to remove from remote wishlist", e);
-            const rolledBackItems = [...get().items, itemToRemove];
-            set(buildWishlistState(rolledBackItems, get().remoteItemIds));
+            const freshItems = get().items;
+            if (!freshItems.some(i => normalizeWishlistId(i.id) === normalizedId)) {
+              set(buildWishlistState([...freshItems, itemToRemove], get().remoteItemIds));
+            }
           }
         }
       },

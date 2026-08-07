@@ -236,7 +236,8 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
   const isAuthRoute =
     pathname.startsWith("/seller/login") ||
     pathname.startsWith("/seller/register") ||
-    pathname.startsWith("/seller/check-email");
+    pathname.startsWith("/seller/check-email") ||
+    pathname.startsWith("/seller/verify-phone");
   const sellerStatus: SellerApplicationStatus | null = application?.status ?? null;
   const canCreateDraftProduct = hasSellerCapability(sellerStatus, "canCreateDraftProduct");
   const sellerDisplayName = getSellerDisplayName(application);
@@ -447,7 +448,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       {/* =========================================
           1. MOBILE HEADER (Sticky Top)
           ========================================= */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#143320] bg-[#0A1A10] p-4 text-white shadow-sm md:hidden">
+      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#143320] bg-[#0A1A10] px-4 pb-4 pt-safe text-white shadow-sm md:hidden">
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">
@@ -553,7 +554,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       <div className="flex flex-1 flex-col min-w-0 pb-20 md:pb-0">
         
         {/* Desktop Header (Glassmorphism) */}
-        <header className="sticky top-0 z-30 hidden h-18 items-center justify-between border-b border-zinc-200/80 bg-white/80 px-8 backdrop-blur-md md:flex">
+        <header className="sticky top-0 z-30 hidden h-18 items-center justify-between gap-3 border-b border-zinc-200/80 bg-white/80 px-4 backdrop-blur-md md:flex lg:px-6 xl:px-8">
           
           <div className="flex min-w-0 items-center gap-4">
             <Button
@@ -570,26 +571,31 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
             <h1 className="truncate text-2xl font-black tracking-tight text-zinc-900">{pageTitle}</h1>
           </div>
 
-          <div className="flex items-center gap-4 shrink-0">
+          <div className="flex shrink-0 items-center gap-2 xl:gap-4">
             <Link href={primaryAction.href}>
-              <Button className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d]">
-                <PrimaryActionIcon className="mr-2 h-4 w-4" /> {primaryAction.label}
+              <Button
+                aria-label={primaryAction.label}
+                title={primaryAction.label}
+                className="h-11 w-11 rounded-xl bg-[#009E49] p-0 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d] lg:w-auto lg:px-4 xl:px-5"
+              >
+                <PrimaryActionIcon className="h-4 w-4 lg:mr-2" />
+                <span className="hidden lg:inline">{primaryAction.label}</span>
               </Button>
             </Link>
 
-            <div className="h-6 w-px bg-zinc-200"></div>
+            <div className="hidden h-6 w-px bg-zinc-200 xl:block"></div>
 
-            <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex h-10 w-10 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 transition-colors hover:bg-zinc-50 hover:text-zinc-900 shadow-sm">
+            <Link href="/seller/notifications" aria-label="Open notifications" title="Notifications" className="relative flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900">
               <Bell className="h-4 w-4" />
               <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-[#FF6B00]" />
             </Link>
 
             {/* Seller Identity Dropdown Trigger */}
-            <Link href="/seller/settings" className="flex items-center gap-3 rounded-2xl border border-zinc-200/80 bg-white p-1.5 pr-4 shadow-sm cursor-pointer hover:bg-zinc-50 transition-colors">
+            <Link href="/seller/settings" aria-label="Open seller settings" title="Seller settings" className="flex h-11 w-11 cursor-pointer items-center justify-center rounded-2xl border border-zinc-200/80 bg-white p-1.5 shadow-sm transition-colors hover:bg-zinc-50 lg:h-auto lg:w-auto lg:justify-start lg:gap-3 lg:pr-3 xl:pr-4">
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-linear-to-br from-zinc-800 to-zinc-900 text-white font-bold text-xs shadow-inner">
                 {sellerInitials}
               </div>
-              <div className="leading-none">
+              <div className="hidden leading-none lg:block">
                 <p className="max-w-38 truncate text-sm font-bold text-zinc-900">{sellerDisplayName}</p>
                 <p className="mt-0.5 text-[10px] font-bold uppercase tracking-wider text-zinc-500">{sellerDisplayRole}</p>
               </div>

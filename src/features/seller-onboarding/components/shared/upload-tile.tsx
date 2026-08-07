@@ -1,8 +1,9 @@
 import { Eye, FileUp, Loader2, UploadCloud } from "lucide-react";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { cn } from "@/lib/utils";
 import type { UploadTileStatus } from "../../types/seller-onboarding.types";
 import { StatusBadge } from "./status-badge";
+import { MediaPreviewModal } from "@/components/ui/media-preview-modal";
 
 const uploadStatusMap: Record<UploadTileStatus, "draft" | "pending" | "ready" | "missing"> = {
   empty: "draft",
@@ -37,6 +38,7 @@ export function UploadTile({
   onSelectFile,
 }: UploadTileProps) {
   const inputRef = useRef<HTMLInputElement>(null);
+  const [previewOpen, setPreviewOpen] = useState(false);
   const resolvedStatus = uploading ? "pending" : status;
   const locked = disabled || uploading;
 
@@ -73,7 +75,7 @@ export function UploadTile({
         </div>
       ) : null}
       {error ? (
-        <p className="mt-3 rounded-2xl bg-[#FBE9E4] px-3 py-2 text-xs font-bold leading-5 text-[#A5442E]">
+        <p className="mt-3 rounded-2xl bg-[#FBE9E4] px-3 py-2 text-xs font-bold leading-5 text-[#A5442E] break-words">
           {error}
         </p>
       ) : null}
@@ -93,15 +95,22 @@ export function UploadTile({
         <p className="text-[10px] font-black uppercase tracking-[0.16em] text-[#9B948A]">{acceptLabel}</p>
         <div className="flex flex-wrap items-center gap-2">
           {url ? (
-            <a
-              href={url}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex h-9 min-w-[82px] flex-1 items-center justify-center rounded-xl border border-[#D8C9B8] bg-[#FFFCF8] px-3 text-xs font-black text-[#1F1A14] hover:bg-white"
-            >
-              <Eye className="mr-1.5 h-3.5 w-3.5" />
-              View
-            </a>
+            <>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className="inline-flex h-9 min-w-[82px] flex-1 items-center justify-center rounded-xl border border-[#D8C9B8] bg-[#FFFCF8] px-3 text-xs font-black text-[#1F1A14] hover:bg-white cursor-pointer"
+              >
+                <Eye className="mr-1.5 h-3.5 w-3.5" />
+                View
+              </button>
+              <MediaPreviewModal
+                isOpen={previewOpen}
+                onClose={() => setPreviewOpen(false)}
+                url={url}
+                title={title}
+              />
+            </>
           ) : null}
           <button
             type="button"

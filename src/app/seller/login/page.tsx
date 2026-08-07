@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { getPostLoginRedirectPath, login } from "@/services/auth";
+import { getPostLoginRedirectPath, isEmailVerificationRequiredError, login } from "@/services/auth";
 import {
   appendNextPath,
   clearAuthRedirectIntent,
@@ -39,6 +39,7 @@ function SellerLoginContent() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [verificationRecoveryHref, setVerificationRecoveryHref] = useState<string | null>(null);
 
   useEffect(() => {
     storeAuthRedirectIntent(nextPath);
@@ -59,6 +60,7 @@ function SellerLoginContent() {
       setIsSubmitting(true);
       setError(null);
       setSuccess(null);
+      setVerificationRecoveryHref(null);
 
       const session = await login({ email, password });
       setSuccess("Signed in successfully. Redirecting...");
@@ -69,6 +71,10 @@ function SellerLoginContent() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to sign in.");
       setSuccess(null);
+      if (isEmailVerificationRequiredError(err)) {
+        const recoveryPath = `/seller/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`;
+        setVerificationRecoveryHref(appendNextPath(recoveryPath, nextPath));
+      }
     } finally {
       setIsSubmitting(false);
     }
@@ -115,14 +121,14 @@ function SellerLoginContent() {
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="banda@example.com"
-                className="h-10 rounded-xl border-white/10 bg-white/5 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]"
+                className="h-10 rounded-xl border-white/10 bg-white/5 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
               />
             </div>
 
             <div className="space-y-1">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Password</label>
-                <Link href="/auth/forgot-password" className="text-[11px] font-bold text-[#FF6B00] transition-all hover:text-[#e66000] hover:underline">
+                <Link href={appendNextPath("/auth/forgot-password", nextPath)} className="text-[11px] font-bold text-[#FF6B00] transition-all hover:text-[#e66000] hover:underline">
                   Forgot password?
                 </Link>
               </div>
@@ -132,7 +138,7 @@ function SellerLoginContent() {
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="••••••••"
-                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-sm text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49]"
+                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
                 />
                 <button
                   type="button"
@@ -146,6 +152,11 @@ function SellerLoginContent() {
             </div>
 
             {error ? <p className="text-xs font-medium text-red-300">{error}</p> : null}
+            {verificationRecoveryHref ? (
+              <Button asChild variant="outline" className="h-11 w-full rounded-xl border-amber-300/30 bg-amber-300/10 text-sm font-bold text-amber-100 hover:bg-amber-300/15 hover:text-white">
+                <Link href={verificationRecoveryHref}>Recover email verification</Link>
+              </Button>
+            ) : null}
             {success ? <p className="text-xs font-medium text-emerald-300">{success}</p> : null}
 
             <Button

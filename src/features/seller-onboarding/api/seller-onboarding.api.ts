@@ -14,6 +14,28 @@ export type SellerOnboardingApiResponse = {
   user: AuthUser | null;
 };
 
+function mergeRefreshedUser(
+  application: VendorApplication | null,
+  user: AuthUser | null,
+): VendorApplication | null {
+  if (!application || !user) return application;
+
+  return {
+    ...application,
+    user: {
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      email: user.email,
+      telephone: user.phone ?? application.user?.telephone ?? "",
+      role: user.role ?? application.user?.role ?? "",
+      emailVerified: user.emailVerified === true,
+      phoneVerifiedAt: user.phoneVerifiedAt ?? null,
+      isActive: application.user?.isActive ?? false,
+    },
+  };
+}
+
 export async function getSellerOnboarding(): Promise<SellerOnboardingApiResponse> {
   const [applicationResult, userResult] = await Promise.allSettled([
     getMyVendorApplication(),
@@ -40,7 +62,14 @@ export async function getSellerOnboarding(): Promise<SellerOnboardingApiResponse
     throw userResult.reason;
   }
 
-  return { application, user };
+  if (
+    userResult.status === "rejected" &&
+    !application?.user
+  ) {
+    throw userResult.reason;
+  }
+
+  return { application: mergeRefreshedUser(application, user), user };
 }
 
 export async function startSellerOnboardingDraft() {

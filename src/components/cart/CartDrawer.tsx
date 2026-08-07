@@ -11,6 +11,9 @@ import {
   ArrowRight,
   ShieldCheck,
   PackageOpen,
+  AlertCircle,
+  RefreshCw,
+  X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -89,7 +92,7 @@ function CartItemRow({
           ) : null}
         </div>
 
-        <div className="mt-2 flex items-center justify-between gap-2">
+        <div className="mt-2 flex flex-col items-start gap-2 min-[360px]:flex-row min-[360px]:items-center min-[360px]:justify-between">
           <span className="truncate text-sm font-black text-zinc-900">
             {formatCurrency(item.price)}
           </span>
@@ -102,7 +105,8 @@ function CartItemRow({
                 if (item.quantity <= 1) onRemove(identity);
                 else onDecrease(identity);
               }}
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-zinc-600 transition-all hover:text-zinc-900 hover:shadow-sm"
+              aria-label={item.quantity <= 1 ? `Remove ${item.name}` : `Decrease ${item.name} quantity`}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-zinc-900 hover:shadow-sm"
             >
               {item.quantity <= 1 ? (
                 <Trash2 className="h-3 w-3 text-red-500" />
@@ -119,7 +123,8 @@ function CartItemRow({
               type="button"
               title="Increase quantity"
               onClick={() => onIncrease(identity)}
-              className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-white text-zinc-600 transition-all hover:text-[#009E49] hover:shadow-sm"
+              aria-label={`Increase ${item.name} quantity`}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-[#009E49] hover:shadow-sm"
             >
               <Plus className="h-3 w-3" />
             </button>
@@ -162,6 +167,9 @@ export function CartDrawer({ children }: CartDrawerProps) {
     increaseQuantity,
     decreaseQuantity,
     removeItem,
+    syncStatus,
+    syncError,
+    syncWithBackend,
   } = useCart();
 
   const displayItemCount = hasHydrated ? itemCount : 0;
@@ -174,15 +182,22 @@ export function CartDrawer({ children }: CartDrawerProps) {
     <Sheet open={open} onOpenChange={setOpen}>
       <SheetTrigger asChild>{children}</SheetTrigger>
 
-      <SheetContent className="flex h-full min-h-0 w-full flex-col overflow-hidden border-l border-white/50 bg-white/85 p-0 shadow-[0_0_60px_rgba(0,0,0,0.1)] backdrop-blur-2xl sm:max-w-md">
-        <SheetHeader className="shrink-0 border-b border-zinc-200/50 bg-white/40 px-6 py-5">
-          <SheetTitle className="flex items-center gap-2 text-xl font-black text-zinc-900">
-            <ShoppingCart className="h-5 w-5 text-[#009E49]" />
-            Your Cart
-            <Badge className="ml-1 bg-zinc-900 text-white hover:bg-zinc-800">
-              {displayItemCount}
-            </Badge>
-          </SheetTitle>
+      <SheetContent showCloseButton={false} className="flex h-dvh min-h-0 w-full data-[side=right]:w-full flex-col overflow-hidden border-l border-white/50 bg-white/85 p-0 shadow-[0_0_60px_rgba(0,0,0,0.1)] backdrop-blur-2xl sm:max-w-md">
+        <SheetHeader className="shrink-0 border-b border-zinc-200/50 bg-white/40 px-4 py-3 sm:px-6 sm:py-5">
+          <div className="flex items-center justify-between gap-3">
+            <SheetTitle className="flex items-center gap-2 text-xl font-black text-zinc-900">
+              <ShoppingCart className="h-5 w-5 text-[#009E49]" />
+              Your Cart
+              <Badge className="ml-1 bg-zinc-900 text-white hover:bg-zinc-800">
+                {displayItemCount}
+              </Badge>
+            </SheetTitle>
+            <SheetClose asChild>
+              <Button type="button" variant="ghost" size="icon" aria-label="Close cart" className="h-11 w-11 shrink-0 rounded-full">
+                <X className="h-5 w-5" aria-hidden="true" />
+              </Button>
+            </SheetClose>
+          </div>
         </SheetHeader>
 
         {!hasHydrated ? (
@@ -191,6 +206,28 @@ export function CartDrawer({ children }: CartDrawerProps) {
           </div>
         ) : displayItems.length > 0 ? (
           <>
+            {syncStatus === "error" ? (
+              <div role="alert" className="mx-4 mt-3 flex shrink-0 items-center gap-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-950">
+                <AlertCircle className="h-4 w-4 shrink-0" aria-hidden="true" />
+                <p className="min-w-0 flex-1">
+                  {syncError || "Your cart could not be refreshed. Your current items are still visible."}
+                </p>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => void syncWithBackend()}
+                  className="h-11 shrink-0 px-3 font-bold text-amber-950 hover:bg-amber-100"
+                >
+                  <RefreshCw className="mr-1.5 h-3.5 w-3.5" aria-hidden="true" />
+                  Retry
+                </Button>
+              </div>
+            ) : syncStatus === "syncing" ? (
+              <p role="status" className="shrink-0 px-6 pt-3 text-xs font-medium text-zinc-500">
+                Refreshing your cart…
+              </p>
+            ) : null}
             <ScrollArea className="min-h-0 flex-1 overflow-hidden px-6 py-4">
               <div className="flex flex-col gap-5">
                 {displayItems.map((item) => (
@@ -206,7 +243,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
               </div>
             </ScrollArea>
 
-            <SheetFooter className="shrink-0 flex flex-col border-t border-zinc-200/50 bg-white/60 px-6 py-5 backdrop-blur-md">
+            <SheetFooter className="shrink-0 flex flex-col border-t border-zinc-200/50 bg-white/60 px-6 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] backdrop-blur-md">
               <div className="mb-5 space-y-3">
                 <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
                   <span>

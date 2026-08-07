@@ -1,10 +1,11 @@
 "use client";
 
-import { useId } from "react";
+import { useId, useState } from "react";
 import { AlertCircle, Eye, FileBadge2, Loader2, RefreshCw, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { SellerDocumentUploadState } from "@/types/seller";
+import { MediaPreviewModal } from "@/components/ui/media-preview-modal";
 
 function getStatusBadge(status: SellerDocumentUploadState["status"]) {
   switch (status) {
@@ -45,6 +46,7 @@ export function SellerDocumentUploadCard({
   className?: string;
 }) {
   const fileInputId = useId();
+  const [previewOpen, setPreviewOpen] = useState(false);
   const badge = getStatusBadge(state.status);
   const showImagePreview = state.fileKind === "image" && Boolean(state.previewUrl);
 
@@ -163,18 +165,26 @@ export function SellerDocumentUploadCard({
           ) : null}
 
           {state.uploadedUrl ? (
-            <a
-              href={state.uploadedUrl}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(
-                "inline-flex h-10 items-center rounded-2xl border border-[#dbcab1] bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#6b5a46] transition-colors hover:bg-white",
-                disabled && "pointer-events-none opacity-60",
-              )}
-            >
-              <Eye className="mr-2 h-4 w-4" />
-              View
-            </a>
+            <>
+              <button
+                type="button"
+                onClick={() => setPreviewOpen(true)}
+                className={cn(
+                  "inline-flex h-10 items-center rounded-2xl border border-[#dbcab1] bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#6b5a46] transition-colors hover:bg-white cursor-pointer",
+                  disabled && "pointer-events-none opacity-60",
+                )}
+              >
+                <Eye className="mr-2 h-4 w-4" />
+                View
+              </button>
+              <MediaPreviewModal
+                isOpen={previewOpen}
+                onClose={() => setPreviewOpen(false)}
+                url={state.uploadedUrl}
+                title={label}
+                fileKind={state.fileKind ?? "auto"}
+              />
+            </>
           ) : null}
         </div>
 
