@@ -1,13 +1,23 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Barcode, Box, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Info, ListPlus, Palette, Percent, PlusCircle, Settings2, ShieldAlert, Sparkles, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ProductContentPolicyFeedback } from "@/components/shared/ProductContentPolicyFeedback";
 import { fetchCategoryAttributes, fetchCategoryTree, type CategoryAttributeOption, type CategoryNode } from "@/services/categories-api";
 import { Toaster, toast } from "sonner";
-import { createSellerCatalogProduct, type CreateSellerProductInput, type ProductCondition, type SellerProductListing, type SellerProductStatus } from "@/services/seller-catalog";
+import { createSellerCatalogProduct, submitSellerProductForReview, type CreateSellerProductInput, type ProductCondition, type SellerProductListing, type SellerProductStatus } from "@/services/seller-catalog";
+import {
+  focusProductContentPolicyIssue,
+  getLegacyProductContentTargetId,
+  isProductSnapshotConflict,
+  parseProductContentPolicyError,
+  restoreProductContentPolicyIssues,
+  storeSafeProductContentPolicyIssues,
+  type ProductContentPolicyIssue,
+} from "@/services/product-content-policy";
 import { CategoryDrawer } from "./CategoryDrawer";
 import { CategorySpecificDetails, type CategoryFieldValue } from "./CategorySpecificDetails";
 import { ListingReadiness, type ListingReadinessItem } from "./ListingReadiness";
@@ -28,10 +38,15 @@ import {
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
 import {
   clearProductDraft,
+  consumeProductSubmissionRecovery,
   getProductDraftStorageKey,
+  getProductSubmissionRecoveryHref,
   hasRecoverableProductDraft,
+  parseProductSubmissionRecoveryHint,
+  PRODUCT_SUBMISSION_RECOVERY_QUERY_PARAM,
   readProductDraft,
   type RecoverableProductDraft,
+  writeProductSubmissionRecovery,
   writeProductDraft,
 } from "../_lib/product-draft-recovery";
 
@@ -73,6 +88,27 @@ function variantOptionsFromProduct(product?: SellerProductListing) {
   };
 }
 
+function categorySelectionFromProduct(product?: SellerProductListing): CategorySelection | null {
+  if (!product) return null;
+
+  const legacySelection = buildSelectionFromLegacy(
+    product.categoryName,
+    product.subcategoryName,
+  );
+  if (!product.backendCategory) return legacySelection;
+
+  return {
+    ...legacySelection,
+    path: [product.categoryName, product.subcategoryName].filter(
+      (value, index, values) => value && values.indexOf(value) === index,
+    ),
+    leafId: product.backendCategory.id,
+    leafName: product.backendCategory.name,
+    leafSlug: product.backendCategory.slug,
+    isBackendCategory: true,
+  };
+}
+
 export function ProductListingStudioForm({
   backHref = "/seller/products",
   initialProduct,
@@ -83,17 +119,24 @@ export function ProductListingStudioForm({
   submitLabel = "Submit for Review",
 }: ProductListingStudioFormProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { application } = useSellerApplication();
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [errors, setErrors] = useState<ValidationErrors>({});
+  const [contentPolicyIssues, setContentPolicyIssues] = useState<readonly ProductContentPolicyIssue[]>([]);
+  const [hasSnapshotConflict, setHasSnapshotConflict] = useState(false);
+  const [submissionRecoveryFallback, setSubmissionRecoveryFallback] = useState<
+    "content-policy" | "submit-failed" | null
+  >(null);
 
   const isEditMode = mode === "edit";
-  const initialCategory = initialProduct ? buildSelectionFromLegacy(initialProduct.categoryName, initialProduct.subcategoryName) : null;
+  const initialCategory = categorySelectionFromProduct(initialProduct);
   const initialVariantOptions = variantOptionsFromProduct(initialProduct);
   const initialDimensions = splitStoredDimensions(initialProduct?.logistics.dimensions);
 
   const [productName, setProductName] = useState(initialProduct?.title ?? "");
   const [brand, setBrand] = useState(initialProduct?.brand ?? "");
+  const [location, setLocation] = useState(initialProduct?.location ?? "");
   const [condition, setCondition] = useState<ProductCondition>(initialProduct?.condition ?? "new");
   const [description, setDescription] = useState(initialProduct?.description ?? "");
   const {
@@ -104,6 +147,7 @@ export function ProductListingStudioForm({
     images,
     removeImage,
     retryImageUpload,
+    setImageAlt,
     setImageVariant,
     setPrimaryImage,
   } = useProductImages(initialProduct?.images ?? []);
@@ -143,6 +187,70 @@ export function ProductListingStudioForm({
     : null;
   const [draftRecoveryReady, setDraftRecoveryReady] = useState(isEditMode);
   const recoveredDraftKeyRef = useRef<string | null>(null);
+  const submissionRecoveryProcessedRef = useRef<string | null>(null);
+  const serverDraftCreatedRef = useRef(false);
+
+  const focusPolicyIssue = useCallback((issue: ProductContentPolicyIssue) => {
+    if (issue.targetId.startsWith("product-seo-") || issue.targetId.startsWith("product-dimensions-")) {
+      setShowAdvanced(true);
+    }
+
+    let attempts = 0;
+    const tryFocus = () => {
+      attempts += 1;
+      if (focusProductContentPolicyIssue(issue) || attempts >= 12) return;
+      window.setTimeout(tryFocus, 50);
+    };
+    window.setTimeout(tryFocus, 0);
+  }, []);
+
+  const resolvePolicyIssuesForForm = useCallback((issues: readonly ProductContentPolicyIssue[]) => {
+    const submittedAttributes = categoryFieldValues.filter((item) => item.value.trim());
+
+    return issues.map((issue) => {
+      if (!issue.targetId.startsWith("product-legacy-")) return issue;
+
+      const attributeIndex = submittedAttributes.findIndex((attribute) =>
+        getLegacyProductContentTargetId(attribute.slug) === issue.targetId ||
+        getLegacyProductContentTargetId(attribute.name) === issue.targetId,
+      );
+
+      return attributeIndex >= 0
+        ? { ...issue, targetId: `product-attribute-${attributeIndex}` }
+        : issue;
+    });
+  }, [categoryFieldValues]);
+
+  useEffect(() => {
+    if (!isEditMode || !initialProduct) return;
+    if (submissionRecoveryProcessedRef.current === initialProduct.id) return;
+    submissionRecoveryProcessedRef.current = initialProduct.id;
+
+    const recovery = consumeProductSubmissionRecovery(initialProduct.id);
+    const recoveryHint = parseProductSubmissionRecoveryHint(
+      searchParams.get(PRODUCT_SUBMISSION_RECOVERY_QUERY_PARAM),
+    );
+
+    if (recovery?.kind === "snapshot-conflict" || recoveryHint === "snapshot-conflict") {
+      setHasSnapshotConflict(true);
+      return;
+    }
+
+    if (recovery?.kind === "content-policy") {
+      const issues = resolvePolicyIssuesForForm(
+        restoreProductContentPolicyIssues(recovery.issues),
+      );
+      if (issues.length > 0) {
+        setContentPolicyIssues(issues);
+        if (issues[0]) focusPolicyIssue(issues[0]);
+        return;
+      }
+    }
+
+    if (recoveryHint === "content-policy" || recoveryHint === "submit-failed") {
+      setSubmissionRecoveryFallback(recoveryHint);
+    }
+  }, [focusPolicyIssue, initialProduct, isEditMode, resolvePolicyIssuesForForm, searchParams]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -157,6 +265,7 @@ export function ProductListingStudioForm({
     if (recovered) {
       setProductName(recovered.productName);
       setBrand(recovered.brand);
+      setLocation(recovered.location ?? "");
       setCondition(recovered.condition);
       setDescription(recovered.description);
       setPrice(recovered.price);
@@ -187,6 +296,7 @@ export function ProductListingStudioForm({
     savedAt: Date.now(),
     productName,
     brand,
+    location,
     condition,
     description,
     price,
@@ -205,12 +315,13 @@ export function ProductListingStudioForm({
     variantOptions,
     seo,
     dimensions,
-  }), [brand, categoryFieldValues, condition, deliveryType, description, dimensions, hasDiscount, hasVariants, lowStockThreshold, packageWeight, price, productName, salePrice, seo, showAdvanced, sku, specs, stock, submittedCategory, variantOptions]);
+  }), [brand, categoryFieldValues, condition, deliveryType, description, dimensions, hasDiscount, hasVariants, location, lowStockThreshold, packageWeight, price, productName, salePrice, seo, showAdvanced, sku, specs, stock, submittedCategory, variantOptions]);
 
   useEffect(() => {
-    if (!draftRecoveryReady || !draftStorageKey) return;
+    if (!draftRecoveryReady || !draftStorageKey || serverDraftCreatedRef.current) return;
 
     const timeoutId = window.setTimeout(() => {
+      if (serverDraftCreatedRef.current) return;
       if (hasRecoverableProductDraft(recoverableDraft)) {
         writeProductDraft(draftStorageKey, {
           ...recoverableDraft,
@@ -393,7 +504,11 @@ export function ProductListingStudioForm({
       return;
     }
 
+    setContentPolicyIssues([]);
+    setHasSnapshotConflict(false);
+    setSubmissionRecoveryFallback(null);
     setIsSubmitting(true);
+    let createdDraftId: string | null = null;
 
     try {
       const uploadedImages = await ensureImagesUploaded();
@@ -433,6 +548,7 @@ export function ProductListingStudioForm({
       const payload: CreateSellerProductInput = {
         title: productName.trim() || "Untitled draft product",
         brand: brand.trim(),
+        location: location.trim(),
         condition,
         description: description.trim(),
         categoryName: category.categoryName,
@@ -478,6 +594,15 @@ export function ProductListingStudioForm({
 
       if (onPersist) {
         await onPersist(payload, status);
+      } else if (status === "pending_review") {
+        const draft = await createSellerCatalogProduct({
+          ...payload,
+          status: "draft",
+        });
+        createdDraftId = draft.id;
+        serverDraftCreatedRef.current = true;
+        clearProductDraft(draftStorageKey);
+        await submitSellerProductForReview(draft.id);
       } else {
         await createSellerCatalogProduct(payload);
       }
@@ -504,7 +629,50 @@ export function ProductListingStudioForm({
       });
       router.push(isEditMode && initialProduct ? `/seller/products/${initialProduct.id}` : "/seller/products");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Failed to save product");
+      const parsedPolicyIssues = parseProductContentPolicyError(err);
+      const isSnapshotConflict = isProductSnapshotConflict(err);
+
+      if (createdDraftId) {
+        const recoveryHint = parsedPolicyIssues
+          ? "content-policy"
+          : isSnapshotConflict
+            ? "snapshot-conflict"
+            : "submit-failed";
+
+        if (parsedPolicyIssues) {
+          writeProductSubmissionRecovery(createdDraftId, {
+            kind: "content-policy",
+            issues: storeSafeProductContentPolicyIssues(
+              resolvePolicyIssuesForForm(parsedPolicyIssues),
+            ),
+          });
+        } else if (isSnapshotConflict) {
+          writeProductSubmissionRecovery(createdDraftId, {
+            kind: "snapshot-conflict",
+          });
+        }
+
+        router.replace(getProductSubmissionRecoveryHref(createdDraftId, recoveryHint));
+        return;
+      }
+
+      if (parsedPolicyIssues) {
+        const policyIssues = resolvePolicyIssuesForForm(parsedPolicyIssues);
+        setContentPolicyIssues(policyIssues);
+        if (policyIssues[0]) focusPolicyIssue(policyIssues[0]);
+        return;
+      }
+
+      if (isSnapshotConflict) {
+        setHasSnapshotConflict(true);
+        return;
+      }
+
+      toast.error(
+        status === "pending_review"
+          ? "Unable to submit this product for review. Try again."
+          : "Unable to save this product. Try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -532,6 +700,48 @@ export function ProductListingStudioForm({
     setCategorySearch("");
   };
 
+  const hasSubmissionFeedback =
+    contentPolicyIssues.length > 0 || hasSnapshotConflict || submissionRecoveryFallback !== null;
+  const renderSubmissionFeedback = (feedbackId: string) => {
+    if (contentPolicyIssues.length > 0 || hasSnapshotConflict) {
+      return (
+        <ProductContentPolicyFeedback
+          feedbackId={feedbackId}
+          issues={contentPolicyIssues}
+          hasSnapshotConflict={hasSnapshotConflict}
+          onIssueSelect={focusPolicyIssue}
+        />
+      );
+    }
+
+    if (!submissionRecoveryFallback) return null;
+
+    return (
+      <div
+        id={feedbackId}
+        data-testid="product-submission-recovery-fallback"
+        role="alert"
+        className="min-w-0 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2.5 text-left shadow-sm"
+      >
+        <div className="flex items-start gap-2">
+          <ShieldAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+          <div className="min-w-0">
+            <p className="text-xs font-black text-amber-950">
+              {submissionRecoveryFallback === "content-policy"
+                ? "Draft kept for correction"
+                : "Draft saved, submission incomplete"}
+            </p>
+            <p className="mt-0.5 text-[11px] font-semibold leading-4 text-amber-800">
+              {submissionRecoveryFallback === "content-policy"
+                ? "Issue details could not be restored. Remove phone numbers, email addresses, social handles, links, or messaging-app details, then submit this saved draft again."
+                : "The server created this draft, but review submission did not complete. Review it and try again."}
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="mx-auto max-w-6xl animate-in fade-in pb-56 duration-500 md:pb-12">
       <Toaster position="top-center" />
@@ -545,11 +755,24 @@ export function ProductListingStudioForm({
           onSave={handleSave}
           canSubmitForReview={canSubmitForReview}
           submitLabel={submitLabel}
+          feedback={renderSubmissionFeedback("product-content-policy-feedback-desktop")}
         />
 
-        <div className="sticky top-[69px] z-30 mb-5 lg:hidden">
+        <div
+          className={`mb-5 lg:hidden ${
+            hasSubmissionFeedback
+              ? "relative z-10"
+              : "sticky top-[69px] z-30"
+          }`}
+        >
           <ListingReadiness items={readiness} variant="mobile" />
         </div>
+
+        {hasSubmissionFeedback ? (
+          <div className="mb-5 md:hidden">
+            {renderSubmissionFeedback("product-content-policy-feedback-mobile")}
+          </div>
+        ) : null}
 
         <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(0,1fr)_340px]">
           <div className="space-y-5">
@@ -561,6 +784,7 @@ export function ProductListingStudioForm({
               onImageSelection={handleImageSelection}
               onRemoveImage={removeImage}
               onRetryImageUpload={retryImageUpload}
+              onSetImageAlt={setImageAlt}
               onSetImageVariant={setImageVariant}
               onSetPrimaryImage={setPrimaryImage}
               variantValues={variantValues}
@@ -568,7 +792,9 @@ export function ProductListingStudioForm({
 
             <ProductEssentialsSection
               categoryError={errors.category}
+              location={location}
               nameError={errors.productName}
+              onLocationChange={setLocation}
               onOpenCategory={() => setIsCategoryOpen(true)}
               onProductNameChange={setProductName}
               productName={productName}
@@ -579,6 +805,7 @@ export function ProductListingStudioForm({
               <>
                 <GlassSection title="Description" subtitle="Give shoppers enough detail to buy with confidence." icon={<ListPlus className="h-4 w-4" />}>
                   <textarea
+                    id="product-description"
                     aria-label="Product description"
                     placeholder="Describe your product's features, condition, inclusions, and buyer benefits..."
                     value={description}
@@ -590,15 +817,22 @@ export function ProductListingStudioForm({
 
                 <GlassSection title="Highlights" subtitle="Short points that can later power listing bullets and search snippets." icon={<Sparkles className="h-4 w-4" />}>
                   <div className="space-y-3">
-                    {specs.map((spec, index) => (
-                      <div key={index} className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-2">
-                        <Input placeholder="e.g. RAM" value={spec.name} onChange={(e) => updateSpec(index, "name", e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
-                        <Input placeholder="e.g. 16GB" value={spec.value} onChange={(e) => updateSpec(index, "value", e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
-                        <Button aria-label={`Remove highlight ${index + 1}`} type="button" variant="ghost" size="icon" onClick={() => removeSpec(index)} className="h-11 w-11 rounded-xl text-zinc-400 hover:bg-rose-50 hover:text-rose-500">
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+                    {specs.map((spec, index) => {
+                      const targetId = getLegacyProductContentTargetId(spec.name);
+                      const isFirstTarget = targetId
+                        ? specs.findIndex((candidate) => getLegacyProductContentTargetId(candidate.name) === targetId) === index
+                        : false;
+
+                      return (
+                        <div key={index} className="grid grid-cols-[minmax(0,0.8fr)_minmax(0,1fr)_44px] gap-2">
+                          <Input placeholder="e.g. RAM" value={spec.name} onChange={(e) => updateSpec(index, "name", e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
+                          <Input id={isFirstTarget ? targetId : undefined} placeholder="e.g. 16GB" value={spec.value} onChange={(e) => updateSpec(index, "value", e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
+                          <Button aria-label={`Remove highlight ${index + 1}`} type="button" variant="ghost" size="icon" onClick={() => removeSpec(index)} className="h-11 w-11 rounded-xl text-zinc-400 hover:bg-rose-50 hover:text-rose-500">
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
                     <Button type="button" variant="outline" onClick={addSpec} className="h-11 w-full rounded-xl border-dashed border-zinc-300 bg-white/70 font-bold text-zinc-600 hover:border-[#009E49] hover:bg-[#009E49]/5 hover:text-[#009E49]">
                       <PlusCircle className="mr-2 h-4 w-4" />
                       Add Highlight
@@ -649,7 +883,7 @@ export function ProductListingStudioForm({
                   <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Brand (Optional)</label>
-                      <Input placeholder="e.g. Apple" value={brand} onChange={(e) => setBrand(e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
+                      <Input id="product-brand" placeholder="e.g. Apple" value={brand} onChange={(e) => setBrand(e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Condition</label>
@@ -718,7 +952,7 @@ export function ProductListingStudioForm({
                     <div className="grid grid-cols-3 gap-2">
                       <InputField icon={<Box className="h-4 w-4" />} label="Stock" error={errors.stock} input={<Input type="number" placeholder="0" value={stock} onChange={(e) => setStock(e.target.value)} className={`h-11 rounded-xl bg-white/80 pl-8 text-sm font-bold shadow-inner ${inputErrorClass(errors.stock)}`} />} />
                       <InputField icon={<ShieldAlert className="h-4 w-4 text-amber-500" />} label="Low Stock" error={errors.lowStockThreshold} input={<Input type="number" value={lowStockThreshold} onChange={(e) => setLowStockThreshold(e.target.value)} className={`h-11 rounded-xl bg-white/80 pl-8 text-sm font-bold shadow-inner ${inputErrorClass(errors.lowStockThreshold)}`} />} />
-                      <InputField icon={<Barcode className="h-4 w-4" />} label="SKU" input={<Input placeholder="Auto" value={sku} onChange={(e) => setSku(e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 pl-8 text-xs font-medium shadow-inner focus-visible:ring-[#009E49]" />} />
+                      <InputField icon={<Barcode className="h-4 w-4" />} label="SKU" input={<Input id="product-sku" placeholder="Auto" value={sku} onChange={(e) => setSku(e.target.value)} className="h-11 rounded-xl border-zinc-200 bg-white/80 pl-8 text-xs font-medium shadow-inner focus-visible:ring-[#009E49]" />} />
                     </div>
                   </div>
                 </GlassSection>
@@ -751,15 +985,15 @@ export function ProductListingStudioForm({
                     <div className="space-y-5 border-t border-zinc-100 p-5">
                       <div className="space-y-3">
                         <h3 className="text-xs font-black uppercase tracking-wider text-zinc-700">SEO optional</h3>
-                        <Input placeholder="Meta title" value={seo.title} onChange={(e) => setSeo({ ...seo, title: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
-                        <textarea aria-label="SEO meta description" placeholder="Meta description" value={seo.description} onChange={(e) => setSeo({ ...seo, description: e.target.value })} className="min-h-20 w-full resize-y rounded-xl border border-zinc-200 bg-white/80 p-3 text-sm shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]" />
+                        <Input id="product-seo-title" placeholder="Meta title" value={seo.title} onChange={(e) => setSeo({ ...seo, title: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]" />
+                        <textarea id="product-seo-description" aria-label="SEO meta description" placeholder="Meta description" value={seo.description} onChange={(e) => setSeo({ ...seo, description: e.target.value })} className="min-h-20 w-full resize-y rounded-xl border border-zinc-200 bg-white/80 p-3 text-sm shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]" />
                       </div>
                       <div className="space-y-3">
                         <h3 className="text-xs font-black uppercase tracking-wider text-zinc-700">Dimensions (cm)</h3>
                         <div className="grid grid-cols-3 gap-2">
-                          <Input type="number" placeholder="L" value={dimensions.l} onChange={(e) => setDimensions({ ...dimensions, l: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-center text-sm shadow-inner" />
-                          <Input type="number" placeholder="W" value={dimensions.w} onChange={(e) => setDimensions({ ...dimensions, w: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-center text-sm shadow-inner" />
-                          <Input type="number" placeholder="H" value={dimensions.h} onChange={(e) => setDimensions({ ...dimensions, h: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-center text-sm shadow-inner" />
+                          <Input id="product-dimensions-length" type="number" placeholder="L" value={dimensions.l} onChange={(e) => setDimensions({ ...dimensions, l: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-center text-sm shadow-inner" />
+                          <Input id="product-dimensions-width" type="number" placeholder="W" value={dimensions.w} onChange={(e) => setDimensions({ ...dimensions, w: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-center text-sm shadow-inner" />
+                          <Input id="product-dimensions-height" type="number" placeholder="H" value={dimensions.h} onChange={(e) => setDimensions({ ...dimensions, h: e.target.value })} className="h-11 rounded-xl border-zinc-200 bg-white/80 text-center text-sm shadow-inner" />
                         </div>
                       </div>
                     </div>

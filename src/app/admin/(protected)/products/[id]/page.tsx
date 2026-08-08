@@ -13,6 +13,11 @@ import { adminIdentityHasPermission } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 import type { SellerProductListing } from "@/services/seller-catalog";
 import type { ProductModerationAction } from "@/services/product-moderation";
+import {
+  isProductSnapshotConflict,
+  parseProductContentPolicyError,
+  type ProductContentPolicyIssue,
+} from "@/services/product-content-policy";
 
 export default function AdminProductModerationPage() {
   const params = useParams<{ id: string }>();
@@ -21,6 +26,8 @@ export default function AdminProductModerationPage() {
   const [loading, setLoading] = useState(true);
   const [moderationNote, setModerationNote] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [contentPolicyIssues, setContentPolicyIssues] = useState<readonly ProductContentPolicyIssue[]>([]);
+  const [hasSnapshotConflict, setHasSnapshotConflict] = useState(false);
 
   const identity = useAdminIdentity()!;
   const canModerate = adminIdentityHasPermission(identity, "moderate_products");
@@ -44,14 +51,16 @@ export default function AdminProductModerationPage() {
   }, [productId]);
 
   async function handleModerationAction(action: ProductModerationAction, note: string) {
-    if (!product) return;
+    if (!product) return false;
     if (!canModerate) {
       toast.error("Unauthorized.");
-      return;
+      return false;
     }
 
     try {
       setIsSubmitting(true);
+      setContentPolicyIssues([]);
+      setHasSnapshotConflict(false);
       const updatedRecord = await adminProductsApi.reviewProduct(product.id, {
         action,
         note,
@@ -85,8 +94,19 @@ export default function AdminProductModerationPage() {
       if (updatedRecord.moderationNotes) {
         setModerationNote(updatedRecord.moderationNotes);
       }
-    } catch {
-      toast.error("Failed to update moderation status.");
+      return true;
+    } catch (error) {
+      const policyIssues = parseProductContentPolicyError(error);
+      if (policyIssues) {
+        setContentPolicyIssues(policyIssues);
+        return false;
+      }
+      if (isProductSnapshotConflict(error)) {
+        setHasSnapshotConflict(true);
+        return false;
+      }
+      toast.error("Unable to update moderation status. Try again.");
+      return false;
     } finally {
       setIsSubmitting(false);
     }
@@ -129,6 +149,8 @@ export default function AdminProductModerationPage() {
         onModerationNoteChange={setModerationNote}
         onSubmit={handleModerationAction}
         isSubmitting={isSubmitting}
+        contentPolicyIssues={contentPolicyIssues}
+        hasSnapshotConflict={hasSnapshotConflict}
       />
     </div>
   );
