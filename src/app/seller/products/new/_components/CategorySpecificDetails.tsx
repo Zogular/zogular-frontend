@@ -37,9 +37,20 @@ export function CategorySpecificDetails({ group, values, onChange }: CategorySpe
       ) : null}
 
       <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-        {group.fields.map((field) => (
-          <CategoryDetailInput key={field.id} field={field} value={valueForField(values, field)} onChange={onChange} />
-        ))}
+        {group.fields.map((field) => {
+          const valueIndex = values
+            .filter((item) => item.value.trim())
+            .findIndex((item) => item.attributeId === field.attributeId);
+          return (
+            <CategoryDetailInput
+              key={field.id}
+              field={field}
+              value={valueForField(values, field)}
+              onChange={onChange}
+              targetId={valueIndex >= 0 ? `product-attribute-${valueIndex}` : undefined}
+            />
+          );
+        })}
       </div>
     </section>
   );
@@ -49,10 +60,12 @@ function CategoryDetailInput({
   field,
   value,
   onChange,
+  targetId,
 }: {
   field: CategoryDetailField;
   value: string;
   onChange: (field: CategoryDetailField, value: string) => void;
+  targetId?: string;
 }) {
   const marker = field.required ? <span className="text-rose-500">*</span> : null;
   const inputClassName = "h-11 rounded-xl border-zinc-200 bg-white/80 text-sm shadow-inner focus-visible:ring-[#009E49]";
@@ -62,6 +75,7 @@ function CategoryDetailInput({
       <label className="space-y-1.5">
         <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">{field.label} {marker}</span>
         <select
+          id={targetId}
           value={value}
           onChange={(event) => onChange(field, event.target.value)}
           className="h-11 w-full rounded-xl border border-zinc-200 bg-white/80 px-3 text-sm font-medium text-zinc-900 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
@@ -80,6 +94,7 @@ function CategoryDetailInput({
       <label className="space-y-1.5 md:col-span-2">
         <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">{field.label} {marker}</span>
         <textarea
+          id={targetId}
           value={value}
           onChange={(event) => onChange(field, event.target.value)}
           placeholder={field.placeholder}
@@ -93,6 +108,7 @@ function CategoryDetailInput({
     <label className="space-y-1.5">
       <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-wider text-zinc-500">{field.label} {marker}</span>
       <Input
+        id={targetId}
         type={field.type === "date" ? "date" : field.type}
         value={value}
         onChange={(event) => onChange(field, event.target.value)}

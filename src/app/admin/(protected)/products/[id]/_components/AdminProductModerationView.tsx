@@ -22,6 +22,8 @@ import {
   SellerProductStatusBanner,
 } from "@/app/seller/products/[id]/_components/seller-product-ui";
 import { type ProductModerationAction } from "@/services/product-moderation";
+import { ProductContentPolicyFeedback } from "@/components/shared/ProductContentPolicyFeedback";
+import type { ProductContentPolicyIssue } from "@/services/product-content-policy";
 
 const ACTION_COPY: Record<
   ProductModerationAction,
@@ -71,6 +73,8 @@ export function ProductReviewActionDialog({
   initialNote,
   submitting,
   onConfirm,
+  contentPolicyIssues,
+  hasSnapshotConflict,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -78,7 +82,9 @@ export function ProductReviewActionDialog({
   product: SellerProductListing | null;
   initialNote: string;
   submitting: boolean;
-  onConfirm: (action: ProductModerationAction, note: string) => void;
+  onConfirm: (action: ProductModerationAction, note: string) => Promise<void>;
+  contentPolicyIssues: readonly ProductContentPolicyIssue[];
+  hasSnapshotConflict: boolean;
 }) {
   const [note, setNote] = useState(initialNote);
 
@@ -88,7 +94,7 @@ export function ProductReviewActionDialog({
 
   function handleConfirm() {
     if (copy!.requireNote && note.trim().length < 5) return;
-    onConfirm(action!, note.trim());
+    void onConfirm(action!, note.trim());
   }
 
   function handleOpenChange(nextOpen: boolean) {
@@ -125,6 +131,13 @@ export function ProductReviewActionDialog({
               className="min-h-28 rounded-[1.2rem] border-zinc-200 bg-white text-sm font-medium focus-visible:ring-[#009E49]"
             />
           </div>
+        </div>
+
+        <div className="px-6 pb-2">
+          <ProductContentPolicyFeedback
+            issues={contentPolicyIssues}
+            hasSnapshotConflict={hasSnapshotConflict}
+          />
         </div>
 
         <DialogFooter className="gap-3 border-t border-zinc-100 px-6 py-5 sm:justify-between">
@@ -222,12 +235,16 @@ export function AdminProductModerationView({
   onModerationNoteChange,
   onSubmit,
   isSubmitting,
+  contentPolicyIssues,
+  hasSnapshotConflict,
 }: {
   product: SellerProductListing;
   moderationNote: string;
   onModerationNoteChange: (value: string) => void;
-  onSubmit: (action: ProductModerationAction, note: string) => void;
+  onSubmit: (action: ProductModerationAction, note: string) => Promise<boolean>;
   isSubmitting: boolean;
+  contentPolicyIssues: readonly ProductContentPolicyIssue[];
+  hasSnapshotConflict: boolean;
 }) {
   const [actionDialog, setActionDialog] = useState<{ isOpen: boolean; action: ProductModerationAction | null }>({
     isOpen: false,
@@ -238,9 +255,9 @@ export function AdminProductModerationView({
     setActionDialog({ isOpen: true, action });
   };
 
-  const handleDialogConfirm = (action: ProductModerationAction, note: string) => {
-    onSubmit(action, note);
-    setActionDialog({ isOpen: false, action: null });
+  const handleDialogConfirm = async (action: ProductModerationAction, note: string) => {
+    const succeeded = await onSubmit(action, note);
+    if (succeeded) setActionDialog({ isOpen: false, action: null });
   };
 
   return (
@@ -254,6 +271,8 @@ export function AdminProductModerationView({
           initialNote={moderationNote}
           submitting={isSubmitting}
           onConfirm={handleDialogConfirm}
+          contentPolicyIssues={contentPolicyIssues}
+          hasSnapshotConflict={hasSnapshotConflict}
         />
       )}
 
