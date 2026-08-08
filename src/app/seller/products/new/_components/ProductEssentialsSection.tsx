@@ -1,4 +1,4 @@
-import { ChevronRight, FolderTree, ShieldAlert, Tag } from "lucide-react";
+import { ChevronRight, FolderTree, MapPin, ShieldAlert, Tag } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import type { CategorySelection } from "../_lib/category-selection";
 import { fieldError, GlassSection, inputErrorClass } from "./ProductListingStudioPrimitives";
@@ -6,6 +6,8 @@ import { fieldError, GlassSection, inputErrorClass } from "./ProductListingStudi
 export function ProductEssentialsSection({
   categoryError,
   nameError,
+  location,
+  onLocationChange,
   onOpenCategory,
   onProductNameChange,
   productName,
@@ -13,6 +15,8 @@ export function ProductEssentialsSection({
 }: {
   categoryError?: string;
   nameError?: string;
+  location: string;
+  onLocationChange: (value: string) => void;
   onOpenCategory: () => void;
   onProductNameChange: (value: string) => void;
   productName: string;
@@ -22,6 +26,7 @@ export function ProductEssentialsSection({
     <>
       <GlassSection title="Product Name" subtitle="Start with the exact product name shoppers will recognize." icon={<Tag className="h-4 w-4" />}>
         <Input
+          id="product-title"
           placeholder="e.g. MacBook Air M2 - 256GB"
           value={productName}
           onChange={(event) => onProductNameChange(event.target.value)}
@@ -30,8 +35,19 @@ export function ProductEssentialsSection({
         {fieldError(nameError)}
       </GlassSection>
 
+      <GlassSection title="Product Location" subtitle="Use a public pickup or dispatch area, not private contact details." icon={<MapPin className="h-4 w-4" />}>
+        <Input
+          id="product-location"
+          placeholder="e.g. Lusaka"
+          value={location}
+          onChange={(event) => onLocationChange(event.target.value)}
+          className="h-12 rounded-2xl border-zinc-200 bg-white/80 text-base font-bold shadow-inner focus-visible:ring-[#009E49]"
+        />
+      </GlassSection>
+
       <GlassSection title="Category Selector" subtitle="Choose the nearest final category. Use Other under the correct parent when the exact match is missing." icon={<FolderTree className="h-4 w-4" />}>
         <button
+          id="product-category"
           type="button"
           onClick={onOpenCategory}
           className={`flex min-h-14 w-full items-center justify-between rounded-2xl border bg-white/80 px-4 text-left shadow-inner transition-all hover:border-[#009E49] ${

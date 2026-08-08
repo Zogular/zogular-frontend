@@ -366,6 +366,13 @@ export function useProductImages(initialImages: SellerProductImage[] = []) {
     );
   };
 
+  const setImageAlt = (imageId: string, alt: string) => {
+    updateImageById(imageId, (image) => ({
+      ...image,
+      alt,
+    }));
+  };
+
   const setImageVariant = (imageId: string, linkedVariantValue: string) => {
     setImages((current) =>
       current.map((image) => ({
@@ -390,6 +397,7 @@ export function useProductImages(initialImages: SellerProductImage[] = []) {
     isUploadingImages,
     removeImage,
     retryImageUpload,
+    setImageAlt,
     setImageVariant,
     setPrimaryImage,
   };

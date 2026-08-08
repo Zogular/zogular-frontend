@@ -74,6 +74,7 @@ export function ProductListingStudioHeader({
   onSave,
   canSubmitForReview = true,
   submitLabel = "Submit for Review",
+  feedback,
 }: {
   backHref: string;
   isEditMode: boolean;
@@ -82,9 +83,10 @@ export function ProductListingStudioHeader({
   onSave: (event: React.MouseEvent, status: ProductStatus) => void;
   canSubmitForReview?: boolean;
   submitLabel?: string;
+  feedback?: React.ReactNode;
 }) {
   return (
-    <div className="sticky top-18 z-20 mb-5 -mx-4 flex items-center justify-between border-b border-white/60 bg-[#f4fbf6]/85 px-4 py-4 backdrop-blur-2xl md:top-0 md:mx-0 md:border-none md:bg-transparent md:px-0">
+    <div data-testid="product-listing-studio-header" className="sticky top-18 z-20 mb-5 -mx-4 flex items-center justify-between border-b border-white/60 bg-[#f4fbf6]/85 px-4 py-4 backdrop-blur-2xl md:mx-0 md:border-none md:bg-transparent md:px-0">
       <div className="flex items-center gap-3">
         <Link href={backHref}>
           <Button aria-label={isEditMode ? "Go back to product preview" : "Go back to products"} type="button" variant="ghost" size="icon" className="h-9 w-9 rounded-full border border-white/70 bg-white/80 text-zinc-600 shadow-sm hover:bg-white">
@@ -96,20 +98,23 @@ export function ProductListingStudioHeader({
           <h1 className="text-xl font-black leading-tight tracking-tight text-zinc-950 md:text-2xl">{isEditMode ? "Edit Product" : "Add Product"}</h1>
         </div>
       </div>
-      <div className="hidden items-center gap-2 md:flex">
-        <Button type="button" variant="outline" onClick={(event) => onSave(event, "draft")} disabled={isSubmitting} className="h-10 rounded-xl border-white/70 bg-white/80 px-4 font-bold text-zinc-700 shadow-sm hover:bg-white">
-          {isEditMode ? "Save Changes" : "Save Draft"}
-        </Button>
-        {revealDetails && canSubmitForReview ? (
-          <Button type="submit" disabled={isSubmitting || !canSubmitForReview} className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_10px_25px_rgba(0,158,73,0.22)] hover:bg-[#00853d] disabled:bg-zinc-300">
-            {isSubmitting ? "Submitting..." : submitLabel}
+      <div className="hidden min-w-0 flex-1 flex-col items-end gap-2 md:flex xl:flex-row xl:items-center xl:justify-end">
+        {feedback ? <div className="w-full max-w-md">{feedback}</div> : null}
+        <div className="flex shrink-0 items-center gap-2">
+          <Button type="button" variant="outline" onClick={(event) => onSave(event, "draft")} disabled={isSubmitting} className="h-10 rounded-xl border-white/70 bg-white/80 px-4 font-bold text-zinc-700 shadow-sm hover:bg-white">
+            {isEditMode ? "Save Changes" : "Save Draft"}
           </Button>
-        ) : null}
-        {revealDetails && !canSubmitForReview ? (
-          <p className="max-w-56 text-right text-xs font-bold leading-5 text-amber-700">
-            Draft-only mode until seller approval unlocks review submission.
-          </p>
-        ) : null}
+          {revealDetails && canSubmitForReview ? (
+            <Button type="submit" disabled={isSubmitting || !canSubmitForReview} className="h-10 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-[0_10px_25px_rgba(0,158,73,0.22)] hover:bg-[#00853d] disabled:bg-zinc-300">
+              {isSubmitting ? "Submitting..." : submitLabel}
+            </Button>
+          ) : null}
+          {revealDetails && !canSubmitForReview ? (
+            <p className="max-w-56 text-right text-xs font-bold leading-5 text-amber-700">
+              Draft-only mode until seller approval unlocks review submission.
+            </p>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -131,7 +136,7 @@ export function ProductListingMobileActions({
   submitLabel?: string;
 }) {
   return (
-    <div className="fixed inset-x-3 bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-white/70 bg-white/92 p-3 shadow-[0_-10px_28px_rgba(15,23,42,0.12)] backdrop-blur-2xl md:hidden">
+    <div data-testid="product-listing-mobile-actions" className="fixed inset-x-3 bottom-[calc(6.75rem+env(safe-area-inset-bottom))] z-40 rounded-2xl border border-white/70 bg-white/92 p-3 shadow-[0_-10px_28px_rgba(15,23,42,0.12)] backdrop-blur-2xl md:hidden">
       {!canSubmitForReview ? (
         <p className="mb-3 text-center text-xs font-bold leading-5 text-amber-700">
           Draft-only mode until seller approval unlocks review submission.

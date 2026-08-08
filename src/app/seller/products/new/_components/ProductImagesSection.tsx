@@ -1,5 +1,6 @@
 import NextImage from "next/image";
 import { Image as ImageIcon, UploadCloud } from "lucide-react";
+import { Input } from "@/components/ui/input";
 import { MAX_IMAGES, readRecordValue } from "../_lib/product-listing-studio";
 import type { SellerProductImage } from "@/services/seller-catalog";
 import { fieldError, GlassSection } from "./ProductListingStudioPrimitives";
@@ -12,6 +13,7 @@ export function ProductImagesSection({
   onImageSelection,
   onRemoveImage,
   onRetryImageUpload,
+  onSetImageAlt,
   onSetImageVariant,
   onSetPrimaryImage,
   variantValues,
@@ -23,6 +25,7 @@ export function ProductImagesSection({
   onImageSelection: (files: FileList | null) => void;
   onRemoveImage: (imageId: string) => void;
   onRetryImageUpload: (imageId: string) => Promise<void>;
+  onSetImageAlt: (imageId: string, alt: string) => void;
   onSetImageVariant: (imageId: string, linkedVariantValue: string) => void;
   onSetPrimaryImage: (imageId: string) => void;
   variantValues: string[];
@@ -69,7 +72,7 @@ export function ProductImagesSection({
 
       {images.length > 0 ? (
         <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-5">
-          {images.map((image) => {
+          {images.map((image, imageIndex) => {
             const imageWarning = readRecordValue(imageWarnings, image.id);
             return (
               <div key={image.id} className="overflow-hidden rounded-2xl border border-white/70 bg-white/85 shadow-sm ring-1 ring-zinc-900/3">
@@ -101,7 +104,16 @@ export function ProductImagesSection({
                   </div>
                 </div>
                 <div className="space-y-2 p-2">
+                  <Input
+                    id={`product-image-${imageIndex}-alt`}
+                    aria-label={`Alt text for image ${imageIndex + 1}`}
+                    value={image.alt ?? ""}
+                    onChange={(event) => onSetImageAlt(image.id, event.target.value)}
+                    placeholder="Describe this image"
+                    className="h-9 rounded-xl border-zinc-200 bg-zinc-50 px-2 text-xs font-semibold focus-visible:ring-[#009E49]"
+                  />
                   <select
+                    id={`product-image-${imageIndex}-variant`}
                     aria-label={`Variant tag for ${image.name}`}
                     value={image.linkedVariantValue ?? ""}
                     onChange={(event) => onSetImageVariant(image.id, event.target.value)}

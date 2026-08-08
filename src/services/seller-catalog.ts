@@ -55,10 +55,12 @@ export interface SellerProductListing {
   brand: string;
   condition: ProductCondition;
   description: string;
+  location?: string;
   categoryName: string;
   categorySlug: string;
   subcategoryName: string;
   subcategorySlug: string;
+  backendCategory?: BackendCategoryRef;
   status: SellerProductStatus;
   price: number;
   salePrice: number | null;
@@ -148,7 +150,7 @@ export interface SellerProductListResult {
 
 export type CreateSellerProductInput = Omit<
   SellerProductListing,
-  "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem"
+  "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem" | "backendCategory"
 > & {
   seller?: Partial<SellerProductListing["seller"]>;
 };
@@ -156,7 +158,7 @@ export type CreateSellerProductInput = Omit<
 export type UpdateSellerProductInput = Partial<
   Omit<
     SellerProductListing,
-    "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem"
+    "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem" | "backendCategory"
   >
 >;
 
@@ -196,7 +198,7 @@ type BackendProductImage = {
   height?: number | null;
 };
 
-type BackendCategoryRef = {
+export type BackendCategoryRef = {
   id: string;
   name: string;
   slug: string;
@@ -782,11 +784,13 @@ function normalizeBackendSellerProduct(product: BackendVendorProduct): SellerPro
     brand: product.brand?.trim() || extractSpecificationValue(specifications, "Brand") || "",
     condition: enrichment?.condition ?? mapBackendCondition(product.condition),
     description: product.description,
+    location: product.location?.trim() || "",
     categoryName,
     categorySlug: product.categorySlug || slugifySellerValue(categoryName),
     subcategoryName,
     subcategorySlug:
       product.subcategorySlug || slugifySellerValue(subcategoryName),
+    backendCategory: product.categoryRef ?? undefined,
     status,
     price: product.price,
     salePrice: product.salePrice ?? null,
@@ -1029,6 +1033,7 @@ function buildBackendProductPayload(
   return removeUndefinedValues({
     title: input.title,
     description: input.description,
+    location: input.location,
     price: input.price,
     salePrice: mode === "create" ? input.salePrice ?? undefined : input.salePrice,
     images: normalizePayloadImages(input.images),

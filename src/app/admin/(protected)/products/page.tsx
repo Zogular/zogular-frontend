@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, LayoutGrid, Package, Rows3, Search, ShieldAlert, Store } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { ProductContentPolicyFeedback } from "@/components/shared/ProductContentPolicyFeedback";
 import { toast } from "sonner";
 import { cn } from "@/lib/utils";
 import {
@@ -18,6 +19,11 @@ import {
   type ProductModerationAction,
   type ProductModerationStatus,
 } from "@/services/product-moderation";
+import {
+  isProductSnapshotConflict,
+  parseProductContentPolicyError,
+  type ProductContentPolicyIssue,
+} from "@/services/product-content-policy";
 
 const STATUS_UI: Record<ProductModerationStatus, { bg: string; text: string; border: string }> = {
   draft: { bg: "bg-zinc-100", text: "text-zinc-700", border: "border-zinc-200" },
@@ -53,6 +59,8 @@ export default function AdminProductsPage() {
   const [mobileView, setMobileView] = useState<"list" | "grid">("list");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [selectedProductIds, setSelectedProductIds] = useState<string[]>([]);
+  const [contentPolicyIssues, setContentPolicyIssues] = useState<readonly ProductContentPolicyIssue[]>([]);
+  const [hasSnapshotConflict, setHasSnapshotConflict] = useState(false);
 
   const identity = useAdminIdentity()!;
   const canModerate = adminIdentityHasPermission(identity, "moderate_products");
@@ -142,6 +150,8 @@ export default function AdminProductsPage() {
 
     try {
       setIsSubmitting(true);
+      setContentPolicyIssues([]);
+      setHasSnapshotConflict(false);
       const selectedProducts = products.filter((product) => selectedProductIds.includes(product.sellerProductId));
       const eligibleProducts = selectedProducts.filter((product) => product.status === "pending_review");
 
@@ -166,8 +176,17 @@ export default function AdminProductsPage() {
       setProducts(refreshedProducts);
       setSelectedProductIds([]);
       toast.success(`${result.count} products updated.`);
-    } catch {
-      toast.error("Failed to run bulk moderation.");
+    } catch (error) {
+      const policyIssues = parseProductContentPolicyError(error);
+      if (policyIssues) {
+        setContentPolicyIssues(policyIssues);
+        return;
+      }
+      if (isProductSnapshotConflict(error)) {
+        setHasSnapshotConflict(true);
+        return;
+      }
+      toast.error("Unable to run bulk moderation. Try again.");
     } finally {
       setIsSubmitting(false);
     }
@@ -336,6 +355,12 @@ export default function AdminProductsPage() {
             </div>
           </div>
         </div>
+        <ProductContentPolicyFeedback
+          issues={contentPolicyIssues}
+          hasSnapshotConflict={hasSnapshotConflict}
+          productHref={(productId) => `/admin/products/${encodeURIComponent(productId)}`}
+          className="mt-3"
+        />
       </div>
 
       <div className={cn("lg:hidden", mobileView === "grid" ? "grid grid-cols-1 gap-2 min-[430px]:grid-cols-2 min-[720px]:grid-cols-3" : "space-y-2.5")}>

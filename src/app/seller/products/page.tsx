@@ -42,6 +42,15 @@ import {
   type SellerProductsSortOption,
   type SellerProductsSummary,
 } from "@/features/seller-products/types";
+import {
+  isProductSnapshotConflict,
+  parseProductContentPolicyError,
+  storeSafeProductContentPolicyIssues,
+} from "@/services/product-content-policy";
+import {
+  getProductSubmissionRecoveryHref,
+  writeProductSubmissionRecovery,
+} from "./new/_lib/product-draft-recovery";
 
 const SELLER_PRODUCTS_QUERY_KEY = ["seller", "catalog", "products"] as const;
 const PRODUCT_TAB_STATUS: Partial<Record<SellerProductTab, SellerProductStatus>> = {
@@ -188,7 +197,20 @@ export default function SellerProductsPage() {
       await refreshProducts();
       toast.success("Product submitted for review.");
     } catch (requestError) {
-      toast.error(requestError instanceof Error ? requestError.message : "Failed to update product.");
+      const policyIssues = parseProductContentPolicyError(requestError);
+      if (policyIssues) {
+        writeProductSubmissionRecovery(productId, {
+          kind: "content-policy",
+          issues: storeSafeProductContentPolicyIssues(policyIssues),
+        });
+        router.push(getProductSubmissionRecoveryHref(productId, "content-policy"));
+        return;
+      }
+      if (isProductSnapshotConflict(requestError)) {
+        toast.error("This product changed. Reload the latest version and try again.");
+        return;
+      }
+      toast.error("Unable to submit this product for review. Try again.");
     }
   }, [canSubmitProductForReview, refreshProducts, router]);
 
