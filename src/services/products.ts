@@ -1,4 +1,4 @@
-import { normalizeProduct } from "@/lib/normalizers/product";
+import { getProductTitle, normalizeProduct } from "@/lib/normalizers/product";
 import { apiClient, ApiError } from "@/services/api";
 import { getCategoryMetaBySlug } from "@/services/categories";
 import type {
@@ -7,7 +7,7 @@ import type {
   ProductPaginationMeta,
   CategorySortOption,
 } from "@/types/category";
-import type { Product, ProductDetail, ProductSeller } from "@/types/product";
+import type { Product, ProductDetail, ProductImage } from "@/types/product";
 
 const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
   "phones-and-tablets":
@@ -50,8 +50,24 @@ export type BackendProductUser = {
   id?: string;
 };
 
+type BackendReviewAuthor = {
+  firstName?: string | null;
+  lastName?: string | null;
+};
+
 type BackendReview = {
   rating?: number | null;
+  user?: BackendReviewAuthor | null;
+};
+
+export type BackendProductImage = {
+  url?: string | null;
+  alt?: string | null;
+  isPrimary?: boolean | null;
+  sortOrder?: number | string | null;
+  linkedVariantValue?: string | null;
+  width?: number | string | null;
+  height?: number | string | null;
 };
 
 type BackendCategoryRef = {
@@ -139,43 +155,83 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function parseBackendImages(images: unknown): string[] {
-  if (Array.isArray(images)) {
-    return images
-      .map((img) => (typeof img === "string" ? img.trim() : ""))
-      .filter((img) => img.length > 0);
+function positiveDimension(value: unknown): number | null {
+  const parsed = toNumber(value, 0);
+  return parsed > 0 ? parsed : null;
+}
+
+function parseBackendImageEntry(
+  value: unknown,
+  sourceIndex: number,
+): (ProductImage & { sourceIndex: number }) | null {
+  if (typeof value === "string") {
+    const url = value.trim();
+    if (!url) return null;
+    return {
+      url,
+      alt: null,
+      isPrimary: sourceIndex === 0,
+      sortOrder: sourceIndex,
+      linkedVariantValue: null,
+      width: null,
+      height: null,
+      sourceIndex,
+    };
   }
 
-  if (typeof images === "string" && images.trim().length > 0) {
+  if (!value || typeof value !== "object") return null;
+  const image = value as BackendProductImage;
+  const url = asString(image.url);
+  if (!url) return null;
+
+  return {
+    url,
+    alt: asString(image.alt) ?? null,
+    isPrimary: image.isPrimary === true,
+    sortOrder: toNumber(image.sortOrder, sourceIndex),
+    linkedVariantValue: asString(image.linkedVariantValue) ?? null,
+    width: positiveDimension(image.width),
+    height: positiveDimension(image.height),
+    sourceIndex,
+  };
+}
+
+function parseBackendImages(images: unknown): ProductImage[] {
+  let source: unknown[] = [];
+
+  if (Array.isArray(images)) {
+    source = images;
+  } else if (typeof images === "string" && images.trim()) {
     const trimmed = images.trim();
     if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
       try {
         const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          return parsed
-            .map((img) => (typeof img === "string" ? img.trim() : ""))
-            .filter((img) => img.length > 0);
-        }
+        source = Array.isArray(parsed) ? parsed : [];
       } catch {
-        // Fall back to raw string split if JSON parsing fails
+        source = [];
       }
+    } else {
+      source = trimmed.split(",");
     }
-    return trimmed
-      .split(",")
-      .map((img) => img.trim())
-      .filter((img) => img.length > 0);
   }
 
-  return [];
-}
-
-function normalizeToSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+  return source
+    .map(parseBackendImageEntry)
+    .filter((image): image is ProductImage & { sourceIndex: number } => image !== null)
+    .sort((left, right) => {
+      if (left.isPrimary !== right.isPrimary) return left.isPrimary ? -1 : 1;
+      if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder;
+      return left.sourceIndex - right.sourceIndex;
+    })
+    .map((image): ProductImage => ({
+      url: image.url,
+      alt: image.alt,
+      isPrimary: image.isPrimary,
+      sortOrder: image.sortOrder,
+      linkedVariantValue: image.linkedVariantValue,
+      width: image.width,
+      height: image.height,
+    }));
 }
 
 function getProductCategoryMeta(product: BackendProduct): { name: string; slug: string } {
@@ -257,7 +313,7 @@ function parseSellerVisibility(visibility?: string | null): "visible" | "hidden"
 export function normalizeBackendProduct(product: BackendProduct): Product {
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
-  const mainImage = images[0] ?? PRODUCT_IMAGE_PLACEHOLDER;
+  const mainImage = images[0];
   const rawPrice = toNumber(product.price, 0);
   const rawSalePrice = product.salePrice !== null && product.salePrice !== undefined
     ? toNumber(product.salePrice, rawPrice)
@@ -271,23 +327,28 @@ export function normalizeBackendProduct(product: BackendProduct): Product {
   const rawReviews = product.reviews ?? [];
   const reviewCount = rawReviews.length;
   const rating = calculateAverageRating(rawReviews);
-  const idStr = String(product.id ?? "item");
-  const slugStr = asString(product.slug) ?? normalizeToSlug(asString(product.title) ?? `item-${idStr}`);
+  const idStr = asString(product.id) ?? "";
+  const slugStr = asString(product.slug) ?? "";
+  const title = asString(product.title) ?? "";
+  const ownerId = asString(product.user?.id);
 
   return normalizeProduct({
     id: idStr,
-    name: asString(product.title) ?? titleFromSlug(slugStr),
+    slug: slugStr,
+    title,
+    name: title,
     price: currentPrice,
     originalPrice,
     discount,
     rating,
     reviews: reviewCount,
-    image: mainImage,
-    images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
+    image: mainImage?.url ?? "",
+    imageAlt: mainImage?.alt ?? title,
+    images,
+    ownerId,
     categoryName: category.name,
     categorySlug: category.slug,
     subcategorySlug: asString(product.subcategorySlug),
-    slug: slugStr,
     badge: discount && discount > 0 ? `${discount}% OFF` : undefined,
     isNew: false,
     storeName: undefined,
@@ -326,16 +387,9 @@ export function normalizeBackendProductDetail(product: BackendProduct): ProductD
   const summary = normalizeBackendProduct(product);
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
-  const title = summary.title ?? summary.name ?? titleFromSlug(summary.slug);
+  const title = getProductTitle(summary);
   const brand = asString(product.brand);
   const sku = asString(product.sku);
-
-  const ownerId = asString(product.user?.id);
-  const seller: ProductSeller | undefined = ownerId
-    ? {
-        name: "Zogular Seller",
-      }
-    : undefined;
 
   return {
     id: summary.id,
@@ -361,10 +415,11 @@ export function normalizeBackendProductDetail(product: BackendProduct): ProductD
     rating: summary.rating,
     reviewCount: summary.reviews,
     badge: summary.badge ?? null,
-    seller,
+    ownerId: summary.ownerId,
+    seller: undefined,
     condition: asString(product.condition),
     stock: product.isSold ? 0 : toNumber(product.stock, 0),
-    images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
+    images: images.length ? images.map((image) => image.url) : [PRODUCT_IMAGE_PLACEHOLDER],
     variants: buildBackendProductVariants(),
     description: asString(product.description) ?? "No description provided.",
     specs: buildBackendProductSpecs(product),

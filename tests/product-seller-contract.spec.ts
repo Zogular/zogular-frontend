@@ -17,17 +17,20 @@ const baseProduct: BackendProduct = {
   reviews: [{ rating: 4 }],
 };
 
-test("maps an opaque owner ID to the neutral PDP seller label", () => {
+test("preserves an opaque owner ID without fabricating a public seller identity", () => {
   const detail = normalizeBackendProductDetail({
     ...baseProduct,
     user: { id: "seller-1" },
   });
 
-  expect(detail.seller).toEqual({ name: "Zogular Seller" });
+  expect(detail.ownerId).toBe("seller-1");
+  expect(detail.seller).toBeUndefined();
 });
 
 test("does not fabricate seller information without a valid owner ID", () => {
+  expect(normalizeBackendProductDetail(baseProduct).ownerId).toBeUndefined();
   expect(normalizeBackendProductDetail(baseProduct).seller).toBeUndefined();
+  expect(normalizeBackendProductDetail({ ...baseProduct, user: { id: "   " } }).ownerId).toBeUndefined();
   expect(normalizeBackendProductDetail({ ...baseProduct, user: { id: "   " } }).seller).toBeUndefined();
 });
 
@@ -54,6 +57,7 @@ test("product cards do not derive a store name from the owner ID", () => {
     user: { id: "seller-1" },
   });
 
+  expect(summary.ownerId).toBe("seller-1");
   expect(summary.storeName).toBeUndefined();
 });
 
@@ -105,66 +109,25 @@ function collectBrowserDiagnostics(page: Page): BrowserDiagnostics {
   return diagnostics;
 }
 
-test.describe("public seller identity browser contract", () => {
+test.describe("public owner identity browser contract", () => {
   test.skip(!browserBaseUrl, "PRODUCT_CONTRACT_BASE_URL is required for fixture browser verification.");
 
   for (const viewport of browserViewports) {
-    test(`${viewport.name} shows exactly one viewport-visible neutral seller`, async ({ page }) => {
+    test(`${viewport.name} does not render the opaque owner ID as seller identity`, async ({ page }) => {
       await page.setViewportSize(viewport);
       const diagnostics = collectBrowserDiagnostics(page);
 
       await page.goto(`${browserBaseUrl}/product/fixture-product`, { waitUntil: "networkidle" });
 
-      const identities = page.getByTestId("product-seller-identity");
-      const visibleIdentity = identities.filter({ visible: true });
-      await expect(visibleIdentity).toHaveCount(1);
-      await expect(visibleIdentity).toBeVisible();
-      await expect(visibleIdentity).toHaveText(/Zogular Seller/);
-      await visibleIdentity.scrollIntoViewIfNeeded();
-
-      const geometry = await visibleIdentity.evaluate((element) => {
-        const rect = element.getBoundingClientRect();
-        const hiddenAncestor = Array.from(document.querySelectorAll("body *"))
-          .filter((candidate) => candidate.contains(element))
-          .find((candidate) => {
-            const style = window.getComputedStyle(candidate);
-            const candidateRect = candidate.getBoundingClientRect();
-            return style.display === "none" || style.visibility === "hidden" || candidateRect.width === 0 || candidateRect.height === 0;
-          });
-
-        return {
-          x: rect.x,
-          y: rect.y,
-          width: rect.width,
-          height: rect.height,
-          intersectsViewport:
-            rect.bottom > 0 &&
-            rect.right > 0 &&
-            rect.top < window.innerHeight &&
-            rect.left < window.innerWidth,
-          intersectsDocument:
-            rect.bottom + window.scrollY > 0 &&
-            rect.right + window.scrollX > 0 &&
-            rect.top + window.scrollY < document.documentElement.scrollHeight &&
-            rect.left + window.scrollX < document.documentElement.scrollWidth,
-          hiddenAncestor: hiddenAncestor?.tagName ?? null,
-          opacity: window.getComputedStyle(element).opacity,
-        };
-      });
-
-      console.log(`${viewport.name} seller geometry: ${JSON.stringify(geometry)}`);
-      expect(geometry.width).toBeGreaterThan(0);
-      expect(geometry.height).toBeGreaterThan(0);
-      expect(geometry.intersectsViewport).toBe(true);
-      expect(geometry.intersectsDocument).toBe(true);
-      expect(geometry.hiddenAncestor).toBeNull();
-      expect(geometry.opacity).toBe("1");
+      await expect(page.getByTestId("product-seller-identity").filter({ visible: true })).toHaveCount(0);
+      await expect(page.getByText("Zogular Seller", { exact: true }).filter({ visible: true })).toHaveCount(0);
 
       const body = page.locator("body");
       await expect(body).not.toContainText("Legacy Personal");
       await expect(body).not.toContainText("Seller Name");
       await expect(body).not.toContainText("legacy-seller@example.com");
       await expect(body).not.toContainText("+260 955 000 000");
+      await expect(body).not.toContainText("seller-1");
       await expect(page.getByRole("link", { name: /view store/i })).toHaveCount(0);
 
       const hasOverflow = await page.evaluate(

@@ -1,22 +1,51 @@
 import type { Product, ProductDetail, ProductInput } from "@/types/product";
 
+export class ProductContractError extends Error {
+  constructor(
+    message: string,
+    readonly field: "id" | "slug" | "title" | "price",
+  ) {
+    super(message);
+    this.name = "ProductContractError";
+  }
+}
+
+function requireProductIdentity(value: ProductInput["id"]): ProductInput["id"] {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) return value.trim();
+  throw new ProductContractError("Product response is missing a valid id.", "id");
+}
+
+function requireProductText(value: unknown, field: "slug" | "title"): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  throw new ProductContractError(`Product response is missing a valid ${field}.`, field);
+}
+
+function requireProductPrice(value: unknown): number {
+  if (typeof value === "number" && Number.isFinite(value) && value > 0) return value;
+  throw new ProductContractError("Product response is missing a valid price.", "price");
+}
+
 export function normalizeProduct(input: ProductInput): Product {
-  const title = input.title ?? input.name ?? "Product Name";
+  const id = requireProductIdentity(input.id);
+  const slug = requireProductText(input.slug, "slug");
+  const title = requireProductText(input.title, "title");
+  const price = requireProductPrice(input.price);
   const originalPrice = input.oldPrice ?? input.originalPrice ?? null;
   const discount =
     input.discount ??
-    (originalPrice && originalPrice > input.price
-      ? Math.round(((originalPrice - input.price) / originalPrice) * 100)
+    (originalPrice && originalPrice > price
+      ? Math.round(((originalPrice - price) / originalPrice) * 100)
       : null);
 
   return {
-    id: input.id,
-    slug: input.slug,
+    id,
+    slug,
     title,
     name: input.name ?? title,
     categoryName: input.categoryName,
     subcategoryName: input.subcategoryName,
-    price: input.price,
+    price,
     oldPrice: input.oldPrice ?? originalPrice,
     originalPrice,
     discount,
@@ -24,7 +53,10 @@ export function normalizeProduct(input: ProductInput): Product {
     isNew: input.isNew ?? false,
     rating: input.rating ?? 0,
     reviews: input.reviews ?? 0,
-    image: input.image,
+    image: input.image ?? "",
+    imageAlt: input.imageAlt?.trim() || title,
+    images: input.images,
+    ownerId: input.ownerId,
     stock: input.stock,
     moderationStatus: input.moderationStatus,
     sellerVisibility: input.sellerVisibility,
@@ -33,7 +65,7 @@ export function normalizeProduct(input: ProductInput): Product {
 }
 
 export function getProductTitle(product: Product): string {
-  return product.title ?? product.name ?? "Product Name";
+  return requireProductText(product.title ?? product.name, "title");
 }
 
 export function getProductCategoryLabel(product: Product): string | undefined {
@@ -57,5 +89,7 @@ export function toProductFromDetail(product: ProductDetail): Product {
     rating: product.rating,
     reviews: product.reviewCount,
     image: product.images[0] ?? "",
+    imageAlt: product.title,
+    ownerId: product.ownerId,
   });
 }
