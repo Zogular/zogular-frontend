@@ -69,6 +69,13 @@ function parseSearch(value: string | undefined): string | undefined {
   return normalized;
 }
 
+function readSearch(input: DiscoveryQueryInput): string | undefined {
+  const searchValues = readValues(input, "search");
+  const legacyQueryValues = readValues(input, "q");
+  const values = [...searchValues, ...legacyQueryValues];
+  return values.length === 1 ? parseSearch(values[0]) : undefined;
+}
+
 function parsePage(value: string | undefined, maxPage: number): number {
   if (!value || !/^[1-9]\d*$/.test(value)) return DEFAULT_DISCOVERY_PAGE;
   const page = Number(value);
@@ -95,6 +102,13 @@ function readCategorySlug(input: DiscoveryQueryInput): string | undefined {
   return values.length === 1 ? parseSlug(values[0]) : undefined;
 }
 
+function readSubcategorySlug(input: DiscoveryQueryInput): string | undefined {
+  const subcategorySlugValues = readValues(input, "subcategorySlug");
+  const legacySubcategoryValues = readValues(input, "subcategory");
+  const values = [...subcategorySlugValues, ...legacySubcategoryValues];
+  return values.length === 1 ? parseSlug(values[0]) : undefined;
+}
+
 function normalizeOptions(options: DiscoveryQueryOptions = {}) {
   const maxPage = Number.isSafeInteger(options.maxPage) && (options.maxPage ?? 0) > 0
     ? Math.min(options.maxPage!, MAX_DISCOVERY_PAGE)
@@ -108,8 +122,8 @@ export function parseDiscoveryQuery(
 ): DiscoveryQueryState {
   const normalizedOptions = normalizeOptions(options);
   const categorySlug = readCategorySlug(input);
-  const subcategorySlug = parseSlug(readSingleValue(input, "subcategorySlug"));
-  const search = parseSearch(readSingleValue(input, "search"));
+  const subcategorySlug = readSubcategorySlug(input);
+  const search = readSearch(input);
   const sort = parseSort(
     readSingleValue(input, "sort"),
     normalizedOptions.allowPopular,
