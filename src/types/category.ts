@@ -10,7 +10,9 @@ export interface CategorySummary {
   id: string;
   name: string;
   slug: string;
-  description: string;
+  description?: string;
+  productCount?: number;
+  icon?: string;
   iconKey:
     | "smartphone"
     | "laptop"
@@ -22,6 +24,14 @@ export interface CategorySummary {
     | "sofa";
   colorClass: string;
   children: CategoryChild[];
+}
+
+export interface HomeCategorySummary {
+  id: string;
+  name: string;
+  slug: string;
+  description?: string;
+  productCount?: number;
 }
 
 export interface CategoryHeroMeta {

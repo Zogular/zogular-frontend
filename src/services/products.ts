@@ -539,6 +539,19 @@ async function fetchBackendProductCollection(
   return extractBackendProducts(payload).map(normalizeBackendProduct);
 }
 
+export async function getHomeNewArrivals(limit = 10): Promise<Product[]> {
+  return fetchBackendProductCollection("/products/new-arrivals", { limit });
+}
+
+export async function getHomeMostViewed(limit = 10): Promise<Product[]> {
+  return fetchBackendProductCollection("/products/featured", { limit });
+}
+
+export async function getHomeExploreMore(limit = 10): Promise<Product[]> {
+  const result = await fetchBackendProducts({ page: 1, limit, sort: "newest" });
+  return result.products;
+}
+
 export async function getTrendingProducts(options: { allowOptionalFallback?: boolean } = {}): Promise<Product[]> {
   try {
     const backendProducts = await fetchBackendProductCollection("/products/featured", { limit: 10 });

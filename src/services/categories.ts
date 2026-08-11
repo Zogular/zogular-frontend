@@ -1,67 +1,22 @@
 import {
   buildCategoryDirectoryFromTree,
+  buildHomeCategoryDirectoryFromTree,
   buildCategoryMetaFromSummary,
 } from "@/features/categories/category-directory";
 import {
   fetchCategoryTree,
   type CategoryNode,
 } from "@/services/categories-api";
-import type { CategorySummary } from "@/types/category";
-
-export type HeroBanner = {
-  id: string;
-  title: string;
-  subtitle: string;
-  image: string;
-  ctaLabel: string;
-  ctaHref: string;
-  overlayClass: string;
-  badge: string;
-};
-
-const HERO_BANNERS: HeroBanner[] = [
-  {
-    id: "banner_1",
-    title: "Shop Zogular",
-    subtitle: "Browse current buyer-visible listings available during the Lusaka pilot.",
-    image:
-      "https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?auto=format&fit=crop&w=2070&q=80",
-    ctaLabel: "Start Shopping",
-    ctaHref: "/products",
-    overlayClass: "from-[#009E49]/95 via-[#009E49]/70 to-transparent",
-    badge: "Marketplace",
-  },
-  {
-    id: "banner_2",
-    title: "Explore Electronics",
-    subtitle: "Compare current buyer-visible electronics listings.",
-    image:
-      "https://images.unsplash.com/photo-1498049794561-7780e7231661?auto=format&fit=crop&w=2070&q=80",
-    ctaLabel: "Shop Electronics",
-    ctaHref: "/category/electronics",
-    overlayClass: "from-zinc-950/95 via-zinc-900/80 to-transparent",
-    badge: "Catalog",
-  },
-  {
-    id: "banner_3",
-    title: "Discover Fashion",
-    subtitle: "Browse current buyer-visible fashion listings.",
-    image:
-      "https://images.unsplash.com/photo-1441984904996-e0b6ba687e04?auto=format&fit=crop&w=2070&q=80",
-    ctaLabel: "Shop Fashion",
-    ctaHref: "/category/fashion",
-    overlayClass: "from-[#FF6B00]/95 via-[#FF6B00]/70 to-transparent",
-    badge: "Catalog",
-  },
-];
+import type { CategorySummary, HomeCategorySummary } from "@/types/category";
 
 export async function getCategoryDirectory(): Promise<CategorySummary[]> {
   const categories = await fetchCategoryTree();
   return buildCategoryDirectoryFromTree(categories);
 }
 
-export async function getHomeCategories(): Promise<CategorySummary[]> {
-  return getCategoryDirectory();
+export async function getHomeCategories(): Promise<HomeCategorySummary[]> {
+  const categories = await fetchCategoryTree();
+  return buildHomeCategoryDirectoryFromTree(categories);
 }
 
 export async function getCategorySummaryBySlug(
@@ -83,10 +38,6 @@ export async function getCategoryMetaBySlug(slug: string) {
     description: `Explore buyer-visible ${humanizeSlug(slug).toLowerCase()} listings available through Zogular.`,
     subcategories: [{ id: "all", slug: "all", name: "All" }],
   };
-}
-
-export async function getHomeHeroBanners(): Promise<HeroBanner[]> {
-  return HERO_BANNERS;
 }
 
 export function buildCategorySubcategoryHref(
