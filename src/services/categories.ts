@@ -30,6 +30,13 @@ export async function getCategorySummaryBySlug(
   return categories.find((category) => category.slug === slug) ?? null;
 }
 
+export class CategoryNotFoundError extends Error {
+  constructor(slug: string) {
+    super(`No active public category exists for slug: ${slug}`);
+    this.name = "CategoryNotFoundError";
+  }
+}
+
 export async function getCategoryMetaBySlug(slug: string): Promise<CategoryHeroMeta> {
   const category = await getCategorySummaryBySlug(slug);
 
@@ -40,11 +47,7 @@ export async function getCategoryMetaBySlug(slug: string): Promise<CategoryHeroM
     };
   }
 
-  return {
-    title: humanizeSlug(slug),
-    description: `Explore buyer-visible ${humanizeSlug(slug).toLowerCase()} listings available through Zogular.`,
-    subcategories: [{ id: "all", slug: "all", name: "All" }],
-  };
+  throw new CategoryNotFoundError(slug);
 }
 
 export function buildCategorySubcategoryHref(
@@ -74,13 +77,6 @@ export function findCategoryNodeBySlug(
   }
 
   return null;
-}
-
-function humanizeSlug(value: string) {
-  return value
-    .replace(/[-_]+/g, " ")
-    .trim()
-    .replace(/\b\w/g, (character) => character.toUpperCase());
 }
 
 function normalizeComparableSlug(value: string) {
