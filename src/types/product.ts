@@ -1,3 +1,13 @@
+export interface ProductImage {
+  url: string;
+  alt: string | null;
+  isPrimary: boolean;
+  sortOrder: number;
+  linkedVariantValue: string | null;
+  width: number | null;
+  height: number | null;
+}
+
 export interface Product {
   id: number | string;
   slug: string;
@@ -16,7 +26,9 @@ export interface Product {
   rating: number;
   reviews: number;
   image: string;
-  images?: string[];
+  imageAlt?: string;
+  images?: ProductImage[];
+  ownerId?: string;
   stock?: number;
   moderationStatus?: "approved" | "pending" | "rejected";
   sellerVisibility?: "visible" | "hidden";
@@ -57,6 +69,7 @@ export interface ProductDetail {
   rating: number;
   reviewCount: number;
   badge?: string | null;
+  ownerId?: string;
   seller?: ProductSeller;
   condition?: string;
   stock: number;
@@ -71,6 +84,6 @@ export interface ProductDetail {
 export type ProductInput = Partial<Product> & {
   id: number | string;
   slug: string;
+  title: string;
   price: number;
-  image: string;
 };
