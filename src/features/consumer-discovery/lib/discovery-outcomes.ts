@@ -27,6 +27,7 @@ export function classifyDiscoveryCollection<TError extends Error = Error>({
   error,
   retry,
   hasActiveQuery = false,
+  approvedPublicProductCount,
 }: DiscoveryCollectionClassification<TError>): DiscoveryCollectionOutcome<TError> {
   if (error) {
     if (!retry) {
@@ -38,6 +39,14 @@ export function classifyDiscoveryCollection<TError extends Error = Error>({
 
   if (products.length > 0) {
     return { status: "success", products: getUniqueDiscoveryProducts(products) };
+  }
+
+  if (approvedPublicProductCount === 0) {
+    return { status: "true-empty", products: [] };
+  }
+
+  if (approvedPublicProductCount !== undefined && approvedPublicProductCount > 0) {
+    return { status: "filtered-zero", products: [] };
   }
 
   return hasActiveQuery

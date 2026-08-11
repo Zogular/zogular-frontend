@@ -1,6 +1,11 @@
 import { getProductTitle, normalizeProduct } from "@/lib/normalizers/product";
 import { apiClient, ApiError } from "@/services/api";
 import { getCategoryMetaBySlug } from "@/services/categories";
+import { parseDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
+import type {
+  DiscoveryQueryState,
+  DiscoverySort,
+} from "@/features/consumer-discovery/types/discovery.types";
 import type {
   CategoryFilterOption,
   CategoryPageData,
@@ -8,25 +13,6 @@ import type {
   CategorySortOption,
 } from "@/types/category";
 import type { Product, ProductDetail, ProductImage } from "@/types/product";
-
-const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
-  "phones-and-tablets":
-    "Explore top smartphones, tablets, and accessories in Lusaka with fast delivery and trusted sellers.",
-  computing:
-    "Discover laptops, desktops, and accessories for work, school, and everyday performance.",
-  fashion:
-    "Shop premium fashion, footwear, and accessories curated for your style and everyday wear.",
-  electronics:
-    "Browse current electronics, entertainment gear, and buyer-visible gadgets.",
-  supermarket:
-    "Shop buyer-visible pantry staples, drinks, household essentials, and daily supplies.",
-  "health-and-beauty":
-    "Discover buyer-visible skincare, wellness, grooming, and beauty essentials.",
-  "sports-and-outdoors":
-    "Find fitness gear, outdoor essentials, and active lifestyle products for everyday movement.",
-  "home-and-living":
-    "Upgrade your home with kitchen, decor, storage, and everyday living essentials.",
-};
 
 const PRODUCT_IMAGE_PLACEHOLDER = "/file.svg";
 
@@ -137,8 +123,16 @@ type BackendProductListResponse = {
     page?: number;
     limit?: number;
     total?: number;
+    pages?: number;
   };
 };
+
+export class ProductListContractError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductListContractError";
+  }
+}
 
 function asString(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim().length > 0) return value.trim();
@@ -456,13 +450,56 @@ function extractBackendProducts(payload?: BackendProductListResponse | null): Ba
 type FetchBackendProductsParams = {
   page?: number;
   limit?: number;
-  sort?: string;
+  sort?: DiscoverySort;
   categorySlug?: string;
   subcategorySlug?: string;
   search?: string;
   minPrice?: number;
   maxPrice?: number;
+  timeout?: number;
 };
+
+function requirePaginationInteger(
+  value: unknown,
+  field: "page" | "limit" | "total" | "pages",
+  minimum: number,
+): number {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= minimum) {
+    return value;
+  }
+  throw new ProductListContractError(`Product list pagination has an invalid ${field}.`);
+}
+
+function parseProductListPayload(
+  payload: BackendProductListResponse,
+): {
+  rawProducts: BackendProduct[];
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+} {
+  if (!payload?.data || !Array.isArray(payload.data.products)) {
+    throw new ProductListContractError("Product list response is missing its products array.");
+  }
+  if (!payload.pagination) {
+    throw new ProductListContractError("Product list response is missing pagination metadata.");
+  }
+
+  const page = requirePaginationInteger(payload.pagination.page, "page", 1);
+  const limit = requirePaginationInteger(payload.pagination.limit, "limit", 1);
+  const total = requirePaginationInteger(payload.pagination.total, "total", 0);
+  const derivedPages = Math.ceil(total / limit);
+  const pages = payload.pagination.pages === undefined
+    ? derivedPages
+    : requirePaginationInteger(payload.pagination.pages, "pages", 0);
+
+  if (pages !== derivedPages) {
+    throw new ProductListContractError("Product list pagination page count is inconsistent.");
+  }
+
+  return { rawProducts: payload.data.products, page, limit, total, pages };
+}
 
 async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Promise<{
   products: Product[];
@@ -473,6 +510,7 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
     method: "GET",
     authMode: "omit",
     cache: "no-store",
+    timeout: params.timeout,
     query: {
       page: params.page ?? 1,
       limit: params.limit ?? 24,
@@ -485,13 +523,15 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
     },
   });
 
-  const rawProducts = extractBackendProducts(payload);
+  const {
+    rawProducts,
+    page,
+    limit,
+    total,
+    pages,
+  } = parseProductListPayload(payload);
   const products = rawProducts.map(normalizeBackendProduct);
-  const paginationRaw = payload.data?.products ? payload.pagination : undefined;
-  const page = paginationRaw?.page ?? params.page ?? 1;
-  const limit = paginationRaw?.limit ?? params.limit ?? 24;
-  const total = paginationRaw?.total ?? products.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const totalPages = Math.max(1, pages);
   const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
   const endItem = Math.min(page * limit, total);
 
@@ -505,6 +545,99 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
       startItem,
       endItem,
     },
+  };
+}
+
+export type DiscoveryListingPageResolution = "requested" | "last-page" | "empty-first-page";
+
+export type DiscoveryListingPageResult = {
+  requestedQuery: DiscoveryQueryState;
+  query: DiscoveryQueryState;
+  products: Product[];
+  pagination: ProductPaginationMeta;
+  pageResolution: DiscoveryListingPageResolution;
+  approvedPublicProductCount?: number;
+};
+
+type DiscoveryListingPageOptions = {
+  pageSize?: number;
+  orderingContext?: "listing" | "most-viewed";
+  approvedPublicProductCount?: number;
+  timeout?: number;
+};
+
+function clampListingPageSize(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || (value ?? 0) < 1) return 24;
+  return Math.min(value!, 100);
+}
+
+function resolveListingSort(
+  sort: DiscoverySort,
+  orderingContext: DiscoveryListingPageOptions["orderingContext"],
+): DiscoverySort {
+  return sort === "popular" && orderingContext !== "most-viewed"
+    ? "newest"
+    : sort;
+}
+
+export async function getDiscoveryListingPageData(
+  requestedQuery: DiscoveryQueryState,
+  options: DiscoveryListingPageOptions = {},
+): Promise<DiscoveryListingPageResult> {
+  const pageSize = clampListingPageSize(options.pageSize);
+  const parsedQuery = parseDiscoveryQuery(
+    {
+      page: String(requestedQuery.page),
+      sort: requestedQuery.sort,
+      categorySlug: requestedQuery.categorySlug,
+      subcategorySlug: requestedQuery.subcategorySlug,
+      search: requestedQuery.search,
+    },
+    { allowPopular: options.orderingContext === "most-viewed" },
+  );
+  const sort = resolveListingSort(parsedQuery.sort, options.orderingContext);
+  const query: DiscoveryQueryState = { ...parsedQuery, sort };
+  const fetchPage = (page: number) => fetchBackendProducts({
+    page,
+    limit: pageSize,
+    sort,
+    categorySlug: query.categorySlug,
+    subcategorySlug: query.subcategorySlug,
+    search: query.search,
+    timeout: options.timeout,
+  });
+
+  let result = await fetchPage(query.page);
+  let resolvedPage = query.page;
+  let pageResolution: DiscoveryListingPageResolution = "requested";
+
+  if (query.page > result.pagination.totalPages) {
+    if (result.pagination.total === 0) {
+      resolvedPage = 1;
+      pageResolution = "empty-first-page";
+      result = {
+        ...result,
+        pagination: {
+          ...result.pagination,
+          page: 1,
+          startItem: 0,
+          endItem: 0,
+        },
+      };
+    } else {
+      resolvedPage = result.pagination.totalPages;
+      pageResolution = "last-page";
+      result = await fetchPage(resolvedPage);
+    }
+  }
+
+  return {
+    requestedQuery: query,
+    query: { ...query, page: resolvedPage },
+    products: result.products,
+    pagination: result.pagination,
+    pageResolution,
+    approvedPublicProductCount: options.approvedPublicProductCount,
   };
 }
 
@@ -582,19 +715,6 @@ function getBackendPriceQuery(filter: CategoryFilterOption) {
   return {};
 }
 
-function getFallbackCategoryMeta(slug: string) {
-  const formattedName = slug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-
-  return {
-    title: formattedName,
-    description: CATEGORY_DESCRIPTION_FALLBACKS[slug] ?? `Browse ${formattedName} on Zogular.`,
-    subcategories: [],
-  };
-}
-
 export async function getCategoryPageData(
   slug: string,
   options: {
@@ -614,7 +734,7 @@ export async function getCategoryPageData(
     options.subcategory && options.subcategory !== "all"
       ? options.subcategory
       : undefined;
-  const meta = await getCategoryMetaBySlug(slug).catch(() => getFallbackCategoryMeta(slug));
+  const meta = await getCategoryMetaBySlug(slug);
 
   const backendData = await fetchBackendProducts({
     categorySlug: slug,
@@ -630,6 +750,7 @@ export async function getCategoryPageData(
     meta,
     products: backendData.products,
     pagination: backendData.pagination,
+    approvedPublicProductCount: meta.approvedPublicProductCount,
   };
 }
 
