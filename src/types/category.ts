@@ -38,6 +38,7 @@ export interface CategoryHeroMeta {
   title: string;
   description: string;
   subcategories: CategoryChild[];
+  approvedPublicProductCount?: number;
 }
 
 export interface CategoryPageData {
@@ -45,6 +46,7 @@ export interface CategoryPageData {
   meta: CategoryHeroMeta;
   products: Product[];
   pagination: ProductPaginationMeta;
+  approvedPublicProductCount?: number;
 }
 
 export interface ProductPaginationMeta {

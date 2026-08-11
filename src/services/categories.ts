@@ -7,7 +7,11 @@ import {
   fetchCategoryTree,
   type CategoryNode,
 } from "@/services/categories-api";
-import type { CategorySummary, HomeCategorySummary } from "@/types/category";
+import type {
+  CategoryHeroMeta,
+  CategorySummary,
+  HomeCategorySummary,
+} from "@/types/category";
 
 export async function getCategoryDirectory(): Promise<CategorySummary[]> {
   const categories = await fetchCategoryTree();
@@ -26,11 +30,14 @@ export async function getCategorySummaryBySlug(
   return categories.find((category) => category.slug === slug) ?? null;
 }
 
-export async function getCategoryMetaBySlug(slug: string) {
+export async function getCategoryMetaBySlug(slug: string): Promise<CategoryHeroMeta> {
   const category = await getCategorySummaryBySlug(slug);
 
   if (category) {
-    return buildCategoryMetaFromSummary(category);
+    return {
+      ...buildCategoryMetaFromSummary(category),
+      approvedPublicProductCount: category.productCount,
+    };
   }
 
   return {
