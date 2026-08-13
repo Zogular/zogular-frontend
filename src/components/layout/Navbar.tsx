@@ -48,8 +48,6 @@ const TOP_BAR_LINKS: NavLink[] = [
 const PRIMARY_NAV_LINKS: NavLink[] = [
   { label: "All Products", href: "/products" },
   { label: "New Arrivals", href: "/new-arrivals" },
-  { label: "Hot Deals", href: "/deals" },
-  { label: "Best Sellers", href: "/best-sellers" },
   { label: "Electronics", href: "/category/electronics" },
   { label: "Fashion", href: "/category/fashion" },
   { label: "Home & Living", href: "/category/home-and-living" },
@@ -59,8 +57,6 @@ const PRIMARY_NAV_LINKS: NavLink[] = [
 const MOBILE_TOP_CATEGORY_LINKS: NavLink[] = [
   { label: "All Products", href: "/products" },
   { label: "New Arrivals", href: "/new-arrivals" },
-  { label: "Hot Deals", href: "/deals" },
-  { label: "Best Sellers", href: "/best-sellers" },
   { label: "Electronics", href: "/category/electronics" },
   { label: "Fashion", href: "/category/fashion" },
   { label: "Home & Living", href: "/category/home-and-living" },
