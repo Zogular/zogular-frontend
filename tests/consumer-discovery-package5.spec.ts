@@ -24,6 +24,13 @@ type FixtureMode =
 let fixtureMode: FixtureMode = "success";
 let backendServer: Server;
 let frontendProcess: ChildProcess;
+type BackendRequestTraceEntry = {
+  url: string;
+  pathname: string;
+  query: Record<string, string>;
+  phase: "category-metadata" | "requested-page" | "resolved-last-page" | "other-product-page";
+};
+let backendRequestTrace: BackendRequestTraceEntry[] = [];
 
 const viewports = [
   { name: "320x568", width: 320, height: 568 },
@@ -204,14 +211,54 @@ test("known category metadata survives product failure and Retry is real", async
 
 test("out-of-range pages resolve once without redirect loops", async ({ page }) => {
   fixtureMode = "out-of-range";
-  const productRequests: string[] = [];
+  backendRequestTrace = [];
+  const listingRequests: Array<{ url: string; pathname: string; query: Record<string, string>; resourceType: string; navigation: boolean; phase: string }> = [];
+  const mainFrameNavigations: string[] = [];
   page.on("request", (request) => {
-    if (request.url().includes("/products")) productRequests.push(request.url());
+    if (request.url().includes("/products")) {
+      const url = new URL(request.url());
+      listingRequests.push({
+        url: url.toString(),
+        pathname: url.pathname,
+        query: Object.fromEntries(url.searchParams),
+        resourceType: request.resourceType(),
+        navigation: request.isNavigationRequest(),
+        phase: request.isNavigationRequest()
+          ? "document-navigation"
+          : url.pathname === "/products" && url.searchParams.size === 1 && url.searchParams.has("_rsc")
+            ? "shell-link-prefetch"
+            : url.searchParams.has("_rsc")
+              ? "listing-rsc-request"
+              : "other",
+      });
+    }
+  });
+  page.on("framenavigated", (frame) => {
+    if (frame === page.mainFrame()) mainFrameNavigations.push(frame.url());
   });
   await page.goto(`${frontendBaseUrl}/products?page=9`, { waitUntil: "networkidle" });
   await expect(page.getByRole("link", { name: "Page 2" })).toHaveAttribute("aria-current", "page");
   await expect(page).toHaveURL(`${frontendBaseUrl}/products?page=9`);
-  expect(productRequests.length).toBeLessThan(5);
+  const settledBackendRequestCount = backendRequestTrace.length;
+  const settledListingRequestCount = listingRequests.length;
+  await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+
+  console.log(`PACKAGE5_OUT_OF_RANGE_TRACE=${JSON.stringify(listingRequests)}`);
+  console.log(`PACKAGE5_BACKEND_TRACE=${JSON.stringify(backendRequestTrace)}`);
+  expect(mainFrameNavigations).toHaveLength(2);
+  expect(new Set(mainFrameNavigations)).toEqual(new Set([`${frontendBaseUrl}/products?page=9`]));
+  expect(listingRequests.filter((request) => request.phase === "document-navigation")).toHaveLength(1);
+  expect(listingRequests.filter((request) => request.phase === "shell-link-prefetch")).toHaveLength(2);
+  expect(listingRequests.filter((request) => request.phase === "listing-rsc-request")).toEqual([]);
+  expect(listingRequests).toHaveLength(3);
+  expect(listingRequests.length).toBe(settledListingRequestCount);
+  expect(backendRequestTrace).toEqual([
+    { url: "/api/v1/categories", pathname: "/api/v1/categories", query: {}, phase: "category-metadata" },
+    { url: "/api/v1/products?page=9&limit=20&sort=newest", pathname: "/api/v1/products", query: { page: "9", limit: "20", sort: "newest" }, phase: "requested-page" },
+    { url: "/api/v1/products?page=2&limit=20&sort=newest", pathname: "/api/v1/products", query: { page: "2", limit: "20", sort: "newest" }, phase: "resolved-last-page" },
+  ]);
+  expect(new Set(backendRequestTrace.map((request) => request.url)).size).toBe(backendRequestTrace.length);
+  expect(backendRequestTrace.length).toBe(settledBackendRequestCount);
 });
 
 test("pagination and browser Back/Forward restore rendered query state", async ({ page }) => {
@@ -256,15 +303,22 @@ async function startFixtureBackend(): Promise<Server> {
     response.setHeader("content-type", "application/json");
 
     if (url.pathname === "/api/v1/categories") {
+      backendRequestTrace.push({ url: `${url.pathname}${url.search}`, pathname: url.pathname, query: Object.fromEntries(url.searchParams), phase: "category-metadata" });
       if (fixtureMode === "metadata-failure") return send(response, 503, { status: "fail", message: "Fixture category failure" });
       const count = fixtureMode === "true-empty" ? 0 : 30;
       return send(response, 200, { status: "success", results: 1, data: { categories: [categoryFixture(count)] } });
     }
 
     if (url.pathname === "/api/v1/products") {
+      const page = Number(url.searchParams.get("page") ?? "1");
+      backendRequestTrace.push({
+        url: `${url.pathname}${url.search}`,
+        pathname: url.pathname,
+        query: Object.fromEntries(url.searchParams),
+        phase: page === 9 ? "requested-page" : page === 2 ? "resolved-last-page" : "other-product-page",
+      });
       if (fixtureMode === "product-failure") return send(response, 503, { status: "fail", message: "Fixture product failure" });
       if (fixtureMode === "malformed") return send(response, 200, { status: "success", data: { products: [] } });
-      const page = Number(url.searchParams.get("page") ?? "1");
       if (fixtureMode === "out-of-range" && page === 9) {
         return send(response, 200, productPayload([], 9, 20, 30, 2));
       }
