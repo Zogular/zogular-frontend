@@ -5,14 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ArrowDownWideNarrow, Check, SlidersHorizontal, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetFooter,
-  SheetHeader,
-  SheetTitle,
-} from "@/components/ui/sheet";
+import { DiscoveryMobileFilterDialog } from "@/features/consumer-discovery/listing/DiscoveryMobileFilterDialog";
 import {
   buildDiscoveryUrl,
   parseDiscoveryQuery,
@@ -165,20 +158,7 @@ export function DiscoveryListingControls({
         </div>
       ) : null}
 
-      <Sheet open={open} onOpenChange={handleOpenChange} modal>
-        <SheetContent
-          side="bottom"
-          className="max-h-[85svh] gap-0 rounded-t-3xl border-zinc-200 bg-white p-0 motion-reduce:transition-none"
-          data-testid="mobile-filter-sheet"
-          onCloseAutoFocus={(event) => {
-            event.preventDefault();
-            lastTriggerRef.current?.focus();
-          }}
-        >
-          <SheetHeader className="shrink-0 border-b border-zinc-200 px-5 py-4 pr-16">
-            <SheetTitle className="text-lg font-black text-zinc-950">Filter and sort</SheetTitle>
-            <SheetDescription>Choose supported listing options, then apply them.</SheetDescription>
-          </SheetHeader>
+      <DiscoveryMobileFilterDialog open={open} onOpenChange={handleOpenChange} restoreFocusRef={lastTriggerRef}>
           <div className="min-h-0 flex-1 space-y-6 overflow-y-auto overscroll-contain px-5 py-5">
             <fieldset disabled={!hasFilters}>
               <legend className="mb-3 text-sm font-black text-zinc-900">Category</legend>
@@ -203,12 +183,11 @@ export function DiscoveryListingControls({
               </div>
             </fieldset>
           </div>
-          <SheetFooter className="shrink-0 grid grid-cols-2 gap-2 border-t border-zinc-200 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <div data-testid="mobile-filter-footer" className="shrink-0 grid grid-cols-2 gap-2 border-t border-zinc-200 bg-white px-5 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
             <Button type="button" variant="outline" className="h-11 rounded-xl" onClick={clearDraft}>Clear</Button>
             <Button type="button" className="h-11 rounded-xl bg-[#009E49] text-white hover:bg-[#007d3a]" onClick={applyDraft}>Apply</Button>
-          </SheetFooter>
-        </SheetContent>
-      </Sheet>
+          </div>
+      </DiscoveryMobileFilterDialog>
     </section>
   );
 }

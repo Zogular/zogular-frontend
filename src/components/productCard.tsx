@@ -17,7 +17,12 @@ function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
 }
 
-export function ProductCard({ product }: { product: Product }) {
+type ProductCardProps = {
+  product: Product;
+  prioritizeImage?: boolean;
+};
+
+export function ProductCard({ product, prioritizeImage = false }: ProductCardProps) {
   const displayTitle = getProductTitle(product);
   const displayCategory = getProductCategoryLabel(product);
   const displayOldPrice = getProductOldPrice(product);
@@ -86,6 +91,8 @@ export function ProductCard({ product }: { product: Product }) {
               src={product.image}
               alt={product.imageAlt?.trim() || displayTitle}
               fill
+              loading={prioritizeImage ? "eager" : "lazy"}
+              fetchPriority={prioritizeImage ? "high" : "auto"}
               sizes="(max-width: 639px) calc(50vw - 24px), (max-width: 1023px) 31vw, (max-width: 1279px) 23vw, 220px"
               className="object-contain p-3 sm:p-4"
             />

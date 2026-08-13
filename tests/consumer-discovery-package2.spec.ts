@@ -69,7 +69,8 @@ test("rail, grid, and skeleton source reuse canonical card geometry", () => {
 
   for (const source of [rail, grid]) {
     expect(source).toContain('from "@/components/productCard"');
-    expect(source).toContain("<ProductCard product={product} />");
+    expect(source).toContain("<ProductCard");
+    expect(source).toContain("product={product}");
     expect(source).not.toMatch(/interface\s+(Discovery)?Product\b/);
   }
   expect(rail).toContain("snap-mandatory");

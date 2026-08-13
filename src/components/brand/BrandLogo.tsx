@@ -38,8 +38,8 @@ export function BrandLogo({
       alt={BRAND.name}
       width={mode === "wordmark" ? 520 : 96}
       height={mode === "wordmark" ? 104 : 96}
-      priority={priority}
-      unoptimized
+      preload={priority}
+      sizes={mode === "wordmark" ? "(max-width: 767px) 200px, 260px" : "96px"}
       className={cn("h-auto w-auto object-contain", imageClassName)}
     />
   );
