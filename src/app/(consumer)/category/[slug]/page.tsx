@@ -81,6 +81,18 @@ export default async function CategoryPage({
       active: isAll ? !urlQuery.subcategorySlug : urlQuery.subcategorySlug === subcategory.slug,
     };
   });
+  const filters = meta.subcategories.map((subcategory) => {
+    const isAll = subcategory.slug === "all";
+    const nextQuery = updateDiscoveryQuery(urlQuery, {
+      subcategorySlug: isAll ? null : subcategory.slug,
+    });
+    return {
+      key: isAll ? "all" : subcategory.slug,
+      label: isAll ? "All products" : subcategory.name,
+      href: buildDiscoveryUrl(`/category/${slug}`, nextQuery),
+      active: isAll ? !urlQuery.subcategorySlug : urlQuery.subcategorySlug === subcategory.slug,
+    };
+  });
 
   return (
     <DiscoveryListingPage
@@ -89,6 +101,7 @@ export default async function CategoryPage({
       description={meta.description || undefined}
       approvedPublicProductCount={meta.approvedPublicProductCount}
       subcategories={subcategories}
+      filters={filters}
       products={products}
       pagination={pagination}
       query={urlQuery}

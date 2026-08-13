@@ -1,9 +1,10 @@
-import { parseDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
+import { buildDiscoveryUrl, parseDiscoveryQuery, updateDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
 import { DiscoveryListingPage } from "@/features/consumer-discovery/listing/DiscoveryListingPage";
 import type { DiscoveryListingStateKind } from "@/features/consumer-discovery/listing/DiscoveryListingState";
 import { isDiscoveryListingFailure } from "@/features/consumer-discovery/listing/listing-errors";
 import type { DiscoveryQueryInput } from "@/features/consumer-discovery/types/discovery.types";
 import { getDiscoveryListingPageData } from "@/services/products";
+import { getCategoryDirectory } from "@/services/categories";
 import type { ProductPaginationMeta } from "@/types/category";
 import type { Product } from "@/types/product";
 
@@ -19,6 +20,20 @@ export default async function SearchPage({
   let pagination: ProductPaginationMeta | undefined;
   let resolvedQuery = query;
   let state: DiscoveryListingStateKind | undefined = query.search ? undefined : "search-idle";
+  let filters = [{ key: "all", label: "All categories", href: buildDiscoveryUrl("/search", updateDiscoveryQuery(query, { categorySlug: null, subcategorySlug: null })), active: !query.categorySlug }];
+  let filterMetadataAvailable = true;
+
+  try {
+    const categories = await getCategoryDirectory();
+    filters = [filters[0], ...categories.map((category) => ({
+      key: category.slug,
+      label: category.name,
+      href: buildDiscoveryUrl("/search", updateDiscoveryQuery(query, { categorySlug: category.slug, subcategorySlug: null })),
+      active: query.categorySlug === category.slug,
+    }))];
+  } catch {
+    filterMetadataAvailable = false;
+  }
 
   if (query.search) {
     try {
@@ -46,6 +61,8 @@ export default async function SearchPage({
       state={state}
       clearHref="/search"
       searchTerm={query.search}
+      filters={filters}
+      filterMetadataAvailable={filterMetadataAvailable}
     />
   );
 }

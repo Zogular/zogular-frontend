@@ -53,6 +53,7 @@ export function ProductPagination({
         <div className="flex items-center justify-between gap-2 md:justify-end">
           <Link
             href={hasPrevious ? buildPageHref(basePath, page - 1, query) : buildPageHref(basePath, page, query)}
+            prefetch={false}
             aria-disabled={!hasPrevious}
             tabIndex={hasPrevious ? undefined : -1}
             className={cn(
@@ -71,6 +72,7 @@ export function ProductPagination({
               <Link
                 key={item}
                 href={buildPageHref(basePath, item, query)}
+                prefetch={false}
                 aria-label={`Page ${item}`}
                 aria-current={item === page ? "page" : undefined}
                 className={cn(
@@ -87,6 +89,7 @@ export function ProductPagination({
 
           <Link
             href={hasNext ? buildPageHref(basePath, page + 1, query) : buildPageHref(basePath, page, query)}
+            prefetch={false}
             aria-disabled={!hasNext}
             tabIndex={hasNext ? undefined : -1}
             className={cn(
