@@ -135,9 +135,10 @@ test("backdrop dismissal discards draft and sheet blocks background interaction"
   await waitForStableRect(page.getByTestId("mobile-filter-sheet"));
   await page.screenshot({ path: path.join(evidenceDirectory, "filter-sheet-open-320x568.png"), fullPage: false });
   await page.getByRole("button", { name: "Phones" }).click();
-  await expect(page.locator("body")).toHaveAttribute("data-scroll-locked", "1");
-  await page.locator("[data-slot='sheet-overlay']").click({ position: { x: 5, y: 5 } });
+  await expect(page.locator("body")).toHaveCSS("overflow", "hidden");
+  await page.getByTestId("mobile-filter-dialog").click({ position: { x: 5, y: 5 } });
   await expect(page.getByTestId("mobile-filter-sheet")).toBeHidden();
+  await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
   await expect(page).toHaveURL(`${frontendBaseUrl}/category/electronics`);
 });
 
@@ -151,7 +152,7 @@ test("keyboard activation, duplicate sort selection, reduced motion, and safe-ar
   const sheet = page.getByTestId("mobile-filter-sheet");
   await expect(sheet).toBeVisible();
   await waitForStableRect(sheet);
-  const actionGeometry = await page.locator("[data-slot='sheet-footer']").evaluate((element) => {
+  const actionGeometry = await page.getByTestId("mobile-filter-footer").evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const controls = Array.from(element.querySelectorAll("button")).map((button) => button.getBoundingClientRect());
     return { bottom: rect.bottom, viewport: innerHeight, controls: controls.map((control) => ({ width: control.width, height: control.height })) };
@@ -161,9 +162,54 @@ test("keyboard activation, duplicate sort selection, reduced motion, and safe-ar
     expect(control.width).toBeGreaterThanOrEqual(44);
     expect(control.height).toBeGreaterThanOrEqual(44);
   }
-  await page.getByRole("button", { name: "Newest" }).click();
+  await sheet.getByRole("button", { name: "Newest" }).click();
   await page.getByRole("button", { name: "Apply" }).click();
   await expect(page).toHaveURL(`${frontendBaseUrl}/products`);
+});
+
+test("native dialog preserves modal focus, exact restoration, rapid activation, and cleanup", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${frontendBaseUrl}/products`, { waitUntil: "networkidle" });
+  const filterTrigger = page.getByRole("button", { name: /^Filter/ });
+  const sortTrigger = page.getByRole("button", { name: /^Sort/ });
+  const initialAriaHiddenNodes = await page.locator("[aria-hidden='true']").count();
+
+  await sortTrigger.click();
+  const dialog = page.getByTestId("mobile-filter-dialog");
+  await expect(dialog).toHaveJSProperty("open", true);
+  await expect(page.getByRole("heading", { name: "Filter and sort" })).toBeVisible();
+  await expect(dialog).toHaveAttribute("aria-describedby", /.+/);
+  await expect(page.getByRole("button", { name: "Close filter and sort" })).toBeFocused();
+  await expect(page.locator("body")).toHaveCSS("overflow", "hidden");
+
+  const focusables = dialog.locator("button:not([disabled])");
+  await focusables.last().focus();
+  await page.keyboard.press("Tab");
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+  await page.keyboard.press("Shift+Tab");
+  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).not.toHaveJSProperty("open", true);
+  await expect(sortTrigger).toBeFocused();
+  await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
+
+  await filterTrigger.click();
+  await expect(dialog).toHaveJSProperty("open", true);
+  await page.getByRole("button", { name: "Close filter and sort" }).click();
+  await expect(dialog).not.toHaveJSProperty("open", true);
+  await filterTrigger.click();
+  await expect(dialog).toHaveJSProperty("open", true);
+  await page.getByRole("button", { name: "Close filter and sort" }).click();
+  await expect(dialog).not.toHaveJSProperty("open", true);
+  await expect(filterTrigger).toBeFocused();
+
+  const residue = await page.evaluate(() => ({
+    openDialogs: document.querySelectorAll("dialog[open]").length,
+    ariaHiddenNodes: document.querySelectorAll("[aria-hidden='true']").length,
+    bodyOverflow: document.body.style.overflow,
+  }));
+  expect(residue).toEqual({ openDialogs: 0, ariaHiddenNodes: initialAriaHiddenNodes, bodyOverflow: "" });
 });
 
 test("desktop links, chips, sort, and browser Back/Forward stay canonical", async ({ page }) => {

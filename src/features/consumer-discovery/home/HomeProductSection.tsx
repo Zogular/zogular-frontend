@@ -18,7 +18,11 @@ export function HomeProductSection({ title, products, href }: HomeProductSection
         action={href ? { href, label: "View all" } : undefined}
         className="mb-2 sm:mb-3"
       />
-      <ProductRail products={products} label={`${title} products`} />
+      <ProductRail
+        products={products}
+        label={`${title} products`}
+        prioritizeFirstImage={title === "New Arrivals"}
+      />
     </section>
   );
 }

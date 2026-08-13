@@ -10,9 +10,10 @@ type ProductRailProps = {
   products: readonly Product[];
   label: string;
   className?: string;
+  prioritizeFirstImage?: boolean;
 };
 
-export function ProductRail({ products, label, className }: ProductRailProps) {
+export function ProductRail({ products, label, className, prioritizeFirstImage = false }: ProductRailProps) {
   const visibleProducts = getUniqueDiscoveryProducts(products);
 
   if (visibleProducts.length === 0) return null;
@@ -47,12 +48,12 @@ export function ProductRail({ products, label, className }: ProductRailProps) {
         className,
       )}
     >
-      {visibleProducts.map((product) => (
+      {visibleProducts.map((product, index) => (
         <li
           key={`${typeof product.id}:${String(product.id)}`}
           className="w-[148px] min-w-[148px] snap-start md:w-[216px] md:min-w-[216px]"
         >
-          <ProductCard product={product} />
+          <ProductCard product={product} prioritizeImage={prioritizeFirstImage && index === 0} />
         </li>
       ))}
     </ul>
