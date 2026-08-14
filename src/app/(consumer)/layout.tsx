@@ -1,6 +1,7 @@
 import Navbar from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
 import { CartSyncBridge } from "@/components/cart/CartSyncBridge";
+import { MobileBottomNavigation } from "@/components/layout/MobileBottomNavigation";
 
 export default function ConsumerLayout({
   children,
@@ -15,6 +16,7 @@ export default function ConsumerLayout({
         {children}
       </main>
       <Footer />
+      <MobileBottomNavigation />
     </div>
   );
 }

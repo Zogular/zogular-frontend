@@ -48,13 +48,13 @@ export function DiscoveryListingHeader({
         {description ? <p className="mt-2 max-w-2xl text-sm leading-6 text-zinc-600 md:text-base">{description}</p> : null}
         {approvedPublicProductCount !== undefined ? (
           <p className="mt-2 text-sm font-semibold text-zinc-700" data-testid="approved-public-count">
-            {approvedPublicProductCount.toLocaleString()} approved {approvedPublicProductCount === 1 ? "product" : "products"}
+            {approvedPublicProductCount.toLocaleString()} {approvedPublicProductCount === 1 ? "product" : "products"}
           </p>
         ) : null}
       </div>
 
       {subcategories.length > 0 ? (
-        <nav aria-label="Subcategories" className="hide-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+        <nav aria-label="Subcategories" className="hide-scrollbar -mx-1 flex gap-2 overflow-x-auto px-1 pb-1 lg:hidden">
           {subcategories.map((subcategory) => (
             <Link
               key={subcategory.href}

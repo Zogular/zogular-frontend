@@ -54,7 +54,7 @@ export function Footer() {
           <div className="space-y-4 lg:col-span-2">
             <BrandLogo href="/" variant="dark" imageClassName="h-10 w-auto md:h-12" className="focus-visible:ring-offset-zinc-900" />
             <p className="text-xs md:text-sm text-zinc-400 max-w-sm leading-relaxed">
-              Zambia&apos;s online marketplace for buyer-visible listings during the Lusaka pilot.
+              Zambia&apos;s online marketplace for everyday products.
             </p>
             
             <div className="flex flex-wrap gap-2 pt-1">

@@ -1,35 +1,95 @@
 import Link from "next/link";
-import { ArrowRight, Search } from "lucide-react";
+import { getImageProps } from "next/image";
+import { Search } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export function EditorialDiscoveryIntro() {
+type EditorialDiscoveryIntroProps = {
+  hasProducts: boolean;
+};
+
+type EditorialAction = {
+  href: string;
+  label: string;
+  icon?: typeof Search;
+};
+
+const mobileImage = getImageProps({
+  src: "/images/discovery/home-editorial-mobile.webp",
+  alt: "",
+  width: 960,
+  height: 640,
+  sizes: "100vw",
+  quality: 80,
+  loading: "eager",
+  fetchPriority: "high",
+});
+
+const desktopImage = getImageProps({
+  src: "/images/discovery/home-editorial-desktop.webp",
+  alt: "",
+  width: 1536,
+  height: 512,
+  sizes: "(max-width: 1176px) calc(100vw - 48px), 1176px",
+  quality: 80,
+  loading: "eager",
+  fetchPriority: "high",
+});
+
+export function EditorialDiscoveryIntro({ hasProducts }: EditorialDiscoveryIntroProps) {
+  const heading = hasProducts ? "Find what you need." : "Explore Zogular.";
+  const description = hasProducts
+    ? "Shop everyday products in Zambia."
+    : "No products are available yet.";
+  const actions: EditorialAction[] = hasProducts
+    ? [{ href: "/products", label: "Shop now" }]
+    : [
+        { href: "/products", label: "Browse products" },
+        { href: "/search", label: "Search", icon: Search },
+      ];
+
   return (
     <section
       data-testid="home-editorial-intro"
-      className="rounded-[20px] border border-emerald-900/10 bg-[#073f2a] px-4 py-4 text-white shadow-[0_18px_50px_rgba(7,63,42,0.14)] sm:rounded-[24px] sm:px-7 sm:py-6 md:py-8 lg:px-10"
+      className="relative isolate h-[200px] overflow-hidden rounded-[20px] bg-[#102018] text-white max-[340px]:h-[180px] sm:h-[232px] sm:rounded-[24px] md:h-[272px] lg:h-[296px]"
     >
-      <div className="max-w-2xl">
-        <p className="text-xs font-black uppercase tracking-[0.18em] text-emerald-200 max-[340px]:sr-only">Zogular marketplace</p>
-        <h1 className="mt-1.5 text-xl font-black leading-tight tracking-tight sm:mt-2 sm:text-3xl lg:text-4xl">
-          Find current buyer-visible products.
+      <picture className="absolute inset-0 block">
+        <source
+          media="(min-width: 768px)"
+          srcSet={desktopImage.props.srcSet}
+          sizes={desktopImage.props.sizes}
+        />
+        <img
+          {...mobileImage.props}
+          alt=""
+          className="h-full w-full object-cover"
+          data-testid="home-editorial-image"
+        />
+      </picture>
+      <div className="absolute inset-0 bg-linear-to-r from-[#06150d]/90 via-[#06150d]/50 to-transparent" />
+      <div className={cn("relative flex h-full max-w-[640px] flex-col justify-center px-5 py-4 sm:px-8 md:w-[48%] md:px-10 lg:px-14", hasProducts ? "w-[62%] sm:w-[56%]" : "w-[84%] sm:w-[68%]")}>
+        <h1 className="max-w-[9ch] text-[28px] font-black leading-[0.98] tracking-tight sm:text-[34px] md:text-[42px] lg:text-[48px]">
+          {heading}
         </h1>
-        <p className="mt-1.5 max-w-xl text-[13px] leading-5 text-emerald-50/85 sm:mt-2 sm:text-base sm:leading-6">
-          Browse categories and open listings for current product details.
+        <p className="mt-2 max-w-[28ch] text-[13px] font-medium leading-5 text-white/95 sm:text-[15px] md:mt-3 md:text-base md:leading-6">
+          {description}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2 sm:mt-5">
-          <Link
-            href="/products"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full bg-white px-5 text-sm font-black text-[#073f2a] outline-none transition-colors hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#073f2a]"
-          >
-            Browse products
-            <ArrowRight className="h-4 w-4" aria-hidden="true" />
-          </Link>
-          <Link
-            href="/search"
-            className="inline-flex min-h-11 items-center gap-2 rounded-full border border-white/25 bg-white/10 px-5 text-sm font-bold text-white outline-none transition-colors hover:bg-white/15 focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#073f2a]"
-          >
-            <Search className="h-4 w-4" aria-hidden="true" />
-            Search
-          </Link>
+        <div className="mt-3 flex flex-wrap gap-2 md:mt-5">
+          {actions.map((action, index) => {
+            const Icon = action.icon;
+            return (
+              <Link
+                key={action.href}
+                href={action.href}
+                className={cn(
+                  "inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-xl px-4 text-sm font-black outline-none transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#102018] motion-reduce:duration-0 motion-reduce:transition-none sm:px-5",
+                  index === 0 ? "bg-[#ff9d00] text-zinc-950 hover:bg-[#ffad29]" : "border border-white/65 bg-white/10 text-white hover:bg-white/20",
+                )}
+              >
+                {Icon ? <Icon className="h-4 w-4" aria-hidden="true" /> : null}
+                {action.label}
+              </Link>
+            );
+          })}
         </div>
       </div>
     </section>

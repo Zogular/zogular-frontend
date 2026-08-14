@@ -41,7 +41,7 @@ export function DiscoveryCollectionState<TError extends Error = Error>({
         }
       : {
           title: "No products in this category yet",
-          description: "There are no approved public products available in this category right now.",
+          description: "No products are available in this category yet.",
         };
 
   async function handleRetry() {

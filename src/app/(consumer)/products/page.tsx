@@ -54,7 +54,7 @@ export default async function AllProductsPage({
     <DiscoveryListingPage
       breadcrumbs={[{ label: "Home", href: "/" }, { label: "All products" }]}
       title="All products"
-      description="Browse approved products currently available on Zogular."
+      description="Browse products available on Zogular."
       products={products}
       pagination={pagination}
       query={resolvedQuery}
