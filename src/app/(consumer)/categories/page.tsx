@@ -75,7 +75,7 @@ export default function CategoriesDirectoryPage() {
               All Categories
             </h1>
             <p className="mt-3 text-sm font-medium text-zinc-500 md:text-base">
-              Browse buyer-visible products across electronics, fashion, groceries, and more during the Lusaka pilot.
+              Browse products across electronics, fashion, groceries, and more.
             </p>
             <Link href="/products" className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-900 px-5 text-sm font-black text-white shadow-md transition-colors hover:bg-zinc-800">
               Shop All Products

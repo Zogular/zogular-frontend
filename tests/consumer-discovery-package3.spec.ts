@@ -166,7 +166,8 @@ test("homepage loading reserves introduction, category, and canonical 3:4 produc
   );
 
   expect(loadingSource).toContain('data-testid="home-intro-skeleton"');
-  expect(loadingSource).toContain("h-[76px] min-w-[132px]");
+  expect(loadingSource).toContain("h-[76px] min-w-[108px]");
+  expect(loadingSource).toContain("sm:h-[84px] sm:min-w-[124px]");
   expect(loadingSource).toContain('<DiscoveryProductSkeleton layout="rail"');
   expect(loadingSource).toContain('<DiscoveryProductSkeleton layout="grid"');
   expect(skeletonSource).toContain("aspect-[3/4]");

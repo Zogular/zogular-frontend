@@ -53,7 +53,7 @@ export default async function SearchPage({
     <DiscoveryListingPage
       breadcrumbs={[{ label: "Home", href: "/" }, { label: "Search" }]}
       title={title}
-      description={query.search ? "Approved public products matching your search." : undefined}
+      description={query.search ? "Products matching your search." : undefined}
       products={products}
       pagination={pagination}
       query={resolvedQuery}

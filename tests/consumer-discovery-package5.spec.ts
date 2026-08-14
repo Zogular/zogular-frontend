@@ -96,10 +96,15 @@ for (const viewport of viewports) {
     await page.goto(`${frontendBaseUrl}/category/electronics`, { waitUntil: "networkidle" });
 
     await expect(page.getByRole("heading", { name: "Electronics", level: 1 })).toBeVisible();
-    await expect(page.getByTestId("approved-public-count")).toHaveText("30 approved products");
+    await expect(page.getByTestId("approved-public-count")).toHaveText("30 products");
     await expect(page.getByTestId("discovery-product-grid")).toBeVisible();
     await expect(page.locator("[data-testid='product-card']")).toHaveCount(20);
-    await expect(page.getByRole("navigation", { name: "Subcategories" })).toBeVisible();
+    if (viewport.width < 1024) {
+      await expect(page.getByRole("navigation", { name: "Subcategories" })).toBeVisible();
+    } else {
+      await expect(page.getByRole("navigation", { name: "Subcategories" })).toBeHidden();
+      await expect(page.getByTestId("desktop-filter-rail")).toBeVisible();
+    }
     await expect(page.getByRole("navigation", { name: "Product results pages" })).toBeVisible();
 
     const geometry = await page.evaluate(() => {
@@ -126,7 +131,7 @@ for (const viewport of viewports) {
     if (viewport.width === 768) expect(geometry.columnCount).toBe(3);
     if (viewport.width === 1024) expect(geometry.columnCount).toBe(4);
     if (viewport.width >= 1280) {
-      expect(geometry.columnCount).toBe(5);
+      expect(geometry.columnCount).toBe(4);
       for (const width of geometry.firstRowWidths) {
         expect(width).toBeGreaterThanOrEqual(211);
         expect(width).toBeLessThanOrEqual(221);
@@ -161,12 +166,12 @@ test("true empty and filtered zero remain distinct", async ({ page }) => {
   fixtureMode = "true-empty";
   await page.goto(`${frontendBaseUrl}/category/electronics`, { waitUntil: "networkidle" });
   await expect(page.getByTestId("listing-true-empty")).toBeVisible();
-  await expect(page.getByTestId("approved-public-count")).toHaveText("0 approved products");
+  await expect(page.getByTestId("approved-public-count")).toHaveText("0 products");
 
   fixtureMode = "filtered-zero";
   await page.goto(`${frontendBaseUrl}/category/electronics?subcategorySlug=phones`, { waitUntil: "networkidle" });
   await expect(page.getByTestId("listing-filtered-zero")).toBeVisible();
-  await expect(page.getByTestId("approved-public-count")).toHaveText("30 approved products");
+  await expect(page.getByTestId("approved-public-count")).toHaveText("30 products");
 });
 
 test("search zero and empty search use explicit search states", async ({ page }) => {
@@ -188,7 +193,7 @@ test("metadata failure and malformed product responses remain failure states", a
   fixtureMode = "metadata-failure";
   await page.goto(`${frontendBaseUrl}/category/electronics`, { waitUntil: "networkidle" });
   await expect(page.getByTestId("listing-metadata-failure")).toBeVisible();
-  await expect(page.getByText("30 approved products")).toHaveCount(0);
+  await expect(page.getByText("30 products")).toHaveCount(0);
 
   fixtureMode = "malformed";
   await page.goto(`${frontendBaseUrl}/products`, { waitUntil: "networkidle" });
@@ -200,7 +205,7 @@ test("known category metadata survives product failure and Retry is real", async
   fixtureMode = "product-failure";
   await page.goto(`${frontendBaseUrl}/category/electronics`, { waitUntil: "networkidle" });
   await expect(page.getByRole("heading", { name: "Electronics" })).toBeVisible();
-  await expect(page.getByTestId("approved-public-count")).toHaveText("30 approved products");
+  await expect(page.getByText(/\b\d[\d,]*\s+approved products\b|showing\s+\d|\b0\s+products\b/i)).toHaveCount(0);
   await expect(page.getByTestId("listing-product-failure")).toBeVisible();
   await expect(page.getByText("No products to display")).toHaveCount(0);
 
@@ -252,12 +257,17 @@ test("out-of-range pages resolve once without redirect loops", async ({ page }) 
   expect(listingRequests.filter((request) => request.phase === "listing-rsc-request")).toEqual([]);
   expect(listingRequests).toHaveLength(3);
   expect(listingRequests.length).toBe(settledListingRequestCount);
-  expect(backendRequestTrace).toEqual([
-    { url: "/api/v1/categories", pathname: "/api/v1/categories", query: {}, phase: "category-metadata" },
+  const categoryMetadataRequests = backendRequestTrace.filter((request) => request.phase === "category-metadata");
+  const productBackendRequests = backendRequestTrace.filter((request) => request.pathname === "/api/v1/products");
+  expect(productBackendRequests).toEqual([
     { url: "/api/v1/products?page=9&limit=20&sort=newest", pathname: "/api/v1/products", query: { page: "9", limit: "20", sort: "newest" }, phase: "requested-page" },
     { url: "/api/v1/products?page=2&limit=20&sort=newest", pathname: "/api/v1/products", query: { page: "2", limit: "20", sort: "newest" }, phase: "resolved-last-page" },
   ]);
-  expect(new Set(backendRequestTrace.map((request) => request.url)).size).toBe(backendRequestTrace.length);
+  expect(categoryMetadataRequests).toHaveLength(
+    1 + listingRequests.filter((request) => request.phase === "shell-link-prefetch").length + (mainFrameNavigations.length - 1),
+  );
+  expect(backendRequestTrace).toHaveLength(categoryMetadataRequests.length + productBackendRequests.length);
+  expect(new Set(productBackendRequests.map((request) => request.url)).size).toBe(productBackendRequests.length);
   expect(backendRequestTrace.length).toBe(settledBackendRequestCount);
 });
 

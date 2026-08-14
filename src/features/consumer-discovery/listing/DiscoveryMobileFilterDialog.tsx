@@ -21,6 +21,11 @@ type DiscoveryMobileFilterDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   restoreFocusRef: RefObject<HTMLButtonElement | null>;
+  title: string;
+  description: string;
+  closeLabel: string;
+  testId: "filter" | "sort";
+  immediateClose?: boolean;
   children: ReactNode;
 };
 
@@ -33,6 +38,11 @@ export function DiscoveryMobileFilterDialog({
   open,
   onOpenChange,
   restoreFocusRef,
+  title,
+  description,
+  closeLabel,
+  testId,
+  immediateClose = false,
   children,
 }: DiscoveryMobileFilterDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -98,8 +108,9 @@ export function DiscoveryMobileFilterDialog({
       return;
     }
 
-    beginClose();
-  }, [beginClose, open]);
+    if (immediateClose) finishClose();
+    else beginClose();
+  }, [beginClose, finishClose, immediateClose, open]);
 
   useEffect(() => () => {
     finishClose({ restoreFocus: false });
@@ -177,7 +188,7 @@ export function DiscoveryMobileFilterDialog({
       aria-labelledby={titleId}
       aria-describedby={descriptionId}
       data-state={presentationState}
-      data-testid="mobile-filter-dialog"
+      data-testid={`mobile-${testId}-dialog`}
       className={cn(
         "fixed inset-0 m-0 h-svh max-h-none w-screen max-w-none overflow-hidden bg-transparent p-0 text-inherit",
         "backdrop:bg-black/50 backdrop:transition-opacity backdrop:duration-200",
@@ -191,7 +202,7 @@ export function DiscoveryMobileFilterDialog({
     >
       <div
         ref={panelRef}
-        data-testid="mobile-filter-sheet"
+        data-testid={`mobile-${testId}-sheet`}
         data-state={presentationState}
         className={cn(
           "absolute inset-x-0 bottom-0 flex max-h-[85svh] flex-col overflow-hidden rounded-t-3xl border border-b-0 border-zinc-200 bg-white shadow-lg",
@@ -200,8 +211,8 @@ export function DiscoveryMobileFilterDialog({
         )}
       >
         <div className="relative shrink-0 border-b border-zinc-200 px-5 py-4 pr-16">
-          <h2 id={titleId} className="text-lg font-black text-zinc-950">Filter and sort</h2>
-          <p id={descriptionId} className="text-sm text-zinc-500">Choose supported listing options, then apply them.</p>
+          <h2 id={titleId} className="text-lg font-black text-zinc-950">{title}</h2>
+          <p id={descriptionId} className="text-sm text-zinc-500">{description}</p>
           <Button
             ref={closeButtonRef}
             type="button"
@@ -211,7 +222,7 @@ export function DiscoveryMobileFilterDialog({
             onClick={requestClose}
           >
             <X aria-hidden="true" />
-            <span className="sr-only">Close filter and sort</span>
+            <span className="sr-only">{closeLabel}</span>
           </Button>
         </div>
         {children}
