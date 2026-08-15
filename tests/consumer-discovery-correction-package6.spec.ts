@@ -64,6 +64,8 @@ test("mobile navigation and empty-home actions preserve hydration-safe compact l
 
   expect(home).toContain('className="mt-3 flex flex-nowrap gap-2 md:mt-5"');
   expect(home).toContain("w-full sm:w-[68%]");
+  expect(home).toContain("before:inset-y-[3px]");
+  expect(home).toContain("before:rounded-xl");
   expect(mobileNavigation).toContain("const isLoggedIn = Boolean(authSnapshot);");
   expect(mobileNavigation).not.toContain("getStoredAuthSession");
 });
