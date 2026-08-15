@@ -122,15 +122,13 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
         </Link>
 
         <div className="mb-2 mt-1 flex min-h-4 items-center gap-1">
-          {product.reviews && product.reviews > 0 && product.rating ? (
+          {Number.isInteger(product.reviews) && product.reviews > 0 && Number.isFinite(product.rating) && product.rating > 0 && product.rating <= 5 ? (
             <>
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
               <span className="text-[11px] font-bold text-zinc-900 md:text-xs">{product.rating}</span>
               <span className="text-[10px] font-medium text-zinc-400">({product.reviews})</span>
             </>
-          ) : (
-            <span className="text-[10px] font-medium text-zinc-400">No reviews</span>
-          )}
+          ) : null}
         </div>
 
         <div className="mt-auto flex items-end justify-between gap-2">

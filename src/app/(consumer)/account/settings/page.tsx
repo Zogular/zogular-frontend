@@ -5,13 +5,12 @@ import {
   User,
   ShieldCheck,
   Loader2,
-  AlertCircle,
   Eye,
   EyeOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { FeedbackState } from "@/components/states/FeedbackState";
+import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import {
   getAccountSettings,
   saveAccountProfile,
@@ -22,7 +21,7 @@ import type { AccountSettings } from "@/types/account";
 export default function SettingsPage() {
   const [settings, setSettings] = React.useState<AccountSettings | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
   const [password, setPassword] = React.useState({ current: "", next: "" });
   const [visiblePasswords, setVisiblePasswords] = React.useState({
     current: false,
@@ -37,8 +36,8 @@ export default function SettingsPage() {
       setError(null);
       const data = await getAccountSettings();
       setSettings(data);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load account settings.");
+    } catch (loadError) {
+      setError(loadError);
     } finally {
       setLoading(false);
     }
@@ -98,17 +97,7 @@ export default function SettingsPage() {
 
   if (error || !settings) {
     return (
-      <FeedbackState
-        icon={AlertCircle}
-        tone="danger"
-        title="Failed to load settings"
-        description={error ?? "We couldn't load your account settings right now."}
-        action={
-          <Button onClick={loadSettings} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-            Try Again
-          </Button>
-        }
-      />
+      <AccountLoadErrorState error={error} resource="settings" onRetry={loadSettings} />
     );
   }
 

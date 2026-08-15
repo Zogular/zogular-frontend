@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { Heart, Search } from "lucide-react";
+import { AlertCircle, Heart, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { ProductCard } from "@/components/productCard";
@@ -10,14 +10,8 @@ import { FeedbackState } from "@/components/states/FeedbackState";
 import { useWishlist } from "@/hooks/use-wishlist";
 
 export default function SavedItemsPage() {
-  const { items, hasHydrated, syncBackend } = useWishlist();
+  const { items, hasHydrated, isSyncing, syncError, syncBackend } = useWishlist();
   const [search, setSearch] = React.useState("");
-
-  React.useEffect(() => {
-    if (hasHydrated) {
-      void syncBackend();
-    }
-  }, [hasHydrated, syncBackend]);
 
   const filteredItems = React.useMemo(() => {
     const query = search.trim().toLowerCase();
@@ -30,8 +24,20 @@ export default function SavedItemsPage() {
     });
   }, [items, search]);
 
-  if (!hasHydrated) {
+  if (!hasHydrated || (isSyncing && items.length === 0)) {
     return <div className="py-16 text-center text-sm font-medium text-zinc-500">Loading your saved items...</div>;
+  }
+
+  if (syncError && items.length === 0) {
+    return (
+      <FeedbackState
+        icon={AlertCircle}
+        tone="danger"
+        title="Saved items could not load"
+        description="Please try again in a moment."
+        action={<Button onClick={() => void syncBackend()}>Try Again</Button>}
+      />
+    );
   }
 
   const hasItems = items.length > 0;

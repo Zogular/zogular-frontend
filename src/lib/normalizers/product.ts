@@ -37,6 +37,11 @@ export function normalizeProduct(input: ProductInput): Product {
     (originalPrice && originalPrice > price
       ? Math.round(((originalPrice - price) / originalPrice) * 100)
       : null);
+  const hasValidRating = Number.isInteger(input.reviews)
+    && Number(input.reviews) > 0
+    && Number.isFinite(input.rating)
+    && Number(input.rating) > 0
+    && Number(input.rating) <= 5;
 
   return {
     id,
@@ -51,8 +56,8 @@ export function normalizeProduct(input: ProductInput): Product {
     discount,
     badge: input.badge ?? (input.isNew ? "New" : null),
     isNew: input.isNew ?? false,
-    rating: input.rating ?? 0,
-    reviews: input.reviews ?? 0,
+    rating: hasValidRating ? Number(input.rating) : 0,
+    reviews: hasValidRating ? Number(input.reviews) : 0,
     image: input.image ?? "",
     imageAlt: input.imageAlt?.trim() || title,
     images: input.images,
