@@ -18,12 +18,13 @@ type DiscoveryListingStateProps = {
   kind: DiscoveryListingStateKind;
   query?: string;
   clearHref?: string;
+  trueEmptyScope?: "category" | "catalog";
 };
 
-export function DiscoveryListingState({ kind, query, clearHref = "/products" }: DiscoveryListingStateProps) {
+export function DiscoveryListingState({ kind, query, clearHref = "/products", trueEmptyScope = "category" }: DiscoveryListingStateProps) {
   const isFailure = kind === "product-failure" || kind === "metadata-failure";
   const Icon = isFailure ? WifiOff : kind === "filtered-zero" ? ListFilter : kind.startsWith("search") ? SearchX : PackageOpen;
-  const copy = getStateCopy(kind, query);
+  const copy = getStateCopy(kind, query, trueEmptyScope);
 
   function editFilters(restoreFocusTo: HTMLButtonElement) {
     const mobileTrigger = document.querySelector<HTMLButtonElement>("[data-testid='mobile-filter-trigger']");
@@ -74,10 +75,12 @@ export function DiscoveryListingState({ kind, query, clearHref = "/products" }: 
   );
 }
 
-function getStateCopy(kind: DiscoveryListingStateKind, query?: string) {
+function getStateCopy(kind: DiscoveryListingStateKind, query?: string, trueEmptyScope: "category" | "catalog" = "category") {
   switch (kind) {
     case "true-empty":
-      return { title: "No products in this category yet", description: "Try another category or search all products." };
+      return trueEmptyScope === "catalog"
+        ? { title: "No products are available yet", description: "Check back later or search for a specific product." }
+        : { title: "No products in this category yet", description: "Try another category or search all products." };
     case "filtered-zero":
       return { title: "No matches for these filters", description: "Change a filter to see more products." };
     case "search-zero":

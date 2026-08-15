@@ -6,6 +6,7 @@ const listingStatePath = path.resolve("src/features/consumer-discovery/listing/D
 const homeIntroPath = path.resolve("src/features/consumer-discovery/home/EditorialDiscoveryIntro.tsx");
 const listingControlsPath = path.resolve("src/features/consumer-discovery/listing/DiscoveryListingControls.tsx");
 const listingHeaderPath = path.resolve("src/features/consumer-discovery/listing/DiscoveryListingHeader.tsx");
+const mobileBottomNavigationPath = path.resolve("src/components/layout/MobileBottomNavigation.tsx");
 const buyerDiscoveryPaths = [
   path.resolve("src/app/(consumer)/products/page.tsx"),
   path.resolve("src/app/(consumer)/search/page.tsx"),
@@ -22,11 +23,14 @@ test("Package 6 uses the approved plain discovery-state copy", () => {
   for (const text of [
     "No products in this category yet",
     "Try another category or search all products.",
+    "No products are available yet",
+    "Check back later or search for a specific product.",
     "No matches for these filters",
     "Change a filter to see more products.",
     "Products could not load",
     "Check your connection and try again.",
   ]) expect(listing).toContain(text);
+  expect(fs.readFileSync(path.resolve("src/app/(consumer)/products/page.tsx"), "utf8")).toContain('trueEmptyScope="catalog"');
   for (const text of ["Explore Zogular.", "No products are available yet.", "Browse products", "Search"]) expect(home).toContain(text);
 });
 
@@ -52,4 +56,14 @@ test("buyer-facing discovery copy excludes internal implementation language", ()
   }
   expect(renderedCopy).toContain("Browse products available on Zogular.");
   expect(renderedCopy).toContain("Products matching your search.");
+});
+
+test("mobile navigation and empty-home actions preserve hydration-safe compact layout", () => {
+  const home = fs.readFileSync(homeIntroPath, "utf8");
+  const mobileNavigation = fs.readFileSync(mobileBottomNavigationPath, "utf8");
+
+  expect(home).toContain('className="mt-3 flex flex-nowrap gap-2 md:mt-5"');
+  expect(home).toContain("w-full sm:w-[68%]");
+  expect(mobileNavigation).toContain("const isLoggedIn = Boolean(authSnapshot);");
+  expect(mobileNavigation).not.toContain("getStoredAuthSession");
 });
