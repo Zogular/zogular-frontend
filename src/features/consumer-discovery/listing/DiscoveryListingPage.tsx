@@ -27,6 +27,7 @@ type DiscoveryListingPageProps = {
   searchTerm?: string;
   filters?: readonly DiscoveryFilterOption[];
   filterMetadataAvailable?: boolean;
+  trueEmptyScope?: "category" | "catalog";
 };
 
 export function DiscoveryListingPage({
@@ -44,6 +45,7 @@ export function DiscoveryListingPage({
   searchTerm,
   filters = [],
   filterMetadataAvailable = true,
+  trueEmptyScope = "category",
 }: DiscoveryListingPageProps) {
   const listingFailed = state === "product-failure" || state === "metadata-failure";
 
@@ -78,7 +80,7 @@ export function DiscoveryListingPage({
             <div className="min-w-0 space-y-5">
               {state ? (
                 <DiscoveryListingResultBoundary>
-                  <DiscoveryListingState kind={state} query={searchTerm} clearHref={clearHref} />
+                  <DiscoveryListingState kind={state} query={searchTerm} clearHref={clearHref} trueEmptyScope={trueEmptyScope} />
                 </DiscoveryListingResultBoundary>
               ) : (
                 <DiscoveryListingResultBoundary>

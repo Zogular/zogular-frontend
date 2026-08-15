@@ -263,9 +263,9 @@ test("out-of-range pages resolve once without redirect loops", async ({ page }) 
     { url: "/api/v1/products?page=9&limit=20&sort=newest", pathname: "/api/v1/products", query: { page: "9", limit: "20", sort: "newest" }, phase: "requested-page" },
     { url: "/api/v1/products?page=2&limit=20&sort=newest", pathname: "/api/v1/products", query: { page: "2", limit: "20", sort: "newest" }, phase: "resolved-last-page" },
   ]);
-  expect(categoryMetadataRequests).toHaveLength(
-    1 + listingRequests.filter((request) => request.phase === "shell-link-prefetch").length + (mainFrameNavigations.length - 1),
-  );
+  expect(categoryMetadataRequests).toEqual([
+    { url: "/api/v1/categories", pathname: "/api/v1/categories", query: {}, phase: "category-metadata" },
+  ]);
   expect(backendRequestTrace).toHaveLength(categoryMetadataRequests.length + productBackendRequests.length);
   expect(new Set(productBackendRequests.map((request) => request.url)).size).toBe(productBackendRequests.length);
   expect(backendRequestTrace.length).toBe(settledBackendRequestCount);

@@ -56,6 +56,9 @@ test("unsupported discovery promotions are absent from source navigation data", 
   expect(navbar).not.toMatch(/href:\s*["']\/(?:deals|best-sellers)["']/);
   expect(navbar).toContain('{ label: "All Products", href: "/products" }');
   expect(navbar).toContain('{ label: "New Arrivals", href: "/new-arrivals" }');
+  expect(navbar).not.toContain('{ label: "Electronics", href: "/category/electronics" }');
+  expect(navbar).toContain("...categoryLinks.slice(0, 4)");
+  expect(navbar).toContain("...categoryLinks.slice(0, 3)");
 });
 
 for (const legacyRoute of legacyRoutes) {
