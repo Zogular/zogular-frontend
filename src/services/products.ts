@@ -1,32 +1,18 @@
-import { normalizeProduct } from "@/lib/normalizers/product";
+import { getProductTitle, normalizeProduct } from "@/lib/normalizers/product";
 import { apiClient, ApiError } from "@/services/api";
 import { getCategoryMetaBySlug } from "@/services/categories";
+import { parseDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
+import type {
+  DiscoveryQueryState,
+  DiscoverySort,
+} from "@/features/consumer-discovery/types/discovery.types";
 import type {
   CategoryFilterOption,
   CategoryPageData,
   ProductPaginationMeta,
   CategorySortOption,
 } from "@/types/category";
-import type { Product, ProductDetail, ProductSeller } from "@/types/product";
-
-const CATEGORY_DESCRIPTION_FALLBACKS: Record<string, string> = {
-  "phones-and-tablets":
-    "Explore top smartphones, tablets, and accessories in Lusaka with fast delivery and trusted sellers.",
-  computing:
-    "Discover laptops, desktops, and accessories for work, school, and everyday performance.",
-  fashion:
-    "Shop premium fashion, footwear, and accessories curated for your style and everyday wear.",
-  electronics:
-    "Browse current electronics, entertainment gear, and buyer-visible gadgets.",
-  supermarket:
-    "Shop buyer-visible pantry staples, drinks, household essentials, and daily supplies.",
-  "health-and-beauty":
-    "Discover buyer-visible skincare, wellness, grooming, and beauty essentials.",
-  "sports-and-outdoors":
-    "Find fitness gear, outdoor essentials, and active lifestyle products for everyday movement.",
-  "home-and-living":
-    "Upgrade your home with kitchen, decor, storage, and everyday living essentials.",
-};
+import type { Product, ProductDetail, ProductImage } from "@/types/product";
 
 const PRODUCT_IMAGE_PLACEHOLDER = "/file.svg";
 
@@ -50,8 +36,24 @@ export type BackendProductUser = {
   id?: string;
 };
 
+type BackendReviewAuthor = {
+  firstName?: string | null;
+  lastName?: string | null;
+};
+
 type BackendReview = {
   rating?: number | null;
+  user?: BackendReviewAuthor | null;
+};
+
+export type BackendProductImage = {
+  url?: string | null;
+  alt?: string | null;
+  isPrimary?: boolean | null;
+  sortOrder?: number | string | null;
+  linkedVariantValue?: string | null;
+  width?: number | string | null;
+  height?: number | string | null;
 };
 
 type BackendCategoryRef = {
@@ -121,8 +123,16 @@ type BackendProductListResponse = {
     page?: number;
     limit?: number;
     total?: number;
+    pages?: number;
   };
 };
+
+export class ProductListContractError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "ProductListContractError";
+  }
+}
 
 function asString(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim().length > 0) return value.trim();
@@ -139,43 +149,83 @@ function toNumber(value: unknown, fallback = 0): number {
   return fallback;
 }
 
-function parseBackendImages(images: unknown): string[] {
-  if (Array.isArray(images)) {
-    return images
-      .map((img) => (typeof img === "string" ? img.trim() : ""))
-      .filter((img) => img.length > 0);
+function positiveDimension(value: unknown): number | null {
+  const parsed = toNumber(value, 0);
+  return parsed > 0 ? parsed : null;
+}
+
+function parseBackendImageEntry(
+  value: unknown,
+  sourceIndex: number,
+): (ProductImage & { sourceIndex: number }) | null {
+  if (typeof value === "string") {
+    const url = value.trim();
+    if (!url) return null;
+    return {
+      url,
+      alt: null,
+      isPrimary: sourceIndex === 0,
+      sortOrder: sourceIndex,
+      linkedVariantValue: null,
+      width: null,
+      height: null,
+      sourceIndex,
+    };
   }
 
-  if (typeof images === "string" && images.trim().length > 0) {
+  if (!value || typeof value !== "object") return null;
+  const image = value as BackendProductImage;
+  const url = asString(image.url);
+  if (!url) return null;
+
+  return {
+    url,
+    alt: asString(image.alt) ?? null,
+    isPrimary: image.isPrimary === true,
+    sortOrder: toNumber(image.sortOrder, sourceIndex),
+    linkedVariantValue: asString(image.linkedVariantValue) ?? null,
+    width: positiveDimension(image.width),
+    height: positiveDimension(image.height),
+    sourceIndex,
+  };
+}
+
+function parseBackendImages(images: unknown): ProductImage[] {
+  let source: unknown[] = [];
+
+  if (Array.isArray(images)) {
+    source = images;
+  } else if (typeof images === "string" && images.trim()) {
     const trimmed = images.trim();
     if (trimmed.startsWith("[") && trimmed.endsWith("]")) {
       try {
         const parsed = JSON.parse(trimmed);
-        if (Array.isArray(parsed)) {
-          return parsed
-            .map((img) => (typeof img === "string" ? img.trim() : ""))
-            .filter((img) => img.length > 0);
-        }
+        source = Array.isArray(parsed) ? parsed : [];
       } catch {
-        // Fall back to raw string split if JSON parsing fails
+        source = [];
       }
+    } else {
+      source = trimmed.split(",");
     }
-    return trimmed
-      .split(",")
-      .map((img) => img.trim())
-      .filter((img) => img.length > 0);
   }
 
-  return [];
-}
-
-function normalizeToSlug(value: string): string {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
+  return source
+    .map(parseBackendImageEntry)
+    .filter((image): image is ProductImage & { sourceIndex: number } => image !== null)
+    .sort((left, right) => {
+      if (left.isPrimary !== right.isPrimary) return left.isPrimary ? -1 : 1;
+      if (left.sortOrder !== right.sortOrder) return left.sortOrder - right.sortOrder;
+      return left.sourceIndex - right.sourceIndex;
+    })
+    .map((image): ProductImage => ({
+      url: image.url,
+      alt: image.alt,
+      isPrimary: image.isPrimary,
+      sortOrder: image.sortOrder,
+      linkedVariantValue: image.linkedVariantValue,
+      width: image.width,
+      height: image.height,
+    }));
 }
 
 function getProductCategoryMeta(product: BackendProduct): { name: string; slug: string } {
@@ -257,7 +307,7 @@ function parseSellerVisibility(visibility?: string | null): "visible" | "hidden"
 export function normalizeBackendProduct(product: BackendProduct): Product {
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
-  const mainImage = images[0] ?? PRODUCT_IMAGE_PLACEHOLDER;
+  const mainImage = images[0];
   const rawPrice = toNumber(product.price, 0);
   const rawSalePrice = product.salePrice !== null && product.salePrice !== undefined
     ? toNumber(product.salePrice, rawPrice)
@@ -271,23 +321,28 @@ export function normalizeBackendProduct(product: BackendProduct): Product {
   const rawReviews = product.reviews ?? [];
   const reviewCount = rawReviews.length;
   const rating = calculateAverageRating(rawReviews);
-  const idStr = String(product.id ?? "item");
-  const slugStr = asString(product.slug) ?? normalizeToSlug(asString(product.title) ?? `item-${idStr}`);
+  const idStr = asString(product.id) ?? "";
+  const slugStr = asString(product.slug) ?? "";
+  const title = asString(product.title) ?? "";
+  const ownerId = asString(product.user?.id);
 
   return normalizeProduct({
     id: idStr,
-    name: asString(product.title) ?? titleFromSlug(slugStr),
+    slug: slugStr,
+    title,
+    name: title,
     price: currentPrice,
     originalPrice,
     discount,
     rating,
     reviews: reviewCount,
-    image: mainImage,
-    images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
+    image: mainImage?.url ?? "",
+    imageAlt: mainImage?.alt ?? title,
+    images,
+    ownerId,
     categoryName: category.name,
     categorySlug: category.slug,
     subcategorySlug: asString(product.subcategorySlug),
-    slug: slugStr,
     badge: discount && discount > 0 ? `${discount}% OFF` : undefined,
     isNew: false,
     storeName: undefined,
@@ -326,16 +381,9 @@ export function normalizeBackendProductDetail(product: BackendProduct): ProductD
   const summary = normalizeBackendProduct(product);
   const category = getProductCategoryMeta(product);
   const images = parseBackendImages(product.images);
-  const title = summary.title ?? summary.name ?? titleFromSlug(summary.slug);
+  const title = getProductTitle(summary);
   const brand = asString(product.brand);
   const sku = asString(product.sku);
-
-  const ownerId = asString(product.user?.id);
-  const seller: ProductSeller | undefined = ownerId
-    ? {
-        name: "Zogular Seller",
-      }
-    : undefined;
 
   return {
     id: summary.id,
@@ -361,10 +409,11 @@ export function normalizeBackendProductDetail(product: BackendProduct): ProductD
     rating: summary.rating,
     reviewCount: summary.reviews,
     badge: summary.badge ?? null,
-    seller,
+    ownerId: summary.ownerId,
+    seller: undefined,
     condition: asString(product.condition),
     stock: product.isSold ? 0 : toNumber(product.stock, 0),
-    images: images.length ? images : [PRODUCT_IMAGE_PLACEHOLDER],
+    images: images.length ? images.map((image) => image.url) : [PRODUCT_IMAGE_PLACEHOLDER],
     variants: buildBackendProductVariants(),
     description: asString(product.description) ?? "No description provided.",
     specs: buildBackendProductSpecs(product),
@@ -401,13 +450,56 @@ function extractBackendProducts(payload?: BackendProductListResponse | null): Ba
 type FetchBackendProductsParams = {
   page?: number;
   limit?: number;
-  sort?: string;
+  sort?: DiscoverySort;
   categorySlug?: string;
   subcategorySlug?: string;
   search?: string;
   minPrice?: number;
   maxPrice?: number;
+  timeout?: number;
 };
+
+function requirePaginationInteger(
+  value: unknown,
+  field: "page" | "limit" | "total" | "pages",
+  minimum: number,
+): number {
+  if (typeof value === "number" && Number.isSafeInteger(value) && value >= minimum) {
+    return value;
+  }
+  throw new ProductListContractError(`Product list pagination has an invalid ${field}.`);
+}
+
+function parseProductListPayload(
+  payload: BackendProductListResponse,
+): {
+  rawProducts: BackendProduct[];
+  page: number;
+  limit: number;
+  total: number;
+  pages: number;
+} {
+  if (!payload?.data || !Array.isArray(payload.data.products)) {
+    throw new ProductListContractError("Product list response is missing its products array.");
+  }
+  if (!payload.pagination) {
+    throw new ProductListContractError("Product list response is missing pagination metadata.");
+  }
+
+  const page = requirePaginationInteger(payload.pagination.page, "page", 1);
+  const limit = requirePaginationInteger(payload.pagination.limit, "limit", 1);
+  const total = requirePaginationInteger(payload.pagination.total, "total", 0);
+  const derivedPages = Math.ceil(total / limit);
+  const pages = payload.pagination.pages === undefined
+    ? derivedPages
+    : requirePaginationInteger(payload.pagination.pages, "pages", 0);
+
+  if (pages !== derivedPages) {
+    throw new ProductListContractError("Product list pagination page count is inconsistent.");
+  }
+
+  return { rawProducts: payload.data.products, page, limit, total, pages };
+}
 
 async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Promise<{
   products: Product[];
@@ -418,6 +510,7 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
     method: "GET",
     authMode: "omit",
     cache: "no-store",
+    timeout: params.timeout,
     query: {
       page: params.page ?? 1,
       limit: params.limit ?? 24,
@@ -430,13 +523,15 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
     },
   });
 
-  const rawProducts = extractBackendProducts(payload);
+  const {
+    rawProducts,
+    page,
+    limit,
+    total,
+    pages,
+  } = parseProductListPayload(payload);
   const products = rawProducts.map(normalizeBackendProduct);
-  const paginationRaw = payload.data?.products ? payload.pagination : undefined;
-  const page = paginationRaw?.page ?? params.page ?? 1;
-  const limit = paginationRaw?.limit ?? params.limit ?? 24;
-  const total = paginationRaw?.total ?? products.length;
-  const totalPages = Math.max(1, Math.ceil(total / limit));
+  const totalPages = Math.max(1, pages);
   const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
   const endItem = Math.min(page * limit, total);
 
@@ -450,6 +545,99 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
       startItem,
       endItem,
     },
+  };
+}
+
+export type DiscoveryListingPageResolution = "requested" | "last-page" | "empty-first-page";
+
+export type DiscoveryListingPageResult = {
+  requestedQuery: DiscoveryQueryState;
+  query: DiscoveryQueryState;
+  products: Product[];
+  pagination: ProductPaginationMeta;
+  pageResolution: DiscoveryListingPageResolution;
+  approvedPublicProductCount?: number;
+};
+
+type DiscoveryListingPageOptions = {
+  pageSize?: number;
+  orderingContext?: "listing" | "most-viewed";
+  approvedPublicProductCount?: number;
+  timeout?: number;
+};
+
+function clampListingPageSize(value: number | undefined): number {
+  if (!Number.isSafeInteger(value) || (value ?? 0) < 1) return 24;
+  return Math.min(value!, 100);
+}
+
+function resolveListingSort(
+  sort: DiscoverySort,
+  orderingContext: DiscoveryListingPageOptions["orderingContext"],
+): DiscoverySort {
+  return sort === "popular" && orderingContext !== "most-viewed"
+    ? "newest"
+    : sort;
+}
+
+export async function getDiscoveryListingPageData(
+  requestedQuery: DiscoveryQueryState,
+  options: DiscoveryListingPageOptions = {},
+): Promise<DiscoveryListingPageResult> {
+  const pageSize = clampListingPageSize(options.pageSize);
+  const parsedQuery = parseDiscoveryQuery(
+    {
+      page: String(requestedQuery.page),
+      sort: requestedQuery.sort,
+      categorySlug: requestedQuery.categorySlug,
+      subcategorySlug: requestedQuery.subcategorySlug,
+      search: requestedQuery.search,
+    },
+    { allowPopular: options.orderingContext === "most-viewed" },
+  );
+  const sort = resolveListingSort(parsedQuery.sort, options.orderingContext);
+  const query: DiscoveryQueryState = { ...parsedQuery, sort };
+  const fetchPage = (page: number) => fetchBackendProducts({
+    page,
+    limit: pageSize,
+    sort,
+    categorySlug: query.categorySlug,
+    subcategorySlug: query.subcategorySlug,
+    search: query.search,
+    timeout: options.timeout,
+  });
+
+  let result = await fetchPage(query.page);
+  let resolvedPage = query.page;
+  let pageResolution: DiscoveryListingPageResolution = "requested";
+
+  if (query.page > result.pagination.totalPages) {
+    if (result.pagination.total === 0) {
+      resolvedPage = 1;
+      pageResolution = "empty-first-page";
+      result = {
+        ...result,
+        pagination: {
+          ...result.pagination,
+          page: 1,
+          startItem: 0,
+          endItem: 0,
+        },
+      };
+    } else {
+      resolvedPage = result.pagination.totalPages;
+      pageResolution = "last-page";
+      result = await fetchPage(resolvedPage);
+    }
+  }
+
+  return {
+    requestedQuery: query,
+    query: { ...query, page: resolvedPage },
+    products: result.products,
+    pagination: result.pagination,
+    pageResolution,
+    approvedPublicProductCount: options.approvedPublicProductCount,
   };
 }
 
@@ -484,6 +672,19 @@ async function fetchBackendProductCollection(
   return extractBackendProducts(payload).map(normalizeBackendProduct);
 }
 
+export async function getHomeNewArrivals(limit = 10): Promise<Product[]> {
+  return fetchBackendProductCollection("/products/new-arrivals", { limit });
+}
+
+export async function getHomeMostViewed(limit = 10): Promise<Product[]> {
+  return fetchBackendProductCollection("/products/featured", { limit });
+}
+
+export async function getHomeExploreMore(limit = 10): Promise<Product[]> {
+  const result = await fetchBackendProducts({ page: 1, limit, sort: "newest" });
+  return result.products;
+}
+
 export async function getTrendingProducts(options: { allowOptionalFallback?: boolean } = {}): Promise<Product[]> {
   try {
     const backendProducts = await fetchBackendProductCollection("/products/featured", { limit: 10 });
@@ -514,19 +715,6 @@ function getBackendPriceQuery(filter: CategoryFilterOption) {
   return {};
 }
 
-function getFallbackCategoryMeta(slug: string) {
-  const formattedName = slug
-    .split("-")
-    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
-    .join(" ");
-
-  return {
-    title: formattedName,
-    description: CATEGORY_DESCRIPTION_FALLBACKS[slug] ?? `Browse ${formattedName} on Zogular.`,
-    subcategories: [],
-  };
-}
-
 export async function getCategoryPageData(
   slug: string,
   options: {
@@ -546,7 +734,7 @@ export async function getCategoryPageData(
     options.subcategory && options.subcategory !== "all"
       ? options.subcategory
       : undefined;
-  const meta = await getCategoryMetaBySlug(slug).catch(() => getFallbackCategoryMeta(slug));
+  const meta = await getCategoryMetaBySlug(slug);
 
   const backendData = await fetchBackendProducts({
     categorySlug: slug,
@@ -562,6 +750,7 @@ export async function getCategoryPageData(
     meta,
     products: backendData.products,
     pagination: backendData.pagination,
+    approvedPublicProductCount: meta.approvedPublicProductCount,
   };
 }
 

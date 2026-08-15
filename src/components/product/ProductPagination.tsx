@@ -1,5 +1,7 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight } from "lucide-react";
+import { buildDiscoveryUrl, updateDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
+import type { DiscoveryQueryState } from "@/features/consumer-discovery/types/discovery.types";
 import { cn } from "@/lib/utils";
 
 interface ProductPaginationProps {
@@ -9,25 +11,11 @@ interface ProductPaginationProps {
   total: number;
   startItem: number;
   endItem: number;
-  searchParams?: Record<string, string | number | undefined>;
+  query: DiscoveryQueryState;
 }
 
-function buildPageHref(
-  basePath: string,
-  page: number,
-  searchParams: ProductPaginationProps["searchParams"] = {},
-) {
-  const params = new URLSearchParams();
-
-  Object.entries(searchParams).forEach(([key, value]) => {
-    if (value === undefined || value === "" || key === "page") return;
-    params.set(key, String(value));
-  });
-
-  if (page > 1) params.set("page", String(page));
-
-  const query = params.toString();
-  return query ? `${basePath}?${query}` : basePath;
+function buildPageHref(basePath: string, page: number, query: DiscoveryQueryState) {
+  return buildDiscoveryUrl(basePath, updateDiscoveryQuery(query, { page }));
 }
 
 function getVisiblePages(page: number, totalPages: number) {
@@ -44,16 +32,16 @@ export function ProductPagination({
   total,
   startItem,
   endItem,
-  searchParams,
+  query,
 }: ProductPaginationProps) {
   const visiblePages = getVisiblePages(page, totalPages);
   const hasPrevious = page > 1;
   const hasNext = page < totalPages;
 
   return (
-    <div className="mt-10 rounded-[2rem] border border-white/70 bg-white/80 p-4 shadow-[0_18px_50px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:mt-12 md:p-5">
+    <nav aria-label="Product results pages" className="mt-8 border-t border-zinc-200 pt-5 md:mt-10">
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div>
+        <div aria-live="polite" aria-atomic="true">
           <p className="text-sm font-black text-zinc-900">
             Showing {startItem.toLocaleString()}-{endItem.toLocaleString()} of {total.toLocaleString()}
           </p>
@@ -64,8 +52,10 @@ export function ProductPagination({
 
         <div className="flex items-center justify-between gap-2 md:justify-end">
           <Link
-            href={hasPrevious ? buildPageHref(basePath, page - 1, searchParams) : buildPageHref(basePath, page, searchParams)}
+            href={hasPrevious ? buildPageHref(basePath, page - 1, query) : buildPageHref(basePath, page, query)}
+            prefetch={false}
             aria-disabled={!hasPrevious}
+            tabIndex={hasPrevious ? undefined : -1}
             className={cn(
               "flex h-11 items-center gap-2 rounded-2xl border px-4 text-sm font-black transition-all",
               hasPrevious
@@ -81,7 +71,10 @@ export function ProductPagination({
             {visiblePages.map((item) => (
               <Link
                 key={item}
-                href={buildPageHref(basePath, item, searchParams)}
+                href={buildPageHref(basePath, item, query)}
+                prefetch={false}
+                aria-label={`Page ${item}`}
+                aria-current={item === page ? "page" : undefined}
                 className={cn(
                   "flex h-11 min-w-11 items-center justify-center rounded-2xl px-3 text-sm font-black transition-all",
                   item === page
@@ -95,8 +88,10 @@ export function ProductPagination({
           </div>
 
           <Link
-            href={hasNext ? buildPageHref(basePath, page + 1, searchParams) : buildPageHref(basePath, page, searchParams)}
+            href={hasNext ? buildPageHref(basePath, page + 1, query) : buildPageHref(basePath, page, query)}
+            prefetch={false}
             aria-disabled={!hasNext}
+            tabIndex={hasNext ? undefined : -1}
             className={cn(
               "flex h-11 items-center gap-2 rounded-2xl px-4 text-sm font-black transition-all",
               hasNext
@@ -109,6 +104,6 @@ export function ProductPagination({
           </Link>
         </div>
       </div>
-    </div>
+    </nav>
   );
 }

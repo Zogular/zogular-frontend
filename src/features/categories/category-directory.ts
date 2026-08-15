@@ -1,5 +1,5 @@
 import type { CategoryNode } from "@/services/categories-api";
-import type { CategorySummary } from "@/types/category";
+import type { CategorySummary, HomeCategorySummary } from "@/types/category";
 
 const ICON_BY_KEY: Record<CategorySummary["iconKey"], string[]> = {
   smartphone: ["smartphone", "phone", "tablet", "mobile"],
@@ -34,8 +34,9 @@ export function buildCategoryDirectoryFromTree(
         id: category.id,
         name: category.name,
         slug: category.slug,
-        description:
-          category.description?.trim() || buildCategoryDescription(category.name),
+        description: category.description?.trim() || undefined,
+        productCount: category._count?.products,
+        icon: category.icon?.trim() || undefined,
         iconKey,
         colorClass: COLOR_BY_KEY[iconKey],
         children: (category.children ?? []).map((child) => ({
@@ -47,10 +48,24 @@ export function buildCategoryDirectoryFromTree(
     });
 }
 
+export function buildHomeCategoryDirectoryFromTree(
+  categories: CategoryNode[],
+): HomeCategorySummary[] {
+  return categories
+    .filter((category) => category.parentId === null || !category.parentId)
+    .map((category) => ({
+      id: category.id,
+      name: category.name,
+      slug: category.slug,
+      description: category.description?.trim() || undefined,
+      productCount: category._count?.products,
+    }));
+}
+
 export function buildCategoryMetaFromSummary(summary: CategorySummary) {
   return {
     title: summary.name,
-    description: summary.description,
+    description: summary.description ?? "",
     subcategories: [
       { id: "all", slug: "all", name: "All" },
       ...summary.children,
@@ -70,8 +85,4 @@ function resolveIconKey(category: CategoryNode): CategorySummary["iconKey"] {
   }
 
   return "shopping-basket";
-}
-
-function buildCategoryDescription(name: string) {
-  return `Explore ${name.toLowerCase()} from trusted Zogular sellers across Lusaka.`;
 }

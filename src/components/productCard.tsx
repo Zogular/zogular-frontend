@@ -17,7 +17,12 @@ function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
 }
 
-export function ProductCard({ product }: { product: Product }) {
+type ProductCardProps = {
+  product: Product;
+  prioritizeImage?: boolean;
+};
+
+export function ProductCard({ product, prioritizeImage = false }: ProductCardProps) {
   const displayTitle = getProductTitle(product);
   const displayCategory = getProductCategoryLabel(product);
   const displayOldPrice = getProductOldPrice(product);
@@ -27,10 +32,21 @@ export function ProductCard({ product }: { product: Product }) {
   const isPending = product.moderationStatus === "pending";
   const isRejected = product.moderationStatus === "rejected";
   const isHidden = product.sellerVisibility === "hidden";
+  const disabledReason = isOutOfStock
+    ? "Out of stock"
+    : isPending || isRejected || isHidden
+      ? "Product unavailable"
+      : undefined;
 
   return (
-    <div className="group relative flex flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_2px_15px_rgba(0,0,0,0.03)] transition-all duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]">
-      <div className={`relative flex aspect-[3/4] w-full items-center justify-center bg-zinc-50 ${isHidden ? "opacity-50" : ""}`}>
+    <article
+      className="group relative flex w-full min-w-0 flex-col overflow-hidden rounded-[20px] bg-white shadow-[0_2px_15px_rgba(0,0,0,0.03)] [contain:inline-size] transition-shadow duration-300 hover:shadow-[0_8px_30px_rgba(0,0,0,0.08)]"
+      data-testid="product-card"
+    >
+      <div
+        className={`relative flex aspect-[3/4] w-full items-center justify-center bg-zinc-100 ${isHidden ? "opacity-50" : ""}`}
+        data-testid="product-card-media"
+      >
         <div className="absolute left-2 top-2 z-10 flex flex-col gap-1">
           {displayBadge && !isOutOfStock ? (
             <ProductBadge label={displayBadge} />
@@ -59,50 +75,53 @@ export function ProductCard({ product }: { product: Product }) {
 
         <WishlistButton
           product={product}
-          className="absolute right-2 top-2 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-white/20 backdrop-blur-md border border-white/30 text-white shadow-sm transition-colors hover:bg-white/30"
-          iconClassName="h-3.5 w-3.5"
+          className="absolute right-0.5 top-0.5 z-10 isolate flex h-11 w-11 items-center justify-center rounded-full bg-transparent text-zinc-700 outline-none before:absolute before:inset-1.5 before:rounded-full before:border before:border-white before:bg-white/95 before:shadow-sm before:transition-colors hover:before:bg-white focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-1"
+          iconClassName="relative z-10 h-4 w-4"
         />
 
-        <Link href={productHref} className="absolute inset-0 block">
-          {product.image === "/file.svg" || !product.image ? (
-            <ProductImageUnavailable className="h-full w-full object-cover" />
+        <Link
+          href={productHref}
+          aria-label={`View ${displayTitle}`}
+          className="absolute inset-0 block rounded-t-[20px] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#009E49]"
+        >
+          {!product.image || product.image === "/file.svg" ? (
+            <ProductImageUnavailable className="h-full w-full" />
           ) : (
             <Image
               src={product.image}
-              alt={displayTitle}
+              alt={product.imageAlt?.trim() || displayTitle}
               fill
-              sizes="(max-width: 768px) 50vw, 33vw"
-              unoptimized
-              className="object-cover transition-transform duration-500 group-hover:scale-105"
+              loading={prioritizeImage ? "eager" : "lazy"}
+              fetchPriority={prioritizeImage ? "high" : "auto"}
+              sizes="(max-width: 639px) calc(50vw - 24px), (max-width: 1023px) 31vw, (max-width: 1279px) 23vw, 220px"
+              className="object-contain p-3 sm:p-4"
             />
           )}
         </Link>
       </div>
 
       <div className="flex flex-1 flex-col px-3 pb-3 pt-2">
-        {displayCategory || product.storeName ? (
-          <div className="mb-1 flex items-center justify-between">
-            {displayCategory && (
+        <div className="mb-1 flex min-h-4 items-center justify-between gap-2">
+          {displayCategory ? (
               <span className="text-[9px] font-bold uppercase tracking-wider text-[#009E49] md:text-[10px]">
                 {displayCategory}
               </span>
-            )}
-            {product.storeName && (
-              <span className="text-[9px] font-medium text-zinc-500 md:text-[10px] truncate max-w-[50%]">
+          ) : null}
+          {product.storeName ? (
+              <span className="max-w-[50%] truncate text-[9px] font-medium text-zinc-500 md:text-[10px]">
                 {product.storeName}
               </span>
-            )}
-          </div>
-        ) : null}
+          ) : null}
+        </div>
 
         <Link
           href={productHref}
-          className="line-clamp-2 text-xs font-bold leading-tight text-zinc-900 transition-colors hover:text-[#009E49] md:text-[13px]"
+          className="line-clamp-2 min-h-8 rounded-sm text-xs font-bold leading-4 text-zinc-900 outline-none transition-colors hover:text-[#009E49] focus-visible:ring-2 focus-visible:ring-[#009E49] md:text-[13px]"
         >
           {displayTitle}
         </Link>
 
-        <div className="mb-2 mt-1 flex items-center gap-1">
+        <div className="mb-2 mt-1 flex min-h-4 items-center gap-1">
           {product.reviews && product.reviews > 0 && product.rating ? (
             <>
               <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
@@ -114,7 +133,7 @@ export function ProductCard({ product }: { product: Product }) {
           )}
         </div>
 
-        <div className="flex items-end justify-between">
+        <div className="mt-auto flex items-end justify-between gap-2">
           <div className="flex flex-col">
             <span className="text-lg font-black tracking-tight text-zinc-900 md:text-xl">
               {formatCurrency(product.price)}
@@ -130,11 +149,12 @@ export function ProductCard({ product }: { product: Product }) {
             product={product}
             iconOnly
             size="icon"
-            disabled={isOutOfStock || isPending || isRejected}
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-zinc-100 text-zinc-900 transition-colors hover:bg-[#009E49] hover:text-white md:h-9 md:w-9 disabled:opacity-50 disabled:hover:bg-zinc-100 disabled:hover:text-zinc-900"
+            disabled={Boolean(disabledReason)}
+            disabledReason={disabledReason}
+            className="relative isolate flex h-11 w-11 items-center justify-center rounded-full bg-transparent p-0 text-zinc-900 outline-none before:absolute before:inset-1.5 before:rounded-full before:bg-zinc-100 before:transition-colors hover:text-white hover:before:bg-[#009E49] focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-1 disabled:text-zinc-500 disabled:before:bg-zinc-100 disabled:hover:text-zinc-500"
           />
         </div>
       </div>
-    </div>
+    </article>
   );
 }
