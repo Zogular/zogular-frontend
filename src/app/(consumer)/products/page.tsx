@@ -63,6 +63,7 @@ export default async function AllProductsPage({
       clearHref="/products"
       filters={filters}
       filterMetadataAvailable={filterMetadataAvailable}
+      trueEmptyScope="catalog"
     />
   );
 }

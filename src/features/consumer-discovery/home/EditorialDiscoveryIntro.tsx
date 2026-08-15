@@ -66,14 +66,14 @@ export function EditorialDiscoveryIntro({ hasProducts }: EditorialDiscoveryIntro
         />
       </picture>
       <div className="absolute inset-0 bg-linear-to-r from-[#06150d]/90 via-[#06150d]/50 to-transparent" />
-      <div className={cn("relative flex h-full max-w-[640px] flex-col justify-center px-5 py-4 sm:px-8 md:w-[48%] md:px-10 lg:px-14", hasProducts ? "w-[62%] sm:w-[56%]" : "w-[84%] sm:w-[68%]")}>
+      <div className={cn("relative flex h-full max-w-[640px] flex-col justify-center px-5 py-4 sm:px-8 md:w-[48%] md:px-10 lg:px-14", hasProducts ? "w-[62%] sm:w-[56%]" : "w-full sm:w-[68%]")}>
         <h1 className="max-w-[9ch] text-[28px] font-black leading-[0.98] tracking-tight sm:text-[34px] md:text-[42px] lg:text-[48px]">
           {heading}
         </h1>
         <p className="mt-2 max-w-[28ch] text-[13px] font-medium leading-5 text-white/95 sm:text-[15px] md:mt-3 md:text-base md:leading-6">
           {description}
         </p>
-        <div className="mt-3 flex flex-wrap gap-2 md:mt-5">
+        <div className="mt-3 flex flex-nowrap gap-2 md:mt-5">
           {actions.map((action, index) => {
             const Icon = action.icon;
             return (
@@ -81,12 +81,14 @@ export function EditorialDiscoveryIntro({ hasProducts }: EditorialDiscoveryIntro
                 key={action.href}
                 href={action.href}
                 className={cn(
-                  "inline-flex min-h-11 w-fit items-center justify-center gap-2 rounded-xl px-4 text-sm font-black outline-none transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-[#102018] motion-reduce:duration-0 motion-reduce:transition-none sm:px-5",
-                  index === 0 ? "bg-[#ff9d00] text-zinc-950 hover:bg-[#ffad29]" : "border border-white/65 bg-white/10 text-white hover:bg-white/20",
+                  "relative inline-flex min-h-11 w-fit shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 text-sm font-black outline-none before:absolute before:inset-x-0 before:inset-y-[3px] before:rounded-xl before:transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-[#102018] motion-reduce:before:duration-0 motion-reduce:before:transition-none sm:px-4",
+                  index === 0
+                    ? "text-zinc-950 before:bg-[#ff9d00] hover:before:bg-[#ffad29]"
+                    : "text-white before:border before:border-white/65 before:bg-white/10 hover:before:bg-white/20",
                 )}
               >
-                {Icon ? <Icon className="h-4 w-4" aria-hidden="true" /> : null}
-                {action.label}
+                {Icon ? <Icon className="relative z-10 h-4 w-4" aria-hidden="true" /> : null}
+                <span className="relative z-10">{action.label}</span>
               </Link>
             );
           })}

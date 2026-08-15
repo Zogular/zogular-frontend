@@ -315,8 +315,16 @@ for (const viewport of viewports.filter(({ width }) => width !== 1280)) {
     fixtureMode = "true-empty";
     await page.goto(`${frontendBaseUrl}/`, { waitUntil: "networkidle" });
     await expect(page.getByRole("heading", { name: "Explore Zogular." })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Browse products" })).toBeVisible();
-    await expect(page.getByRole("link", { name: "Search" })).toBeVisible();
+    const browseProducts = page.getByRole("link", { name: "Browse products" });
+    const searchProducts = page.getByRole("link", { name: "Search" });
+    await expect(browseProducts).toBeVisible();
+    await expect(searchProducts).toBeVisible();
+    if (viewport.width < 768) {
+      const [browseBox, searchBox] = await Promise.all([browseProducts.boundingBox(), searchProducts.boundingBox()]);
+      expect(browseBox).not.toBeNull();
+      expect(searchBox).not.toBeNull();
+      expect(Math.abs(browseBox!.y - searchBox!.y)).toBeLessThanOrEqual(1);
+    }
     if (viewport.width < 768) await assertMobileBottomNavigation(page, viewport.height);
     await assertContained(page);
     await page.screenshot({ path: path.join(package6EvidenceDirectory, `homepage-no-products-${viewport.name}.png`), fullPage: false });
@@ -379,6 +387,31 @@ test("mobile bottom navigation uses safe auth intent and active-route semantics"
   await expect(categoriesLink).toBeFocused();
   await page.keyboard.press("Enter");
   await expect(page).toHaveURL(`${frontendBaseUrl}/categories`);
+});
+
+test("authenticated mobile navigation hydrates with stable account destinations", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await ignoreLocalTelemetry(page);
+  await page.route("**/api/backend/cart", async (route) => {
+    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { cart: { items: [] } } }) });
+  });
+  await page.addInitScript(() => {
+    window.localStorage.setItem("zogular_auth_user", JSON.stringify({
+      id: "package-6-buyer",
+      firstName: "QA",
+      lastName: "Buyer",
+      email: "qa-buyer@example.test",
+      role: "buyer",
+    }));
+  });
+  const diagnostics = collectDiagnostics(page);
+
+  await page.goto(`${frontendBaseUrl}/products`, { waitUntil: "networkidle" });
+
+  const nav = page.getByTestId("mobile-bottom-navigation");
+  await expect(nav.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/account/orders");
+  await expect(nav.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
+  expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], failedRequests: [], badResponses: [] });
 });
 
 test("PDP and operational routes do not render the discovery bottom navigation", async ({ page }) => {

@@ -5,7 +5,6 @@ import { usePathname } from "next/navigation";
 import { useSyncExternalStore, type ComponentType } from "react";
 import { Grid2X2, Heart, Home, Package, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { getStoredAuthSession } from "@/services/auth";
 import { appendNextPath } from "@/services/auth-intent";
 import { AUTH_SESSION_CHANGED_EVENT, getAuthSessionSnapshot } from "@/services/auth-session";
 
@@ -37,11 +36,10 @@ function subscribeToAuthSession(onStoreChange: () => void) {
 export function MobileBottomNavigation() {
   const pathname = usePathname() || "/";
   const authSnapshot = useSyncExternalStore(subscribeToAuthSession, getAuthSessionSnapshot, () => "");
-  void authSnapshot;
 
   if (!isVisiblePath(pathname)) return null;
 
-  const isLoggedIn = Boolean(getStoredAuthSession()?.user);
+  const isLoggedIn = Boolean(authSnapshot);
   const destinations: MobileDestination[] = [
     { label: "Home", href: "/", icon: Home, active: (path) => path === "/" },
     { label: "Categories", href: "/categories", icon: Grid2X2, active: (path) => path === "/categories" || path.startsWith("/category/") },

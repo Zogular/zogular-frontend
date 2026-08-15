@@ -48,18 +48,11 @@ const TOP_BAR_LINKS: NavLink[] = [
 const PRIMARY_NAV_LINKS: NavLink[] = [
   { label: "All Products", href: "/products" },
   { label: "New Arrivals", href: "/new-arrivals" },
-  { label: "Electronics", href: "/category/electronics" },
-  { label: "Fashion", href: "/category/fashion" },
-  { label: "Home & Living", href: "/category/home-and-living" },
-  { label: "Health & Beauty", href: "/category/health-and-beauty" },
 ];
 
 const MOBILE_TOP_CATEGORY_LINKS: NavLink[] = [
   { label: "All Products", href: "/products" },
   { label: "New Arrivals", href: "/new-arrivals" },
-  { label: "Electronics", href: "/category/electronics" },
-  { label: "Fashion", href: "/category/fashion" },
-  { label: "Home & Living", href: "/category/home-and-living" },
 ];
 
 type UtilityMobileLink = NavLink & {
@@ -470,6 +463,7 @@ function CategoryBar({
   onActiveCategoryChange,
 }: CategoryBarProps) {
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const primaryLinks = [...PRIMARY_NAV_LINKS, ...categoryLinks.slice(0, 4)];
 
   const containerRef = useRef<HTMLDivElement>(null);
   const hoverTimeout = useRef<NodeJS.Timeout | null>(null);
@@ -638,7 +632,7 @@ function CategoryBar({
         </div>
 
         <nav className="flex flex-1 items-center justify-center gap-5 text-[13px] font-bold text-zinc-700 lg:gap-6 lg:text-sm xl:gap-8">
-          {PRIMARY_NAV_LINKS.map(({ label, href }) => (
+          {primaryLinks.map(({ label, href }) => (
             <Link
               key={href}
               href={href}
@@ -681,6 +675,8 @@ function MobileDrawer({
   onCategoryViewChange,
   sellerEntry,
 }: MobileDrawerProps) {
+  const topCategoryLinks = [...MOBILE_TOP_CATEGORY_LINKS, ...categoryLinks.slice(0, 3)];
+
   const handleCategoryOpen = (category: CategoryLink) => {
     onCategorySelect(category);
     onCategoryViewChange("category");
@@ -752,7 +748,7 @@ function MobileDrawer({
                 <div className="space-y-2.5">
                   <SectionHeading>Top Categories</SectionHeading>
                   <div className="grid grid-cols-2 gap-2">
-                    {MOBILE_TOP_CATEGORY_LINKS.map(({ label, href }) => (
+                    {topCategoryLinks.map(({ label, href }) => (
                       <Link
                         key={href}
                         href={href}
