@@ -66,6 +66,15 @@ export default function SavedItemsPage() {
         </div>
       </div>
 
+      {syncError && items.length > 0 ? (
+        <div className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm sm:flex-row sm:items-center sm:justify-between" role="alert">
+          <p className="font-semibold text-amber-900">Some saved items may be out of date. Please try again.</p>
+          <Button type="button" variant="outline" onClick={() => void syncBackend()} disabled={isSyncing} className="h-11 border-amber-300 bg-white text-amber-900">
+            {isSyncing ? "Checking..." : "Try Again"}
+          </Button>
+        </div>
+      ) : null}
+
       {!hasItems ? (
         <FeedbackState
           icon={Heart}

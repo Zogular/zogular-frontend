@@ -1,31 +1,56 @@
 const AUTH_REDIRECT_INTENT_KEY = "zogular_auth_redirect_intent";
+const INTERNAL_ORIGIN = "https://zogular.internal";
+const CONTROL_CHARACTERS = /[\u0000-\u001F\u007F]/;
+const ENCODED_PATH_SEPARATOR = /%(?:2f|5c)/i;
+const ENCODED_DOT = /%2e/i;
+const DOT_SEGMENT = /(?:^|\/)\.{1,2}(?:\/|$)/;
+
+function isAuthLoopPath(pathname: string): boolean {
+  return pathname === "/auth"
+    || pathname.startsWith("/auth/")
+    || pathname === "/verify-email"
+    || pathname === "/seller/login"
+    || pathname === "/seller/register"
+    || pathname === "/seller/check-email"
+    || pathname === "/seller/verify-phone";
+}
+
+function isUnsafePathname(pathname: string): boolean {
+  return !pathname.startsWith("/")
+    || pathname.startsWith("//")
+    || pathname.includes("\\")
+    || CONTROL_CHARACTERS.test(pathname)
+    || DOT_SEGMENT.test(pathname)
+    || isAuthLoopPath(pathname);
+}
 
 export function sanitizeInternalNextPath(path?: string | null): string | null {
   if (!path) return null;
 
   const normalized = path.trim();
   if (
-    !normalized.startsWith("/") ||
-    normalized.startsWith("//") ||
-    normalized.includes("\\") ||
-    /[\u0000-\u001F\u007F]/.test(normalized)
+    isUnsafePathname(normalized.split(/[?#]/, 1)[0] ?? "")
+    || CONTROL_CHARACTERS.test(normalized)
+    || ENCODED_PATH_SEPARATOR.test(normalized.split(/[?#]/, 1)[0] ?? "")
+    || ENCODED_DOT.test(normalized.split(/[?#]/, 1)[0] ?? "")
   ) return null;
 
   let parsed: URL;
   try {
-    parsed = new URL(normalized, "https://zogular.internal");
+    parsed = new URL(normalized, INTERNAL_ORIGIN);
   } catch {
     return null;
   }
 
-  if (parsed.origin !== "https://zogular.internal") return null;
-  if (
-    parsed.pathname === "/auth" ||
-    parsed.pathname.startsWith("/auth/") ||
-    parsed.pathname === "/seller/login" ||
-    parsed.pathname === "/seller/register" ||
-    parsed.pathname === "/seller/check-email"
-  ) return null;
+  if (parsed.origin !== INTERNAL_ORIGIN || isUnsafePathname(parsed.pathname)) return null;
+
+  let decodedPathname: string;
+  try {
+    decodedPathname = decodeURIComponent(parsed.pathname);
+  } catch {
+    return null;
+  }
+  if (isUnsafePathname(decodedPathname)) return null;
 
   return `${parsed.pathname}${parsed.search}${parsed.hash}`;
 }

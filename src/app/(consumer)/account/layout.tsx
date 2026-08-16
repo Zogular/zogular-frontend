@@ -43,27 +43,35 @@ export default function AccountLayout({
   const [isSigningOut, setIsSigningOut] = React.useState(false);
 
   React.useEffect(() => {
-    if (auth.status === "guest") {
-      router.replace(appendNextPath("/auth/login", pathname));
+    if (auth.status === "guest" && !isSigningOut) {
+      const loginPath = auth.reason === "expired" ? "/auth/login?reason=signin-again" : "/auth/login";
+      router.replace(appendNextPath(loginPath, pathname));
     }
-  }, [auth.status, pathname, router]);
+  }, [auth, isSigningOut, pathname, router]);
 
   const handleSignOut = React.useCallback(async () => {
-    try {
-      setIsSigningOut(true);
-      await signOutAccount();
-      router.push("/auth/login");
-    } finally {
-      setIsSigningOut(false);
-    }
+    setIsSigningOut(true);
+    await signOutAccount();
+    router.replace("/auth/login");
   }, [router]);
 
-  if (auth.status !== "authenticated") {
+  if (auth.status === "unavailable") {
+    return (
+      <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
+        <div className="space-y-3 text-center">
+          <p className="text-sm font-semibold text-zinc-700">Your account could not open.</p>
+          <Button type="button" variant="outline" onClick={auth.retry}>Try Again</Button>
+        </div>
+      </main>
+    );
+  }
+
+  if (auth.status !== "authenticated" || isSigningOut) {
     return (
       <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
         <div className="flex items-center gap-3 text-sm font-semibold text-zinc-600">
           <Loader2 className="h-5 w-5 animate-spin text-[#009E49] motion-reduce:animate-none" aria-hidden="true" />
-          {auth.status === "loading" ? "Opening your account…" : "Opening sign in…"}
+          {isSigningOut ? "Signing out…" : auth.status === "guest" ? "Opening sign in…" : "Checking your account…"}
         </div>
       </main>
     );
@@ -98,7 +106,7 @@ export default function AccountLayout({
                 <Link
                   key={href}
                   href={href}
-                  className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
                     active
                       ? "bg-[#009E49] text-white shadow-md shadow-[#009E49]/20"
                       : "border border-zinc-200 bg-white text-zinc-600"
@@ -174,7 +182,7 @@ export default function AccountLayout({
           </aside>
 
           {/* PAGE CONTENT (Children render here) */}
-          <div className="flex-1 min-w-0">{children}</div>
+          <div key={auth.user.id} className="flex-1 min-w-0">{children}</div>
           
         </div>
       </div>

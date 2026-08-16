@@ -57,7 +57,7 @@ export default function AccountOverviewPage() {
   }, [loadData]);
 
   if (loading) {
-    return <div className="py-20 text-center text-sm font-medium text-zinc-500">Loading your account dashboard...</div>;
+    return <div className="py-20 text-center text-sm font-medium text-zinc-500">Loading your account...</div>;
   }
 
   if (error || !data) {

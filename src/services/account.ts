@@ -5,7 +5,6 @@ import type {
   NotificationPreferences,
 } from "@/types/account";
 import type { Address, AddressType } from "@/types/address";
-import { getStoredAuthUser } from "@/services/auth-session";
 import { changePassword, getCurrentUser, logout, updateMe } from "@/services/auth";
 import { getMyOrders } from "@/services/orders";
 import { apiClient } from "@/services/api";
@@ -15,27 +14,20 @@ const NOTIFICATION_PREFERENCES: NotificationPreferences = {
   promos: false,
 };
 
-const EMPTY_ACCOUNT_USER: AccountUserProfile = {
-  name: "Customer",
-  email: "",
-  firstName: "Customer",
-  lastName: "",
-  phone: "",
-};
-
 export async function getAccountOverview(): Promise<AccountOverview> {
-  const [currentUser, recentOrders, addresses] = await Promise.all([
-    getCurrentUser(),
+  const [currentUser, orders, addresses] = await Promise.all([
+    getCurrentUser({ persist: false }),
     getMyOrders(),
     getSavedAddresses(),
   ]);
+  const recentOrders = orders.slice(0, 3);
 
   const defaultAddress = addresses.find(a => a.isDefault) || null;
 
   return {
     user: toAccountUser(currentUser),
-    activeOrdersCount: recentOrders.filter((order) => order.status === "processing" || order.status === "shipped").length,
-    recentOrders: recentOrders.slice(0, 3),
+    activeOrdersCount: orders.filter((order) => order.status === "processing" || order.status === "shipped").length,
+    recentOrders,
     notifications: [],
     defaultAddress: defaultAddress,
     recentlyViewed: [],
@@ -137,14 +129,6 @@ export async function setDefaultAddress(id: string): Promise<void> {
   await apiClient(`/user/addresses/${id}/default`, { method: "PATCH", csrf: true });
 }
 
-export function getAccountUserProfile(): AccountUserProfile {
-  const currentUser = getStoredAuthUser();
-
-  if (!currentUser) return EMPTY_ACCOUNT_USER;
-
-  return toAccountUser(currentUser);
-}
-
 function toAccountUser(currentUser: {
   firstName: string;
   lastName?: string;
@@ -161,7 +145,7 @@ function toAccountUser(currentUser: {
 }
 
 export async function getAccountSettings(): Promise<AccountSettings> {
-  const currentUser = await getCurrentUser();
+  const currentUser = await getCurrentUser({ persist: false });
 
   return {
     profile: {
@@ -169,6 +153,7 @@ export async function getAccountSettings(): Promise<AccountSettings> {
       lastName: currentUser.lastName,
       email: currentUser.email,
       phone: currentUser.phone ?? "",
+      preferredMoMoNumber: currentUser.preferredMoMoNumber ?? "",
     },
     payments: [],
     notifications: NOTIFICATION_PREFERENCES,
@@ -177,19 +162,21 @@ export async function getAccountSettings(): Promise<AccountSettings> {
 
 export async function saveAccountProfile(
   profile: AccountSettings["profile"],
+  expectedUserId: string,
 ): Promise<AccountSettings["profile"]> {
   const updatedUser = await updateMe({
     firstName: profile.firstName,
     lastName: profile.lastName,
     phone: profile.phone,
-  });
+    preferredMoMoNumber: profile.preferredMoMoNumber,
+  }, { expectedUserId });
 
   return {
-    ...profile,
     firstName: updatedUser.firstName,
     lastName: updatedUser.lastName,
     email: updatedUser.email,
-    phone: updatedUser.phone ?? profile.phone,
+    phone: updatedUser.phone ?? "",
+    preferredMoMoNumber: updatedUser.preferredMoMoNumber ?? "",
   };
 }
 

@@ -12,6 +12,7 @@ import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 import { useCart } from "@/hooks/use-cart";
+import { useAuthSession } from "@/hooks/use-auth-session";
 
 const STATUS_CONFIG = {
   processing: {
@@ -46,23 +47,25 @@ export default function InvoicePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = use(params);
+  const auth = useAuthSession();
 
   const [invoice, setInvoice] = React.useState<Invoice | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<unknown>(null);
 
   const loadInvoice = React.useCallback(async () => {
+    if (auth.status !== "authenticated") return;
     try {
       setLoading(true);
       setError(null);
-      const data = await getInvoiceById(id);
+      const data = await getInvoiceById(id, auth.user);
       setInvoice(data);
     } catch (loadError) {
       setError(loadError);
     } finally {
       setLoading(false);
     }
-  }, [id]);
+  }, [auth, id]);
 
   React.useEffect(() => {
     loadInvoice();

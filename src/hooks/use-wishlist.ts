@@ -11,6 +11,12 @@ import { getBackendProductImage } from "@/types/backend-order";
 
 export type WishlistItem = Product;
 
+export interface WishlistMutationState {
+  status: "pending" | "error";
+  desiredPresent: boolean;
+  confirmedPresent: boolean;
+}
+
 export interface WishlistStore {
   items: WishlistItem[];
   remoteItemIds: Record<string, string>;
@@ -19,12 +25,14 @@ export interface WishlistStore {
   hasHydrated: boolean;
   isSyncing: boolean;
   syncError: string | null;
+  mutationStates: Record<string, WishlistMutationState>;
   setHasHydrated: (value: boolean) => void;
   reconcileIdentity: (ownerId: string | null) => void;
   addItem: (item: WishlistItem) => Promise<void>;
   removeItem: (id: string | number) => Promise<void>;
   toggleItem: (item: WishlistItem) => void;
   hasItem: (id: string | number) => boolean;
+  getItemMutationState: (id: string | number) => WishlistMutationState | null;
   clearWishlist: () => void;
   syncBackend: () => Promise<void>;
 }
@@ -44,6 +52,8 @@ interface ProductMutation {
   desiredPresent: boolean;
   revision: number;
   failureReconciliations: number;
+  confirmedItem: WishlistItem | null;
+  confirmedRemoteId: string | null;
   running: Promise<void> | null;
 }
 
@@ -122,6 +132,37 @@ export function createWishlistStore(
       });
     };
 
+    const setMutationState = (mutation: ProductMutation, state: WishlistMutationState | null) => {
+      set((current) => {
+        const mutationStates = { ...current.mutationStates };
+        if (state) mutationStates[mutation.productId] = state;
+        else delete mutationStates[mutation.productId];
+        return { mutationStates };
+      });
+    };
+
+    const restoreConfirmedState = (mutation: ProductMutation, error: string) => {
+      set((state) => {
+        const items = state.items.filter((item) => normalizeWishlistId(item.id) !== mutation.productId);
+        if (mutation.confirmedItem) items.push(mutation.confirmedItem);
+        const remoteItemIds = { ...state.remoteItemIds };
+        if (mutation.confirmedRemoteId) remoteItemIds[mutation.productId] = mutation.confirmedRemoteId;
+        else delete remoteItemIds[mutation.productId];
+        return {
+          ...buildWishlistState(items, remoteItemIds),
+          syncError: error,
+          mutationStates: {
+            ...state.mutationStates,
+            [mutation.productId]: {
+              status: "error",
+              desiredPresent: mutation.desiredPresent,
+              confirmedPresent: mutation.confirmedItem !== null,
+            },
+          },
+        };
+      });
+    };
+
     const readAuthoritativeProduct = async (
       mutation: ProductMutation,
     ): Promise<BackendWishlistItem | null> => {
@@ -130,6 +171,9 @@ export function createWishlistStore(
       const remoteItem = remoteItems.find(
         (item) => normalizeWishlistId(item.productId) === mutation.productId,
       ) ?? null;
+
+      mutation.confirmedItem = remoteItem ? mapBackendWishlistItem(remoteItem) : null;
+      mutation.confirmedRemoteId = remoteItem?.id ?? null;
 
       ownerStateRevision += 1;
       set((state) => {
@@ -159,7 +203,7 @@ export function createWishlistStore(
         authoritativeItem = await readAuthoritativeProduct(mutation);
       } catch {
         if (!isCurrentIdentity(mutation)) return "stale";
-        set({ syncError: failureMessage });
+        restoreConfirmedState(mutation, failureMessage);
         return "failed";
       }
 
@@ -167,11 +211,12 @@ export function createWishlistStore(
       const backendPresent = authoritativeItem !== null;
       if (backendPresent === mutation.desiredPresent) {
         setItemPresence(mutation, mutation.desiredPresent);
+        setMutationState(mutation, null);
         return "converged";
       }
 
       if (mutation.failureReconciliations > 1) {
-        set({ syncError: failureMessage });
+        restoreConfirmedState(mutation, failureMessage);
         return "failed";
       }
       return "retry";
@@ -183,8 +228,15 @@ export function createWishlistStore(
 
         if (mutation.desiredPresent) {
           if (get().remoteItemIds[mutation.productId]) {
+            mutation.confirmedItem = get().items.find(
+              (item) => normalizeWishlistId(item.id) === mutation.productId,
+            ) ?? mutation.item;
+            mutation.confirmedRemoteId = get().remoteItemIds[mutation.productId] ?? null;
             setItemPresence(mutation, true);
-            if (operationRevision === mutation.revision) return;
+            if (operationRevision === mutation.revision) {
+              setMutationState(mutation, null);
+              return;
+            }
             continue;
           }
 
@@ -194,6 +246,8 @@ export function createWishlistStore(
             mutation.failureReconciliations = 0;
             ownerStateRevision += 1;
             setRemoteId(mutation.productId, added.id);
+            mutation.confirmedItem = mutation.item;
+            mutation.confirmedRemoteId = added.id;
             if (mutation.desiredPresent) setItemPresence(mutation, true);
           } catch {
             if (!isCurrentIdentity(mutation)) return;
@@ -208,7 +262,12 @@ export function createWishlistStore(
           setItemPresence(mutation, false);
           const remoteId = get().remoteItemIds[mutation.productId];
           if (!remoteId) {
-            if (operationRevision === mutation.revision) return;
+            mutation.confirmedItem = null;
+            mutation.confirmedRemoteId = null;
+            if (operationRevision === mutation.revision) {
+              setMutationState(mutation, null);
+              return;
+            }
             continue;
           }
 
@@ -217,6 +276,8 @@ export function createWishlistStore(
             if (!isCurrentIdentity(mutation)) return;
             mutation.failureReconciliations = 0;
             ownerStateRevision += 1;
+            mutation.confirmedItem = null;
+            mutation.confirmedRemoteId = null;
             if (get().remoteItemIds[mutation.productId] === remoteId) {
               setRemoteId(mutation.productId, null);
             }
@@ -231,7 +292,10 @@ export function createWishlistStore(
           }
         }
 
-        if (operationRevision === mutation.revision) return;
+        if (operationRevision === mutation.revision) {
+          setMutationState(mutation, null);
+          return;
+        }
       }
     };
 
@@ -255,6 +319,9 @@ export function createWishlistStore(
       let mutation = mutations.get(key);
 
       if (!mutation || mutation.identityRevision !== identityRevision) {
+        const confirmedItem = get().items.find(
+          (candidate) => normalizeWishlistId(candidate.id) === productId,
+        ) ?? null;
         mutation = {
           ownerId,
           identityRevision,
@@ -263,6 +330,8 @@ export function createWishlistStore(
           desiredPresent,
           revision: 0,
           failureReconciliations: 0,
+          confirmedItem,
+          confirmedRemoteId: get().remoteItemIds[productId] ?? null,
           running: null,
         };
         mutations.set(key, mutation);
@@ -273,6 +342,11 @@ export function createWishlistStore(
       mutation.revision += 1;
       mutation.failureReconciliations = 0;
       ownerStateRevision += 1;
+      setMutationState(mutation, {
+        status: "pending",
+        desiredPresent,
+        confirmedPresent: mutation.confirmedItem !== null,
+      });
       setItemPresence(mutation, desiredPresent);
       await ensureMutationRunning(mutation);
     };
@@ -285,6 +359,7 @@ export function createWishlistStore(
       hasHydrated: false,
       isSyncing: false,
       syncError: null,
+      mutationStates: {},
       setHasHydrated: (value) => set({ hasHydrated: value }),
 
       reconcileIdentity: (ownerId) => {
@@ -293,7 +368,7 @@ export function createWishlistStore(
         syncVersion += 1;
         ownerStateRevision += 1;
         mutations.clear();
-        set({ ...buildWishlistState([], {}), ownerId, hasHydrated: true, isSyncing: false, syncError: null });
+        set({ ...buildWishlistState([], {}), ownerId, hasHydrated: true, isSyncing: false, syncError: null, mutationStates: {} });
       },
 
       syncBackend: async () => {
@@ -327,7 +402,22 @@ export function createWishlistStore(
             if (mutation.desiredPresent) items.push(mutation.item);
           }
 
-          set({ ...buildWishlistState(items, remoteItemIds), ownerId, isSyncing: false, syncError: null });
+          const activeMutationStates = Object.fromEntries(
+            [...mutations.values()]
+              .filter(isCurrentIdentity)
+              .map((mutation) => [mutation.productId, {
+                status: "pending" as const,
+                desiredPresent: mutation.desiredPresent,
+                confirmedPresent: mutation.confirmedItem !== null,
+              }]),
+          );
+          set({
+            ...buildWishlistState(items, remoteItemIds),
+            ownerId,
+            isSyncing: false,
+            syncError: null,
+            mutationStates: activeMutationStates,
+          });
           for (const mutation of mutations.values()) {
             if (isCurrentIdentity(mutation)) void ensureMutationRunning(mutation);
           }
@@ -381,12 +471,13 @@ export function createWishlistStore(
         if (!ownerId || get().ownerId !== ownerId) return false;
         return get().items.some((item) => normalizeWishlistId(item.id) === normalizeWishlistId(id));
       },
+      getItemMutationState: (id) => get().mutationStates[normalizeWishlistId(id)] ?? null,
       clearWishlist: () => {
         identityRevision += 1;
         syncVersion += 1;
         ownerStateRevision += 1;
         mutations.clear();
-        set({ ...buildWishlistState([], {}), syncError: null, isSyncing: false });
+        set({ ...buildWishlistState([], {}), syncError: null, isSyncing: false, mutationStates: {} });
       },
     };
   });

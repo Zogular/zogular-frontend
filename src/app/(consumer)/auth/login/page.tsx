@@ -7,7 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { getPostLoginRedirectPath, getStoredAuthSession, isEmailVerificationRequiredError, login } from "@/services/auth";
+import { getPostLoginRedirectPath, isEmailVerificationRequiredError, login } from "@/services/auth";
 import {
   appendNextPath,
   clearAuthRedirectIntent,
@@ -16,6 +16,7 @@ import {
   storeAuthRedirectIntent,
 } from "@/services/auth-intent";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
+import { useAuthSession } from "@/hooks/use-auth-session";
 
 export default function LoginPage() {
   return (
@@ -28,9 +29,11 @@ export default function LoginPage() {
 function LoginContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const auth = useAuthSession();
   const nextPath = sanitizeInternalNextPath(searchParams.get("next")) ?? getAuthRedirectIntent();
   const emailParam = searchParams.get("email");
   const registered = searchParams.get("registered") === "1";
+  const shouldSignInAgain = searchParams.get("reason") === "signin-again";
   const [showPassword, setShowPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -44,12 +47,10 @@ function LoginContent() {
   }, [nextPath]);
 
   useEffect(() => {
-    const existingSession = getStoredAuthSession();
-    if (!existingSession) return;
-
-    const redirectPath = getPostLoginRedirectPath(existingSession.user, nextPath);
+    if (auth.status !== "authenticated") return;
+    const redirectPath = getPostLoginRedirectPath(auth.user, nextPath);
     router.replace(redirectPath);
-  }, [nextPath, router]);
+  }, [auth, nextPath, router]);
 
   useEffect(() => {
     if (emailParam) setEmail(emailParam);
@@ -152,6 +153,9 @@ function LoginContent() {
             </div>
 
             {error ? <p className="text-xs font-medium text-red-300">{error}</p> : null}
+            {shouldSignInAgain && !error ? (
+              <p className="text-xs font-medium text-amber-200">Please sign in again to continue.</p>
+            ) : null}
             {verificationRecoveryHref ? (
               <Button asChild variant="outline" className="h-11 w-full rounded-xl border-amber-300/30 bg-amber-300/10 text-sm font-bold text-amber-100 hover:bg-amber-300/15 hover:text-white">
                 <Link href={verificationRecoveryHref}>Recover email verification</Link>
@@ -198,7 +202,7 @@ function LoginContent() {
             Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            Track orders, save addresses, and checkout faster. Join thousands of shoppers on the fastest growing e-commerce platform in Lusaka.
+            Track orders, save items, and manage your account in one place.
           </p>
         </div>
       </div>

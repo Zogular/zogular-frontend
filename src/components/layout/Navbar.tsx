@@ -3,8 +3,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState, useEffect, useRef, useMemo, useSyncExternalStore, type ComponentType, type ReactNode, type RefObject } from "react";
+import { DropdownMenu } from "radix-ui";
 import {
-  ShoppingCart, User, MapPin, HelpCircle, Store, ChevronDown, Flame, Menu, X, Heart, Package, LogOut,
+  ShoppingCart, User, HelpCircle, Store, ChevronDown, Menu, X, Heart, Package, LogOut,
   Settings, FolderOpen, ChevronRight, ArrowLeft, Info,
 } from "lucide-react";
 
@@ -18,16 +19,25 @@ import { CartDrawer } from "@/components/cart/CartDrawer";
 import { NavbarSearch } from "@/components/layout/NavbarSearch";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
-import { getStoredAuthSession, logout } from "@/services/auth";
+import { logout } from "@/services/auth";
 import { appendNextPath } from "@/services/auth-intent";
 import { getMyVendorApplication } from "@/services/vendor-application";
-import { AUTH_SESSION_CHANGED_EVENT, getAuthSessionSnapshot } from "@/services/auth-session";
+import { useAuthSession } from "@/hooks/use-auth-session";
 import type { CategorySummary } from "@/types/category";
 import type { AuthUser } from "@/types/auth";
 
 type NavLink = { label: string; href: string };
 type CategoryChild = NavLink;
 type CategoryLink = NavLink & { children?: CategoryChild[] };
+type SellerAccountState = {
+  ownerId: string | null;
+  status: "idle" | "pending" | "established" | "unavailable";
+};
+
+const EMPTY_SELLER_ACCOUNT_STATE: SellerAccountState = {
+  ownerId: null,
+  status: "idle",
+};
 
 function mapCategorySummaryToNavLink(category: CategorySummary): CategoryLink {
   return {
@@ -64,11 +74,10 @@ const MOBILE_UTILITY_LINKS: UtilityMobileLink[] = [
   { label: "Track Order", href: "/track-order", icon: Package },
   { label: "Help Center", href: "/help", icon: HelpCircle },
   { label: "About Us", href: "/about", icon: Info },
-  { label: "Delivery in Lusaka", href: "/track", icon: MapPin },
 ];
 
 
-const DROPDOWN_WRAPPER = "absolute top-full z-50 pt-2 transition-all duration-200";
+const DROPDOWN_WRAPPER = "absolute top-full z-50 pt-2 transition-[opacity,transform] duration-200";
 const DROPDOWN_CONTENT = "overflow-hidden rounded-[28px] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.92),rgba(255,255,255,0.88))] shadow-[0_20px_44px_rgba(15,23,42,0.16)] ring-1 ring-black/5 backdrop-blur-3xl";
 const DROPDOWN_LINK = "flex items-center gap-2 rounded-xl px-3 py-2.5 text-sm font-semibold text-zinc-700 transition-all hover:bg-white/70 hover:text-[#009E49] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 active:scale-[0.98]";
 
@@ -78,21 +87,6 @@ function Divider() {
 
 function SectionHeading({ children }: { children: ReactNode }) {
   return <h4 className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">{children}</h4>;
-}
-
-function DevAuthToggle({ label, onToggle }: { label: string; onToggle: () => void }) {
-  if (process.env.NODE_ENV !== "development") return null;
-  return (
-    <button
-      onClick={(event) => {
-        event.stopPropagation();
-        onToggle();
-      }}
-      className="mt-2 w-full rounded border border-blue-100 bg-blue-50 px-2 py-1 text-left text-[10px] text-blue-600"
-    >
-      🛠 Dev: {label}
-    </button>
-  );
 }
 
 function useScrolled(threshold = 40, resetAt = 16) {
@@ -122,61 +116,6 @@ function useScrolled(threshold = 40, resetAt = 16) {
   }, [threshold, resetAt]);
 
   return isScrolled;
-}
-
-function useAuthState() {
-  const [devUser, setDevUser] = useState<AuthUser | null>(null);
-  const hydrated = useSyncExternalStore(
-    () => () => undefined,
-    () => true,
-    () => false,
-  );
-  const authSnapshot = useSyncExternalStore(
-    (onStoreChange) => {
-      const handleStorage = (event: StorageEvent) => {
-        if (!event.key || event.key.startsWith("zogular_") || event.key.startsWith("zamoyo_")) {
-          onStoreChange();
-        }
-      };
-
-      window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
-      window.addEventListener("storage", handleStorage);
-      window.addEventListener("focus", onStoreChange);
-
-      return () => {
-        window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
-        window.removeEventListener("storage", handleStorage);
-        window.removeEventListener("focus", onStoreChange);
-      };
-    },
-    getAuthSessionSnapshot,
-    () => "",
-  );
-
-  void authSnapshot;
-  const user = hydrated ? getStoredAuthSession()?.user ?? devUser : devUser;
-
-  const signOut = async () => {
-    await logout();
-    setDevUser(null);
-  };
-
-  const toggleDevAuth = () => {
-    if (process.env.NODE_ENV !== "development") return;
-    setDevUser((current) =>
-      current
-        ? null
-        : {
-            id: "dev-user",
-            firstName: "John",
-            lastName: "Banda",
-            email: "john.banda@example.com",
-            role: "buyer",
-          },
-    );
-  };
-
-  return { isLoggedIn: Boolean(user), user, signOut, toggleDevAuth };
 }
 
 function useOutsideClick<T extends HTMLElement>(
@@ -236,12 +175,6 @@ function TopBar({ sellerEntry }: { sellerEntry: NavLink }) {
         >
           <Store className="h-3.5 w-3.5" /> {sellerEntry.label}
         </Link>
-        <Link href="/track" className="flex cursor-pointer items-center gap-1.5 rounded-sm transition-colors hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-950">
-          <MapPin className="h-3.5 w-3.5" /> Deliver to Lusaka
-        </Link>
-        <div className="flex items-center gap-1.5 text-[#FF6B00]">
-          <Flame className="h-3 w-3" /> New Sellers Get 50% Off Fees
-        </div>
       </div>
       <div className="flex items-center gap-5">
         {TOP_BAR_LINKS.map(({ label, href }) => (
@@ -260,33 +193,32 @@ function TopBar({ sellerEntry }: { sellerEntry: NavLink }) {
 function LoggedOutMenu({
   loginHref,
   registerHref,
-  onDevToggleAuth,
+  ordersHref,
 }: {
   loginHref: string;
   registerHref: string;
-  onDevToggleAuth: () => void;
+  ordersHref: string;
 }) {
   return (
     <>
-      <Link href={loginHref} className="mb-2 block">
-        <Button className="w-full rounded-xl bg-[#009E49] font-bold text-white shadow-md hover:bg-[#00853d]">
+      <DropdownMenu.Item asChild>
+        <Link href={loginHref} className="mb-2 flex h-9 w-full items-center justify-center rounded-xl bg-[#009E49] px-2.5 text-sm font-bold text-white shadow-md outline-none hover:bg-[#00853d] focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 data-[highlighted]:bg-[#00853d]">
           Sign In
-        </Button>
-      </Link>
+        </Link>
+      </DropdownMenu.Item>
       <p className="mb-2 text-center text-xs text-zinc-500">
         Don&apos;t have an account?{" "}
-        <Link href={registerHref} className="font-bold text-[#FF6B00] hover:underline">
-          Register
-        </Link>
+        <DropdownMenu.Item asChild>
+          <Link href={registerHref} className="rounded-sm font-bold text-[#FF6B00] outline-none hover:underline focus-visible:ring-2 focus-visible:ring-[#009E49] data-[highlighted]:underline">Register</Link>
+        </DropdownMenu.Item>
       </p>
       <Divider />
-      <Link href="/account/orders" className={DROPDOWN_LINK}>
-        <Package className="h-4 w-4 text-zinc-400" /> My Orders
-      </Link>
-      <Link href="/help" className={DROPDOWN_LINK}>
-        <HelpCircle className="h-4 w-4 text-zinc-400" /> Help Center
-      </Link>
-      <DevAuthToggle label="Switch to Logged-In View" onToggle={onDevToggleAuth} />
+      <DropdownMenu.Item asChild>
+        <Link href={ordersHref} className={cn(DROPDOWN_LINK, "outline-none data-[highlighted]:bg-white/70 data-[highlighted]:text-[#009E49]")}><Package className="h-4 w-4 text-zinc-400" /> My Orders</Link>
+      </DropdownMenu.Item>
+      <DropdownMenu.Item asChild>
+        <Link href="/help" className={cn(DROPDOWN_LINK, "outline-none data-[highlighted]:bg-white/70 data-[highlighted]:text-[#009E49]")}><HelpCircle className="h-4 w-4 text-zinc-400" /> Help Center</Link>
+      </DropdownMenu.Item>
     </>
   );
 }
@@ -296,14 +228,23 @@ function getDisplayName(user: AuthUser) {
   return name || user.email;
 }
 
+const ACCOUNT_MENU_LINKS = [
+  { href: "/account", icon: User, label: "Account Overview" },
+  { href: "/account/orders", icon: Package, label: "My Orders" },
+  { href: "/account/saved", icon: Heart, label: "Saved Items" },
+  { href: "/account/settings", icon: Settings, label: "Settings" },
+] satisfies ReadonlyArray<{
+  href: string;
+  icon: ComponentType<{ className?: string }>;
+  label: string;
+}>;
+
 function LoggedInMenu({
   user,
   onSignOut,
-  onDevToggleAuth,
 }: {
   user: AuthUser;
   onSignOut: () => void;
-  onDevToggleAuth: () => void;
 }) {
   return (
     <>
@@ -312,27 +253,19 @@ function LoggedInMenu({
         <p className="truncate text-sm font-bold text-zinc-900">{user.email}</p>
       </div>
       <Divider />
-      <Link href="/account" className={DROPDOWN_LINK}>
-        <User className="h-4 w-4 text-zinc-400" /> Account Overview
-      </Link>
-      <Link href="/account/orders" className={DROPDOWN_LINK}>
-        <Package className="h-4 w-4 text-zinc-400" /> My Orders
-      </Link>
-      <Link href="/account/saved" className={DROPDOWN_LINK}>
-        <Heart className="h-4 w-4 text-zinc-400" /> Saved Items
-      </Link>
-      <Link href="/account/settings" className={DROPDOWN_LINK}>
-        <Settings className="h-4 w-4 text-zinc-400" /> Settings
-      </Link>
+      {ACCOUNT_MENU_LINKS.map(({ href, icon: Icon, label }) => (
+        <DropdownMenu.Item key={href} asChild>
+          <Link href={href} className={cn(DROPDOWN_LINK, "outline-none data-[highlighted]:bg-white/70 data-[highlighted]:text-[#009E49]")}>
+            <Icon className="h-4 w-4 text-zinc-400" /> {label}
+          </Link>
+        </DropdownMenu.Item>
+      ))}
       <Divider />
-      <button
-        type="button"
-        onClick={onSignOut}
-        className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 transition-all hover:bg-red-50 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 active:scale-[0.98]"
-      >
-        <LogOut className="h-4 w-4 text-red-500" /> Log Out
-      </button>
-      <DevAuthToggle label="Switch to Logged-Out View" onToggle={onDevToggleAuth} />
+      <DropdownMenu.Item asChild>
+        <button type="button" onClick={onSignOut} className="flex w-full cursor-pointer items-center gap-2 rounded-xl px-3 py-2.5 text-left text-sm font-semibold text-red-600 outline-none transition-all hover:bg-red-50 hover:text-red-700 focus-visible:ring-2 focus-visible:ring-red-400 focus-visible:ring-offset-2 data-[highlighted]:bg-red-50 data-[highlighted]:text-red-700 active:scale-[0.98]">
+          <LogOut className="h-4 w-4 text-red-500" /> Log Out
+        </button>
+      </DropdownMenu.Item>
     </>
   );
 }
@@ -346,9 +279,9 @@ type AccountDropdownProps = {
   onDesktopClose: () => void;
   onMobileToggle: () => void;
   onSignOut: () => void;
-  onDevToggleAuth: () => void;
   loginHref: string;
   registerHref: string;
+  ordersHref: string;
 };
 
 function AccountDropdown({
@@ -360,71 +293,85 @@ function AccountDropdown({
   onDesktopClose,
   onMobileToggle,
   onSignOut,
-  onDevToggleAuth,
   loginHref,
   registerHref,
+  ordersHref,
 }: AccountDropdownProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
   const isOpen = desktopOpen || mobileOpen;
+  const contentRef = useRef<HTMLDivElement>(null);
+  const openFromArrowUpRef = useRef(false);
 
-  useOutsideClick(containerRef, onDesktopClose, mobileOpen);
+  const setOpen = (open: boolean) => {
+    if (!open) {
+      onDesktopClose();
+      return;
+    }
+    if (isDesktopViewport()) onDesktopOpen();
+    else if (!mobileOpen) onMobileToggle();
+  };
 
   return (
-    <div
-      ref={containerRef}
-      className="relative z-30"
-      onMouseEnter={() => isDesktopViewport() && onDesktopOpen()}
-      onMouseLeave={() => isDesktopViewport() && onDesktopClose()}
-    >
-      <button
-        type="button"
-        onClick={() => !isDesktopViewport() && onMobileToggle()}
-        className="group flex items-center gap-2 rounded-2xl border border-transparent p-2 transition-all hover:border-white/35 hover:bg-white/35 hover:backdrop-blur-xl"
-      >
-        <User className="h-6 w-6 text-zinc-800 transition-colors group-hover:text-[#009E49]" />
-        <div className="hidden items-start leading-none lg:flex flex-col">
-          <span className="text-[10px] font-medium text-zinc-500">
-            {isLoggedIn ? "Welcome back" : "Sign In"}
-          </span>
-          <span className="flex items-center gap-1 text-sm font-bold text-zinc-900">
-            My Account{" "}
-            <ChevronDown
-              className={cn(
-                "h-3 w-3 text-zinc-400 transition-transform",
-                isOpen && "rotate-180 text-[#009E49]",
-              )}
-            />
-          </span>
-        </div>
-      </button>
-
-      <div
-        className={cn(
-          DROPDOWN_WRAPPER,
-          "right-0 w-60",
-          isOpen ? "visible translate-y-0 opacity-100" : "invisible translate-y-2 opacity-0",
-        )}
-      >
-        <div
-          className={cn(
-            DROPDOWN_CONTENT,
-            "p-3",
-            mobileOpen &&
-              "border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(255,255,255,0.93))] shadow-[0_24px_48px_rgba(15,23,42,0.2)]",
-          )}
-        >
-          {isLoggedIn && user ? (
-            <LoggedInMenu user={user} onSignOut={onSignOut} onDevToggleAuth={onDevToggleAuth} />
-          ) : (
-            <LoggedOutMenu
-              loginHref={loginHref}
-              registerHref={registerHref}
-              onDevToggleAuth={onDevToggleAuth}
-            />
-          )}
-        </div>
+    <DropdownMenu.Root open={isOpen} onOpenChange={setOpen}>
+      <div className="relative z-30">
+        <DropdownMenu.Trigger asChild>
+          <button
+            type="button"
+            aria-label={isLoggedIn ? "Open account menu" : "Open sign in menu"}
+            onKeyDown={(event) => {
+              if (event.key !== "ArrowUp") return;
+              event.preventDefault();
+              openFromArrowUpRef.current = true;
+              setOpen(true);
+            }}
+            className="group flex min-h-11 min-w-11 items-center justify-center gap-2 rounded-2xl border border-transparent p-2 transition-all hover:border-white/35 hover:bg-white/35 hover:backdrop-blur-xl"
+          >
+            <User className="h-6 w-6 text-zinc-800 transition-colors group-hover:text-[#009E49]" />
+            <div className="hidden flex-col items-start leading-none lg:flex">
+              <span className="text-[10px] font-medium text-zinc-500">{isLoggedIn ? "Welcome back" : "Sign In"}</span>
+              <span className="flex items-center gap-1 text-sm font-bold text-zinc-900">
+                My Account
+                <ChevronDown className={cn("h-3 w-3 text-zinc-400 transition-transform", isOpen && "rotate-180 text-[#009E49]")} />
+              </span>
+            </div>
+          </button>
+        </DropdownMenu.Trigger>
+        <DropdownMenu.Portal>
+          <DropdownMenu.Content
+            ref={contentRef}
+            aria-label="Account options"
+            aria-labelledby={undefined}
+            align="end"
+            sideOffset={8}
+            collisionPadding={12}
+            loop
+            onKeyDown={(event) => {
+              if (event.key === "Tab") setOpen(false);
+            }}
+            onFocusCapture={(event) => {
+              if (!openFromArrowUpRef.current) return;
+              const target = event.target as HTMLElement;
+              if (target.getAttribute("role") !== "menuitem") return;
+              const items = contentRef.current?.querySelectorAll<HTMLElement>("[role='menuitem']:not([data-disabled])");
+              const lastItem = items?.item((items?.length ?? 0) - 1);
+              if (!lastItem) return;
+              openFromArrowUpRef.current = false;
+              if (lastItem !== target) lastItem.focus();
+            }}
+            className={cn(
+              DROPDOWN_CONTENT,
+              "z-[70] w-60 p-3 outline-none data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95",
+              mobileOpen && "border-white/80 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(255,255,255,0.93))] shadow-[0_24px_48px_rgba(15,23,42,0.2)]",
+            )}
+          >
+            {isLoggedIn && user ? (
+              <LoggedInMenu user={user} onSignOut={onSignOut} />
+            ) : (
+              <LoggedOutMenu loginHref={loginHref} registerHref={registerHref} ordersHref={ordersHref} />
+            )}
+          </DropdownMenu.Content>
+        </DropdownMenu.Portal>
       </div>
-    </div>
+    </DropdownMenu.Root>
   );
 }
 
@@ -868,7 +815,12 @@ export default function Navbar() {
   const pathname = usePathname();
   const isScrolled = useScrolled();
   const isMobileSearchPastHideThreshold = useScrolled(144, 32);
-  const { isLoggedIn, user, signOut, toggleDevAuth } = useAuthState();
+  const auth = useAuthSession();
+  const isLoggedIn = auth.status === "authenticated";
+  const user = isLoggedIn ? auth.user : null;
+  const signOut = async () => {
+    await logout();
+  };
   const { itemCount = 0, totalAmount = 0, hasHydrated = false } = useCart();
 
   const [categoryLinks, setCategoryLinks] = useState<CategoryLink[]>([]);
@@ -877,7 +829,8 @@ export default function Navbar() {
   const [desktopAccountOpen, setDesktopAccountOpen] = useState(false);
   const [mobileAccountOpen, setMobileAccountOpen] = useState(false);
   const [mobileSearchFocused, setMobileSearchFocused] = useState(false);
-  const [hasEstablishedSellerAccount, setHasEstablishedSellerAccount] = useState(false);
+  const [sellerAccountState, setSellerAccountState] = useState<SellerAccountState>(EMPTY_SELLER_ACCOUNT_STATE);
+  const sellerRequestEpochRef = useRef(0);
   const authReturnPath = useSyncExternalStore(
     subscribeToBrowserLocation,
     getBrowserLocationSnapshot,
@@ -897,28 +850,57 @@ export default function Navbar() {
     !mobileAccountOpen;
 
   const hiddenRoutes = useMemo(() => ["/auth", "/verify-email", "/sell", "/seller"], []);
-  const sellerEntry = isLoggedIn && user?.role === "seller" && hasEstablishedSellerAccount
+  const sellerOwnerId = isLoggedIn && user?.role === "seller" ? user.id : null;
+  if (sellerAccountState.ownerId !== sellerOwnerId) {
+    setSellerAccountState(
+      sellerOwnerId
+        ? { ownerId: sellerOwnerId, status: "pending" }
+        : EMPTY_SELLER_ACCOUNT_STATE,
+    );
+  }
+  const sellerEntry = sellerOwnerId
+    && sellerAccountState.ownerId === sellerOwnerId
+    && sellerAccountState.status === "established"
     ? { label: "Seller Dashboard", href: "/seller" }
     : { label: "Sell on Zogular", href: "/sell" };
   const loginHref = appendNextPath("/auth/login", authReturnPath);
   const registerHref = appendNextPath("/auth/register", authReturnPath);
+  const ordersHref = appendNextPath("/auth/login", "/account/orders");
 
   useEffect(() => {
+    const requestEpoch = sellerRequestEpochRef.current + 1;
+    sellerRequestEpochRef.current = requestEpoch;
     let active = true;
-    if (!isLoggedIn || user?.role !== "seller") {
+
+    if (!sellerOwnerId) {
       return () => { active = false; };
     }
 
     void getMyVendorApplication()
       .then((application) => {
-        if (active) setHasEstablishedSellerAccount(application.status === "APPROVED" || application.status === "PROVISIONAL");
+        if (!active || sellerRequestEpochRef.current !== requestEpoch) return;
+        setSellerAccountState((current) => (
+          current.ownerId === sellerOwnerId
+            ? {
+                ownerId: sellerOwnerId,
+                status: application.status === "APPROVED" || application.status === "PROVISIONAL"
+                  ? "established"
+                  : "unavailable",
+              }
+            : current
+        ));
       })
       .catch(() => {
-        if (active) setHasEstablishedSellerAccount(false);
+        if (!active || sellerRequestEpochRef.current !== requestEpoch) return;
+        setSellerAccountState((current) => (
+          current.ownerId === sellerOwnerId
+            ? { ownerId: sellerOwnerId, status: "unavailable" }
+            : current
+        ));
       });
 
     return () => { active = false; };
-  }, [isLoggedIn, user?.role]);
+  }, [sellerOwnerId]);
 
   useEffect(() => {
     let active = true;
@@ -1000,9 +982,9 @@ export default function Navbar() {
                 }}
                 onMobileToggle={() => setMobileAccountOpen((prev) => !prev)}
                 onSignOut={signOut}
-                onDevToggleAuth={toggleDevAuth}
                 loginHref={loginHref}
                 registerHref={registerHref}
+                ordersHref={ordersHref}
               />
               <CartButton
                 itemCount={hasHydrated ? itemCount : 0}

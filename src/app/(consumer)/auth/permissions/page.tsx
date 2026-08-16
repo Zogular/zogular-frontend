@@ -70,7 +70,7 @@ export default function PermissionsPage() {
                   </div>
                   <div>
                     <h3 className="text-sm font-bold text-white">Location Services</h3>
-                    <p className="mt-0.5 max-w-40 text-[10px] text-zinc-400">Browse buyer-visible products and confirm delivery terms at checkout.</p>
+                    <p className="mt-0.5 max-w-40 text-[10px] text-zinc-400">Browse products and confirm delivery details at checkout.</p>
                   </div>
                 </div>
                 <div className={`flex h-6 w-11 items-center rounded-full px-0.5 transition-colors duration-300 ${locationOn ? "bg-[#009E49]" : "bg-zinc-600"}`}>
@@ -123,7 +123,7 @@ export default function PermissionsPage() {
             Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            Join thousands of sellers and buyers connecting every day on the fastest growing e-commerce platform in Lusaka.
+            Choose the options that help Zogular work well for you.
           </p>
         </div>
       </div>
