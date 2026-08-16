@@ -51,6 +51,12 @@ const ROLE_REDIRECTS: Record<AuthRole, string> = {
 
 const DEFAULT_BUYER_REDIRECT = "/account";
 
+let localLogoutPending = false;
+
+export function isLocalLogoutPending(): boolean {
+  return localLogoutPending;
+}
+
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
   return value as Record<string, unknown>;
@@ -187,6 +193,7 @@ function normalizeUser(payload: unknown, fallbackEmail?: string): AuthUser {
     email,
     role,
     phone: getStringByKeys(records, ["phone", "phoneNumber", "telephone", "mobile"]),
+    preferredMoMoNumber: getStringByKeys(records, ["preferredMoMoNumber"]),
     emailVerified: asBoolean(
       records.find((record) => "emailVerified" in record)?.emailVerified,
     ),
@@ -366,6 +373,11 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
 export async function logout(): Promise<AuthActionResult> {
   let backendLogoutCompleted = true;
 
+  // Remove client-visible identity before any network wait. The backend
+  // request remains a best-effort cookie/session revocation operation.
+  localLogoutPending = true;
+  clearStoredAuthSession();
+
   try {
     await apiClient<unknown>(AUTH_ENDPOINTS.logout, {
       method: "POST",
@@ -374,6 +386,9 @@ export async function logout(): Promise<AuthActionResult> {
   } catch {
     backendLogoutCompleted = false;
   } finally {
+    localLogoutPending = false;
+    // A final clear prevents any stale listener from restoring private state
+    // while the best-effort backend revocation was in flight.
     clearStoredAuthSession();
   }
 
@@ -386,14 +401,15 @@ export async function logout(): Promise<AuthActionResult> {
   };
 }
 
-export async function getCurrentUser(): Promise<AuthUser> {
+export async function getCurrentUser(options: { persist?: boolean; skipAuthRefresh?: boolean } = {}): Promise<AuthUser> {
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.me, {
     method: "GET",
+    skipAuthRefresh: options.skipAuthRefresh,
   });
 
   const fallbackEmail = getStoredAuthUser()?.email;
   const user = normalizeUser(payload, fallbackEmail);
-  storeAuthSession({ user });
+  if (options.persist !== false) storeAuthSession({ user });
   return user;
 }
 
@@ -532,7 +548,10 @@ export async function resetPassword(
   );
 }
 
-export async function updateMe(input: UpdateMeInput): Promise<AuthUser> {
+export async function updateMe(
+  input: UpdateMeInput,
+  options: { expectedUserId?: string } = {},
+): Promise<AuthUser> {
   const { phone, ...rest } = input;
   const body = {
     ...rest,
@@ -547,6 +566,16 @@ export async function updateMe(input: UpdateMeInput): Promise<AuthUser> {
 
   const fallbackEmail = getStoredAuthUser()?.email;
   const user = normalizeUser(payload, fallbackEmail);
+  const currentUser = getStoredAuthUser();
+  if (
+    options.expectedUserId
+    && (user.id !== options.expectedUserId || currentUser?.id !== options.expectedUserId)
+  ) {
+    throw new ApiError("Account changed before profile update completed.", 409);
+  }
+  // The PATCH response is authoritative, but broadcasting here would remount the
+  // protected account tree while its initiating form is presenting the result.
+  // A later session event or navigation still re-verifies this stored snapshot.
   storeAuthUser(user);
   return user;
 }

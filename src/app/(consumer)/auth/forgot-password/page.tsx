@@ -119,7 +119,7 @@ function ForgotPasswordContent() {
             Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            Join thousands of sellers and buyers connecting every day on the fastest growing e-commerce platform in Lusaka.
+            Reset your password and return to your account.
           </p>
         </div>
       </div>

@@ -17,8 +17,12 @@ import {
   updateAccountPassword,
 } from "@/services/account";
 import type { AccountSettings } from "@/types/account";
+import { useAuthSession } from "@/hooks/use-auth-session";
+
+type OperationFeedback = { tone: "success" | "error"; message: string };
 
 export default function SettingsPage() {
+  const auth = useAuthSession();
   const [settings, setSettings] = React.useState<AccountSettings | null>(null);
   const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<unknown>(null);
@@ -29,6 +33,10 @@ export default function SettingsPage() {
   });
   const [isSavingProfile, setIsSavingProfile] = React.useState(false);
   const [isUpdatingPassword, setIsUpdatingPassword] = React.useState(false);
+  const [profileFeedback, setProfileFeedback] = React.useState<OperationFeedback | null>(null);
+  const [passwordFeedback, setPasswordFeedback] = React.useState<OperationFeedback | null>(null);
+  const profileRequestRef = React.useRef(false);
+  const passwordRequestRef = React.useRef(false);
 
   const loadSettings = React.useCallback(async () => {
     try {
@@ -62,27 +70,44 @@ export default function SettingsPage() {
   };
 
   const handleSaveProfile = async () => {
-    if (!settings) return;
+    if (!settings || auth.status !== "authenticated" || profileRequestRef.current) return;
+    let feedback: OperationFeedback;
     try {
+      profileRequestRef.current = true;
       setIsSavingProfile(true);
-      const profile = await saveAccountProfile(settings.profile);
+      setProfileFeedback(null);
+      const profile = await saveAccountProfile(settings.profile, auth.user.id);
       setSettings((prev) => (prev ? { ...prev, profile } : prev));
+      feedback = { tone: "success", message: "Your profile was updated." };
+    } catch {
+      feedback = { tone: "error", message: "Your changes could not be saved. Please try again." };
     } finally {
+      profileRequestRef.current = false;
       setIsSavingProfile(false);
     }
+    setProfileFeedback(feedback);
   };
 
   const handleUpdatePassword = async () => {
+    if (passwordRequestRef.current) return;
+    let feedback: OperationFeedback;
     try {
+      passwordRequestRef.current = true;
       setIsUpdatingPassword(true);
+      setPasswordFeedback(null);
       await updateAccountPassword({
         currentPassword: password.current,
         newPassword: password.next,
       });
       setPassword({ current: "", next: "" });
+      feedback = { tone: "success", message: "Your password was updated. Please sign in again." };
+    } catch {
+      feedback = { tone: "error", message: "Your password could not be updated. Please try again." };
     } finally {
+      passwordRequestRef.current = false;
       setIsUpdatingPassword(false);
     }
+    setPasswordFeedback(feedback);
   };
 
   const togglePasswordVisibility = (key: keyof typeof visiblePasswords) => {
@@ -124,16 +149,18 @@ export default function SettingsPage() {
           <div className="space-y-4">
             <div className="grid gap-4 md:grid-cols-2">
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">First Name</label>
+                <label htmlFor="account-first-name" className="text-xs font-bold uppercase tracking-wider text-zinc-500">First Name</label>
                 <Input
+                  id="account-first-name"
                   value={settings.profile.firstName}
                   onChange={(event) => handleProfileChange("firstName", event.target.value)}
                   className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-[#009E49]"
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Last Name</label>
+                <label htmlFor="account-last-name" className="text-xs font-bold uppercase tracking-wider text-zinc-500">Last Name</label>
                 <Input
+                  id="account-last-name"
                   value={settings.profile.lastName}
                   onChange={(event) => handleProfileChange("lastName", event.target.value)}
                   className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-[#009E49]"
@@ -142,20 +169,24 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Email Address</label>
+              <label htmlFor="account-email" className="text-xs font-bold uppercase tracking-wider text-zinc-500">Email Address</label>
               <Input
+                id="account-email"
                 type="email"
                 value={settings.profile.email}
-                onChange={(event) => handleProfileChange("email", event.target.value)}
-                className="h-11 rounded-xl border-zinc-200 bg-zinc-50/50 shadow-sm focus-visible:ring-[#009E49]"
+                readOnly
+                aria-describedby="account-email-help"
+                className="h-11 cursor-default rounded-xl border-zinc-200 bg-zinc-100 text-zinc-600 shadow-sm"
               />
+              <p id="account-email-help" className="text-xs font-medium text-zinc-500">Email changes are not available here.</p>
             </div>
 
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">
+              <label htmlFor="account-phone" className="text-xs font-bold uppercase tracking-wider text-zinc-500">
                 Primary Phone Number
               </label>
               <Input
+                id="account-phone"
                 type="tel"
                 value={settings.profile.phone}
                 onChange={(event) => handleProfileChange("phone", event.target.value)}
@@ -164,11 +195,12 @@ export default function SettingsPage() {
             </div>
 
             <div className="space-y-1.5">
-              <label className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-500">
+              <label htmlFor="account-momo" className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-zinc-500">
                 <span>Preferred MoMo Number</span>
                 <span className="text-[10px] font-medium text-[#009E49] bg-[#009E49]/10 px-2 py-0.5 rounded-md">Optional</span>
               </label>
               <Input
+                id="account-momo"
                 type="tel"
                 value={settings.profile.preferredMoMoNumber || ""}
                 onChange={(event) => handleProfileChange("preferredMoMoNumber", event.target.value)}
@@ -185,6 +217,14 @@ export default function SettingsPage() {
               {isSavingProfile ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               {isSavingProfile ? "Saving..." : "Save Changes"}
             </Button>
+            {profileFeedback ? (
+              <p
+                role={profileFeedback.tone === "error" ? "alert" : "status"}
+                className={profileFeedback.tone === "error" ? "text-sm font-semibold text-red-700" : "text-sm font-semibold text-emerald-700"}
+              >
+                {profileFeedback.message}
+              </p>
+            ) : null}
           </div>
         </section>
 
@@ -198,9 +238,10 @@ export default function SettingsPage() {
 
           <div className="space-y-4">
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">Current Password</label>
+              <label htmlFor="account-current-password" className="text-xs font-bold uppercase tracking-wider text-zinc-500">Current Password</label>
               <div className="relative">
                 <Input
+                  id="account-current-password"
                   type={visiblePasswords.current ? "text" : "password"}
                   value={password.current}
                   onChange={(event) => setPassword((prev) => ({ ...prev, current: event.target.value }))}
@@ -210,16 +251,17 @@ export default function SettingsPage() {
                   type="button"
                   aria-label={visiblePasswords.current ? "Hide current password" : "Show current password"}
                   onClick={() => togglePasswordVisibility("current")}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                 >
                   {visiblePasswords.current ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-xs font-bold uppercase tracking-wider text-zinc-500">New Password</label>
+              <label htmlFor="account-new-password" className="text-xs font-bold uppercase tracking-wider text-zinc-500">New Password</label>
               <div className="relative">
                 <Input
+                  id="account-new-password"
                   type={visiblePasswords.next ? "text" : "password"}
                   value={password.next}
                   onChange={(event) => setPassword((prev) => ({ ...prev, next: event.target.value }))}
@@ -229,7 +271,7 @@ export default function SettingsPage() {
                   type="button"
                   aria-label={visiblePasswords.next ? "Hide new password" : "Show new password"}
                   onClick={() => togglePasswordVisibility("next")}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-900"
                 >
                   {visiblePasswords.next ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
@@ -245,6 +287,14 @@ export default function SettingsPage() {
               {isUpdatingPassword ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
               Update Password
             </Button>
+            {passwordFeedback ? (
+              <p
+                role={passwordFeedback.tone === "error" ? "alert" : "status"}
+                className={passwordFeedback.tone === "error" ? "text-sm font-semibold text-red-700" : "text-sm font-semibold text-emerald-700"}
+              >
+                {passwordFeedback.message}
+              </p>
+            ) : null}
           </div>
         </section>
       </div>

@@ -45,6 +45,7 @@ export interface AuthUser {
   email: string;
   role?: AuthRole;
   phone?: string;
+  preferredMoMoNumber?: string;
   emailVerified?: boolean;
   emailVerifiedAt?: string | null;
   phoneVerifiedAt?: string | null;
@@ -66,7 +67,7 @@ export interface UpdateMeInput {
   firstName?: string;
   lastName?: string;
   phone?: string;
-  avatarUrl?: string;
+  preferredMoMoNumber?: string;
 }
 
 export interface ChangePasswordInput {

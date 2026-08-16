@@ -1,6 +1,6 @@
 "use client";
 
-import { Heart } from "lucide-react";
+import { AlertCircle, Heart, Loader2 } from "lucide-react";
 import { usePathname, useRouter } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { useWishlist } from "@/hooks/use-wishlist";
@@ -22,10 +22,17 @@ export function WishlistButton({
   const router = useRouter();
   const pathname = usePathname() || `/product/${product.slug}`;
   const auth = useAuthSession();
-  const { toggleItem, hasItem, hasHydrated } = useWishlist();
+  const { toggleItem, hasItem, hasHydrated, getItemMutationState, syncBackend } = useWishlist();
 
-  const isSaved = auth.status === "authenticated" && hasHydrated ? hasItem(product.id) : false;
-  const heartAriaLabel = hasHydrated && isSaved ? "Remove from wishlist" : "Add to wishlist";
+  const mutationState = auth.status === "authenticated" ? getItemMutationState(product.id) : null;
+  const isSaved = auth.status === "authenticated" && hasHydrated
+    ? mutationState?.confirmedPresent ?? hasItem(product.id)
+    : false;
+  const heartAriaLabel = mutationState?.status === "pending"
+    ? mutationState.desiredPresent ? "Saving to wishlist" : "Removing from wishlist"
+    : mutationState?.status === "error"
+      ? "Wishlist update failed. Retry"
+      : hasHydrated && isSaved ? "Remove from wishlist" : "Add to wishlist";
 
   return (
     <button
@@ -39,18 +46,30 @@ export function WishlistButton({
           }
           return;
         }
+        if (mutationState?.status === "error") {
+          void syncBackend();
+          return;
+        }
         toggleItem(product);
       }}
-      disabled={auth.status === "loading"}
+      disabled={auth.status === "loading" || auth.status === "verifying" || auth.status === "unavailable"}
       className={cn(className)}
       aria-label={heartAriaLabel}
+      aria-pressed={isSaved}
     >
-      <Heart
-        className={cn(
-          iconClassName,
-          isSaved ? "fill-red-500 text-red-500" : "",
-        )}
-      />
+      {mutationState?.status === "pending" ? (
+        <Loader2 className={cn(iconClassName, "animate-spin motion-reduce:animate-none")} aria-hidden="true" />
+      ) : mutationState?.status === "error" ? (
+        <AlertCircle className={cn(iconClassName, "text-amber-600")} aria-hidden="true" />
+      ) : (
+        <Heart
+          className={cn(
+            iconClassName,
+            isSaved ? "fill-red-500 text-red-500" : "",
+          )}
+          aria-hidden="true"
+        />
+      )}
     </button>
   );
 }

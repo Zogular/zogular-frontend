@@ -178,7 +178,7 @@ function RegisterContent() {
             Powering Zambia&apos;s Online Marketplace.
           </h2>
           <p className="text-base font-medium text-zinc-200 drop-shadow-md xl:text-lg">
-            Join thousands of shoppers connecting every day on the fastest growing e-commerce platform in Lusaka.
+            Create an account to shop, save items, and follow your orders.
           </p>
         </div>
       </div>

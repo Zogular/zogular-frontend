@@ -69,11 +69,104 @@ function wishlistPagePayload(
   };
 }
 
+function currentUserPayload(id: string, overrides: Record<string, unknown> = {}) {
+  return {
+    status: "success",
+    data: {
+      user: {
+        id,
+        firstName: id === "account-b" ? "Account" : "Account",
+        lastName: id === "account-b" ? "B" : "A",
+        email: `${id}@example.test`,
+        role: "USER",
+        telephone: "0970000000",
+        preferredMoMoNumber: "0960000000",
+        emailVerified: true,
+        ...overrides,
+      },
+    },
+  };
+}
+
+function sellerApplicationPayload(ownerId: string, status: string) {
+  return {
+    status: "success",
+    data: {
+      application: {
+        id: `application-${ownerId}`,
+        userId: ownerId,
+        sellerType: "INDIVIDUAL",
+        ownerFullName: `Owner ${ownerId}`,
+        status,
+      },
+    },
+  };
+}
+
+async function setBrowserIdentity(page: Page, ownerId: string | null) {
+  await page.evaluate((nextOwnerId) => {
+    if (nextOwnerId) {
+      localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: nextOwnerId,
+        firstName: "Account",
+        lastName: nextOwnerId,
+        email: `${nextOwnerId}@example.test`,
+      }));
+    } else {
+      localStorage.removeItem("zogular_auth_user");
+    }
+    window.dispatchEvent(new Event("zogular:auth-session-changed"));
+  }, ownerId);
+}
+
+function backendOrder(id: string, ownerId = "account-a") {
+  return {
+    id,
+    orderNumber: id.toUpperCase(),
+    userId: ownerId,
+    createdAt: "2026-08-15T00:00:00.000Z",
+    status: "PROCESSING",
+    totalAmount: 100,
+    shippingAddress: { fullName: ownerId, phone: "0970000000", addressLine: "1 Test Road", district: "Roma", city: "Lusaka" },
+    items: [],
+  };
+}
+
+function orderPagePayload(orders: ReturnType<typeof backendOrder>[], page: number, limit: number, total: number) {
+  return {
+    status: "success",
+    results: orders.length,
+    pagination: { total, page, limit, pages: Math.ceil(total / limit) },
+    data: { orders },
+  };
+}
+
 test("return intent accepts internal paths and rejects external or malformed destinations", () => {
   expect(sanitizeInternalNextPath("/account/saved?from=product#saved")).toBe("/account/saved?from=product#saved");
-  for (const unsafe of ["https://example.com/account", "//example.com/account", "/\\example.com", "javascript:alert(1)", "/auth/login"]) {
+  for (const unsafe of [
+    "https://example.com/account",
+    "//example.com/account",
+    "/\\example.com",
+    "javascript:alert(1)",
+    "/auth/login",
+    "/%2e%2e//evil.example",
+    "/safe/%2e%2e/account",
+    "/%5cevil.example",
+    "/account%2F%2Fevil.example",
+    "/account\u0000/settings",
+  ]) {
     expect(sanitizeInternalNextPath(unsafe)).toBeNull();
   }
+});
+
+test("current identity verification uses the exact backend-owned user endpoint", () => {
+  const authService = readSource("src/services/auth.ts");
+  const authHook = readSource("src/hooks/use-auth-session.ts");
+  expect(authService).toContain('me: "/user/me"');
+  expect(authService).not.toContain('me: "/users/me"');
+  expect(authHook).toContain("getCurrentUser({ persist: false");
+  expect(authHook).not.toContain("skipAuthRefresh:");
+  expect(authHook).not.toContain("getStoredAuthUser");
 });
 
 test("guest wishlist mutations fail closed without persisted product state", async () => {
@@ -277,6 +370,11 @@ test("a rejected page-two delete that did not commit retains authoritative remot
   expect(store.getState().items.filter((item) => item.id === targetProductId)).toHaveLength(1);
   expect(store.getState().remoteItemIds[targetProductId]).toBe("remote-100");
   expect(store.getState().syncError).toBe("This item could not be removed. Try again.");
+  expect(store.getState().mutationStates[targetProductId]).toEqual({
+    status: "error",
+    desiredPresent: false,
+    confirmedPresent: true,
+  });
 
   await store.getState().syncBackend();
   expect(store.getState().items.filter((item) => item.id === targetProductId)).toHaveLength(1);
@@ -602,6 +700,36 @@ test("protected account shell and navigation share one auth policy", () => {
   expect(wishlist).not.toContain('persist(');
   expect(wishlist).toContain("removePersistedWishlistData");
   expect(wishlist).toContain("requestVersion !== syncVersion");
+  expect(layout).toContain("key={auth.user.id}");
+  expect(layout).toContain('auth.status === "unavailable"');
+});
+
+test("unresolved wishlist mutations restore the last confirmed state and expose retry truth", async () => {
+  let readFails = false;
+  const store = createWishlistStore({
+    getOwnerId: () => "owner-a",
+    getItems: async () => {
+      if (readFails) throw new ApiError("Reconciliation unavailable", 503);
+      return [];
+    },
+    addItem: async () => {
+      readFails = true;
+      throw new ApiError("Ambiguous add", 503);
+    },
+    removeItem: async () => undefined,
+  });
+
+  await store.getState().syncBackend();
+  await store.getState().addItem(raceProduct);
+
+  expect(store.getState().items).toEqual([]);
+  expect(store.getState().remoteItemIds).toEqual({});
+  expect(store.getState().mutationStates[raceProduct.id]).toEqual({
+    status: "error",
+    desiredPresent: true,
+    confirmedPresent: false,
+  });
+  expect(store.getState().syncError).toBe("This item could not be saved. Try again.");
 });
 
 type Diagnostics = {
@@ -621,9 +749,30 @@ function requestPath(rawUrl: string): string {
   return `${url.pathname}${url.search}`;
 }
 
-function isLocalTelemetry(rawUrl: string): boolean {
-  const pathname = new URL(rawUrl).pathname;
-  return pathname.startsWith("/_vercel/insights/") || pathname.startsWith("/_vercel/speed-insights/");
+type FailedRequestSignature = {
+  rawUrl: string;
+  method: string;
+  resourceType: string;
+  errorText: string;
+  nextRouterPrefetch: string | undefined;
+  purpose: string | undefined;
+  secPurpose: string | undefined;
+};
+
+function isExpectedNextPrefetchCancellation(signature: FailedRequestSignature): boolean {
+  if (!baseUrl) return false;
+  const requestUrl = new URL(signature.rawUrl);
+  const fixtureOrigin = new URL(baseUrl).origin;
+  return requestUrl.origin === fixtureOrigin
+    && !requestUrl.pathname.startsWith("/api/")
+    && signature.method === "GET"
+    && signature.resourceType === "fetch"
+    && signature.errorText === "net::ERR_ABORTED"
+    && signature.nextRouterPrefetch === "1"
+    && signature.purpose === undefined
+    && signature.secPurpose === undefined
+    && requestUrl.searchParams.size === 1
+    && Boolean(requestUrl.searchParams.get("_rsc"));
 }
 
 function expectedConsoleFailure(
@@ -632,11 +781,6 @@ function expectedConsoleFailure(
   expected: ExpectedDiagnostics,
 ): boolean {
   const path = requestPath(rawUrl);
-  if (
-    isLocalTelemetry(rawUrl)
-    && text === "Failed to load resource: the server responded with a status of 404 (Not Found)"
-  ) return true;
-
   const responseMatch = /^Failed to load resource: the server responded with a status of (\d{3}) \([^)]+\)$/.exec(text);
   if (responseMatch) {
     const status = Number(responseMatch[1]);
@@ -647,7 +791,7 @@ function expectedConsoleFailure(
   if (failureMatch) {
     return expected.failedRequests?.some((entry) => (
       entry.path === path && entry.errorText === failureMatch[1]
-    )) ?? isLocalTelemetry(rawUrl);
+    )) ?? false;
   }
   return false;
 }
@@ -665,14 +809,21 @@ function collectDiagnostics(page: Page, expected: ExpectedDiagnostics = {}): Dia
   page.on("requestfailed", (request) => {
     const errorText = request.failure()?.errorText ?? "Unknown request failure";
     const path = requestPath(request.url());
-    const isExpected = isLocalTelemetry(request.url())
-      || expected.failedRequests?.some((entry) => (
+    const headers = request.headers();
+    const isExpected = expected.failedRequests?.some((entry) => (
       entry.method === request.method()
       && entry.path === path
       && (!entry.errorText || entry.errorText === errorText)
-      ));
+      )) || isExpectedNextPrefetchCancellation({
+        rawUrl: request.url(),
+        method: request.method(),
+        resourceType: request.resourceType(),
+        errorText,
+        nextRouterPrefetch: headers["next-router-prefetch"],
+        purpose: headers.purpose,
+        secPurpose: headers["sec-purpose"],
+      });
     if (!isExpected) {
-      const headers = request.headers();
       diagnostics.unexpectedFailedRequests.push(JSON.stringify({
         errorText,
         method: request.method(),
@@ -685,7 +836,7 @@ function collectDiagnostics(page: Page, expected: ExpectedDiagnostics = {}): Dia
     }
   });
   page.on("response", (response) => {
-    const isExpected = isLocalTelemetry(response.url()) || expected.badResponses?.some((entry) => (
+    const isExpected = expected.badResponses?.some((entry) => (
       entry.method === response.request().method()
       && entry.path === requestPath(response.url())
       && entry.status === response.status()
@@ -701,10 +852,31 @@ const baseUrl = process.env.CONSUMER_AUTH_BASE_URL;
 const viewports = [
   { name: "320x568", width: 320, height: 568 },
   { name: "390x844", width: 390, height: 844 },
+  { name: "414x896", width: 414, height: 896 },
   { name: "768x1024", width: 768, height: 1024 },
   { name: "1024x900", width: 1024, height: 900 },
   { name: "1440x900", width: 1440, height: 900 },
 ] as const;
+
+test("diagnostics accept only the exact framework prefetch cancellation signature", () => {
+  if (!baseUrl) return;
+  const valid: FailedRequestSignature = {
+    rawUrl: `${baseUrl}/account?_rsc=fixture`,
+    method: "GET",
+    resourceType: "fetch",
+    errorText: "net::ERR_ABORTED",
+    nextRouterPrefetch: "1",
+    purpose: undefined,
+    secPurpose: undefined,
+  };
+  expect(isExpectedNextPrefetchCancellation(valid)).toBe(true);
+  expect(isExpectedNextPrefetchCancellation({ ...valid, rawUrl: `${baseUrl}/api/backend/user/me?_rsc=fixture` })).toBe(false);
+  expect(isExpectedNextPrefetchCancellation({ ...valid, nextRouterPrefetch: undefined })).toBe(false);
+  expect(isExpectedNextPrefetchCancellation({ ...valid, resourceType: "script" })).toBe(false);
+  expect(isExpectedNextPrefetchCancellation({ ...valid, errorText: "net::ERR_CONNECTION_FAILED" })).toBe(false);
+  expect(isExpectedNextPrefetchCancellation({ ...valid, rawUrl: `${baseUrl}/account?_rsc=fixture&extra=1` })).toBe(false);
+  expect(isExpectedNextPrefetchCancellation({ ...valid, rawUrl: "https://example.test/account?_rsc=fixture" })).toBe(false);
+});
 
 test.describe("consumer auth and wishlist browser acceptance", () => {
   test.skip(!baseUrl, "CONSUMER_AUTH_BASE_URL is required for fixture-based visual QA.");
@@ -713,26 +885,11 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64",
     );
-    await page.addInitScript(() => {
-      const NativeIntersectionObserver = window.IntersectionObserver;
-      window.IntersectionObserver = class FixtureIntersectionObserver {
-        private readonly nativeObserver: IntersectionObserver;
-        constructor(callback: IntersectionObserverCallback, options?: IntersectionObserverInit) {
-          this.nativeObserver = new NativeIntersectionObserver(callback, options);
-        }
-        get root() { return this.nativeObserver.root; }
-        get rootMargin() { return this.nativeObserver.rootMargin; }
-        get thresholds() { return this.nativeObserver.thresholds; }
-        disconnect() { this.nativeObserver.disconnect(); }
-        observe(target: Element) {
-          if (!(target instanceof HTMLAnchorElement)) this.nativeObserver.observe(target);
-        }
-        takeRecords() { return this.nativeObserver.takeRecords(); }
-        unobserve(target: Element) {
-          if (!(target instanceof HTMLAnchorElement)) this.nativeObserver.unobserve(target);
-        }
-      } as typeof IntersectionObserver;
-    });
+    await page.route("**/_vercel/insights/script.js", (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
+    await page.route("**/_vercel/speed-insights/script.js", (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
+    await page.route(/\/_next\/image\?url=%2Fplaceholder\.png&w=256&q=75$/, (route) => (
+      route.fulfill({ status: 200, contentType: "image/png", body: onePixelPng })
+    ));
     await page.route("https://images.unsplash.com/**", async (route) => {
       await route.fulfill({ status: 200, contentType: "image/png", body: onePixelPng });
     });
@@ -743,13 +900,35 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       await page.setViewportSize(viewport);
       await page.addInitScript(() => localStorage.clear());
       await page.route("**/api/backend/**", async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname.endsWith("/user/me")) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+          return;
+        }
+        if (url.pathname.endsWith("/auth/csrf-token")) {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+          return;
+        }
+        if (url.pathname.endsWith("/auth/refresh-token")) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+          return;
+        }
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
       });
-      const diagnostics = collectDiagnostics(page);
+      const diagnostics = collectDiagnostics(page, {
+        badResponses: [
+          { method: "GET", path: "/api/backend/user/me", status: 401 },
+          { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+        ],
+      });
       const protectedRequests: string[] = [];
+      const verificationRequests: string[] = [];
+      const refreshRequests: string[] = [];
       page.on("request", (request) => {
         const url = new URL(request.url());
-        if (url.pathname.startsWith("/api/backend/") && /\/(wishlist|orders|user\/addresses|users\/me)(?:[/?]|$)/.test(url.pathname)) {
+        if (url.pathname.endsWith("/api/backend/user/me")) verificationRequests.push(url.pathname);
+        if (url.pathname.endsWith("/api/backend/auth/refresh-token")) refreshRequests.push(url.pathname);
+        if (url.pathname.startsWith("/api/backend/") && /\/(wishlist|orders|user\/addresses)(?:[/?]|$)/.test(url.pathname)) {
           protectedRequests.push(request.url());
         }
       });
@@ -762,46 +941,998 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       }
 
       expect(protectedRequests).toEqual([]);
+      expect(verificationRequests).toHaveLength(6);
+      expect(new Set(verificationRequests)).toEqual(new Set(["/api/backend/user/me"]));
+      expect(refreshRequests).toHaveLength(6);
+      expect(new Set(refreshRequests)).toEqual(new Set(["/api/backend/auth/refresh-token"]));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
       await page.screenshot({ path: path.resolve(`output/playwright/consumer-auth-wishlist/guest-${viewport.name}.png`) });
     });
   }
 
-  test("mobile Wishlist, Orders, and Account navigation preserve sanitized return intent across browser history", async ({ page }) => {
+  for (const destination of [
+    { label: "Wishlist", nextPath: "/account/saved" },
+    { label: "Orders", nextPath: "/account/orders" },
+    { label: "Account", nextPath: "/account" },
+  ] as const) {
+    test(`mobile ${destination.label} navigation preserves sanitized return intent across browser history`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => localStorage.clear());
+      const diagnostics = collectDiagnostics(page, {
+        failedRequests: [{ method: "GET", path: "/api/backend/categories", errorText: "net::ERR_ABORTED" }],
+        badResponses: [
+          { method: "GET", path: "/api/backend/user/me", status: 401 },
+          { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+        ],
+      });
+      await page.route("**/api/backend/**", async (route) => {
+        const url = new URL(route.request().url());
+        if (url.pathname.endsWith("/user/me")) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+          return;
+        }
+        if (url.pathname.endsWith("/auth/csrf-token")) {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+          return;
+        }
+        if (url.pathname.endsWith("/auth/refresh-token")) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+          return;
+        }
+        await route.continue();
+      });
+
+      await page.goto(baseUrl!, { waitUntil: "networkidle" });
+      const nav = page.getByRole("navigation", { name: "Mobile navigation" });
+      await expect(nav).toBeVisible();
+      await nav.getByRole("link", { name: destination.label }).click();
+      const expectedLoginUrl = `${baseUrl}/auth/login?next=${encodeURIComponent(destination.nextPath)}`;
+      await expect(page).toHaveURL(expectedLoginUrl);
+      await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+      await page.waitForLoadState("networkidle");
+
+      await page.goBack({ waitUntil: "networkidle" });
+      await expect(page).toHaveURL(`${baseUrl}/`);
+      await page.goForward({ waitUntil: "networkidle" });
+      await expect(page).toHaveURL(expectedLoginUrl);
+      await expect(page.getByText("My Account", { exact: true })).toBeHidden();
+      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+    });
+  }
+
+  test("signed-out product cards keep wishlist private and render only valid rating evidence", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => localStorage.clear());
     const diagnostics = collectDiagnostics(page, {
-      failedRequests: [{ method: "GET", path: "/api/backend/categories", errorText: "net::ERR_ABORTED" }],
+      badResponses: [{ method: "GET", path: "/api/backend/user/me", status: 401 }],
     });
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
-    const nav = page.getByRole("navigation", { name: "Mobile navigation" });
-    await expect(nav).toBeVisible();
-    await nav.getByRole("link", { name: "Wishlist" }).click();
-    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount%2Fsaved$/);
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-    await page.waitForLoadState("networkidle");
-    await page.goBack({ waitUntil: "networkidle" });
-    await expect(page).toHaveURL(`${baseUrl}/`);
-    await page.goForward({ waitUntil: "networkidle" });
-    await expect(page).toHaveURL(`${baseUrl}/auth/login?next=%2Faccount%2Fsaved`);
-    await expect(page.getByText("My Account", { exact: true })).toBeHidden();
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
-    await nav.getByRole("link", { name: "Orders" }).click();
-    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount%2Forders$/);
-    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-    await page.waitForLoadState("networkidle");
-    await page.goBack({ waitUntil: "networkidle" });
-    await expect(page).toHaveURL(`${baseUrl}/`);
-    await page.goForward({ waitUntil: "networkidle" });
-    await expect(page).toHaveURL(`${baseUrl}/auth/login?next=%2Faccount%2Forders`);
-    await expect(page.getByText("My Account", { exact: true })).toBeHidden();
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
-    await nav.getByRole("link", { name: "Account" }).click();
-    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount$/);
-    await page.waitForLoadState("networkidle");
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
+    const ratedCard = page.getByTestId("product-card").filter({ hasText: "Samsung Galaxy A55 5G" }).first();
+    const unratedCard = page.getByTestId("product-card").filter({ hasText: "Product Without Reviews" }).first();
+    await expect(ratedCard).toBeVisible();
+    await expect(ratedCard.getByText("5", { exact: true })).toBeVisible();
+    await expect(ratedCard.getByText("(1)", { exact: true })).toBeVisible();
+    await expect(unratedCard).toBeVisible();
+    await expect(unratedCard.locator("svg.lucide-star")).toHaveCount(0);
+    await expect(unratedCard.getByText(/^\(\d+\)$/)).toHaveCount(0);
+
+    const wishlistAction = ratedCard.getByRole("button", { name: "Add to wishlist" });
+    await expect(wishlistAction).toBeEnabled();
+    await wishlistAction.click();
+    await expect(page).toHaveURL(/\/auth\/login\?next=%2F$/);
+    expect(await page.evaluate(() => ({
+      authUser: localStorage.getItem("zogular_auth_user"),
+      currentWishlist: localStorage.getItem("zogular-wishlist-storage"),
+      legacyWishlist: localStorage.getItem("zamoyo-wishlist-storage"),
+    }))).toEqual({ authUser: null, currentWishlist: null, legacyWishlist: null });
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
+
+  test("an HttpOnly refresh cookie restores identity when local storage is empty", async ({ page, context }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.clear());
+    await context.addCookies([{
+      name: "refreshToken",
+      value: "fixture-refresh-cookie",
+      url: baseUrl!,
+      httpOnly: true,
+      sameSite: "Lax",
+    }]);
+    const authSequence: string[] = [];
+    let currentUserRequests = 0;
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [{ method: "GET", path: "/api/backend/user/me", status: 401 }],
+    });
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        currentUserRequests += 1;
+        authSequence.push(`${request.method()} ${url.pathname} ${currentUserRequests === 1 ? 401 : 200}`);
+        await route.fulfill({
+          status: currentUserRequests === 1 ? 401 : 200,
+          contentType: "application/json",
+          body: JSON.stringify(currentUserRequests === 1
+            ? { message: "Access token expired" }
+            : currentUserPayload("cookie-owner")),
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        authSequence.push(`${request.method()} ${url.pathname} 200`);
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/refresh-token")) {
+        expect(request.headers().cookie).toContain("refreshToken=fixture-refresh-cookie");
+        authSequence.push(`${request.method()} ${url.pathname} 200`);
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("cookie-owner")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        const pageNumber = Number(url.searchParams.get("page"));
+        const limit = Number(url.searchParams.get("limit"));
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], pageNumber, limit)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/account/saved`, { waitUntil: "networkidle" });
+    await expect(page.getByRole("heading", { name: "Saved Items" })).toBeVisible();
+    await expect(page.getByText("Your wishlist is empty", { exact: true })).toBeVisible();
+    expect(authSequence).toEqual([
+      "GET /api/backend/user/me 401",
+      "GET /api/backend/auth/csrf-token 200",
+      "POST /api/backend/auth/refresh-token 200",
+      "GET /api/backend/user/me 200",
+    ]);
+    expect(await page.evaluate(() => JSON.parse(localStorage.getItem("zogular_auth_user") ?? "null")?.id)).toBe("cookie-owner");
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("a fresh guest attempts refresh once, does not loop, and receives guest sign-in copy", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => localStorage.clear());
+    const authSequence: string[] = [];
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [
+        { method: "GET", path: "/api/backend/user/me", status: 401 },
+        { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+      ],
+    });
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        authSequence.push(`${request.method()} ${url.pathname}`);
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        authSequence.push(`${request.method()} ${url.pathname}`);
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/refresh-token")) {
+        authSequence.push(`${request.method()} ${url.pathname}`);
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/account`, { waitUntil: "networkidle" });
+    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount$/);
+    await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
+    await expect(page.getByText("Please sign in again to continue.", { exact: true })).toHaveCount(0);
+    expect(authSequence).toEqual([
+      "GET /api/backend/user/me",
+      "GET /api/backend/auth/csrf-token",
+      "POST /api/backend/auth/refresh-token",
+    ]);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("desktop account menu has deterministic complete keyboard navigation and keeps guest orders behind sign in", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => localStorage.clear());
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/refresh-token")) {
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [
+        { method: "GET", path: "/api/backend/user/me", status: 401 },
+        { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+      ],
+    });
+
+    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    const accountTrigger = page.getByRole("button", { name: "Open sign in menu" });
+    const menu = page.getByRole("menu", { name: "Account options" });
+    const signIn = menu.getByRole("menuitem", { name: /sign in/i });
+    const register = menu.getByRole("menuitem", { name: "Register" });
+    const orders = menu.getByRole("menuitem", { name: "My Orders" });
+    const help = menu.getByRole("menuitem", { name: "Help Center" });
+
+    for (let iteration = 0; iteration < 10; iteration += 1) {
+      await accountTrigger.focus();
+      await accountTrigger.press("ArrowDown");
+      await expect(signIn).toBeFocused();
+      await signIn.press("ArrowDown");
+      await expect(register).toBeFocused();
+      await register.press("End");
+      await expect(help).toBeFocused();
+      await help.press("ArrowDown");
+      await expect(signIn).toBeFocused();
+      await signIn.press("Home");
+      await expect(signIn).toBeFocused();
+      await signIn.press("ArrowUp");
+      await expect(help).toBeFocused();
+      await help.press("Escape");
+      await expect(menu).toBeHidden();
+      await expect(accountTrigger).toBeFocused();
+    }
+
+    await accountTrigger.press("ArrowUp");
+    await expect(help).toBeFocused();
+    await help.press("Tab");
+    await expect(menu).toBeHidden();
+    await expect(page.locator("[role='menuitem']:focus")).toHaveCount(0);
+
+    await accountTrigger.click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(accountTrigger).toBeFocused();
+
+    await accountTrigger.press("Enter");
+    await expect(signIn).toBeFocused();
+    await signIn.press("End");
+    await expect(help).toBeFocused();
+    await help.press("Home");
+    await expect(signIn).toBeFocused();
+    await signIn.press("ArrowDown");
+    await expect(register).toBeFocused();
+    await register.press("ArrowDown");
+    await expect(orders).toBeFocused();
+    await menu.getByRole("menuitem", { name: "My Orders" }).click();
+    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount%2Forders$/);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("seller dashboard state clears while Account B application status is pending", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    let currentOwner = "account-a";
+    const applicationCalls: string[] = [];
+    const pendingApplication = deferred<void>();
+    const pendingApplicationStarted = deferred<void>();
+    const diagnostics = collectDiagnostics(page);
+
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      const requestOwner = currentOwner;
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload(requestOwner, { role: "SELLER" })) });
+        return;
+      }
+      if (url.pathname.endsWith("/vendor/applications/me")) {
+        applicationCalls.push(requestOwner);
+        if (requestOwner === "account-b") {
+          pendingApplicationStarted.resolve();
+          await pendingApplication.promise;
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload(requestOwner, "DRAFT")) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload(requestOwner, "APPROVED")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+    });
+
+    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
+    await expect(dashboardLink).toBeVisible();
+
+    currentOwner = "account-b";
+    await setBrowserIdentity(page, currentOwner);
+    await pendingApplicationStarted.promise;
+    await expect(dashboardLink).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Sell on Zogular", exact: true })).toBeVisible();
+
+    const accountTrigger = page.getByRole("button", { name: "Open account menu" });
+    await accountTrigger.click();
+    await expect(page.getByRole("menu", { name: "Account options" })).toBeVisible();
+    await expect(page.getByText("account-b@example.test", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(accountTrigger).toBeFocused();
+
+    pendingApplication.resolve();
+    await expect.poll(() => applicationCalls).toEqual(["account-a", "account-b"]);
+    await expect(dashboardLink).toHaveCount(0);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("seller dashboard fails closed for Account B missing, malformed, and unavailable applications", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    let currentOwner = "account-a";
+    const applicationCalls = new Map<string, number>();
+    const applicationPath = "/api/backend/vendor/applications/me";
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [
+        { method: "GET", path: applicationPath, status: 404 },
+        { method: "GET", path: applicationPath, status: 503 },
+      ],
+    });
+
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      const requestOwner = currentOwner;
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload(requestOwner, { role: "SELLER" })) });
+        return;
+      }
+      if (url.pathname.endsWith("/vendor/applications/me")) {
+        applicationCalls.set(requestOwner, (applicationCalls.get(requestOwner) ?? 0) + 1);
+        if (requestOwner === "account-b") {
+          await route.fulfill({ status: 404, contentType: "application/json", body: JSON.stringify({ message: "Application not found" }) });
+          return;
+        }
+        if (requestOwner === "account-c") {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { application: null } }) });
+          return;
+        }
+        if (requestOwner === "account-d") {
+          await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Temporarily unavailable" }) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload(requestOwner, "APPROVED")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+    });
+
+    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
+    await expect(dashboardLink).toBeVisible();
+
+    for (const nextOwner of ["account-b", "account-c", "account-d"]) {
+      const responseFinished = page.waitForResponse((response) => (
+        response.request().method() === "GET"
+        && new URL(response.url()).pathname.endsWith("/vendor/applications/me")
+      ));
+      currentOwner = nextOwner;
+      await setBrowserIdentity(page, nextOwner);
+      await responseFinished;
+      await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+      await expect(dashboardLink).toHaveCount(0);
+      await expect(page.getByRole("link", { name: "Sell on Zogular", exact: true })).toBeVisible();
+      expect(applicationCalls.get(nextOwner)).toBe(1);
+    }
+
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("a deferred Account A application cannot overwrite Account B seller status", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    let currentOwner = "account-a";
+    const applicationCalls: string[] = [];
+    const accountAResponseGate = deferred<void>();
+    const accountARequestStarted = deferred<void>();
+    const diagnostics = collectDiagnostics(page);
+
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      const requestOwner = currentOwner;
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload(requestOwner, { role: "SELLER" })) });
+        return;
+      }
+      if (url.pathname.endsWith("/vendor/applications/me")) {
+        applicationCalls.push(requestOwner);
+        if (requestOwner === "account-a") {
+          accountARequestStarted.resolve();
+          await accountAResponseGate.promise;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload(requestOwner, "APPROVED")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+    });
+
+    await page.goto(baseUrl!, { waitUntil: "domcontentloaded" });
+    await accountARequestStarted.promise;
+    currentOwner = "account-b";
+    await setBrowserIdentity(page, currentOwner);
+    const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
+    await expect(dashboardLink).toBeVisible();
+    expect(applicationCalls).toEqual(["account-a", "account-b"]);
+
+    accountAResponseGate.resolve();
+    await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(dashboardLink).toBeVisible();
+    expect(applicationCalls).toEqual(["account-a", "account-b"]);
+
+    const navbarSource = readSource("src/components/layout/Navbar.tsx");
+    expect(navbarSource).toContain("sellerRequestEpochRef.current !== requestEpoch");
+    expect(navbarSource).toContain("current.ownerId === sellerOwnerId");
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("seller dashboard clears immediately when an approved seller becomes a guest", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    let currentOwner: string | null = "account-a";
+    const guestVerificationGate = deferred<void>();
+    const guestVerificationStarted = deferred<void>();
+    let applicationCalls = 0;
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [
+        { method: "GET", path: "/api/backend/user/me", status: 401 },
+        { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+      ],
+    });
+
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      const requestOwner = currentOwner;
+      if (url.pathname.endsWith("/user/me")) {
+        if (!requestOwner) {
+          guestVerificationStarted.resolve();
+          await guestVerificationGate.promise;
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload(requestOwner, { role: "SELLER" })) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/refresh-token")) {
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+        return;
+      }
+      if (url.pathname.endsWith("/vendor/applications/me")) {
+        applicationCalls += 1;
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload(requestOwner ?? "unknown", "APPROVED")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+    });
+
+    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
+    await expect(dashboardLink).toBeVisible();
+
+    currentOwner = null;
+    await setBrowserIdentity(page, null);
+    await guestVerificationStarted.promise;
+    await expect(dashboardLink).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Sell on Zogular", exact: true })).toBeVisible();
+    expect(applicationCalls).toBe(1);
+
+    guestVerificationGate.resolve();
+    await expect(page.getByRole("button", { name: "Open sign in menu" })).toBeVisible();
+    await expect(dashboardLink).toHaveCount(0);
+    expect(applicationCalls).toBe(1);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("same seller rerenders retain confirmed status without duplicate application requests", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    let applicationCalls = 0;
+    const diagnostics = collectDiagnostics(page);
+
+    await page.route("**/api/backend/**", async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a", { role: "SELLER" })) });
+        return;
+      }
+      if (url.pathname.endsWith("/vendor/applications/me")) {
+        applicationCalls += 1;
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload("account-a", "APPROVED")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+    });
+
+    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
+    const accountTrigger = page.getByRole("button", { name: "Open account menu" });
+    const menu = page.getByRole("menu", { name: "Account options" });
+    await expect(dashboardLink).toBeVisible();
+    expect(applicationCalls).toBe(1);
+
+    await accountTrigger.click();
+    await expect(menu).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(accountTrigger).toBeFocused();
+    await expect(dashboardLink).toBeVisible();
+
+    await accountTrigger.press("ArrowDown");
+    await expect(menu.getByRole("menuitem", { name: "Account Overview" })).toBeFocused();
+    await page.keyboard.press("Escape");
+    await expect(accountTrigger).toBeFocused();
+    await page.setViewportSize({ width: 1439, height: 900 });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.evaluate(() => {
+      window.dispatchEvent(new Event("zogular:auth-session-changed"));
+      return new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+    });
+
+    await expect(dashboardLink).toBeVisible();
+    expect(applicationCalls).toBe(1);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("orders preserve backend pagination and load every requested page without duplication", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    const requestedOrderPages: string[] = [];
+    const diagnostics = collectDiagnostics(page);
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
+      if (url.pathname.endsWith("/orders") && request.method() === "GET") {
+        requestedOrderPages.push(`${url.searchParams.get("page")}:${url.searchParams.get("limit")}`);
+        const pageNumber = Number(url.searchParams.get("page"));
+        const limit = Number(url.searchParams.get("limit"));
+        const start = (pageNumber - 1) * limit;
+        const count = pageNumber === 1 ? 20 : 5;
+        const orders = Array.from({ length: count }, (_, index) => backendOrder(`order-${start + index + 1}`));
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload(orders, pageNumber, limit, 25)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/account/orders`, { waitUntil: "networkidle" });
+    await expect(page.getByText("Showing 20 of 25 orders", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Load More Orders" }).dblclick();
+    await expect(page.getByText("Showing 25 of 25 orders", { exact: true })).toBeVisible();
+    await expect(page.getByText("ORDER-25", { exact: true })).toBeVisible();
+    expect(requestedOrderPages).toEqual(["1:20", "2:20"]);
+    expect(await page.locator("[href^='/account/orders/order-']").count()).toBe(25);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("duplicate orders across pages stay explicitly incomplete and retryable", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    const requestedOrderPages: string[] = [];
+    const diagnostics = collectDiagnostics(page);
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
+      if (url.pathname.endsWith("/orders") && request.method() === "GET") {
+        const pageNumber = Number(url.searchParams.get("page"));
+        const limit = Number(url.searchParams.get("limit"));
+        requestedOrderPages.push(`${pageNumber}:${limit}`);
+        const orders = pageNumber === 1
+          ? Array.from({ length: 20 }, (_, index) => backendOrder(`order-${index + 1}`))
+          : [20, 21, 22, 23, 24].map((index) => backendOrder(`order-${index}`));
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload(orders, pageNumber, limit, 25)) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/account/orders`, { waitUntil: "networkidle" });
+    await expect(page.getByText("Showing 20 of 25 orders", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Load More Orders" }).click();
+    await expect(page.getByRole("alert").filter({ hasText: "More orders could not load. Please try again." })).toHaveText("More orders could not load. Please try again.");
+    await expect(page.getByText("Showing 20 of 25 orders", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Load More Orders" })).toBeEnabled();
+    expect(await page.locator("[href^='/account/orders/order-']").count()).toBe(20);
+    expect(requestedOrderPages).toEqual(["1:20", "2:20"]);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("an arbitrary stored user remains private until the backend verifies identity", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "forged-user", firstName: "Forged", lastName: "User", email: "forged@example.test" }));
+    });
+    const verificationGate = deferred<void>();
+    const protectedRequests: string[] = [];
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [
+        { method: "GET", path: "/api/backend/user/me", status: 401 },
+        { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+      ],
+    });
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (/\/(orders|wishlist|user\/addresses)(?:\/|$)/.test(url.pathname)) protectedRequests.push(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        await verificationGate.promise;
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Unauthorized" }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/refresh-token")) {
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Unauthorized" }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/account`, { waitUntil: "domcontentloaded" });
+    await expect(page.getByText("Checking your account…", { exact: true })).toBeVisible();
+    await expect(page.getByRole("main").getByText("My Account", { exact: true })).toHaveCount(0);
+    expect(protectedRequests).toEqual([]);
+    verificationGate.resolve();
+    await expect(page).toHaveURL(/\/auth\/login\?reason=signin-again&next=%2Faccount$/);
+    await expect(page.getByText("Please sign in again to continue.", { exact: true })).toBeVisible();
+    expect(protectedRequests).toEqual([]);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  test("settings keep email read-only and save only supported profile fields safely", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    let updateAttempts = 0;
+    const updateBodies: Array<Record<string, unknown>> = [];
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [{ method: "PATCH", path: "/api/backend/user/update-me", status: 503 }],
+    });
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/user/update-me")) {
+        updateAttempts += 1;
+        updateBodies.push(request.postDataJSON() as Record<string, unknown>);
+        if (updateAttempts === 1) {
+          await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Unavailable" }) });
+          return;
+        }
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify(currentUserPayload("account-a", { preferredMoMoNumber: "0955000000" })),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+    });
+
+    await page.goto(`${baseUrl}/account/settings`, { waitUntil: "networkidle" });
+    const email = page.getByLabel("Email Address");
+    await expect(email).toHaveAttribute("readonly", "");
+    await expect(page.getByText("Email changes are not available here.", { exact: true })).toBeVisible();
+    await page.getByLabel("Preferred MoMo Number").fill("0955000000");
+    await page.getByRole("button", { name: "Save Changes" }).dblclick();
+    await expect(page.getByText("Your changes could not be saved. Please try again.", { exact: true })).toBeVisible();
+    expect(updateAttempts).toBe(1);
+    expect(updateBodies[0]).toEqual({
+      firstName: "Account",
+      lastName: "A",
+      telephone: "0970000000",
+      preferredMoMoNumber: "0955000000",
+    });
+    expect(updateBodies[0]).not.toHaveProperty("email");
+
+    await page.getByRole("button", { name: "Save Changes" }).click();
+    await expect(page.getByText("Your profile was updated.", { exact: true })).toBeVisible();
+    expect(updateAttempts).toBe(2);
+    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  const identitySwitchCases = [
+    { name: "overview", route: "/account", target: "/orders", expected: "Welcome back, Bob!" },
+    { name: "orders", route: "/account/orders", target: "/orders", expected: "B-ORDER" },
+    { name: "order detail", route: "/account/orders/order-switch", target: "/orders/order-switch", expected: "#B-DETAIL" },
+    { name: "addresses", route: "/account/addresses", target: "/user/addresses", expected: "B Recipient" },
+    { name: "settings", route: "/account/settings", target: "/user/me", expected: "Bob" },
+    { name: "saved items", route: "/account/saved", target: "/wishlist", expected: "B saved item" },
+  ] as const;
+
+  for (const identityCase of identitySwitchCases) {
+    test(`${identityCase.name} rejects a deferred Account A response after switching to Account B`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => {
+        localStorage.clear();
+        localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Alice", lastName: "A", email: "account-a@example.test" }));
+      });
+      let currentOwner: "account-a" | "account-b" = "account-a";
+      let currentUserCalls = 0;
+      const staleResponseGate = deferred<void>();
+      const staleRequestStarted = deferred<void>();
+      let staleRequestObserved = false;
+      const diagnostics = collectDiagnostics(page);
+
+      const maybeWaitForStaleRequest = async (pathname: string, requestOwner: string) => {
+        const isSettingsIdentityRead = identityCase.name === "settings"
+          && pathname.endsWith("/user/me")
+          && currentUserCalls > 1;
+        const isTarget = identityCase.name === "settings"
+          ? isSettingsIdentityRead
+          : pathname.endsWith(identityCase.target);
+        if (requestOwner === "account-a" && isTarget && !staleRequestObserved) {
+          staleRequestObserved = true;
+          staleRequestStarted.resolve();
+          await staleResponseGate.promise;
+        }
+      };
+
+      await page.route("**/api/backend/**", async (route) => {
+        const request = route.request();
+        const url = new URL(request.url());
+        const requestOwner = currentOwner;
+        if (url.pathname.endsWith("/user/me")) currentUserCalls += 1;
+        await maybeWaitForStaleRequest(url.pathname, requestOwner);
+
+        const isB = requestOwner === "account-b";
+        if (url.pathname.endsWith("/user/me")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify(currentUserPayload(requestOwner, { firstName: isB ? "Bob" : "Alice", lastName: isB ? "B" : "A" })),
+          });
+          return;
+        }
+        if (url.pathname.endsWith("/wishlist")) {
+          const items = [backendWishlistItem(isB ? "wish-b" : "wish-a", isB ? "b-saved" : "a-saved")];
+          items[0].product.title = isB ? "B saved item" : "A saved item";
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload(items, 1, 100)) });
+          return;
+        }
+        if (url.pathname.endsWith("/user/addresses")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({ data: { addresses: [{ id: isB ? "address-b" : "address-a", fullName: isB ? "B Recipient" : "A Recipient", title: "Home", addressLine: "1 Test Road", district: "Roma", city: "Lusaka", phone: "0970000000", isDefault: true }] } }),
+          });
+          return;
+        }
+        if (url.pathname.endsWith("/orders/order-switch")) {
+          const order = backendOrder("order-switch", requestOwner);
+          order.orderNumber = isB ? "B-DETAIL" : "A-DETAIL";
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { order } }) });
+          return;
+        }
+        if (url.pathname.endsWith("/orders")) {
+          const pageNumber = Number(url.searchParams.get("page") ?? 1);
+          const limit = Number(url.searchParams.get("limit") ?? 20);
+          const order = backendOrder(isB ? "b-order" : "a-order", requestOwner);
+          order.orderNumber = isB ? "B-ORDER" : "A-ORDER";
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload([order], pageNumber, limit, 1)) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      });
+
+      await page.goto(`${baseUrl}${identityCase.route}`, { waitUntil: "domcontentloaded" });
+      await staleRequestStarted.promise;
+      currentOwner = "account-b";
+      await page.evaluate(() => {
+        localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-b", firstName: "Bob", lastName: "B", email: "account-b@example.test" }));
+        window.dispatchEvent(new Event("zogular:auth-session-changed"));
+      });
+      const expectedIdentity = identityCase.name === "settings"
+        ? page.getByLabel("First Name")
+        : page.getByText(identityCase.expected, { exact: true });
+      if (identityCase.name === "settings") {
+        await expect(expectedIdentity).toHaveValue(identityCase.expected);
+      } else {
+        await expect(expectedIdentity).toBeVisible();
+      }
+      staleResponseGate.resolve();
+      if (identityCase.name === "settings") {
+        await expect(expectedIdentity).toHaveValue(identityCase.expected);
+      } else {
+        await expect(expectedIdentity).toBeVisible();
+      }
+      await expect(page.getByText(/A Recipient|A saved item|A-ORDER|A-DETAIL|Welcome back, Alice!/)).toHaveCount(0);
+      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+    });
+  }
+
+  for (const identityCase of identitySwitchCases) {
+    test(`${identityCase.name} rejects a deferred Account A response after becoming a guest`, async ({ page }) => {
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.addInitScript(() => {
+        localStorage.clear();
+        localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Alice", lastName: "A", email: "account-a@example.test" }));
+      });
+      let currentOwner: "account-a" | null = "account-a";
+      let currentUserCalls = 0;
+      const staleResponseGate = deferred<void>();
+      const staleRequestStarted = deferred<void>();
+      const initialOverviewRequestsStarted = deferred<void>();
+      const initialOverviewPaths = new Set<string>();
+      let staleRequestObserved = false;
+      const diagnostics = collectDiagnostics(page, {
+        badResponses: [
+          { method: "GET", path: "/api/backend/user/me", status: 401 },
+          { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+        ],
+      });
+
+      const maybeWaitForStaleRequest = async (pathname: string, requestOwner: string | null) => {
+        const isSettingsIdentityRead = identityCase.name === "settings"
+          && pathname.endsWith("/user/me")
+          && currentUserCalls > 1;
+        const isTarget = identityCase.name === "settings"
+          ? isSettingsIdentityRead
+          : pathname.endsWith(identityCase.target);
+        if (requestOwner === "account-a" && isTarget && !staleRequestObserved) {
+          staleRequestObserved = true;
+          staleRequestStarted.resolve();
+          await staleResponseGate.promise;
+        }
+      };
+
+      await page.route("**/api/backend/**", async (route) => {
+        const url = new URL(route.request().url());
+        const requestOwner = currentOwner;
+        if (identityCase.name === "overview" && requestOwner === "account-a") {
+          if (url.pathname.endsWith("/user/me")) initialOverviewPaths.add("user");
+          if (url.pathname.endsWith("/orders")) initialOverviewPaths.add("orders");
+          if (url.pathname.endsWith("/user/addresses")) initialOverviewPaths.add("addresses");
+          if (initialOverviewPaths.size === 3) initialOverviewRequestsStarted.resolve();
+        }
+        if (url.pathname.endsWith("/user/me")) currentUserCalls += 1;
+        await maybeWaitForStaleRequest(url.pathname, requestOwner);
+
+        if (url.pathname.endsWith("/auth/csrf-token")) {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+          return;
+        }
+        if (url.pathname.endsWith("/auth/refresh-token")) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+          return;
+        }
+
+        if (!requestOwner) {
+          if (url.pathname.endsWith("/user/me")) {
+            await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+            return;
+          }
+          await route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ message: "Forbidden" }) });
+          return;
+        }
+        if (url.pathname.endsWith("/user/me")) {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a", { firstName: "Alice", lastName: "A" })) });
+          return;
+        }
+        if (url.pathname.endsWith("/wishlist")) {
+          const items = [backendWishlistItem("wish-a", "a-saved")];
+          items[0].product.title = "A saved item";
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload(items, 1, 100)) });
+          return;
+        }
+        if (url.pathname.endsWith("/user/addresses")) {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { addresses: [{ id: "address-a", fullName: "A Recipient", title: "Home", addressLine: "1 Test Road", district: "Roma", city: "Lusaka", phone: "0970000000", isDefault: true }] } }) });
+          return;
+        }
+        if (url.pathname.endsWith("/orders/order-switch")) {
+          const order = backendOrder("order-switch", "account-a");
+          order.orderNumber = "A-DETAIL";
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { order } }) });
+          return;
+        }
+        if (url.pathname.endsWith("/orders")) {
+          const pageNumber = Number(url.searchParams.get("page") ?? 1);
+          const limit = Number(url.searchParams.get("limit") ?? 20);
+          const order = backendOrder("a-order", "account-a");
+          order.orderNumber = "A-ORDER";
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload([order], pageNumber, limit, 1)) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      });
+
+      await page.goto(`${baseUrl}${identityCase.route}`, { waitUntil: "domcontentloaded" });
+      await staleRequestStarted.promise;
+      if (identityCase.name === "overview") await initialOverviewRequestsStarted.promise;
+      currentOwner = null;
+      await page.evaluate(() => {
+        localStorage.removeItem("zogular_auth_user");
+        window.dispatchEvent(new Event("zogular:auth-session-changed"));
+      });
+      await expect(page).toHaveURL(new RegExp(`/auth/login\\?next=${encodeURIComponent(identityCase.route).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`));
+      staleResponseGate.resolve();
+      await expect(page).toHaveURL(/\/auth\/login\?next=/);
+      await expect(page.getByText(/A Recipient|A saved item|A-ORDER|A-DETAIL|Welcome back, Alice!/)).toHaveCount(0);
+      await expect(page.getByRole("main").getByText("My Account", { exact: true })).toHaveCount(0);
+      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+    });
+  }
 
   test("order detail distinguishes forbidden, missing, and temporary failures with recovery", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -818,6 +1949,10 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     let responseMode: "403" | "404" | "503" | "network" | "success" = "403";
     await page.route("**/api/backend/**", async (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
       if (!url.pathname.endsWith("/orders/order-fixture")) {
         const data = url.pathname.endsWith("/categories") ? { categories: [] } : {};
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data }) });
@@ -901,6 +2036,10 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     await page.route("**/api/backend/**", async (route) => {
       const request = route.request();
       const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
       if (url.pathname.endsWith("/auth/csrf-token")) {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
         return;
@@ -985,8 +2124,13 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
 
   test("wishlist state is replaced across authenticated identities and cleared on logout", async ({ page }) => {
     await page.setViewportSize({ width: 1024, height: 900 });
-    let remoteOwner = "account-a";
-    const diagnostics = collectDiagnostics(page);
+    let remoteOwner: "account-a" | "account-b" | null = "account-a";
+    let logoutRequests = 0;
+    const logoutStarted = deferred<void>();
+    const releaseLogout = deferred<void>();
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [{ method: "GET", path: "/api/backend/user/me", status: 401 }],
+    });
     await page.addInitScript(() => {
       localStorage.clear();
       localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "a@example.test" }));
@@ -994,6 +2138,26 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     });
     await page.route("**/api/backend/**", async (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/user/me")) {
+        if (!remoteOwner) {
+          await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload(remoteOwner)) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (/\/auth\/logout\/?$/.test(url.pathname) && route.request().method() === "POST") {
+        logoutRequests += 1;
+        remoteOwner = null;
+        logoutStarted.resolve();
+        await releaseLogout.promise;
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true }) });
+        return;
+      }
       if (url.pathname.endsWith("/wishlist")) {
         const items = remoteOwner === "account-a"
           ? [{ id: "wish-a", productId: "product-a", createdAt: new Date(0).toISOString(), product: { id: "product-a", slug: "account-a-product", title: "Account A product", price: 100, stock: 1, images: ["/images/discovery/home-editorial-mobile.webp"] } }]
@@ -1023,8 +2187,19 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     await expect(page.getByText("Your wishlist is empty", { exact: true })).toBeVisible();
 
     await page.getByRole("button", { name: "Sign Out" }).click();
+    await logoutStarted.promise;
+    await expect.poll(() => page.evaluate(() => ({
+      user: localStorage.getItem("zogular_auth_user"),
+      wishlist: localStorage.getItem("zogular-wishlist-storage"),
+    }))).toEqual({ user: null, wishlist: null });
+    await expect(page.getByRole("main").getByText("My Account", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Your wishlist is empty", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Signing out…", { exact: true })).toBeVisible();
+    await expect(page).toHaveURL(`${baseUrl}/account/saved`);
+    releaseLogout.resolve();
     await expect(page).toHaveURL(/\/auth\/login$/);
-    expect(await page.evaluate(() => ({ user: localStorage.getItem("zogular_auth_user"), wishlist: localStorage.getItem("zogular-wishlist-storage") }))).toEqual({ user: null, wishlist: null });
+    expect(logoutRequests).toBe(1);
+    await expect.poll(() => page.evaluate(() => ({ user: localStorage.getItem("zogular_auth_user"), wishlist: localStorage.getItem("zogular-wishlist-storage") }))).toEqual({ user: null, wishlist: null });
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
 
@@ -1040,6 +2215,10 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     });
     await page.route("**/api/backend/**", async (route) => {
       const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
       if (url.pathname.endsWith("/wishlist")) {
         await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Unavailable" }) });
         return;
@@ -1063,13 +2242,25 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       localStorage.clear();
       localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "expired-account", firstName: "Expired", lastName: "Account", email: "expired@example.test" }));
     });
-    const wishlistPath = "/api/backend/wishlist?page=1&limit=100";
     const diagnostics = collectDiagnostics(page, {
-      badResponses: [{ method: "GET", path: wishlistPath, status: 401 }],
+      badResponses: [
+        { method: "GET", path: "/api/backend/user/me", status: 401 },
+        { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
+      ],
     });
+    let refreshRequests = 0;
     await page.route("**/api/backend/**", async (route) => {
       const url = new URL(route.request().url());
-      if (url.pathname.endsWith("/wishlist") || url.pathname.includes("/auth/refresh")) {
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/auth/refresh-token")) {
+        refreshRequests += 1;
+        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Unauthorized" }) });
+        return;
+      }
+      if (url.pathname.endsWith("/user/me") || url.pathname.endsWith("/wishlist")) {
         await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Unauthorized" }) });
         return;
       }
@@ -1077,9 +2268,11 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     });
 
     await page.goto(`${baseUrl}/account/saved`, { waitUntil: "networkidle" });
-    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount%2Fsaved$/);
+    await expect(page).toHaveURL(/\/auth\/login\?reason=signin-again&next=%2Faccount%2Fsaved$/);
     expect(await page.evaluate(() => localStorage.getItem("zogular_auth_user"))).toBeNull();
+    expect(refreshRequests).toBe(1);
     await expect(page.getByText(/session expired/i)).toHaveCount(0);
+    await expect(page.getByText("Please sign in again to continue.", { exact: true })).toBeVisible();
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
 });

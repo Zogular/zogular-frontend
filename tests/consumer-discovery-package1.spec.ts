@@ -159,6 +159,32 @@ function isKnownLocalTelemetry(url: string): boolean {
   );
 }
 
+function isExpectedGuestVerificationResponse(method: string, url: string, status: number): boolean {
+  if (!browserBaseUrl || method !== "GET" || status !== 401) return false;
+  const requestUrl = new URL(url);
+  const fixtureUrl = new URL(browserBaseUrl);
+  return requestUrl.origin === fixtureUrl.origin
+    && requestUrl.pathname === "/api/backend/user/me"
+    && requestUrl.search === "";
+}
+
+function isExpectedGuestRefreshResponse(method: string, url: string, status: number): boolean {
+  if (!browserBaseUrl || method !== "POST" || status !== 401) return false;
+  const requestUrl = new URL(url);
+  const fixtureUrl = new URL(browserBaseUrl);
+  return requestUrl.origin === fixtureUrl.origin
+    && requestUrl.pathname === "/api/backend/auth/refresh-token"
+    && requestUrl.search === "";
+}
+
+function isExpectedGuestVerificationConsole(message: string, location: string): boolean {
+  return message === "Failed to load resource: the server responded with a status of 401 (Unauthorized)"
+    && (
+      isExpectedGuestVerificationResponse("GET", location, 401)
+      || isExpectedGuestRefreshResponse("POST", location, 401)
+    );
+}
+
 function collectDiagnostics(page: Page): Diagnostics {
   const diagnostics: Diagnostics = {
     consoleErrors: [],
@@ -170,7 +196,7 @@ function collectDiagnostics(page: Page): Diagnostics {
   page.on("console", (message) => {
     if (message.type() === "error") {
       const location = message.location().url;
-      if (!location || !isKnownLocalTelemetry(location)) {
+      if (!location || (!isKnownLocalTelemetry(location) && !isExpectedGuestVerificationConsole(message.text(), location))) {
         diagnostics.consoleErrors.push(location ? `${message.text()} ${location}` : message.text());
       }
     }
@@ -183,7 +209,12 @@ function collectDiagnostics(page: Page): Diagnostics {
     }
   });
   page.on("response", (response) => {
-    if (response.status() >= 400 && !isKnownLocalTelemetry(response.url())) {
+    if (
+      response.status() >= 400
+      && !isKnownLocalTelemetry(response.url())
+      && !isExpectedGuestVerificationResponse(response.request().method(), response.url(), response.status())
+      && !isExpectedGuestRefreshResponse(response.request().method(), response.url(), response.status())
+    ) {
       diagnostics.badResponses.push(`${response.status()} ${response.url()}`);
     }
   });
@@ -203,6 +234,18 @@ const viewports = [
 
 test.describe("canonical ProductCard fixture-based browser contract", () => {
   test.skip(!browserBaseUrl, "PACKAGE1_BASE_URL is required for fixture-based visual QA.");
+
+  test.beforeEach(async ({ page }) => {
+    await page.route(`${browserBaseUrl}/api/backend/user/me`, async (route) => {
+      await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
+    });
+    await page.route(`${browserBaseUrl}/api/backend/auth/csrf-token`, async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "package-1-csrf" } }) });
+    });
+    await page.route(`${browserBaseUrl}/api/backend/auth/refresh-token`, async (route) => {
+      await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+    });
+  });
 
   for (const viewport of viewports) {
     test(`${viewport.name} preserves geometry, accessibility, and shared actions`, async ({ page }) => {
