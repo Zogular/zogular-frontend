@@ -3,11 +3,11 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone } from "lucide-react";
+import { ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
-import { FeedbackState } from "@/components/states/FeedbackState";
+import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
@@ -49,7 +49,7 @@ export default function InvoicePage({
 
   const [invoice, setInvoice] = React.useState<Invoice | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
 
   const loadInvoice = React.useCallback(async () => {
     try {
@@ -57,12 +57,8 @@ export default function InvoicePage({
       setError(null);
       const data = await getInvoiceById(id);
       setInvoice(data);
-    } catch (err) {
-      if (err && typeof err === "object" && "status" in err && err.status === 401) {
-        setError("Your session expired. Please sign in again.");
-      } else {
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
-      }
+    } catch (loadError) {
+      setError(loadError);
     } finally {
       setLoading(false);
     }
@@ -78,31 +74,11 @@ export default function InvoicePage({
 
   if (error) {
     return (
-      <FeedbackState
-        icon={AlertCircle}
-        tone="danger"
-        title="Failed to load invoice"
-        description={error}
-        action={
-          error === "Your session expired. Please sign in again." ? (
-            <Link href={`/auth/login?next=/account/orders/${id}`}>
-              <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
-                Sign In
-              </Button>
-            </Link>
-          ) : (
-            <div className="flex flex-col justify-center gap-3 md:flex-row">
-              <Button onClick={loadInvoice} variant="outline" className="h-11 w-full rounded-xl border-red-200 text-red-700 hover:bg-red-100 md:w-auto">
-                Try Again
-              </Button>
-              <Link href="/account/orders" className="w-full md:w-auto">
-                <Button variant="outline" className="h-11 w-full rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
-                  Back to Orders
-                </Button>
-              </Link>
-            </div>
-          )
-        }
+      <AccountLoadErrorState
+        error={error}
+        resource="order"
+        onRetry={loadInvoice}
+        secondaryAction={{ href: "/account/orders", label: "Back to Orders" }}
       />
     );
   }

@@ -254,14 +254,17 @@ function getProductCategoryMeta(product: BackendProduct): { name: string; slug: 
   return { name: "Other Finds", slug: "products" };
 }
 
-function calculateAverageRating(reviews?: BackendReview[] | null): number {
-  if (!reviews || reviews.length === 0) return 0;
-  const valid = reviews
+function calculateRatingSummary(reviews?: BackendReview[] | null): { rating: number; reviewCount: number } {
+  if (!reviews || reviews.length === 0) return { rating: 0, reviewCount: 0 };
+  const validRatings = reviews
     .map((r) => r.rating)
-    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating));
-  if (valid.length === 0) return 0;
-  const sum = valid.reduce((acc, curr) => acc + curr, 0);
-  return Math.round((sum / valid.length) * 10) / 10;
+    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating) && rating >= 1 && rating <= 5);
+  if (validRatings.length === 0) return { rating: 0, reviewCount: 0 };
+  const sum = validRatings.reduce((acc, curr) => acc + curr, 0);
+  return {
+    rating: Math.round((sum / validRatings.length) * 10) / 10,
+    reviewCount: validRatings.length,
+  };
 }
 
 function titleFromSlug(slug?: string | null): string {
@@ -318,9 +321,7 @@ export function normalizeBackendProduct(product: BackendProduct): Product {
     ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
     : undefined;
 
-  const rawReviews = product.reviews ?? [];
-  const reviewCount = rawReviews.length;
-  const rating = calculateAverageRating(rawReviews);
+  const { rating, reviewCount } = calculateRatingSummary(product.reviews);
   const idStr = asString(product.id) ?? "";
   const slugStr = asString(product.slug) ?? "";
   const title = asString(product.title) ?? "";

@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  AlertCircle,
   CheckCircle2,
   Clock,
   Package,
@@ -16,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
+import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { getMyOrders } from "@/services/orders";
 import type { OrderStatus, OrderSummary } from "@/types/order";
 
@@ -57,7 +57,7 @@ function formatCurrency(value: number) {
 export default function OrdersPage() {
   const [orders, setOrders] = React.useState<OrderSummary[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
   const [activeTab, setActiveTab] = React.useState<OrderStatus | "all">("all");
   const [search, setSearch] = React.useState("");
 
@@ -67,12 +67,8 @@ export default function OrdersPage() {
       setError(null);
       const data = await getMyOrders();
       setOrders(data);
-    } catch (err) {
-      if (err && typeof err === "object" && "status" in err && err.status === 401) {
-        setError("Your session expired. Please sign in again.");
-      } else {
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
-      }
+    } catch (loadError) {
+      setError(loadError);
     } finally {
       setLoading(false);
     }
@@ -138,25 +134,7 @@ export default function OrdersPage() {
           Loading your order history...
         </div>
       ) : error ? (
-        <FeedbackState
-          icon={AlertCircle}
-          tone="danger"
-          title="Failed to load orders"
-          description={error}
-          action={
-            error === "Your session expired. Please sign in again." ? (
-              <Link href="/auth/login?next=/account/orders">
-                <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
-                  Sign In
-                </Button>
-              </Link>
-            ) : (
-              <Button onClick={loadOrders} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-                Try Again
-              </Button>
-            )
-          }
-        />
+        <AccountLoadErrorState error={error} resource="orders" onRetry={loadOrders} />
       ) : filteredOrders.length === 0 ? (
         <FeedbackState
           icon={Package}

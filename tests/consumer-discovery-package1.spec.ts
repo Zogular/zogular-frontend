@@ -278,10 +278,12 @@ test.describe("canonical ProductCard fixture-based browser contract", () => {
       await wishlist.focus();
       await expect(wishlist).toBeFocused();
       await page.keyboard.press("Enter");
-      await expect(card.getByRole("button", { name: "Remove from wishlist" })).toBeVisible();
-      await expect
-        .poll(() => page.evaluate(() => localStorage.getItem("zogular-wishlist-storage")))
-        .toContain("product-1");
+      await expect(page).toHaveURL(/\/auth\/login\?next=/);
+      expect(new URL(page.url()).searchParams.get("next")).toBe("/");
+      expect(await page.evaluate(() => localStorage.getItem("zogular-wishlist-storage"))).toBeNull();
+
+      await page.goBack();
+      await expect(card).toBeVisible();
 
       await add.focus();
       await expect(add).toBeFocused();
@@ -302,6 +304,10 @@ test.describe("canonical ProductCard fixture-based browser contract", () => {
 
       await expect(page.locator("body")).not.toContainText("Review Author");
       await expect(page.locator("body")).not.toContainText("opaque-owner-1");
+      await expect(card.getByText("5", { exact: true })).toBeVisible();
+      await expect(card.getByText("(1)", { exact: true })).toBeVisible();
+      const unratedCard = page.getByTestId("product-card").filter({ hasText: "Product Without Reviews" }).first();
+      await expect(unratedCard.getByText(/^\([0-9]+\)$/)).toHaveCount(0);
       expect(
         await page.evaluate(
           () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
@@ -329,4 +335,16 @@ test.describe("canonical ProductCard fixture-based browser contract", () => {
       });
     });
   }
+
+  test("PDP renders genuine rating evidence and suppresses malformed review evidence", async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${browserBaseUrl}/product/samsung-galaxy-a55-5g`, { waitUntil: "networkidle" });
+    const ratings = page.locator("#product-reviews");
+    await expect(ratings.getByText("5", { exact: true })).toBeVisible();
+    await expect(ratings.getByText("1 customer reviews", { exact: true })).toBeVisible();
+
+    await page.goto(`${browserBaseUrl}/product/product-without-reviews`, { waitUntil: "networkidle" });
+    await expect(page.locator("#product-reviews").getByText("No verified reviews yet", { exact: true })).toBeVisible();
+    await expect(page.locator("#product-reviews").getByText(/customer reviews$/)).toHaveCount(0);
+  });
 });

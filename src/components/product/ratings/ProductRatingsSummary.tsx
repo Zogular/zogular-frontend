@@ -3,7 +3,13 @@ import { Star } from "lucide-react";
 import type { ProductDetail } from "@/types/product";
 
 export function ProductRatingsSummary({ productData }: { productData: ProductDetail }) {
-  if (productData.reviewCount === 0) {
+  const hasValidRating = Number.isInteger(productData.reviewCount)
+    && productData.reviewCount > 0
+    && Number.isFinite(productData.rating)
+    && productData.rating > 0
+    && productData.rating <= 5;
+
+  if (!hasValidRating) {
     return (
       <section
         id="product-reviews"

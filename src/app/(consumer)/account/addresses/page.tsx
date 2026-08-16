@@ -1,7 +1,6 @@
 "use client";
 
 import * as React from "react";
-import Link from "next/link";
 import {
   Building2,
   CheckCircle2,
@@ -10,7 +9,6 @@ import {
   MapPin,
   Plus,
   Trash2,
-  AlertCircle,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +22,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
+import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { getSavedAddresses, createAddress, updateAddress, deleteAddress, setDefaultAddress } from "@/services/account";
 import type { Address, AddressType } from "@/types/address";
 
@@ -36,6 +35,12 @@ interface AddressFormState {
   phone: string;
   deliveryInstructions: string;
   isDefault: boolean;
+}
+
+interface AddressOperationFeedback {
+  action: "delete" | "default" | "save";
+  addressId: string | null;
+  message: string;
 }
 
 const emptyAddressForm: AddressFormState = {
@@ -52,7 +57,8 @@ const emptyAddressForm: AddressFormState = {
 export default function AddressesPage() {
   const [addresses, setAddresses] = React.useState<Address[]>([]);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [loadError, setLoadError] = React.useState<unknown>(null);
+  const [operationFeedback, setOperationFeedback] = React.useState<AddressOperationFeedback | null>(null);
   const [savingId, setSavingId] = React.useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = React.useState(false);
   const [editingAddressId, setEditingAddressId] = React.useState<string | null>(null);
@@ -61,15 +67,11 @@ export default function AddressesPage() {
   const loadAddresses = React.useCallback(async () => {
     try {
       setLoading(true);
-      setError(null);
+      setLoadError(null);
       const data = await getSavedAddresses();
       setAddresses(data);
-    } catch (err) {
-      if (err && typeof err === "object" && "status" in err && err.status === 401) {
-        setError("Your session expired. Please sign in again.");
-      } else {
-        setError(err instanceof Error ? err.message : "Failed to load addresses.");
-      }
+    } catch (loadError) {
+      setLoadError(loadError);
     } finally {
       setLoading(false);
     }
@@ -82,11 +84,15 @@ export default function AddressesPage() {
   const handleDelete = async (id: string) => {
     try {
       setSavingId(id);
+      setOperationFeedback(null);
       await deleteAddress(id);
-      await loadAddresses();
-    } catch (err) {
-      console.error(err);
-      setError("Failed to delete address.");
+      setAddresses((current) => current.filter((address) => address.id !== id));
+    } catch {
+      setOperationFeedback({
+        action: "delete",
+        addressId: id,
+        message: "Address could not be deleted. Try again.",
+      });
     } finally {
       setSavingId(null);
     }
@@ -95,26 +101,32 @@ export default function AddressesPage() {
   const handleSetDefault = async (id: string) => {
     try {
       setSavingId(id);
+      setOperationFeedback(null);
       await setDefaultAddress(id);
-      setAddresses(addresses.map((address) => ({
+      setAddresses((current) => current.map((address) => ({
         ...address,
         isDefault: address.id === id,
       })));
-    } catch (err) {
-      console.error(err);
-      setError("Failed to set default address.");
+    } catch {
+      setOperationFeedback({
+        action: "default",
+        addressId: id,
+        message: "Default address could not be changed. Try again.",
+      });
     } finally {
       setSavingId(null);
     }
   };
 
   const openCreateDialog = () => {
+    setOperationFeedback(null);
     setEditingAddressId(null);
     setAddressForm({ ...emptyAddressForm, isDefault: addresses.length === 0 });
     setDialogOpen(true);
   };
 
   const openEditDialog = (address: Address) => {
+    setOperationFeedback(null);
     setEditingAddressId(address.id);
     setAddressForm({
       name: address.name,
@@ -152,6 +164,7 @@ export default function AddressesPage() {
 
     try {
       setSavingId(editingAddressId ?? "new");
+      setOperationFeedback(null);
       if (editingAddressId) {
         const updated = await updateAddress({
           id: editingAddressId,
@@ -164,7 +177,13 @@ export default function AddressesPage() {
           deliveryInstructions: addressForm.deliveryInstructions.trim() || undefined,
           isDefault: addressForm.isDefault,
         });
-        setAddresses(addresses.map(a => a.id === editingAddressId ? updated : (updated.isDefault ? { ...a, isDefault: false } : a)));
+        setAddresses((current) => current.map((address) => (
+          address.id === editingAddressId
+            ? updated
+            : updated.isDefault
+              ? { ...address, isDefault: false }
+              : address
+        )));
       } else {
         const created = await createAddress({
           name: addressForm.name.trim(),
@@ -176,14 +195,17 @@ export default function AddressesPage() {
           deliveryInstructions: addressForm.deliveryInstructions.trim() || undefined,
           isDefault: addressForm.isDefault || addresses.length === 0,
         });
-        setAddresses(created.isDefault 
-          ? [...addresses.map(a => ({ ...a, isDefault: false })), created]
-          : [...addresses, created]);
+        setAddresses((current) => created.isDefault
+          ? [...current.map((address) => ({ ...address, isDefault: false })), created]
+          : [...current, created]);
       }
       setDialogOpen(false);
-    } catch (err) {
-      console.error(err);
-      setError("Failed to save address.");
+    } catch {
+      setOperationFeedback({
+        action: "save",
+        addressId: editingAddressId,
+        message: "Address could not be saved. Try again.",
+      });
     } finally {
       setSavingId(null);
     }
@@ -201,7 +223,7 @@ export default function AddressesPage() {
           </p>
         </div>
 
-        {!loading && !error && (
+        {!loading && !loadError && (
           <Button onClick={openCreateDialog} className="flex h-11 items-center gap-2 rounded-xl bg-[#009E49] px-5 font-bold text-white shadow-md shadow-[#009E49]/20 hover:bg-[#00853d]">
             <Plus className="h-4 w-4" />
             Add New Address
@@ -213,26 +235,8 @@ export default function AddressesPage() {
         <div className="py-10 text-center text-sm font-medium text-zinc-500">
           Loading addresses...
         </div>
-      ) : error ? (
-        <FeedbackState
-          icon={AlertCircle}
-          tone="danger"
-          title="Failed to load addresses"
-          description={error}
-          action={
-            error === "Your session expired. Please sign in again." ? (
-              <Link href="/auth/login?next=/account/addresses">
-                <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
-                  Sign In
-                </Button>
-              </Link>
-            ) : (
-              <Button onClick={loadAddresses} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-                Try Again
-              </Button>
-            )
-          }
-        />
+      ) : loadError ? (
+        <AccountLoadErrorState error={loadError} resource="addresses" onRetry={loadAddresses} />
       ) : addresses.length === 0 ? (
         <FeedbackState
           icon={MapPin}
@@ -249,6 +253,7 @@ export default function AddressesPage() {
           {addresses.map((address) => (
             <div
               key={address.id}
+              data-address-id={address.id}
               className={`relative flex h-full flex-col rounded-3xl border p-6 transition-all duration-300 hover:shadow-md ${
                 address.isDefault
                   ? "border-[#009E49]/30 ring-1 ring-[#009E49]/10 shadow-[0_4px_20px_rgba(0,158,73,0.05)]"
@@ -330,6 +335,11 @@ export default function AddressesPage() {
                   <Trash2 className="h-4 w-4" />
                 </Button>
               </div>
+              {operationFeedback?.addressId === address.id && operationFeedback.action !== "save" ? (
+                <p className="mt-3 text-xs font-semibold text-red-700" role="alert">
+                  {operationFeedback.message}
+                </p>
+              ) : null}
             </div>
           ))}
         </div>
@@ -390,6 +400,12 @@ export default function AddressesPage() {
                 <Input value={addressForm.city} onChange={updateAddressForm("city")} className="h-11 rounded-xl border-zinc-200 bg-zinc-50 focus-visible:ring-[#009E49]" required />
               </label>
             </div>
+
+            {operationFeedback?.action === "save" ? (
+              <p className="rounded-xl bg-red-50 px-3 py-2 text-sm font-semibold text-red-700" role="alert">
+                {operationFeedback.message}
+              </p>
+            ) : null}
 
             <div className="space-y-1.5">
               <label className={`flex items-center gap-3 rounded-2xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-bold text-zinc-700 ${

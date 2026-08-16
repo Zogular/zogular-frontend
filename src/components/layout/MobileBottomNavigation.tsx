@@ -2,11 +2,11 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { useSyncExternalStore, type ComponentType } from "react";
+import type { ComponentType } from "react";
 import { Grid2X2, Heart, Home, Package, User } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { appendNextPath } from "@/services/auth-intent";
-import { AUTH_SESSION_CHANGED_EVENT, getAuthSessionSnapshot } from "@/services/auth-session";
+import { useAuthSession } from "@/hooks/use-auth-session";
 
 type MobileDestination = {
   label: string;
@@ -21,29 +21,22 @@ function isVisiblePath(pathname: string) {
   return pathname === "/" || VISIBLE_PATHS.some((path) => pathname === path || pathname.startsWith(path));
 }
 
-function subscribeToAuthSession(onStoreChange: () => void) {
-  const handleStorage = (event: StorageEvent) => {
-    if (!event.key || event.key.startsWith("zogular_") || event.key.startsWith("zamoyo_")) onStoreChange();
-  };
-  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
-  window.addEventListener("storage", handleStorage);
-  return () => {
-    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
-    window.removeEventListener("storage", handleStorage);
-  };
-}
-
 export function MobileBottomNavigation() {
   const pathname = usePathname() || "/";
-  const authSnapshot = useSyncExternalStore(subscribeToAuthSession, getAuthSessionSnapshot, () => "");
+  const auth = useAuthSession();
 
   if (!isVisiblePath(pathname)) return null;
 
-  const isLoggedIn = Boolean(authSnapshot);
+  const isLoggedIn = auth.status === "authenticated";
   const destinations: MobileDestination[] = [
     { label: "Home", href: "/", icon: Home, active: (path) => path === "/" },
     { label: "Categories", href: "/categories", icon: Grid2X2, active: (path) => path === "/categories" || path.startsWith("/category/") },
-    { label: "Wishlist", href: "/account/saved", icon: Heart, active: (path) => path.startsWith("/account/saved") },
+    {
+      label: "Wishlist",
+      href: isLoggedIn ? "/account/saved" : appendNextPath("/auth/login", "/account/saved"),
+      icon: Heart,
+      active: (path) => path.startsWith("/account/saved"),
+    },
     {
       label: "Orders",
       href: isLoggedIn ? "/account/orders" : appendNextPath("/auth/login", "/account/orders"),

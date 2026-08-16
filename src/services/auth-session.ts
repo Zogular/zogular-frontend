@@ -102,6 +102,24 @@ export function getAuthSessionSnapshot(): string {
   return user ?? "";
 }
 
+export function subscribeToAuthSession(onStoreChange: () => void): () => void {
+  if (typeof window === "undefined") return () => undefined;
+
+  const handleStorage = (event: StorageEvent) => {
+    if (!event.key || event.key === AUTH_USER_KEY || LEGACY_AUTH_USER_KEYS.includes(event.key)) {
+      onStoreChange();
+    }
+  };
+
+  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
+  window.addEventListener("storage", handleStorage);
+
+  return () => {
+    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
 export function storeAuthSession(session: AuthSession): void {
   cleanupLegacyTokenStorageOnce();
   const storage = getStorage();
