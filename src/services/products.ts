@@ -115,9 +115,11 @@ export type BackendProduct = {
 
 type BackendProductListResponse = {
   status?: string;
+  results?: number;
   data?: {
     products?: BackendProduct[];
     product?: BackendProduct;
+    days?: number;
   };
   pagination?: {
     page?: number;
@@ -663,18 +665,43 @@ async function fetchBackendRelatedProducts(
 async function fetchBackendProductCollection(
   endpoint: string,
   query?: Record<string, string | number | boolean | null | undefined>,
+  options: { timeout?: number } = {},
 ): Promise<Product[]> {
-  const payload = await apiClient<BackendProductListResponse>(endpoint, {
+  const payload = await apiClient<unknown>(endpoint, {
     method: "GET",
     authMode: "omit",
     cache: "no-store",
+    timeout: options.timeout,
     query,
   });
-  return extractBackendProducts(payload).map(normalizeBackendProduct);
+
+  if (!payload || typeof payload !== "object") {
+    throw new ProductListContractError("Product collection response must be an object.");
+  }
+
+  const response = payload as BackendProductListResponse;
+  if (
+    response.status !== "success" ||
+    !response.data ||
+    !Array.isArray(response.data.products) ||
+    !Number.isSafeInteger(response.results) ||
+    response.results !== response.data.products.length
+  ) {
+    throw new ProductListContractError("Product collection response has an invalid shape.");
+  }
+
+  try {
+    return response.data.products.map(normalizeBackendProduct);
+  } catch {
+    throw new ProductListContractError("Product collection contains an invalid product.");
+  }
 }
 
-export async function getHomeNewArrivals(limit = 10): Promise<Product[]> {
-  return fetchBackendProductCollection("/products/new-arrivals", { limit });
+export async function getHomeNewArrivals(
+  limit = 10,
+  options: { timeout?: number } = {},
+): Promise<Product[]> {
+  return fetchBackendProductCollection("/products/new-arrivals", { limit }, options);
 }
 
 export async function getHomeMostViewed(limit = 10): Promise<Product[]> {
