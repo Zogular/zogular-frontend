@@ -1,23 +1,30 @@
 import { ProductCollectionPage } from "@/components/consumer/ProductCollectionPage";
-import { getSearchableProducts } from "@/services/products";
+import { NewArrivalsUnavailable } from "@/app/(consumer)/new-arrivals/NewArrivalsUnavailable";
+import { ApiError } from "@/services/api";
+import { getHomeNewArrivals, ProductListContractError } from "@/services/products";
+import type { Product } from "@/types/product";
 
 export const dynamic = "force-dynamic";
 
 export default async function NewArrivalsPage() {
-  const products = await getSearchableProducts();
-  const newArrivals = products
-    .filter((product) => product.isNew || product.badge?.toLowerCase().includes("new"))
-    .sort((left, right) => right.reviews - left.reviews);
+  let products: Product[];
 
-  const fallback = [...products].sort((left, right) => right.reviews - left.reviews).slice(0, 24);
+  try {
+    products = await getHomeNewArrivals(20);
+  } catch (error) {
+    if (error instanceof ApiError || error instanceof ProductListContractError) {
+      return <NewArrivalsUnavailable />;
+    }
+    throw error;
+  }
 
   return (
     <ProductCollectionPage
       title="New Arrivals"
-      description="Latest listings from sellers across Zambia, curated for quick discovery."
-      products={newArrivals.length ? newArrivals : fallback}
-      emptyTitle="No new arrivals at the moment"
-      emptyDescription="Sellers are preparing fresh listings. Check back again soon."
+      description="Browse the newest products available on Zogular."
+      products={products}
+      emptyTitle="No new arrivals yet"
+      emptyDescription="Check back later for newly listed products."
     />
   );
 }

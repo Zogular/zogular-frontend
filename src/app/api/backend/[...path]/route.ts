@@ -27,7 +27,7 @@ const AUTH_COOKIE_NAMES = ["accessToken", "refreshToken"];
 const ADMIN_BACKEND_PATH_PREFIX = "admin/";
 
 type RouteContext = {
-  params: Promise<{ path?: string[] }> | { path?: string[] };
+  params: Promise<{ path?: string[] }>;
 };
 
 function buildBackendUrl(path: string[], search: string): string {
