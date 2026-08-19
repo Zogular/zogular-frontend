@@ -3,7 +3,6 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  AlertCircle,
   CheckCircle2,
   ChevronRight,
   Clock,
@@ -20,7 +19,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { FeedbackState } from "@/components/states/FeedbackState";
+import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { useWishlist } from "@/hooks/use-wishlist";
 import { useCart } from "@/hooks/use-cart";
 import { useHydratedValue } from "@/hooks/use-hydrated-value";
@@ -31,7 +30,7 @@ import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 export default function AccountOverviewPage() {
   const [data, setData] = React.useState<AccountOverview | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
 
   const { itemCount: savedItemsCount, hasHydrated: wishlistHydrated } = useWishlist();
   const { itemCount: cartItemsCount, totalAmount: cartTotal, hasHydrated: cartHydrated } = useCart();
@@ -46,12 +45,8 @@ export default function AccountOverviewPage() {
       setError(null);
       const result = await getAccountOverview();
       setData(result);
-    } catch (err) {
-      if (err && typeof err === "object" && "status" in err && err.status === 401) {
-        setError("Your session expired. Please sign in again.");
-      } else {
-        setError(err instanceof Error ? err.message : "Unknown error occurred");
-      }
+    } catch (loadError) {
+      setError(loadError);
     } finally {
       setLoading(false);
     }
@@ -62,30 +57,12 @@ export default function AccountOverviewPage() {
   }, [loadData]);
 
   if (loading) {
-    return <div className="py-20 text-center text-sm font-medium text-zinc-500">Loading your account dashboard...</div>;
+    return <div className="py-20 text-center text-sm font-medium text-zinc-500">Loading your account...</div>;
   }
 
   if (error || !data) {
     return (
-      <FeedbackState
-        icon={AlertCircle}
-        tone="danger"
-        title="Failed to load dashboard"
-        description={error ?? "We couldn't load your account overview right now."}
-        action={
-          error === "Your session expired. Please sign in again." ? (
-            <Link href="/auth/login?next=/account">
-              <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
-                Sign In
-              </Button>
-            </Link>
-          ) : (
-            <Button onClick={loadData} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-              Try Again
-            </Button>
-          )
-        }
-      />
+      <AccountLoadErrorState error={error} resource="account" onRetry={loadData} />
     );
   }
 

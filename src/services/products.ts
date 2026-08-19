@@ -115,9 +115,11 @@ export type BackendProduct = {
 
 type BackendProductListResponse = {
   status?: string;
+  results?: number;
   data?: {
     products?: BackendProduct[];
     product?: BackendProduct;
+    days?: number;
   };
   pagination?: {
     page?: number;
@@ -254,14 +256,17 @@ function getProductCategoryMeta(product: BackendProduct): { name: string; slug: 
   return { name: "Other Finds", slug: "products" };
 }
 
-function calculateAverageRating(reviews?: BackendReview[] | null): number {
-  if (!reviews || reviews.length === 0) return 0;
-  const valid = reviews
+function calculateRatingSummary(reviews?: BackendReview[] | null): { rating: number; reviewCount: number } {
+  if (!reviews || reviews.length === 0) return { rating: 0, reviewCount: 0 };
+  const validRatings = reviews
     .map((r) => r.rating)
-    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating));
-  if (valid.length === 0) return 0;
-  const sum = valid.reduce((acc, curr) => acc + curr, 0);
-  return Math.round((sum / valid.length) * 10) / 10;
+    .filter((rating): rating is number => typeof rating === "number" && Number.isFinite(rating) && rating >= 1 && rating <= 5);
+  if (validRatings.length === 0) return { rating: 0, reviewCount: 0 };
+  const sum = validRatings.reduce((acc, curr) => acc + curr, 0);
+  return {
+    rating: Math.round((sum / validRatings.length) * 10) / 10,
+    reviewCount: validRatings.length,
+  };
 }
 
 function titleFromSlug(slug?: string | null): string {
@@ -318,9 +323,7 @@ export function normalizeBackendProduct(product: BackendProduct): Product {
     ? Math.round(((originalPrice - currentPrice) / originalPrice) * 100)
     : undefined;
 
-  const rawReviews = product.reviews ?? [];
-  const reviewCount = rawReviews.length;
-  const rating = calculateAverageRating(rawReviews);
+  const { rating, reviewCount } = calculateRatingSummary(product.reviews);
   const idStr = asString(product.id) ?? "";
   const slugStr = asString(product.slug) ?? "";
   const title = asString(product.title) ?? "";
@@ -662,18 +665,43 @@ async function fetchBackendRelatedProducts(
 async function fetchBackendProductCollection(
   endpoint: string,
   query?: Record<string, string | number | boolean | null | undefined>,
+  options: { timeout?: number } = {},
 ): Promise<Product[]> {
-  const payload = await apiClient<BackendProductListResponse>(endpoint, {
+  const payload = await apiClient<unknown>(endpoint, {
     method: "GET",
     authMode: "omit",
     cache: "no-store",
+    timeout: options.timeout,
     query,
   });
-  return extractBackendProducts(payload).map(normalizeBackendProduct);
+
+  if (!payload || typeof payload !== "object") {
+    throw new ProductListContractError("Product collection response must be an object.");
+  }
+
+  const response = payload as BackendProductListResponse;
+  if (
+    response.status !== "success" ||
+    !response.data ||
+    !Array.isArray(response.data.products) ||
+    !Number.isSafeInteger(response.results) ||
+    response.results !== response.data.products.length
+  ) {
+    throw new ProductListContractError("Product collection response has an invalid shape.");
+  }
+
+  try {
+    return response.data.products.map(normalizeBackendProduct);
+  } catch {
+    throw new ProductListContractError("Product collection contains an invalid product.");
+  }
 }
 
-export async function getHomeNewArrivals(limit = 10): Promise<Product[]> {
-  return fetchBackendProductCollection("/products/new-arrivals", { limit });
+export async function getHomeNewArrivals(
+  limit = 10,
+  options: { timeout?: number } = {},
+): Promise<Product[]> {
+  return fetchBackendProductCollection("/products/new-arrivals", { limit }, options);
 }
 
 export async function getHomeMostViewed(limit = 10): Promise<Product[]> {

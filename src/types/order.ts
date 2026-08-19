@@ -18,6 +18,18 @@ export interface OrderSummary {
   isLegacyIncomplete?: boolean;
 }
 
+export interface OrderPagination {
+  total: number;
+  page: number;
+  limit: number;
+  pages: number;
+}
+
+export interface OrderPage {
+  orders: OrderSummary[];
+  pagination: OrderPagination;
+}
+
 export interface InvoiceItem {
   productId: string;
   slug?: string;

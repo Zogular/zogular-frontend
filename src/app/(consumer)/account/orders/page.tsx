@@ -4,7 +4,6 @@ import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
 import {
-  AlertCircle,
   CheckCircle2,
   Clock,
   Package,
@@ -16,8 +15,9 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
-import { getMyOrders } from "@/services/orders";
-import type { OrderStatus, OrderSummary } from "@/types/order";
+import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
+import { appendOrderPage, getMyOrdersPage } from "@/services/orders";
+import type { OrderPage, OrderStatus } from "@/types/order";
 
 const STATUS_CONFIG = {
   processing: {
@@ -55,31 +55,49 @@ function formatCurrency(value: number) {
 }
 
 export default function OrdersPage() {
-  const [orders, setOrders] = React.useState<OrderSummary[]>([]);
+  const [orderPage, setOrderPage] = React.useState<OrderPage | null>(null);
+  const orderPageRef = React.useRef<OrderPage | null>(null);
   const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<string | null>(null);
+  const [error, setError] = React.useState<unknown>(null);
+  const [loadingMore, setLoadingMore] = React.useState(false);
+  const [nextPageError, setNextPageError] = React.useState(false);
+  const loadMoreRequestRef = React.useRef(false);
   const [activeTab, setActiveTab] = React.useState<OrderStatus | "all">("all");
   const [search, setSearch] = React.useState("");
 
-  const loadOrders = React.useCallback(async () => {
+  const loadOrders = React.useCallback(async (page = 1) => {
+    const append = page > 1;
+    if (append && loadMoreRequestRef.current) return;
     try {
-      setLoading(true);
-      setError(null);
-      const data = await getMyOrders();
-      setOrders(data);
-    } catch (err) {
-      if (err && typeof err === "object" && "status" in err && err.status === 401) {
-        setError("Your session expired. Please sign in again.");
-      } else {
-        setError(err instanceof Error ? err.message : "An unknown error occurred");
+      if (append) loadMoreRequestRef.current = true;
+      if (append) setLoadingMore(true);
+      else setLoading(true);
+      if (append) setNextPageError(false);
+      else setError(null);
+      const data = await getMyOrdersPage({ page });
+      if (append && !orderPageRef.current) {
+        throw new Error("Order history is not ready to load another page.");
       }
+      const nextOrderPage = append
+        ? appendOrderPage(orderPageRef.current as OrderPage, data)
+        : data;
+      orderPageRef.current = nextOrderPage;
+      setOrderPage(nextOrderPage);
+    } catch (loadError) {
+      if (append) setNextPageError(true);
+      else setError(loadError);
     } finally {
-      setLoading(false);
+      if (append) loadMoreRequestRef.current = false;
+      if (append) setLoadingMore(false);
+      else setLoading(false);
     }
   }, []);
 
+  const orders = orderPage?.orders ?? [];
+  const pagination = orderPage?.pagination ?? null;
+
   React.useEffect(() => {
-    loadOrders();
+    void loadOrders();
   }, [loadOrders]);
 
   const filteredOrders = orders.filter((order) => {
@@ -122,7 +140,7 @@ export default function OrdersPage() {
           <button
             key={tab.value}
             onClick={() => setActiveTab(tab.value)}
-            className={`shrink-0 rounded-full border px-5 py-2 text-sm font-bold transition-colors ${
+            className={`min-h-11 shrink-0 rounded-full border px-5 py-2 text-sm font-bold transition-colors ${
               activeTab === tab.value
                 ? "border-zinc-900 bg-zinc-900 text-white shadow-md"
                 : "border-zinc-200 bg-white text-zinc-600 hover:bg-zinc-50"
@@ -133,30 +151,18 @@ export default function OrdersPage() {
         ))}
       </div>
 
+      {!loading && !error && pagination ? (
+        <p className="text-sm font-medium text-zinc-500" aria-live="polite">
+          Showing {orders.length} of {pagination.total} orders
+        </p>
+      ) : null}
+
       {loading ? (
         <div className="py-16 text-center text-sm font-medium text-zinc-500">
           Loading your order history...
         </div>
       ) : error ? (
-        <FeedbackState
-          icon={AlertCircle}
-          tone="danger"
-          title="Failed to load orders"
-          description={error}
-          action={
-            error === "Your session expired. Please sign in again." ? (
-              <Link href="/auth/login?next=/account/orders">
-                <Button className="bg-zinc-900 text-white hover:bg-zinc-800">
-                  Sign In
-                </Button>
-              </Link>
-            ) : (
-              <Button onClick={loadOrders} variant="outline" className="border-red-200 text-red-700 hover:bg-red-100">
-                Try Again
-              </Button>
-            )
-          }
-        />
+        <AccountLoadErrorState error={error} resource="orders" onRetry={() => loadOrders()} />
       ) : filteredOrders.length === 0 ? (
         <FeedbackState
           icon={Package}
@@ -250,6 +256,23 @@ export default function OrdersPage() {
           })}
         </div>
       )}
+
+      {!loading && !error && pagination && pagination.page < pagination.pages ? (
+        <div className="flex flex-col items-center gap-2 pt-2">
+          <Button
+            type="button"
+            variant="outline"
+            disabled={loadingMore}
+            onClick={() => void loadOrders(pagination.page + 1)}
+            className="h-11 min-w-36 rounded-xl font-bold"
+          >
+            {loadingMore ? "Loading..." : "Load More Orders"}
+          </Button>
+          {nextPageError ? (
+            <p role="alert" className="text-sm font-semibold text-red-700">More orders could not load. Please try again.</p>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

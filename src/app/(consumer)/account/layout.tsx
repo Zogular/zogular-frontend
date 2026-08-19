@@ -7,7 +7,9 @@ import { usePathname } from "next/navigation";
 import { User, Package, Heart, MapPin, Settings, LogOut, ChevronRight, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
-import { getAccountUserProfile, signOutAccount } from "@/services/account";
+import { signOutAccount } from "@/services/account";
+import { appendNextPath } from "@/services/auth-intent";
+import { useAuthSession } from "@/hooks/use-auth-session";
 
 type SidebarLink = {
   label: string;
@@ -37,23 +39,48 @@ export default function AccountLayout({
 }) {
   const pathname = usePathname();
   const router = useRouter();
-  const user = getAccountUserProfile();
+  const auth = useAuthSession();
   const [isSigningOut, setIsSigningOut] = React.useState(false);
-  const [mounted, setMounted] = React.useState(false);
 
   React.useEffect(() => {
-    setMounted(true);
-  }, []);
+    if (auth.status === "guest" && !isSigningOut) {
+      const loginPath = auth.reason === "expired" ? "/auth/login?reason=signin-again" : "/auth/login";
+      router.replace(appendNextPath(loginPath, pathname));
+    }
+  }, [auth, isSigningOut, pathname, router]);
 
   const handleSignOut = React.useCallback(async () => {
-    try {
-      setIsSigningOut(true);
-      await signOutAccount();
-      router.push("/auth/login");
-    } finally {
-      setIsSigningOut(false);
-    }
+    setIsSigningOut(true);
+    await signOutAccount();
+    router.replace("/auth/login");
   }, [router]);
+
+  if (auth.status === "unavailable") {
+    return (
+      <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
+        <div className="space-y-3 text-center">
+          <p className="text-sm font-semibold text-zinc-700">Your account could not open.</p>
+          <Button type="button" variant="outline" onClick={auth.retry}>Try Again</Button>
+        </div>
+      </main>
+    );
+  }
+
+  if (auth.status !== "authenticated" || isSigningOut) {
+    return (
+      <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
+        <div className="flex items-center gap-3 text-sm font-semibold text-zinc-600">
+          <Loader2 className="h-5 w-5 animate-spin text-[#009E49] motion-reduce:animate-none" aria-hidden="true" />
+          {isSigningOut ? "Signing out…" : auth.status === "guest" ? "Opening sign in…" : "Checking your account…"}
+        </div>
+      </main>
+    );
+  }
+
+  const user = {
+    name: `${auth.user.firstName} ${auth.user.lastName ?? ""}`.trim() || auth.user.email,
+    email: auth.user.email,
+  };
 
   return (
     <main className="min-h-screen bg-[#f4fbf6] pb-24 pt-6 md:pb-12">
@@ -79,7 +106,7 @@ export default function AccountLayout({
                 <Link
                   key={href}
                   href={href}
-                  className={`flex shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
+                  className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold transition-all ${
                     active
                       ? "bg-[#009E49] text-white shadow-md shadow-[#009E49]/20"
                       : "border border-zinc-200 bg-white text-zinc-600"
@@ -97,8 +124,7 @@ export default function AccountLayout({
 
             {/* USER CARD */}
             <div className="mb-4 rounded-3xl border border-zinc-200/60 bg-white p-5 shadow-[0_8px_30px_rgba(15,23,42,0.04)]">
-              {mounted ? (
-                <div className="mb-1 flex items-center gap-3">
+              <div className="mb-1 flex items-center gap-3">
                   <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-[#009E49]/10 text-xl font-black text-[#009E49]">
                     {user.name.charAt(0)}
                   </div>
@@ -110,18 +136,7 @@ export default function AccountLayout({
                       {user.email}
                     </p>
                   </div>
-                </div>
-              ) : (
-                <div className="mb-1 flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-zinc-100">
-                    <User className="h-5 w-5 text-zinc-400" />
-                  </div>
-                  <div className="flex flex-1 flex-col gap-2">
-                    <div className="h-4 w-24 rounded bg-zinc-100" />
-                    <div className="h-3 w-32 rounded bg-zinc-100" />
-                  </div>
-                </div>
-              )}
+              </div>
             </div>
 
             {/* NAV LINKS */}
@@ -167,7 +182,7 @@ export default function AccountLayout({
           </aside>
 
           {/* PAGE CONTENT (Children render here) */}
-          <div className="flex-1 min-w-0">{children}</div>
+          <div key={auth.user.id} className="flex-1 min-w-0">{children}</div>
           
         </div>
       </div>
