@@ -6,8 +6,50 @@ import {
   loadHomeDiscoveryData,
   type HomeDiscoveryDependencies,
 } from "../src/features/consumer-discovery/home/home-discovery-data";
+import {
+  getHomeMostViewed,
+  getTrendingProducts,
+  ProductListContractError,
+  type BackendProduct,
+} from "../src/services/products";
 import type { CategoryNode } from "../src/services/categories-api";
 import type { Product } from "../src/types/product";
+
+const originalFetch = globalThis.fetch;
+
+test.afterEach(() => {
+  globalThis.fetch = originalFetch;
+});
+
+function jsonResponse(payload: unknown, status = 200): Response {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}
+
+function backendProduct(id: string): BackendProduct {
+  return {
+    id,
+    slug: `product-${id}`,
+    title: `Product ${id}`,
+    price: 100,
+    stock: 4,
+    categoryRef: { id: "category-1", name: "Electronics", slug: "electronics" },
+    images: [],
+    reviews: [],
+    user: { id: "owner-1" },
+  };
+}
+
+function productListPayload(products: BackendProduct[], limit: number) {
+  return {
+    status: "success",
+    results: products.length,
+    pagination: { page: 1, limit, total: products.length, pages: products.length ? 1 : 0 },
+    data: { products },
+  };
+}
 
 function makeProduct(id: number): Product {
   return {
@@ -134,8 +176,50 @@ test("cross-section reuse is minimized without changing source order or fabricat
   ]);
 });
 
+test("Most Viewed uses popular product ordering while Trending remains featured", async () => {
+  const requests: URL[] = [];
+  globalThis.fetch = async (input) => {
+    const url = new URL(String(input));
+    requests.push(url);
+    if (url.pathname.endsWith("/products")) {
+      return jsonResponse(productListPayload([backendProduct("popular")], 6));
+    }
+    if (url.pathname.endsWith("/products/featured")) {
+      return jsonResponse({
+        status: "success",
+        results: 1,
+        data: { products: [backendProduct("featured")] },
+      });
+    }
+    throw new Error(`Unexpected request: ${url}`);
+  };
+
+  await expect(getHomeMostViewed(6)).resolves.toMatchObject([{ id: "popular" }]);
+  await expect(getTrendingProducts()).resolves.toMatchObject([{ id: "featured" }]);
+
+  expect(requests).toHaveLength(2);
+  expect(requests[0].pathname).toMatch(/\/products$/);
+  expect(requests[0].pathname).not.toContain("/featured");
+  expect(Object.fromEntries(requests[0].searchParams)).toMatchObject({
+    page: "1",
+    limit: "6",
+    sort: "popular",
+  });
+  expect(requests[1].pathname).toMatch(/\/products\/featured$/);
+});
+
+test("Most Viewed preserves strict malformed-response failure", async () => {
+  globalThis.fetch = async () => jsonResponse({ status: "success", data: { products: [] } });
+
+  await expect(getHomeMostViewed(4)).rejects.toBeInstanceOf(ProductListContractError);
+});
+
 test("homepage services use the verified public collection endpoints and retire unsupported composition", () => {
   const productsSource = fs.readFileSync(path.resolve("src/services/products.ts"), "utf8");
+  const homeProductSectionSource = fs.readFileSync(
+    path.resolve("src/features/consumer-discovery/home/HomeProductSection.tsx"),
+    "utf8",
+  );
   const homeSource = fs.readFileSync(
     path.resolve("src/features/consumer-discovery/home/HomeDiscovery.tsx"),
     "utf8",
@@ -149,6 +233,8 @@ test("homepage services use the verified public collection endpoints and retire 
   expect(productsSource).toContain('fetchBackendProductCollection("/products/new-arrivals"');
   expect(productsSource).toContain('fetchBackendProductCollection("/products/featured"');
   expect(productsSource).toContain('sort: "newest"');
+  expect(productsSource).toContain('fetchBackendProducts({ page: 1, limit, sort: "popular" })');
+  expect(homeProductSectionSource).toContain('title === "Most Viewed" && products.length < 4');
   expect(pageSource).toContain("<HomeDiscovery {...discovery} />");
   expect(pageSource).not.toContain("HomePageClient");
   expect(fs.existsSync(path.resolve("src/components/home/HomePageClient.tsx"))).toBe(false);
