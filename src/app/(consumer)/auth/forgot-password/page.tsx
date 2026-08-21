@@ -2,12 +2,16 @@
 
 import Link from "next/link";
 import { ArrowLeft, X, Mail, Loader2 } from "lucide-react";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { requestPasswordReset } from "@/services/auth";
+import {
+  clearPasswordRecoveryState,
+  getPasswordRecoveryErrorMessage,
+  requestPasswordReset,
+} from "@/services/auth";
 import { appendNextPath, sanitizeInternalNextPath } from "@/services/auth-intent";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 
@@ -28,17 +32,25 @@ function ForgotPasswordContent() {
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const submitPendingRef = useRef(false);
+
+  useEffect(() => {
+    clearPasswordRecoveryState();
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (submitPendingRef.current) return;
     try {
+      submitPendingRef.current = true;
       setIsSubmitting(true);
       setError(null);
       const result = await requestPasswordReset({ email, next: nextPath });
-      router.push(result.nextPath ?? appendNextPath(`/auth/verify-code?email=${encodeURIComponent(email)}`, nextPath));
+      router.push(result.nextPath ?? "/auth/verify-code");
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to send reset code.");
+      setError(getPasswordRecoveryErrorMessage(err, "request"));
     } finally {
+      submitPendingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -50,11 +62,11 @@ function ForgotPasswordContent() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
       <div className="auth-panel relative z-10 flex flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Link href={loginHref}>
-          <Button data-auth-back aria-label="Go back" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
+        <Button asChild data-auth-back aria-label="Go back" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
+          <Link href={loginHref}>
             <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
 
         <div className="mx-auto w-full max-w-90">
           <div className="mb-8 space-y-4 text-center lg:text-left">
@@ -74,9 +86,11 @@ function ForgotPasswordContent() {
 
           <form className="space-y-5" onSubmit={handleSubmit}>
             <div className="space-y-1.5">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Email Address</label>
+              <label htmlFor="recovery-email" className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Email address</label>
               <div className="relative">
                 <Input
+                  id="recovery-email"
+                  autoComplete="email"
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
@@ -87,7 +101,7 @@ function ForgotPasswordContent() {
               </div>
             </div>
 
-            {error ? <p className="text-xs font-medium text-red-300">{error}</p> : null}
+            {error ? <p role="alert" className="text-xs font-medium text-red-300">{error}</p> : null}
 
             <Button
               disabled={isSubmitting || !email}
@@ -108,11 +122,11 @@ function ForgotPasswordContent() {
       </div>
 
       <div className="relative z-10 hidden flex-col justify-end p-16 lg:flex xl:p-24">
-        <Link href="/">
-          <Button aria-label="Close password reset page" variant="ghost" size="icon" className="absolute right-6 top-6 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
+        <Button asChild aria-label="Close password reset page" variant="ghost" size="icon" className="absolute right-6 top-6 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
+          <Link href="/">
             <X className="h-5 w-5" />
-          </Button>
-        </Link>
+          </Link>
+        </Button>
 
         <div className="max-w-lg">
           <h2 className="mb-4 text-4xl font-extrabold leading-tight tracking-tighter text-white drop-shadow-lg xl:text-5xl">
