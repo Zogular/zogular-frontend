@@ -230,8 +230,8 @@ function formatPaymentMethod(method?: string): string {
   return method;
 }
 
-export async function getInvoiceById(id: string, verifiedUser?: AuthUser): Promise<Invoice> {
-  const response = await apiClient<unknown>(`/orders/${id}`);
+export async function getInvoiceById(id: string, verifiedUser?: AuthUser, signal?: AbortSignal): Promise<Invoice> {
+  const response = await apiClient<unknown>(`/orders/${id}`, { signal });
   if (!response || typeof response !== "object" || !("data" in response)) {
     throw new OrderContractError("Order response is malformed.");
   }

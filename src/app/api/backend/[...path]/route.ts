@@ -1,10 +1,13 @@
 import { NextResponse } from "next/server";
 import { ADMIN_SESSION_COOKIE } from "@/services/admin/session-cookie";
 
-const BACKEND_BASE_URL =
-  process.env.ADMIN_API_URL ??
-  process.env.NEXT_PUBLIC_API_URL ??
-  "http://localhost:5000/api/v1";
+function getBaseUrl(isAdmin: boolean): string {
+  const internalUrl = process.env.INTERNAL_BACKEND_URL;
+  if (internalUrl) return internalUrl;
+  return isAdmin
+    ? process.env.ADMIN_API_URL || process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1"
+    : process.env.NEXT_PUBLIC_API_URL || process.env.ADMIN_API_URL || "http://localhost:5000/api/v1";
+}
 
 const CSRF_ENDPOINT = "/auth/csrf-token";
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
@@ -30,8 +33,8 @@ type RouteContext = {
   params: Promise<{ path?: string[] }>;
 };
 
-function buildBackendUrl(path: string[], search: string): string {
-  const base = BACKEND_BASE_URL.replace(/\/$/, "");
+function buildBackendUrl(path: string[], search: string, isAdmin: boolean): string {
+  const base = getBaseUrl(isAdmin).replace(/\/$/, "");
   const endpoint = path.map(encodeURIComponent).join("/");
   return `${base}/${endpoint}${search}`;
 }
@@ -65,8 +68,8 @@ function extractCsrfToken(payload: unknown, headers: Headers): string | undefine
   return typeof token === "string" && token.trim() ? token : undefined;
 }
 
-async function getBackendCsrfHeaders(requestCookie: string | null): Promise<Record<string, string>> {
-  const response = await fetch(`${BACKEND_BASE_URL.replace(/\/$/, "")}${CSRF_ENDPOINT}`, {
+async function getBackendCsrfHeaders(requestCookie: string | null, isAdmin: boolean): Promise<Record<string, string>> {
+  const response = await fetch(`${getBaseUrl(isAdmin).replace(/\/$/, "")}${CSRF_ENDPOINT}`, {
     method: "GET",
     headers: {
       Accept: "application/json",
@@ -152,7 +155,7 @@ async function handler(request: Request, context: RouteContext) {
   }
 
   if (STATE_CHANGING_METHODS.has(method)) {
-    const csrfHeaders = await getBackendCsrfHeaders(requestCookie);
+    const csrfHeaders = await getBackendCsrfHeaders(requestCookie, isAdminBackendPath);
     for (const [key, value] of Object.entries(csrfHeaders)) {
       headers.set(key, value);
     }
@@ -162,7 +165,8 @@ async function handler(request: Request, context: RouteContext) {
     ? undefined
     : await request.arrayBuffer();
 
-  const backendResponse = await fetch(buildBackendUrl(path, requestUrl.search), {
+  const backendUrl = buildBackendUrl(path, requestUrl.search, isAdminBackendPath);
+  const backendResponse = await fetch(backendUrl, {
     method,
     headers,
     body,

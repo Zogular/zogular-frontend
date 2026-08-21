@@ -106,7 +106,7 @@ function CartItemRow({
                 else onDecrease(identity);
               }}
               aria-label={item.quantity <= 1 ? `Remove ${item.name}` : `Decrease ${item.name} quantity`}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-zinc-900 hover:shadow-sm"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-zinc-900 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2"
             >
               {item.quantity <= 1 ? (
                 <Trash2 className="h-3 w-3 text-red-500" />
@@ -124,7 +124,7 @@ function CartItemRow({
               title="Increase quantity"
               onClick={() => onIncrease(identity)}
               aria-label={`Increase ${item.name} quantity`}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-[#009E49] hover:shadow-sm"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-[#009E49] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2"
             >
               <Plus className="h-3 w-3" />
             </button>
@@ -147,11 +147,9 @@ function EmptyCartState({ onNavigate }: { onNavigate: () => void }) {
         Add something you like and it’ll show up here.
       </p>
 
-      <Link href="/categories" className="mt-5" onClick={onNavigate}>
-        <Button className="rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
-          Continue Shopping
-        </Button>
-      </Link>
+      <Button asChild className="mt-5 h-11 rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
+        <Link href="/categories" onClick={onNavigate}>Continue shopping</Link>
+      </Button>
     </div>
   );
 }
@@ -164,6 +162,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
     itemCount,
     totalAmount,
     hasHydrated,
+    identityResolved,
     increaseQuantity,
     decreaseQuantity,
     removeItem,
@@ -172,9 +171,10 @@ export function CartDrawer({ children }: CartDrawerProps) {
     syncWithBackend,
   } = useCart();
 
-  const displayItemCount = hasHydrated ? itemCount : 0;
-  const displayItems = hasHydrated ? items : [];
-  const displayTotalAmount = hasHydrated ? totalAmount : 0;
+  const isReady = hasHydrated && identityResolved;
+  const displayItemCount = isReady ? itemCount : 0;
+  const displayItems = isReady ? items : [];
+  const displayTotalAmount = isReady ? totalAmount : 0;
   const total = displayTotalAmount;
   const closeDrawer = () => setOpen(false);
 
@@ -200,7 +200,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
           </div>
         </SheetHeader>
 
-        {!hasHydrated ? (
+        {!isReady ? (
           <div className="flex flex-1 items-center justify-center px-6 py-12 text-sm font-medium text-zinc-500">
             Loading your cart...
           </div>
@@ -271,18 +271,16 @@ export function CartDrawer({ children }: CartDrawerProps) {
                 </div>
               </div>
 
-              <SheetClose asChild>
-                <Link href="/checkout" className="w-full" onClick={closeDrawer}>
-                  <Button className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#009E49] text-base font-bold text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d]">
-                    Proceed to Checkout
-                    <ArrowRight className="h-4 w-4" />
-                  </Button>
+              <Button asChild className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#009E49] text-base font-bold text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d]">
+                <Link href="/checkout" onClick={closeDrawer}>
+                  Proceed to checkout
+                  <ArrowRight className="h-4 w-4" />
                 </Link>
-              </SheetClose>
+              </Button>
 
               <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
                 <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" />
-                Backend-quoted COD checkout
+                Totals confirmed at checkout
               </div>
             </SheetFooter>
           </>

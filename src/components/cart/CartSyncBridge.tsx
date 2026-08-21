@@ -1,43 +1,33 @@
 "use client";
 
 import * as React from "react";
+import { useAuthSession } from "@/hooks/use-auth-session";
 import { useCart } from "@/hooks/use-cart";
-import {
-  AUTH_SESSION_CHANGED_EVENT,
-  getAuthSessionSnapshot,
-} from "@/services/auth-session";
-
-function subscribeToAuthSession(onStoreChange: () => void) {
-  const handleStorage = (event: StorageEvent) => {
-    if (!event.key || event.key.startsWith("zogular_") || event.key.startsWith("zamoyo_")) {
-      onStoreChange();
-    }
-  };
-
-  window.addEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
-  window.addEventListener("storage", handleStorage);
-  window.addEventListener("focus", onStoreChange);
-
-  return () => {
-    window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, onStoreChange);
-    window.removeEventListener("storage", handleStorage);
-    window.removeEventListener("focus", onStoreChange);
-  };
-}
 
 export function CartSyncBridge() {
-  const authSnapshot = React.useSyncExternalStore(
-    subscribeToAuthSession,
-    getAuthSessionSnapshot,
-    () => "",
-  );
+  const auth = useAuthSession();
   const hasHydrated = useCart((state) => state.hasHydrated);
+  const suspendIdentity = useCart((state) => state.suspendIdentity);
+  const reconcileIdentity = useCart((state) => state.reconcileIdentity);
   const syncWithBackend = useCart((state) => state.syncWithBackend);
+  const ownerId = auth.status === "authenticated" ? auth.user.id : null;
+
+  React.useLayoutEffect(() => {
+    if (auth.status === "authenticated" && ownerId) {
+      reconcileIdentity(ownerId);
+      return;
+    }
+    if (auth.status === "guest") {
+      reconcileIdentity(null);
+      return;
+    }
+    suspendIdentity();
+  }, [auth.status, ownerId, reconcileIdentity, suspendIdentity]);
 
   React.useEffect(() => {
-    if (!hasHydrated) return;
+    if (!hasHydrated || auth.status !== "authenticated") return;
     void syncWithBackend();
-  }, [authSnapshot, hasHydrated, syncWithBackend]);
+  }, [auth.status, hasHydrated, ownerId, syncWithBackend]);
 
   return null;
 }

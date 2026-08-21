@@ -2,12 +2,13 @@
 
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
-import { useSearchParams } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, LockKeyhole, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
 import { ApiError } from "@/services/api";
 import { appendNextPath } from "@/services/auth-intent";
+import { useAuthSession, type ClientAuthState } from "@/hooks/use-auth-session";
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 
@@ -20,13 +21,21 @@ type LoadState =
   | { status: "network" }
   | { status: "error" };
 
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
 }
 
-function OrderConfirmation({ orderId }: { orderId: string | null }) {
+function OrderConfirmation({
+  auth,
+  orderId,
+}: {
+  auth: ClientAuthState;
+  orderId: string | null;
+}) {
+  const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: "loading" });
-
   const [retryCount, setRetryCount] = useState(0);
 
   const handleRetry = () => {
@@ -35,15 +44,24 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
   };
 
   useEffect(() => {
-    if (!orderId) return;
-    let active = true;
+    if (auth.status !== "guest") return;
+    const nextPath = orderId ? `/success?orderId=${encodeURIComponent(orderId)}` : "/account/orders";
+    const loginPath = auth.reason === "expired" ? "/auth/login?reason=signin-again" : "/auth/login";
+    router.replace(appendNextPath(loginPath, nextPath));
+  }, [auth, orderId, router]);
 
-    getInvoiceById(orderId)
+  useEffect(() => {
+    if (auth.status !== "authenticated" || !orderId || !UUID_PATTERN.test(orderId)) return;
+    let active = true;
+    const abortController = new AbortController();
+
+    getInvoiceById(orderId, auth.user, abortController.signal)
       .then((order) => {
         if (active) setState({ status: "success", order });
       })
       .catch((error: unknown) => {
         if (!active) return;
+        if (error instanceof DOMException && error.name === "AbortError") return;
         if (error instanceof ApiError) {
           if (error.status === 401) return setState({ status: "unauthorized" });
           if (error.status === 403) return setState({ status: "forbidden" });
@@ -55,19 +73,36 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
 
     return () => {
       active = false;
+      abortController.abort();
     };
-  }, [orderId, retryCount]);
+  }, [auth, orderId, retryCount]);
 
-  if (!orderId) {
+  if (auth.status === "unavailable") {
     return (
-      <OrderState title="Order not found" description="The order reference is missing or invalid. No order success has been assumed.">
-        <Link href="/account/orders"><Button className="h-12 rounded-xl bg-zinc-950 px-6 font-bold text-white hover:bg-zinc-800">View my orders</Button></Link>
+      <OrderState title="Order confirmation could not open" description="Please try again in a moment.">
+        <Button type="button" onClick={auth.retry} className="h-11 rounded-xl bg-zinc-950 px-6 font-bold text-white hover:bg-zinc-800">
+          Try again
+        </Button>
+      </OrderState>
+    );
+  }
+
+  if (auth.status !== "authenticated") {
+    return <OrderState title="Checking your order" description="This will only take a moment." />;
+  }
+
+  if (!orderId || !UUID_PATTERN.test(orderId)) {
+    return (
+      <OrderState title="Order not found" description="Choose an order from your order history.">
+        <Button asChild className="h-12 rounded-xl bg-zinc-950 px-6 font-bold text-white hover:bg-zinc-800">
+          <Link href="/account/orders">View my orders</Link>
+        </Button>
       </OrderState>
     );
   }
 
   if (state.status === "loading") {
-    return <OrderState title="Confirming your order" description="Checking the backend order record before showing confirmation." />;
+    return <OrderState title="Confirming your order" description="Checking your order details." />;
   }
 
   if (state.status !== "success") {
@@ -76,7 +111,7 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
       unauthorized: {
         icon: LockKeyhole,
         title: "Sign in to view this order",
-        description: "The order reference has not been confirmed for this browser session.",
+        description: "Sign in again to continue.",
         action: "Sign in",
         href: appendNextPath("/auth/login", nextPath),
       },
@@ -90,21 +125,21 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
       "not-found": {
         icon: Package,
         title: "Order not found",
-        description: "The reference is missing, invalid, or no longer available. No order success has been assumed.",
+        description: "Choose an order from your order history.",
         action: "View my orders",
         href: "/account/orders",
       },
       network: {
         icon: AlertTriangle,
         title: "Order confirmation is temporarily unavailable",
-        description: "Zogular could not reach the order service. Retry before treating the order as confirmed.",
+        description: "Please try again before treating this order as confirmed.",
         action: "Retry",
         onAction: handleRetry,
       },
       error: {
         icon: AlertTriangle,
         title: "Order confirmation could not be verified",
-        description: "The backend did not return a confirmed order record. Check your orders or contact support.",
+        description: "Check your orders or contact support.",
         action: "View my orders",
         href: "/account/orders",
       },
@@ -117,13 +152,13 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
             {content.action}
           </Button>
         ) : (
-          <Link href={content.href!}>
-            <Button className="h-12 rounded-xl bg-zinc-950 px-6 font-bold text-white hover:bg-zinc-800">{content.action}</Button>
-          </Link>
+          <Button asChild className="h-12 rounded-xl bg-zinc-950 px-6 font-bold text-white hover:bg-zinc-800">
+            <Link href={content.href!}>{content.action}</Link>
+          </Button>
         )}
-        <Link href="/help">
-          <Button variant="outline" className="h-12 rounded-xl border-zinc-200 px-6 font-bold">Contact support</Button>
-        </Link>
+        <Button asChild variant="outline" className="h-12 rounded-xl border-zinc-200 px-6 font-bold">
+          <Link href="/help">Contact support</Link>
+        </Button>
       </OrderState>
     );
   }
@@ -165,10 +200,14 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
             )}
           </div>
 
-          <p className="mt-5 text-sm font-medium leading-6 text-zinc-600">Delivery is coordinated manually during the Lusaka pilot. Check your order record for backend-confirmed status updates.</p>
+          <p className="mt-5 text-sm font-medium leading-6 text-zinc-600">Check your order for the latest delivery updates.</p>
           <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
-            <Link href={`/account/orders/${order.id}`}><Button className="h-12 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white hover:bg-[#00853d]">View order</Button></Link>
-            <Link href="/categories"><Button variant="outline" className="h-12 w-full rounded-xl border-zinc-200 px-6 font-bold">Continue shopping</Button></Link>
+            <Button asChild className="h-12 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white hover:bg-[#00853d]">
+              <Link href={`/account/orders/${order.id}`}>View order</Link>
+            </Button>
+            <Button asChild variant="outline" className="h-12 w-full rounded-xl border-zinc-200 px-6 font-bold">
+              <Link href="/categories">Continue shopping</Link>
+            </Button>
           </div>
         </section>
       </div>
@@ -178,9 +217,17 @@ function OrderConfirmation({ orderId }: { orderId: string | null }) {
 
 function SuccessContent() {
   const searchParams = useSearchParams();
+  const auth = useAuthSession();
   const orderId = searchParams.get("orderId")?.trim() || null;
+  const identityKey = auth.status === "authenticated" ? auth.user.id : auth.status;
 
-  return <OrderConfirmation key={orderId ?? "missing"} orderId={orderId} />;
+  return (
+    <OrderConfirmation
+      key={`${identityKey}:${orderId ?? "missing"}`}
+      auth={auth}
+      orderId={orderId}
+    />
+  );
 }
 
 function OrderState({ title, description, icon: Icon = Package, children }: { title: string; description: string; icon?: typeof Package; children?: React.ReactNode }) {
@@ -197,5 +244,5 @@ function OrderState({ title, description, icon: Icon = Package, children }: { ti
 }
 
 export default function SuccessPage() {
-  return <Suspense fallback={<OrderState title="Confirming your order" description="Checking the backend order record before showing confirmation." />}><SuccessContent /></Suspense>;
+  return <Suspense fallback={<OrderState title="Confirming your order" description="Checking your order details." />}><SuccessContent /></Suspense>;
 }

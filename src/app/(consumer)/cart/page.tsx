@@ -14,22 +14,26 @@ function formatCurrency(value: number) {
 export default function CartPage() {
   const {
     hasHydrated,
+    identityResolved,
     items,
     itemCount,
     totalAmount,
     increaseQuantity,
     decreaseQuantity,
     removeItem,
+    syncStatus,
+    syncError,
+    syncWithBackend,
   } = useCart();
 
   const finalTotal = totalAmount;
 
-  if (!hasHydrated) {
+  if (!hasHydrated || !identityResolved) {
     return (
       <main className="min-h-screen bg-[#f4fbf6] pb-24 pt-8 md:pt-12">
         <div className="container mx-auto max-w-6xl px-4 md:px-6">
           <div className="rounded-3xl border border-zinc-200/70 bg-white p-8 text-center shadow-sm">
-            <p className="text-sm font-medium text-zinc-500">Loading your cart...</p>
+            <p className="text-sm font-medium text-zinc-500">Checking your cart…</p>
           </div>
         </div>
       </main>
@@ -44,6 +48,15 @@ export default function CartPage() {
           <p className="mt-2 text-sm font-medium text-zinc-500">Review your items before checkout.</p>
         </div>
         <PurchaseProgress currentStep="cart" className="mb-5" />
+
+        {syncStatus === "error" ? (
+          <div role="alert" className="mb-5 flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-medium text-amber-950 sm:flex-row sm:items-center">
+            <p className="min-w-0 flex-1">{syncError ?? "Your cart could not refresh. Try again."}</p>
+            <Button type="button" variant="outline" onClick={() => void syncWithBackend()} className="h-11 shrink-0 rounded-xl border-amber-300 bg-white px-4 font-bold">
+              Try again
+            </Button>
+          </div>
+        ) : null}
 
         {items.length ? (
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
@@ -86,7 +99,7 @@ export default function CartPage() {
                               }}
                               title={item.quantity <= 1 ? "Remove item from cart" : "Decrease quantity"}
                               aria-label={item.quantity <= 1 ? "Remove item from cart" : "Decrease quantity"}
-                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-zinc-500 transition-colors hover:text-zinc-900"
+                              className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-zinc-500 transition-colors hover:text-zinc-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
                             >
                               {item.quantity <= 1 ? <Trash2 className="h-3.5 w-3.5 text-red-500" /> : <Minus className="h-3.5 w-3.5" />}
                             </button>
@@ -96,7 +109,7 @@ export default function CartPage() {
                               onClick={() => increaseQuantity(identity)}
                               title="Increase quantity"
                               aria-label="Increase quantity"
-                              className="flex h-7 w-7 items-center justify-center rounded-lg bg-white text-zinc-500 transition-colors hover:text-[#009E49]"
+                              className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-zinc-500 transition-colors hover:text-[#009E49] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
                             >
                               <Plus className="h-3.5 w-3.5" />
                             </button>
@@ -125,11 +138,9 @@ export default function CartPage() {
                   <span className="text-[#FF6B00]">{formatCurrency(finalTotal)}</span>
                 </div>
               </div>
-              <Link href="/checkout" className="mt-5 block">
-                <Button className="h-11 w-full rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
-                  Proceed to Checkout
-                </Button>
-              </Link>
+              <Button asChild className="mt-5 h-11 w-full rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
+                <Link href="/checkout">Proceed to checkout</Link>
+              </Button>
             </aside>
           </div>
         ) : (
@@ -139,11 +150,9 @@ export default function CartPage() {
             </div>
             <h2 className="text-xl font-black text-zinc-900">Your cart is empty</h2>
             <p className="mt-2 text-sm font-medium text-zinc-500">Add products to start checkout.</p>
-            <Link href="/categories" className="mt-6 inline-flex">
-              <Button className="rounded-xl bg-zinc-900 px-6 font-bold text-white hover:bg-zinc-800">
-                Browse Categories
-              </Button>
-            </Link>
+            <Button asChild className="mt-6 h-11 rounded-xl bg-zinc-900 px-6 font-bold text-white hover:bg-zinc-800">
+              <Link href="/categories">Browse categories</Link>
+            </Button>
           </div>
         )}
       </div>

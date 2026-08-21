@@ -3,34 +3,23 @@ import type { CartItem } from "@/types/cart";
 
 const PRODUCT_IMAGE_PLACEHOLDER = "/file.svg";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const MAX_CART_QUANTITY = 99;
 
-type BackendCartProduct = {
-  id?: string;
-  title?: string | null;
-  description?: string | null;
-  price?: number | string | null;
-  salePrice?: number | string | null;
-  images?: unknown;
-  slug?: string | null;
-  isApproved?: boolean | null;
-  isSold?: boolean | null;
-};
+export type CartContractErrorCode =
+  | "MALFORMED_RESPONSE"
+  | "MALFORMED_ITEM"
+  | "DUPLICATE_ITEM"
+  | "INCONSISTENT_SUMMARY";
 
-type BackendCartItem = {
-  id?: string;
-  productId?: string;
-  quantity?: number;
-  product?: BackendCartProduct | null;
-};
-
-type BackendCartResponse = {
-  data?: {
-    cart?: {
-      items?: BackendCartItem[];
-    };
-    cartItem?: BackendCartItem;
-  };
-};
+export class CartContractError extends Error {
+  constructor(
+    message: string,
+    readonly code: CartContractErrorCode,
+  ) {
+    super(message);
+    this.name = "CartContractError";
+  }
+}
 
 export function isBackendProductId(value: string | number): boolean {
   return UUID_PATTERN.test(String(value));
@@ -40,152 +29,220 @@ export function canSyncCartItem(item: Pick<CartItem, "id">): boolean {
   return isBackendProductId(item.id);
 }
 
-function asString(value: unknown): string | undefined {
-  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
 
-function toNumber(value: unknown, fallback = 0): number {
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (typeof value === "string") {
-    const parsed = Number(value);
-    if (Number.isFinite(parsed)) return parsed;
-  }
-
-  return fallback;
+function requireNonEmptyString(value: unknown, field: string): string {
+  if (typeof value === "string" && value.trim()) return value.trim();
+  throw new CartContractError(`Cart item has an invalid ${field}.`, "MALFORMED_ITEM");
 }
 
-function getEffectiveProductPrice(product: BackendCartProduct | null | undefined): number {
-  const regularPrice = toNumber(product?.price);
-  const salePrice = toNumber(product?.salePrice);
+function requireUuid(value: unknown, field: string): string {
+  const result = requireNonEmptyString(value, field);
+  if (UUID_PATTERN.test(result)) return result;
+  throw new CartContractError(`Cart item has an invalid ${field}.`, "MALFORMED_ITEM");
+}
 
-  if (salePrice > 0 && salePrice < regularPrice) {
-    return salePrice;
-  }
+function requireMoney(value: unknown, field: string, allowZero = false): number {
+  const result = typeof value === "number"
+    ? value
+    : typeof value === "string" && value.trim()
+      ? Number(value)
+      : Number.NaN;
+  if (Number.isFinite(result) && (allowZero ? result >= 0 : result > 0)) return result;
+  throw new CartContractError(`Cart item has an invalid ${field}.`, "MALFORMED_ITEM");
+}
 
-  return regularPrice;
+function requireQuantity(value: unknown): number {
+  if (
+    typeof value === "number"
+    && Number.isInteger(value)
+    && value >= 1
+    && value <= MAX_CART_QUANTITY
+  ) return value;
+  throw new CartContractError("Cart item has an invalid quantity.", "MALFORMED_ITEM");
+}
+
+function nearlyEqual(left: number, right: number): boolean {
+  return Math.abs(left - right) < 0.005;
+}
+
+function parseImageUrl(value: unknown): string | null {
+  if (typeof value === "string") return value.trim() || null;
+  if (!isRecord(value) || typeof value.url !== "string") return null;
+  return value.url.trim() || null;
 }
 
 function parseImages(value: unknown): string[] {
   let candidate = value;
-
-  if (typeof value === "string" && value.trim().startsWith("[")) {
+  if (typeof value === "string") {
     try {
       candidate = JSON.parse(value) as unknown;
     } catch {
-      candidate = [];
+      throw new CartContractError("Cart item images are malformed.", "MALFORMED_ITEM");
     }
   }
-
-  if (!Array.isArray(candidate)) return [];
-
-  return candidate
-    .map((item) => asString(item))
-    .filter((item): item is string => Boolean(item));
+  if (!Array.isArray(candidate)) {
+    throw new CartContractError("Cart item images are malformed.", "MALFORMED_ITEM");
+  }
+  const urls = candidate.map(parseImageUrl);
+  if (urls.some((url) => url === null)) {
+    throw new CartContractError("Cart item images are malformed.", "MALFORMED_ITEM");
+  }
+  return urls as string[];
 }
 
-function normalizeBackendCartItem(item: BackendCartItem): CartItem | null {
-  const product = item.product;
-  const productId = asString(item.productId) ?? asString(product?.id);
-  const title = asString(product?.title);
+function parseCartItem(value: unknown): { item: CartItem; lineTotal: number } {
+  if (!isRecord(value) || !isRecord(value.product)) {
+    throw new CartContractError("Cart contains a malformed item.", "MALFORMED_ITEM");
+  }
 
-  if (!productId || !title) return null;
+  const serverCartItemId = requireUuid(value.id, "cart item id");
+  const productId = requireUuid(value.productId, "product id");
+  const productIdFromProduct = requireUuid(value.product.id, "product identity");
+  if (productId !== productIdFromProduct) {
+    throw new CartContractError("Cart item product identity is inconsistent.", "MALFORMED_ITEM");
+  }
 
-  const images = parseImages(product?.images);
+  const quantity = requireQuantity(value.quantity);
+  const price = requireMoney(value.product.price, "price");
+  const lineTotal = requireMoney(value.itemTotal, "line total");
+  if (!nearlyEqual(lineTotal, price * quantity)) {
+    throw new CartContractError("Cart item total is inconsistent.", "MALFORMED_ITEM");
+  }
+  const images = parseImages(value.product.images);
 
   return {
-    id: productId,
-    serverCartItemId: asString(item.id),
-    slug: asString(product?.slug) ?? productId,
-    name: title,
-    price: getEffectiveProductPrice(product),
-    image: images[0] ?? PRODUCT_IMAGE_PLACEHOLDER,
-    quantity: Math.max(1, Math.trunc(toNumber(item.quantity, 1))),
-    variant: null,
+    item: {
+      id: productId,
+      serverCartItemId,
+      slug: requireNonEmptyString(value.product.slug, "slug"),
+      name: requireNonEmptyString(value.product.title, "title"),
+      price,
+      image: images[0] ?? PRODUCT_IMAGE_PLACEHOLDER,
+      quantity,
+      variant: null,
+    },
+    lineTotal,
   };
 }
 
-function normalizeBackendCart(payload: BackendCartResponse): CartItem[] {
-  const items = payload.data?.cart?.items ?? [];
-  return items
-    .map(normalizeBackendCartItem)
-    .filter((item): item is CartItem => Boolean(item));
+function requireSummaryInteger(value: unknown, field: string): number {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 0) return value;
+  throw new CartContractError(`Cart summary has an invalid ${field}.`, "INCONSISTENT_SUMMARY");
 }
 
-function groupSyncableItems(items: CartItem[]): { productId: string; quantity: number }[] {
-  const grouped = new Map<string, number>();
+function requireSummaryMoney(value: unknown, field: string): number {
+  if (typeof value === "number" && Number.isFinite(value) && value >= 0) return value;
+  throw new CartContractError(`Cart summary has an invalid ${field}.`, "INCONSISTENT_SUMMARY");
+}
 
-  for (const item of items) {
-    if (!canSyncCartItem(item)) continue;
-    if (item.serverCartItemId) continue;
-
-    const productId = String(item.id);
-    grouped.set(productId, (grouped.get(productId) ?? 0) + Math.max(1, item.quantity));
+export function parseBackendCartResponse(payload: unknown): CartItem[] {
+  if (!isRecord(payload) || payload.status !== "success" || !isRecord(payload.data)) {
+    throw new CartContractError("Cart response is malformed.", "MALFORMED_RESPONSE");
+  }
+  const cart = payload.data.cart;
+  if (!isRecord(cart) || !UUID_PATTERN.test(String(cart.id ?? "")) || !Array.isArray(cart.items)) {
+    throw new CartContractError("Cart response is missing a valid cart.", "MALFORMED_RESPONSE");
+  }
+  if (!isRecord(cart.summary)) {
+    throw new CartContractError("Cart response is missing its summary.", "INCONSISTENT_SUMMARY");
   }
 
-  return [...grouped.entries()].map(([productId, quantity]) => ({
-    productId,
-    quantity,
-  }));
+  const parsed = cart.items.map(parseCartItem);
+  const cartItemIds = parsed.map(({ item }) => item.serverCartItemId!);
+  const productIds = parsed.map(({ item }) => String(item.id));
+  if (
+    new Set(cartItemIds).size !== cartItemIds.length
+    || new Set(productIds).size !== productIds.length
+  ) {
+    throw new CartContractError("Cart contains duplicate items.", "DUPLICATE_ITEM");
+  }
+
+  const itemCount = parsed.reduce((total, { item }) => total + item.quantity, 0);
+  const subtotal = parsed.reduce((total, item) => total + item.lineTotal, 0);
+  const summaryTotalItems = requireSummaryInteger(cart.summary.totalItems, "item count");
+  const summaryUniqueItems = requireSummaryInteger(cart.summary.uniqueItems, "unique item count");
+  const summarySubtotal = requireSummaryMoney(cart.summary.subtotal, "subtotal");
+  if (
+    summaryTotalItems !== itemCount
+    || summaryUniqueItems !== parsed.length
+    || !nearlyEqual(summarySubtotal, subtotal)
+  ) {
+    throw new CartContractError("Cart summary does not match its items.", "INCONSISTENT_SUMMARY");
+  }
+
+  return parsed.map(({ item }) => item);
+}
+
+function assertMutationSuccess(payload: unknown): void {
+  if (!isRecord(payload) || payload.status !== "success") {
+    throw new CartContractError("Cart update response is malformed.", "MALFORMED_RESPONSE");
+  }
+}
+
+function normalizeMutationQuantity(value: number): number {
+  if (Number.isInteger(value) && value >= 1 && value <= MAX_CART_QUANTITY) return value;
+  throw new CartContractError("Cart quantity is invalid.", "MALFORMED_ITEM");
 }
 
 export async function getBackendCart(): Promise<CartItem[]> {
-  const payload = await apiClient<BackendCartResponse>("/cart", {
+  const payload = await apiClient<unknown>("/cart", {
     method: "GET",
     cache: "no-store",
   });
-
-  return normalizeBackendCart(payload);
+  return parseBackendCartResponse(payload);
 }
 
 export async function addBackendCartItem(input: {
   productId: string | number;
   quantity: number;
 }): Promise<void> {
-  await apiClient<unknown>("/cart/items", {
+  if (!isBackendProductId(input.productId)) {
+    throw new CartContractError("Cart product identity is invalid.", "MALFORMED_ITEM");
+  }
+  const payload = await apiClient<unknown>("/cart/items", {
     method: "POST",
     csrf: true,
     body: JSON.stringify({
       productId: String(input.productId),
-      quantity: Math.max(1, Math.trunc(input.quantity)),
+      quantity: normalizeMutationQuantity(input.quantity),
     }),
   });
+  assertMutationSuccess(payload);
 }
 
 export async function updateBackendCartItem(input: {
   itemId: string;
   quantity: number;
 }): Promise<void> {
-  await apiClient<unknown>(`/cart/items/${input.itemId}`, {
+  if (!UUID_PATTERN.test(input.itemId)) {
+    throw new CartContractError("Cart item identity is invalid.", "MALFORMED_ITEM");
+  }
+  const payload = await apiClient<unknown>(`/cart/items/${input.itemId}`, {
     method: "PATCH",
     csrf: true,
-    body: JSON.stringify({
-      quantity: Math.max(1, Math.trunc(input.quantity)),
-    }),
+    body: JSON.stringify({ quantity: normalizeMutationQuantity(input.quantity) }),
   });
+  assertMutationSuccess(payload);
 }
 
 export async function removeBackendCartItem(itemId: string): Promise<void> {
-  await apiClient<unknown>(`/cart/items/${itemId}`, {
+  if (!UUID_PATTERN.test(itemId)) {
+    throw new CartContractError("Cart item identity is invalid.", "MALFORMED_ITEM");
+  }
+  const payload = await apiClient<unknown>(`/cart/items/${itemId}`, {
     method: "DELETE",
     csrf: true,
   });
+  assertMutationSuccess(payload);
 }
 
 export async function clearBackendCart(): Promise<void> {
-  await apiClient<unknown>("/cart/clear", {
+  const payload = await apiClient<unknown>("/cart/clear", {
     method: "DELETE",
     csrf: true,
   });
-}
-
-export async function pushLocalCartToBackend(items: CartItem[]): Promise<void> {
-  const syncableItems = groupSyncableItems(items);
-
-  if (!syncableItems.length) return;
-
-  await apiClient<unknown>("/cart/items/bulk", {
-    method: "POST",
-    csrf: true,
-    body: JSON.stringify({ items: syncableItems }),
-  });
+  assertMutationSuccess(payload);
 }
