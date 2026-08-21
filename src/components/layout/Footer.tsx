@@ -52,7 +52,14 @@ export function Footer() {
           
           {/* Brand & App Download */}
           <div className="space-y-4 lg:col-span-2">
-            <BrandLogo href="/" variant="dark" imageClassName="h-10 w-auto md:h-12" className="focus-visible:ring-offset-zinc-900" />
+            <Link
+              href="/"
+              prefetch={false}
+              aria-label="Zogular"
+              className="inline-flex items-center rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            >
+              <BrandLogo variant="dark" imageClassName="h-10 w-auto md:h-12" />
+            </Link>
             <p className="text-xs md:text-sm text-zinc-400 max-w-sm leading-relaxed">
               Zambia&apos;s online marketplace for everyday products.
             </p>

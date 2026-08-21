@@ -55,19 +55,19 @@ export function DiscoveryListingState({ kind, query, clearHref = "/products", tr
           </Button>
         ) : kind === "true-empty" ? <>
           <Button asChild className="min-h-11 rounded-xl bg-[#009E49] px-4 font-bold text-white hover:bg-[#007d3a]">
-            <Link href="/products">Browse all products</Link>
+            <Link href="/products" prefetch={false}>Browse all products</Link>
           </Button>
           <Button asChild variant="outline" className="min-h-11 rounded-xl px-4 font-bold">
-            <Link href="/search"><Search aria-hidden="true" />Search</Link>
+            <Link href="/search" prefetch={false}><Search aria-hidden="true" />Search</Link>
           </Button>
         </> : kind === "filtered-zero" ? <>
           <Button asChild className="min-h-11 rounded-xl bg-[#009E49] px-4 font-bold text-white hover:bg-[#007d3a]">
-            <Link href={clearHref}>Clear filters</Link>
+            <Link href={clearHref} prefetch={false}>Clear filters</Link>
           </Button>
           <Button type="button" variant="outline" className="min-h-11 rounded-xl px-4 font-bold" onClick={(event) => editFilters(event.currentTarget)}>Edit filters</Button>
         </> : kind === "search-idle" ? null : (
           <Button asChild className="min-h-11 rounded-xl bg-[#009E49] px-5 font-bold text-white hover:bg-[#007d3a]">
-            <Link href={clearHref}>Clear search</Link>
+            <Link href={clearHref} prefetch={false}>Clear search</Link>
           </Button>
         )}
       </div>

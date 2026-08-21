@@ -22,6 +22,7 @@ const viewports = [
 
 let backendServer: Server;
 let frontendProcess: ChildProcess;
+const backendErrors: string[] = [];
 
 test.describe.configure({ mode: "serial" });
 
@@ -36,8 +37,8 @@ test.beforeAll(async () => {
     [path.resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(frontendPort)],
     {
       cwd: process.cwd(),
-      env: { ...process.env, NEXT_PUBLIC_API_URL: `http://127.0.0.1:${backendPort}/api/v1` },
-      stdio: "pipe",
+      env: { ...process.env, INTERNAL_BACKEND_URL: `http://127.0.0.1:${backendPort}/api/v1`, NEXT_PUBLIC_API_URL: `http://127.0.0.1:${backendPort}/api/v1`, ADMIN_API_URL: `http://127.0.0.1:${backendPort}/api/v1` },
+      stdio: "ignore",
       windowsHide: true,
     },
   );
@@ -45,8 +46,9 @@ test.beforeAll(async () => {
 });
 
 test.afterAll(async () => {
-  frontendProcess?.kill();
+  await stopFrontendProcess();
   await new Promise<void>((resolve) => backendServer?.close(() => resolve()));
+  expect(backendErrors).toEqual([]);
 });
 
 test("unsupported discovery promotions are absent from source navigation data", async () => {
@@ -271,7 +273,12 @@ function collectDiagnostics(page: Page) {
   const result = { consoleErrors: [] as string[], pageErrors: [] as string[], failedRequests: [] as string[], badResponses: [] as string[] };
   page.on("console", (message) => { if (message.type() === "error") result.consoleErrors.push(message.text()); });
   page.on("pageerror", (error) => result.pageErrors.push(error.message));
-  page.on("requestfailed", (request) => { if (!request.failure()?.errorText.includes("ERR_ABORTED")) result.failedRequests.push(request.url()); });
+  page.on("requestfailed", (request) => result.failedRequests.push(JSON.stringify({
+    errorText: request.failure()?.errorText ?? "Unknown request failure",
+    method: request.method(),
+    resourceType: request.resourceType(),
+    url: request.url(),
+  })));
   page.on("response", (response) => { if (response.status() >= 400 && !response.url().includes("/_vercel/")) result.badResponses.push(`${response.status()} ${response.url()}`); });
   return result;
 }
@@ -286,8 +293,9 @@ async function assertPortAvailable(port: number) {
 
 async function startFixtureBackend(): Promise<Server> {
   const server = http.createServer((request, response) => {
-    const url = new URL(request.url ?? "/", `http://127.0.0.1:${backendPort}`);
-    response.setHeader("content-type", "application/json");
+    try {
+      const url = new URL(request.url ?? "/", `http://127.0.0.1:${backendPort}`);
+      response.setHeader("content-type", "application/json");
     if (url.pathname === "/api/v1/categories") {
       return send(response, 200, {
         status: "success",
@@ -299,10 +307,47 @@ async function startFixtureBackend(): Promise<Server> {
       const products = Array.from({ length: 40 }, (_, index) => product(index + 1));
       return send(response, 200, { status: "success", results: 20, pagination: { page: 1, limit: 20, total: 40, pages: 2 }, data: { products: products.slice(0, 20) } });
     }
-    return send(response, 404, { status: "fail", message: "Not found" });
+    if (url.pathname === "/api/v1/user/me") {
+      if (request.headers.cookie?.includes("session") || request.headers.cookie?.includes("token")) {
+        return send(response, 200, { status: "success", data: { id: "user-1", email: "user@example.com", name: "Test User", role: "BUYER" } });
+      }
+      return send(response, 200, { status: "success", data: null });
+    }
+    if (url.pathname === "/api/v1/auth/csrf-token") {
+      return send(response, 200, { status: "success", data: { csrfToken: "mock-csrf-token" } });
+    }
+    if (url.pathname === "/api/v1/cart") {
+      return send(response, 200, {
+        status: "success",
+        data: {
+          cart: {
+            id: "11111111-1111-4111-a111-111111111111",
+            items: [],
+            summary: { totalItems: 0, uniqueItems: 0, subtotal: 0 },
+          },
+        },
+      });
+    }
+    if (url.pathname === "/api/v1/wishlist") {
+      return send(response, 200, { status: "success", data: { items: [] } });
+    }
+    } catch (error) {
+      backendErrors.push(error instanceof Error ? error.stack ?? error.message : String(error));
+      return send(response, 500, { status: "fail", message: "backend error" });
+    }
   });
   await new Promise<void>((resolve, reject) => { server.once("error", reject); server.listen(backendPort, "127.0.0.1", () => resolve()); });
   return server;
+}
+
+async function stopFrontendProcess() {
+  if (!frontendProcess || frontendProcess.exitCode !== null) return;
+  const exited = new Promise<void>((resolve) => frontendProcess.once("exit", () => resolve()));
+  frontendProcess.kill();
+  await Promise.race([
+    exited,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Package 7 frontend process did not stop.")), 10_000)),
+  ]);
 }
 
 function category(slug: string, name: string, children: string[]) {

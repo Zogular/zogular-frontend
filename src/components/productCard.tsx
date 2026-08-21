@@ -81,6 +81,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
 
         <Link
           href={productHref}
+          prefetch={false}
           aria-label={`View ${displayTitle}`}
           className="absolute inset-0 block rounded-t-[20px] outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-[#009E49]"
         >
@@ -116,6 +117,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
 
         <Link
           href={productHref}
+          prefetch={false}
           className="line-clamp-2 min-h-8 rounded-sm text-xs font-bold leading-4 text-zinc-900 outline-none transition-colors hover:text-[#009E49] focus-visible:ring-2 focus-visible:ring-[#009E49] md:text-[13px]"
         >
           {displayTitle}

@@ -73,7 +73,7 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
 
   return (
     <div ref={containerRef} className="relative w-full">
-      <Command shouldFilter={false} className="overflow-visible bg-transparent p-0">
+      <Command id={mobile ? "mobile-navbar-search" : "desktop-navbar-search"} label={mobile ? "Mobile product search" : "Desktop product search"} shouldFilter={false} className="overflow-visible bg-transparent p-0">
         <form
           onSubmit={(event) => {
             event.preventDefault();

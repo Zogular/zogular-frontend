@@ -30,7 +30,7 @@ export function DiscoveryListingHeader({
             <li key={`${item.label}-${index}`} className="flex min-w-0 items-center gap-1.5">
               {index > 0 ? <ChevronRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" /> : null}
               {item.href ? (
-                <Link href={item.href} className="truncate rounded-sm hover:text-[#007d3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]">
+                <Link href={item.href} prefetch={false} className="truncate rounded-sm hover:text-[#007d3a] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]">
                   {item.label}
                 </Link>
               ) : (
@@ -59,6 +59,7 @@ export function DiscoveryListingHeader({
             <Link
               key={subcategory.href}
               href={subcategory.href}
+              prefetch={false}
               aria-current={subcategory.active ? "page" : undefined}
               className={cn(
                 "inline-flex min-h-11 shrink-0 items-center rounded-full border px-4 text-sm font-bold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2",
