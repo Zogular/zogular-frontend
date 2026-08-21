@@ -313,6 +313,24 @@ type SellerProductEnrichment = {
 const SELLER_PRODUCT_ENRICHMENT_STORAGE_KEY = "zogular-seller-product-enrichments";
 const DEFAULT_SELLER = { name: "Zogular Store", slug: "zogular-official", verified: true };
 const SELLER_PRODUCTS_QUERY_LIMIT = 100;
+const SELLER_PRODUCTS_MAX_METRICS_PAGES = 100;
+
+export type SellerCatalogCollectionErrorCode =
+  | "malformed-pagination"
+  | "pagination-drift"
+  | "repeated-product"
+  | "incomplete-collection"
+  | "safety-cap-exceeded";
+
+export class SellerCatalogCollectionError extends Error {
+  readonly code: SellerCatalogCollectionErrorCode;
+
+  constructor(code: SellerCatalogCollectionErrorCode) {
+    super("Seller catalog metrics could not be compiled from a complete server response.");
+    this.name = "SellerCatalogCollectionError";
+    this.code = code;
+  }
+}
 
 let sellerCatalogSnapshot: SellerProductListing[] = [];
 
@@ -400,30 +418,60 @@ export const SELLER_CATEGORY_TREE = SELLER_CATALOG_CATEGORIES.reduce<Record<stri
 );
 
 export async function fetchSellerCatalogProducts(): Promise<SellerProductListing[]> {
-  const result = await fetchSellerCatalogProductPage({
-    page: 1,
-    limit: SELLER_PRODUCTS_QUERY_LIMIT,
-  });
-  return result.products;
+  const productsById = new Map<string, SellerProductListing>();
+  let expectedTotal: number | undefined;
+  let expectedPages: number | undefined;
+  let expectedSummary: string | undefined;
+  let expectedFacets: string | undefined;
+
+  for (let pageNumber = 1; ; pageNumber += 1) {
+    const response = await fetchBackendSellerProductPage({
+      page: pageNumber,
+      limit: SELLER_PRODUCTS_QUERY_LIMIT,
+    });
+    assertCompleteCatalogPage(response, pageNumber, expectedTotal, expectedPages);
+
+    if (pageNumber === 1) {
+      expectedTotal = response.pagination.total;
+      expectedPages = response.pagination.pages;
+      expectedSummary = stableStringify(response.data.summary);
+      expectedFacets = stableStringify(response.data.facets);
+      if (expectedPages > SELLER_PRODUCTS_MAX_METRICS_PAGES) {
+        throw new SellerCatalogCollectionError("safety-cap-exceeded");
+      }
+    } else if (
+      stableStringify(response.data.summary) !== expectedSummary ||
+      stableStringify(response.data.facets) !== expectedFacets
+    ) {
+      throw new SellerCatalogCollectionError("pagination-drift");
+    }
+
+    for (const product of response.data.products) {
+      if (!product || typeof product.id !== "string" || !product.id.trim()) {
+        throw new SellerCatalogCollectionError("malformed-pagination");
+      }
+      if (productsById.has(product.id)) {
+        throw new SellerCatalogCollectionError("repeated-product");
+      }
+      productsById.set(product.id, normalizeBackendSellerProduct(product));
+    }
+
+    if (pageNumber >= (expectedPages ?? 0)) break;
+  }
+
+  if (productsById.size !== expectedTotal) {
+    throw new SellerCatalogCollectionError("incomplete-collection");
+  }
+
+  const products = Array.from(productsById.values());
+  setSellerCatalogSnapshot(products);
+  return products;
 }
 
 export async function fetchSellerCatalogProductPage(
   query: SellerProductListQuery = {},
 ): Promise<SellerProductListResult> {
-  const response = await apiClient<BackendSellerListResponse>("/vendor/products", {
-    method: "GET",
-    query: {
-      page: query.page ?? 1,
-      limit: query.limit ?? 20,
-      search: query.search?.trim() || undefined,
-      status: mapFrontendStatusToBackend(query.status),
-      statusGroup: query.statusGroup,
-      categorySlug: query.categorySlug,
-      stockState: query.stockState,
-      sortBy: query.sortBy ?? "createdAt",
-      sortOrder: query.sortOrder ?? "desc",
-    },
-  });
+  const response = await fetchBackendSellerProductPage(query);
 
   const products = response.data.products.map(normalizeBackendSellerProduct);
   const statuses: Record<SellerProductStatus, number> = {
@@ -453,6 +501,113 @@ export async function fetchSellerCatalogProductPage(
       stock: response.data.facets.stock,
     },
   };
+}
+
+async function fetchBackendSellerProductPage(
+  query: SellerProductListQuery,
+): Promise<BackendSellerListResponse> {
+  return apiClient<BackendSellerListResponse>("/vendor/products", {
+    method: "GET",
+    query: {
+      page: query.page ?? 1,
+      limit: query.limit ?? 20,
+      search: query.search?.trim() || undefined,
+      status: mapFrontendStatusToBackend(query.status),
+      statusGroup: query.statusGroup,
+      categorySlug: query.categorySlug,
+      stockState: query.stockState,
+      sortBy: query.sortBy ?? "createdAt",
+      sortOrder: query.sortOrder ?? "desc",
+    },
+  });
+}
+
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function assertCompleteCatalogPage(
+  response: BackendSellerListResponse,
+  requestedPage: number,
+  expectedTotal?: number,
+  expectedPages?: number,
+): void {
+  const pagination = response?.pagination;
+  const products = response?.data?.products;
+  const summary = response?.data?.summary;
+  const facets = response?.data?.facets;
+  const values = [
+    pagination?.total,
+    pagination?.page,
+    pagination?.limit,
+    pagination?.pages,
+    response?.results,
+    summary?.total,
+    summary?.buyerVisible,
+    summary?.pendingReview,
+    summary?.lowStock,
+    summary?.outOfStock,
+  ];
+
+  if (
+    response?.status !== "success" ||
+    !Array.isArray(products) ||
+    !Array.isArray(facets?.categories) ||
+    !facets?.statuses ||
+    typeof facets.statuses !== "object" ||
+    values.some((value) => !Number.isSafeInteger(value) || Number(value) < 0) ||
+    pagination.page !== requestedPage ||
+    pagination.limit !== SELLER_PRODUCTS_QUERY_LIMIT ||
+    response.results !== products.length ||
+    products.length > pagination.limit
+  ) {
+    throw new SellerCatalogCollectionError("malformed-pagination");
+  }
+
+  if (
+    (expectedTotal !== undefined && pagination.total !== expectedTotal) ||
+    (expectedPages !== undefined && pagination.pages !== expectedPages)
+  ) {
+    throw new SellerCatalogCollectionError("pagination-drift");
+  }
+
+  const calculatedPages = Math.ceil(pagination.total / pagination.limit);
+  const expectedPageLength = pagination.total === 0
+    ? 0
+    : requestedPage < pagination.pages
+      ? pagination.limit
+      : pagination.total - pagination.limit * (pagination.pages - 1);
+  const statusTotal = Object.values(facets.statuses).reduce((total, count) => {
+    if (!Number.isSafeInteger(count) || Number(count) < 0) {
+      throw new SellerCatalogCollectionError("malformed-pagination");
+    }
+    return total + Number(count);
+  }, 0);
+  const stockTotal = [facets.stock?.inStock, facets.stock?.lowStock, facets.stock?.outOfStock]
+    .reduce((total, count) => {
+      if (!Number.isSafeInteger(count) || Number(count) < 0) {
+        throw new SellerCatalogCollectionError("malformed-pagination");
+      }
+      return total + Number(count);
+    }, 0);
+
+  if (
+    pagination.pages !== calculatedPages ||
+    summary.total !== pagination.total ||
+    statusTotal !== pagination.total ||
+    stockTotal !== pagination.total ||
+    products.length !== expectedPageLength
+  ) {
+    throw new SellerCatalogCollectionError("incomplete-collection");
+  }
+
 }
 
 export async function fetchAdminCatalogProducts(): Promise<SellerProductListing[]> {

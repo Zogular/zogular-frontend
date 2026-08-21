@@ -1,7 +1,10 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { toast } from "sonner";
 import {
+  buildSellerAnalyticsCsv,
   fetchSellerAnalyticsData,
+  getSellerMetricsErrorMessage,
+  getSellerSnapshotPresentationState,
   type SellerAnalyticsCategoryFilter,
   type SellerAnalyticsData,
   type SellerAnalyticsTimeRange,
@@ -11,21 +14,23 @@ export function useSellerAnalytics() {
   const [data, setData] = useState<SellerAnalyticsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
 
   const [range, setRange] = useState<SellerAnalyticsTimeRange>("30d");
-  const [chartMetric, setChartMetric] = useState<"revenue" | "orders">("revenue");
+  const [chartMetric, setChartMetric] = useState<"grossItemSales" | "orders">("grossItemSales");
   const [categoryFilter, setCategoryFilter] = useState<SellerAnalyticsCategoryFilter>("all");
 
   const loadData = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     try {
       setLoading(true);
       setError(null);
       const result = await fetchSellerAnalyticsData(range);
-      setData(result);
+      if (requestId === requestIdRef.current) setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load analytics");
+      if (requestId === requestIdRef.current) setError(getSellerMetricsErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
   }, [range]);
 
@@ -54,42 +59,27 @@ export function useSellerAnalytics() {
     [data, categoryFilter],
   );
 
-  const handleExport = () => {
-    if (!data) return;
-    const reportRows = [
-      ["Metric", "Value"],
-      ["Snapshot Type", "Seller-visible order and catalog snapshot"],
-      ["Range", range],
-      ["Category Filter", categoryFilter],
-      ["Seller-visible Revenue", String(Math.round(data.summary.sellerVisibleRevenue))],
-      ["Seller-visible Orders", String(data.summary.sellerVisibleOrders)],
-      ["Average Visible Order Value", String(Math.round(data.summary.avgOrderValue))],
-      ["Delivered Orders", String(data.summary.deliveredOrders)],
-      ["Buyer-visible Products", String(data.summary.buyerVisibleProducts)],
-      ["Low-stock Products", String(data.summary.lowStockProducts)],
-      [""],
-      ["Top Products", ""],
-      ["Product", "Sales", "Revenue"],
-      ...filteredTopProducts.map((product) => [
-        product.name,
-        String(product.sales),
-        String(Math.round(product.revenue)),
-      ]),
-      [""],
-      ["Low Performers", ""],
-      ["Product", "Issue", "Stock"],
-      ...filteredLowPerformers.map((item) => [item.name, item.issue, String(item.stock)]),
-    ];
+  const snapshotState = getSellerSnapshotPresentationState(
+    range,
+    data?.range ?? null,
+    loading,
+    error,
+  );
 
-    const csv = reportRows
-      .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
-      .join("\n");
+  const handleExport = () => {
+    if (!data || !snapshotState.canExport) return;
+    const csv = buildSellerAnalyticsCsv(
+      data,
+      categoryFilter,
+      filteredTopProducts,
+      filteredLowPerformers,
+    );
 
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
-    link.download = `zogular-seller-snapshot-${range}-${new Date().toISOString().slice(0, 10)}.csv`;
+    link.download = `zogular-seller-snapshot-${data.range}-${new Date().toISOString().slice(0, 10)}.csv`;
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -110,6 +100,7 @@ export function useSellerAnalytics() {
     filteredTopProducts,
     filteredCategoryPerformance,
     filteredLowPerformers,
+    snapshotState,
     loadData,
     handleExport,
   };
