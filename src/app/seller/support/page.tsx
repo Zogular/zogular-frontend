@@ -280,10 +280,12 @@ export default function SellerSupportPage() {
               const isSelected = selectedTicketId === ticket.id;
               
               return (
-                <div 
+                <button
+                  type="button"
                   key={ticket.id} 
                   onClick={() => setSelectedTicketId(ticket.id)}
-                  className={cn("cursor-pointer rounded-2xl border p-4 transition-all duration-200", 
+                  aria-pressed={isSelected}
+                  className={cn("w-full rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900",
                     isSelected ? "border-zinc-900 bg-zinc-900 text-white shadow-md" : "border-zinc-200 bg-white hover:border-zinc-300 shadow-sm"
                   )}
                 >
@@ -300,7 +302,7 @@ export default function SellerSupportPage() {
                       <PriIcon className={cn("h-3.5 w-3.5", isSelected ? "text-zinc-400" : PRIORITY_UI[ticket.priority].color)} />
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })
           )}

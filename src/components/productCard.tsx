@@ -29,14 +29,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
   const displayBadge = product.badge ?? (product.isNew ? "New" : null);
   const productHref = `/product/${product.slug}`;
   const isOutOfStock = product.stock !== undefined && product.stock <= 0;
-  const isPending = product.moderationStatus === "pending";
-  const isRejected = product.moderationStatus === "rejected";
-  const isHidden = product.sellerVisibility === "hidden";
-  const disabledReason = isOutOfStock
-    ? "Out of stock"
-    : isPending || isRejected || isHidden
-      ? "Product unavailable"
-      : undefined;
+  const disabledReason = isOutOfStock ? "Out of stock" : undefined;
 
   return (
     <article
@@ -44,7 +37,7 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
       data-testid="product-card"
     >
       <div
-        className={`relative flex aspect-[3/4] w-full items-center justify-center bg-zinc-100 ${isHidden ? "opacity-50" : ""}`}
+        className="relative flex aspect-[3/4] w-full items-center justify-center bg-zinc-100"
         data-testid="product-card-media"
       >
         <div className="absolute left-2 top-2 z-10 flex flex-col gap-1">
@@ -54,21 +47,6 @@ export function ProductCard({ product, prioritizeImage = false }: ProductCardPro
           {isOutOfStock ? (
             <Badge className="border-none bg-red-600 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
               Out of Stock
-            </Badge>
-          ) : null}
-          {isPending ? (
-            <Badge className="border-none bg-amber-500 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
-              Pending
-            </Badge>
-          ) : null}
-          {isRejected ? (
-            <Badge className="border-none bg-red-800 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
-              Rejected
-            </Badge>
-          ) : null}
-          {isHidden ? (
-            <Badge className="border-none bg-zinc-700 px-2.5 py-0.5 text-[10px] font-bold text-white shadow-sm">
-              Hidden
             </Badge>
           ) : null}
         </div>

@@ -87,6 +87,8 @@ test("seller notifications expose navigation only and no fake read or clear affo
     expect(sellerNotificationsSource).not.toContain(removed);
   }
 
-  expect(sellerNotificationsSource).toContain("href={notification.link}");
+  expect(sellerNotificationsSource).toContain("Notifications are not available yet");
+  expect(sellerNotificationsSource).toContain('href="/seller/support"');
+  expect(sellerNotificationsSource).toContain('href="/seller/orders"');
   expect(sellerNotificationsSource).not.toContain("onClick={() => handleMarkAsRead");
 });
