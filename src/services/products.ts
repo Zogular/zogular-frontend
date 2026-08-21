@@ -705,7 +705,8 @@ export async function getHomeNewArrivals(
 }
 
 export async function getHomeMostViewed(limit = 10): Promise<Product[]> {
-  return fetchBackendProductCollection("/products/featured", { limit });
+  const result = await fetchBackendProducts({ page: 1, limit, sort: "popular" });
+  return result.products;
 }
 
 export async function getHomeExploreMore(limit = 10): Promise<Product[]> {
