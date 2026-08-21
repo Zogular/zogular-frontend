@@ -27,6 +27,7 @@ type VerificationResult =
 
 let cachedVerification: { snapshot: string; result: ResolvedAuthState } | null = null;
 let pendingVerification: { snapshot: string; promise: Promise<VerificationResult> } | null = null;
+const AUTH_GATE_TIMEOUT_MS = 6_000;
 
 function verifySnapshot(snapshot: string): Promise<VerificationResult> {
   if (!snapshot && isLocalLogoutPending()) {
@@ -48,7 +49,7 @@ function verifySnapshot(snapshot: string): Promise<VerificationResult> {
   const hadStoredSession = snapshot.length > 0;
   // The HttpOnly refresh cookie is authoritative. The local snapshot is only
   // used to distinguish first-time guests from previously known identities.
-  const promise = getCurrentUser({ persist: false })
+  const promise = getCurrentUser({ persist: false, timeout: AUTH_GATE_TIMEOUT_MS })
     .then((user): VerificationResult => {
       if (getAuthSessionSnapshot() !== snapshot) return { kind: "stale" };
       storeAuthSession({ user });
