@@ -52,7 +52,7 @@ function mapCategorySummaryToNavLink(category: CategorySummary): CategoryLink {
 
 const TOP_BAR_LINKS: NavLink[] = [
   { label: "About Us", href: "/about" },
-  { label: "Track Order", href: "/track-order" },
+  { label: "Track Order", href: "/track" },
 ];
 
 const PRIMARY_NAV_LINKS: NavLink[] = [
@@ -71,7 +71,7 @@ type UtilityMobileLink = NavLink & {
 
 const MOBILE_UTILITY_LINKS: UtilityMobileLink[] = [
   { label: "Sell on Zogular", href: "/sell", icon: Store },
-  { label: "Track Order", href: "/track-order", icon: Package },
+  { label: "Track Order", href: "/track", icon: Package },
   { label: "Help Center", href: "/help", icon: HelpCircle },
   { label: "About Us", href: "/about", icon: Info },
 ];
