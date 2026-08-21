@@ -87,10 +87,10 @@ export function DiscoveryCollectionState<TError extends Error = Error>({
         {outcome.status === "true-empty" ? (
           <>
             <Button asChild className="min-h-11 rounded-full bg-[#009E49] px-4 font-bold text-white hover:bg-[#007d3a]">
-              <Link href={browseHref}>Browse all products</Link>
+              <Link href={browseHref} prefetch={false}>Browse all products</Link>
             </Button>
             <Button asChild variant="outline" className="min-h-11 rounded-full px-4 font-bold">
-              <Link href={searchHref}>
+              <Link href={searchHref} prefetch={false}>
                 <Search aria-hidden="true" />
                 Search products
               </Link>

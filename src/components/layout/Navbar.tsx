@@ -193,11 +193,9 @@ function TopBar({ sellerEntry }: { sellerEntry: NavLink }) {
 function LoggedOutMenu({
   loginHref,
   registerHref,
-  ordersHref,
 }: {
   loginHref: string;
   registerHref: string;
-  ordersHref: string;
 }) {
   return (
     <>
@@ -213,9 +211,6 @@ function LoggedOutMenu({
         </DropdownMenu.Item>
       </p>
       <Divider />
-      <DropdownMenu.Item asChild>
-        <Link href={ordersHref} className={cn(DROPDOWN_LINK, "outline-none data-[highlighted]:bg-white/70 data-[highlighted]:text-[#009E49]")}><Package className="h-4 w-4 text-zinc-400" /> My Orders</Link>
-      </DropdownMenu.Item>
       <DropdownMenu.Item asChild>
         <Link href="/help" className={cn(DROPDOWN_LINK, "outline-none data-[highlighted]:bg-white/70 data-[highlighted]:text-[#009E49]")}><HelpCircle className="h-4 w-4 text-zinc-400" /> Help Center</Link>
       </DropdownMenu.Item>
@@ -281,7 +276,6 @@ type AccountDropdownProps = {
   onSignOut: () => void;
   loginHref: string;
   registerHref: string;
-  ordersHref: string;
 };
 
 function AccountDropdown({
@@ -295,7 +289,6 @@ function AccountDropdown({
   onSignOut,
   loginHref,
   registerHref,
-  ordersHref,
 }: AccountDropdownProps) {
   const isOpen = desktopOpen || mobileOpen;
   const contentRef = useRef<HTMLDivElement>(null);
@@ -329,7 +322,7 @@ function AccountDropdown({
             <div className="hidden flex-col items-start leading-none lg:flex">
               <span className="text-[10px] font-medium text-zinc-500">{isLoggedIn ? "Welcome back" : "Sign In"}</span>
               <span className="flex items-center gap-1 text-sm font-bold text-zinc-900">
-                My Account
+                {isLoggedIn ? "My Account" : "Sign In"}
                 <ChevronDown className={cn("h-3 w-3 text-zinc-400 transition-transform", isOpen && "rotate-180 text-[#009E49]")} />
               </span>
             </div>
@@ -366,7 +359,7 @@ function AccountDropdown({
             {isLoggedIn && user ? (
               <LoggedInMenu user={user} onSignOut={onSignOut} />
             ) : (
-              <LoggedOutMenu loginHref={loginHref} registerHref={registerHref} ordersHref={ordersHref} />
+              <LoggedOutMenu loginHref={loginHref} registerHref={registerHref} />
             )}
           </DropdownMenu.Content>
         </DropdownMenu.Portal>
@@ -469,6 +462,7 @@ function CategoryBar({
                   <SectionHeading>Departments</SectionHeading>
                   <Link
                     href="/categories"
+                    prefetch={false}
                     className="rounded-full px-2 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-[#009E49] transition-colors hover:bg-white/60"
                     onClick={() => setIsDropdownOpen(false)}
                   >
@@ -528,6 +522,7 @@ function CategoryBar({
                       </div>
                       <Link
                         href={activeCategory.href}
+                        prefetch={false}
                         onClick={() => setIsDropdownOpen(false)}
                         className="shrink-0 rounded-full border border-white/65 bg-white/70 px-4 py-2 text-[11px] font-bold uppercase tracking-[0.16em] text-[#009E49] transition-colors hover:bg-white hover:text-[#00853d] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
                       >
@@ -540,6 +535,7 @@ function CategoryBar({
                         <Link
                           key={child.href}
                           href={child.href}
+                          prefetch={false}
                           onClick={() => setIsDropdownOpen(false)}
                           className="group rounded-xl border border-white/60 bg-white/55 px-3 py-2.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#009E49]/20 hover:bg-white/75 hover:shadow-[0_10px_20px_rgba(15,23,42,0.07)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
                         >
@@ -565,6 +561,7 @@ function CategoryBar({
                       </p>
                       <Link
                         href="/categories"
+                        prefetch={false}
                         className="mt-4 inline-flex items-center gap-2 rounded-full border border-white/55 bg-white/48 px-4 py-2 text-xs font-bold uppercase tracking-[0.14em] text-[#009E49] backdrop-blur-xl transition-colors hover:bg-[#009E49]/8"
                       >
                         Open categories
@@ -583,6 +580,7 @@ function CategoryBar({
             <Link
               key={href}
               href={href}
+              prefetch={false}
               className={cn(
                 "transition-colors",
                 href === "/new-arrivals"
@@ -643,7 +641,7 @@ function MobileDrawer({
       >
         <SheetTitle className="sr-only">Shop menu</SheetTitle>
         <div className="flex h-18 items-center justify-between border-b border-white/45 bg-white/30 px-4 backdrop-blur-xl">
-          <Link href="/" className="flex items-center gap-2" onClick={onClose}>
+          <Link href="/" prefetch={false} className="flex items-center gap-2" onClick={onClose}>
             <BrandLogo mode="icon" imageClassName="h-8 w-8 rounded-xl shadow-md" />
             <div>
               <span className="text-xl font-black tracking-tighter text-zinc-900">Zogular</span>
@@ -699,6 +697,7 @@ function MobileDrawer({
                       <Link
                         key={href}
                         href={href}
+                        prefetch={false}
                         onClick={onClose}
                         className={cn(
                           "rounded-xl border px-3 py-2.5 text-[13px] font-semibold leading-tight transition-colors",
@@ -759,6 +758,7 @@ function MobileDrawer({
                     <Link
                       key={href}
                       href={href}
+                      prefetch={false}
                       onClick={onClose}
                       className="flex items-center gap-2 rounded-xl border border-white/55 bg-white/36 px-3 py-2.5 text-sm font-semibold text-zinc-700 backdrop-blur-xl transition-colors hover:border-white/75 hover:bg-white/56 hover:text-[#009E49]"
                     >
@@ -778,6 +778,7 @@ function MobileDrawer({
                 </p>
                 <Link
                   href={activeCategory.href}
+                  prefetch={false}
                   onClick={onClose}
                   className="mt-3 flex items-center justify-between rounded-xl border border-white/60 bg-white/48 px-3 py-2.5 text-sm font-semibold text-zinc-900 shadow-sm backdrop-blur-xl transition-colors hover:text-[#009E49]"
                 >
@@ -791,6 +792,7 @@ function MobileDrawer({
                   <Link
                     key={child.href}
                     href={child.href}
+                    prefetch={false}
                     onClick={onClose}
                     className="flex items-center justify-between rounded-xl border border-white/55 bg-white/30 px-3 py-2.5 text-sm font-medium text-zinc-700 backdrop-blur-xl transition-all hover:border-[#009E49]/18 hover:bg-[#009E49]/8 hover:text-[#009E49]"
                   >
@@ -865,7 +867,6 @@ export default function Navbar() {
     : { label: "Sell on Zogular", href: "/sell" };
   const loginHref = appendNextPath("/auth/login", authReturnPath);
   const registerHref = appendNextPath("/auth/register", authReturnPath);
-  const ordersHref = appendNextPath("/auth/login", "/account/orders");
 
   useEffect(() => {
     const requestEpoch = sellerRequestEpochRef.current + 1;
@@ -962,7 +963,14 @@ export default function Navbar() {
               >
                 <Menu className="h-6 w-6" />
               </Button>
-              <BrandLogo href="/" imageClassName="h-9 w-auto md:h-11" priority />
+              <Link
+                href="/"
+                prefetch={false}
+                aria-label="Zogular"
+                className="inline-flex items-center rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2"
+              >
+                <BrandLogo imageClassName="h-9 w-auto md:h-11" priority />
+              </Link>
             </div>
 
             <div className="hidden max-w-2xl flex-1 md:flex">
@@ -984,7 +992,6 @@ export default function Navbar() {
                 onSignOut={signOut}
                 loginHref={loginHref}
                 registerHref={registerHref}
-                ordersHref={ordersHref}
               />
               <CartButton
                 itemCount={hasHydrated ? itemCount : 0}
