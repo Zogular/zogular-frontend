@@ -21,12 +21,7 @@ const SUPPORT_LINKS = [
   { label: "Privacy Policy", href: "/privacy" },
 ];
 
-const CATEGORY_LINKS = [
-  { label: "Phones & Tablets", href: "/category/phones-and-tablets" },
-  { label: "Computing", href: "/category/computing" },
-  { label: "Fashion", href: "/category/fashion" },
-  { label: "Supermarket", href: "/category/supermarket" },
-];
+const CATEGORY_LINK = { label: "Browse Categories", href: "/categories" };
 
 const FOOTER_ACTION_LINKS = [
   { label: "Seller", href: "/sell", icon: Store },
@@ -110,15 +105,12 @@ export function Footer() {
             {/* Categories */}
             <div className="space-y-3">
               <h4 className="text-white font-bold tracking-wide text-sm">Categories</h4>
-              <ul className="space-y-2 text-xs md:text-sm">
-                {CATEGORY_LINKS.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className="rounded-sm transition-colors hover:text-[#FF6B00] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B00] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900">
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <p className="max-w-42 text-xs leading-5 text-zinc-400 md:text-sm">
+                Open the current category directory and browse what is available.
+              </p>
+              <Link href={CATEGORY_LINK.href} className="inline-flex rounded-sm text-xs font-bold transition-colors hover:text-[#FF6B00] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B00] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 md:text-sm">
+                {CATEGORY_LINK.label}
+              </Link>
             </div>
           </div>
 

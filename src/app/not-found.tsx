@@ -28,11 +28,11 @@ export default function NotFound() {
       </div>
 
       <h1 className="mb-2 text-4xl font-black tracking-tighter text-zinc-900 md:text-5xl">
-        404 - Lost in Transit
+        Page unavailable
       </h1>
 
       <p className="mb-8 max-w-md text-sm font-medium leading-relaxed text-zinc-500 md:text-base">
-        Looks like this page or product is still being built, or the link you followed is broken. Let&apos;s get you back to Zogular.
+        We could not find that page. Go home or browse categories to keep shopping.
       </p>
 
       <div className="flex w-full max-w-sm flex-col gap-3 sm:flex-row">
