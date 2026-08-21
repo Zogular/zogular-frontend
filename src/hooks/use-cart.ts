@@ -5,12 +5,12 @@ import { ApiError } from "@/services/api";
 import {
   addBackendCartItem,
   canSyncCartItem,
+  CartContractError,
   clearBackendCart,
   getBackendCart,
   removeBackendCartItem,
   updateBackendCartItem,
 } from "@/services/cart";
-import { getStoredAuthUser } from "@/services/auth-session";
 import type { CartItem, CartItemIdentity } from "@/types/cart";
 
 export type { CartItem, CartItemIdentity } from "@/types/cart";
@@ -27,17 +27,27 @@ interface CartStore {
   itemCount: number;
   totalAmount: number;
   hasHydrated: boolean;
+  identityResolved: boolean;
   syncStatus: CartSyncStatus;
   syncError: string | null;
   ownerId: string | null;
+  checkoutOutcomeOwnerId: string | null;
+  suspendedOwnerId: string | null;
+  suspendedItems: CartItem[];
   pendingDeletions: string[];
+  pendingClear: boolean;
   pendingAnonymousMerge: PendingAnonymousMerge[];
   setHasHydrated: (value: boolean) => void;
+  suspendIdentity: () => void;
+  reconcileIdentity: (ownerId: string | null) => void;
   addItem: (item: CartItem) => void;
   removeItem: (identity: CartItemIdentity) => void;
   increaseQuantity: (identity: CartItemIdentity) => void;
   decreaseQuantity: (identity: CartItemIdentity) => void;
   clearCart: () => void;
+  clearConfirmedCart: (ownerId: string) => void;
+  markCheckoutOutcomeUnknown: (ownerId: string) => void;
+  resumeCheckoutAfterReview: (ownerId: string) => void;
   syncWithBackend: () => Promise<void>;
   pullBackendCart: () => Promise<void>;
 }
@@ -81,11 +91,18 @@ function buildCartState(items: CartItem[]) {
 }
 
 function getSyncErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : "Cart synchronization failed.";
-}
-
-function getCurrentUserId(): string | null {
-  return getStoredAuthUser()?.id ?? null;
+  if (error instanceof CartContractError) {
+    return "Your cart could not be refreshed. Try again.";
+  }
+  if (error instanceof ApiError) {
+    if (error.status === 408 || error.status >= 500) {
+      return "Your cart could not refresh. Please try again in a moment.";
+    }
+    if (error.status === 401 || error.status === 403) {
+      return "Sign in again to refresh your cart.";
+    }
+  }
+  return "Your cart could not be updated. Try again.";
 }
 
 function invalidateOperations(nextIdentityId: string | null): void {
@@ -114,9 +131,28 @@ function captureSynchronization(userId: string): OperationContext {
 function isCurrentOperation(context: OperationContext): boolean {
   return (
     activeIdentityId === context.userId &&
-    getCurrentUserId() === context.userId &&
     operationGeneration === context.generation &&
     operationRevision === context.revision
+  );
+}
+
+function isPersistedCartItem(value: unknown): value is CartItem {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const item = value as Partial<CartItem>;
+  return (
+    (typeof item.id === "string" || (typeof item.id === "number" && Number.isFinite(item.id)))
+    && typeof item.slug === "string"
+    && Boolean(item.slug.trim())
+    && typeof item.name === "string"
+    && Boolean(item.name.trim())
+    && typeof item.image === "string"
+    && typeof item.price === "number"
+    && Number.isFinite(item.price)
+    && item.price > 0
+    && typeof item.quantity === "number"
+    && Number.isInteger(item.quantity)
+    && item.quantity >= 1
+    && item.quantity <= 99
   );
 }
 
@@ -229,50 +265,9 @@ function setPendingAbsoluteQuantity(
   ];
 }
 
-function associateCurrentIdentity(
-  set: (partial: Partial<CartStore>) => void,
-  get: () => CartStore,
-): string | null {
-  const userId = getCurrentUserId();
+function getResolvedOwnerId(get: () => CartStore): string | null {
   const state = get();
-
-  if (!userId) {
-    if (state.ownerId !== null || activeIdentityId !== null) {
-      invalidateOperations(null);
-      set({
-        ...buildCartState(state.ownerId === null ? state.items : []),
-        ownerId: null,
-        pendingDeletions: [],
-        pendingAnonymousMerge: [],
-        syncStatus: "idle",
-        syncError: null,
-      });
-    }
-    return null;
-  }
-
-  if (activeIdentityId !== userId) invalidateOperations(userId);
-
-  if (state.ownerId === userId) return userId;
-
-  const isAnonymousCart = state.ownerId === null;
-  const pendingAnonymousMerge = isAnonymousCart
-    ? normalizePendingMerge(state.items)
-    : [];
-  const nextItems = isAnonymousCart ? state.items : [];
-
-  // Ownership is established before the first account-bound request. A failed
-  // first sync can therefore never become anonymous cart state on sign-out.
-  set({
-    ...buildCartState(nextItems),
-    ownerId: userId,
-    pendingDeletions: [],
-    pendingAnonymousMerge,
-    syncStatus: "idle",
-    syncError: null,
-  });
-
-  return userId;
+  return state.identityResolved ? state.ownerId : null;
 }
 
 async function applyPendingDeletions(
@@ -337,6 +332,7 @@ function commitBackendItems(
   set({
     ...buildCartState(mergeBackendWithUnsyncableLocal(backendItems, get().items)),
     pendingDeletions: [],
+    pendingClear: false,
     pendingAnonymousMerge: [],
     syncStatus,
     syncError,
@@ -349,8 +345,16 @@ async function reconcileDesiredCart(
   set: (partial: Partial<CartStore>) => void,
   get: () => CartStore,
 ): Promise<void> {
-  let reconciledItems = await applyPendingDeletions(
-    backendItems,
+  let reconciledItems = backendItems;
+  if (get().pendingClear) {
+    await clearBackendCart();
+    if (!isCurrentOperation(context)) return;
+    reconciledItems = [];
+    set({ pendingClear: false });
+  }
+
+  reconciledItems = await applyPendingDeletions(
+    reconciledItems,
     get().pendingDeletions,
     context,
   );
@@ -399,28 +403,6 @@ async function handleOperationFailure(
   }
 }
 
-function scheduleMutation(
-  operation: () => Promise<void>,
-  context: OperationContext,
-  set: (partial: Partial<CartStore>) => void,
-  get: () => CartStore,
-): void {
-  set({ syncStatus: "syncing", syncError: null });
-
-  void enqueueForIdentity(context.userId, async () => {
-    try {
-      if (!isCurrentOperation(context)) return;
-      await operation();
-      if (!isCurrentOperation(context)) return;
-      const backendItems = await getBackendCart();
-      if (!isCurrentOperation(context)) return;
-      await reconcileDesiredCart(backendItems, context, set, get);
-    } catch (error) {
-      await handleOperationFailure(error, context, set, get);
-    }
-  });
-}
-
 migrateLocalStorageValue(CART_STORAGE_KEY, ["zamoyo-cart-storage"]);
 
 export const useCart = create<CartStore>()(
@@ -430,16 +412,90 @@ export const useCart = create<CartStore>()(
       itemCount: 0,
       totalAmount: 0,
       hasHydrated: false,
+      identityResolved: false,
       syncStatus: "idle",
       syncError: null,
       ownerId: null,
+      checkoutOutcomeOwnerId: null,
+      suspendedOwnerId: null,
+      suspendedItems: [],
       pendingDeletions: [],
+      pendingClear: false,
       pendingAnonymousMerge: [],
 
       setHasHydrated: (value) => set({ hasHydrated: value }),
 
+      suspendIdentity: () => {
+        const state = get();
+        if (activeIdentityId !== null || state.ownerId !== null) invalidateOperations(null);
+        const isOwnedCart = state.ownerId !== null;
+        const hasSuspendedCart = state.suspendedOwnerId !== null;
+        set({
+          ...buildCartState(!isOwnedCart && !hasSuspendedCart ? state.items : []),
+          identityResolved: false,
+          ownerId: null,
+          checkoutOutcomeOwnerId: state.checkoutOutcomeOwnerId,
+          suspendedOwnerId: isOwnedCart ? state.ownerId : state.suspendedOwnerId,
+          suspendedItems: isOwnedCart ? state.items : state.suspendedItems,
+          pendingDeletions: [],
+          pendingClear: false,
+          pendingAnonymousMerge: [],
+          syncStatus: "idle",
+          syncError: null,
+        });
+      },
+
+      reconcileIdentity: (ownerId) => {
+        const state = get();
+        if (activeIdentityId !== ownerId) invalidateOperations(ownerId);
+
+        if (ownerId === null) {
+          const hasSuspendedCart = state.suspendedOwnerId !== null;
+          set({
+            ...buildCartState(!hasSuspendedCart && state.ownerId === null ? state.items : []),
+            identityResolved: true,
+            ownerId: null,
+            checkoutOutcomeOwnerId: null,
+            suspendedOwnerId: null,
+            suspendedItems: [],
+            pendingDeletions: [],
+            pendingClear: false,
+            pendingAnonymousMerge: [],
+            syncStatus: "idle",
+            syncError: null,
+          });
+          return;
+        }
+
+        if (state.ownerId === ownerId) {
+          set({ identityResolved: true });
+          return;
+        }
+
+        const hasMatchingSuspendedCart = state.suspendedOwnerId === ownerId;
+        const isAnonymousCart = state.ownerId === null && state.suspendedOwnerId === null;
+        const nextItems = hasMatchingSuspendedCart
+          ? state.suspendedItems
+          : isAnonymousCart
+            ? state.items
+            : [];
+        set({
+          ...buildCartState(nextItems),
+          identityResolved: true,
+          ownerId,
+          checkoutOutcomeOwnerId: state.checkoutOutcomeOwnerId === ownerId ? ownerId : null,
+          suspendedOwnerId: null,
+          suspendedItems: [],
+          pendingDeletions: [],
+          pendingClear: false,
+          pendingAnonymousMerge: isAnonymousCart ? normalizePendingMerge(nextItems) : [],
+          syncStatus: "idle",
+          syncError: null,
+        });
+      },
+
       addItem: (newItem) => {
-        const userId = associateCurrentIdentity(set, get);
+        const userId = getResolvedOwnerId(get);
         const currentItems = get().items;
         const normalizedQuantity = Math.max(1, newItem.quantity || 1);
         const existingItem = currentItems.find((item) =>
@@ -455,53 +511,52 @@ export const useCart = create<CartStore>()(
 
         set(buildCartState(nextItems));
         if (!userId || !canSyncCartLine(newItem)) return;
-        const context = captureOperation(userId);
-        if (existingItem && !existingItem.serverCartItemId && hasPendingMergeLine(
-          get().pendingAnonymousMerge,
-          { id: existingItem.id, variant: existingItem.variant },
-        )) {
-          set({
-            pendingAnonymousMerge: updatePendingMergeQuantity(
+        captureOperation(userId);
+        const desiredItem = nextItems.find((item) => isSameCartLine(
+          item,
+          { id: newItem.id, variant: newItem.variant },
+        ));
+        if (!desiredItem) return;
+        const pendingAnonymousMerge = existingItem
+          && !existingItem.serverCartItemId
+          && hasPendingMergeLine(get().pendingAnonymousMerge, {
+            id: existingItem.id,
+            variant: existingItem.variant,
+          })
+          ? updatePendingMergeQuantity(
               get().pendingAnonymousMerge,
               { id: existingItem.id, variant: existingItem.variant },
               existingItem.quantity,
-              existingItem.quantity + normalizedQuantity,
-            ),
-          });
-          void get().syncWithBackend();
-          return;
-        }
-        scheduleMutation(
-          () => addBackendCartItem({ productId: newItem.id, quantity: normalizedQuantity }),
-          context,
-          set,
-          get,
-        );
+              desiredItem.quantity,
+            )
+          : setPendingAbsoluteQuantity(
+              get().pendingAnonymousMerge,
+              desiredItem,
+              desiredItem.quantity,
+            );
+        set({ pendingAnonymousMerge });
+        void get().syncWithBackend();
       },
 
       removeItem: (identity) => {
-        const userId = associateCurrentIdentity(set, get);
+        const userId = getResolvedOwnerId(get);
         const currentItems = get().items;
         const targetItem = currentItems.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
         set(buildCartState(currentItems.filter((item) => !isSameCartLine(item, identity))));
 
         if (!userId || !canSyncCartLine(targetItem)) return;
-        if (!targetItem.serverCartItemId) {
-          captureOperation(userId);
-          const pendingAnonymousMerge = hasPendingMergeLine(get().pendingAnonymousMerge, identity)
-            ? removePendingMergeLine(get().pendingAnonymousMerge, identity)
-            : setPendingAbsoluteQuantity(get().pendingAnonymousMerge, targetItem, 0);
-          set({ pendingAnonymousMerge });
-          void get().syncWithBackend();
-          return;
-        }
-        const context = captureOperation(userId);
-        scheduleMutation(() => removeBackendCartItem(targetItem.serverCartItemId!), context, set, get);
+        captureOperation(userId);
+        const pendingAnonymousMerge = !targetItem.serverCartItemId
+          && hasPendingMergeLine(get().pendingAnonymousMerge, identity)
+          ? removePendingMergeLine(get().pendingAnonymousMerge, identity)
+          : setPendingAbsoluteQuantity(get().pendingAnonymousMerge, targetItem, 0);
+        set({ pendingAnonymousMerge });
+        void get().syncWithBackend();
       },
 
       increaseQuantity: (identity) => {
-        const userId = associateCurrentIdentity(set, get);
+        const userId = getResolvedOwnerId(get);
         const targetItem = get().items.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
         const nextQuantity = targetItem.quantity + 1;
@@ -510,9 +565,9 @@ export const useCart = create<CartStore>()(
         )));
 
         if (!userId || !canSyncCartLine(targetItem)) return;
-        const context = captureOperation(userId);
-        if (!targetItem.serverCartItemId) {
-          const pendingAnonymousMerge = hasPendingMergeLine(get().pendingAnonymousMerge, identity)
+        captureOperation(userId);
+        const pendingAnonymousMerge = !targetItem.serverCartItemId
+          && hasPendingMergeLine(get().pendingAnonymousMerge, identity)
             ? updatePendingMergeQuantity(
                 get().pendingAnonymousMerge,
                 identity,
@@ -520,22 +575,12 @@ export const useCart = create<CartStore>()(
                 nextQuantity,
               )
             : setPendingAbsoluteQuantity(get().pendingAnonymousMerge, targetItem, nextQuantity);
-          set({
-            pendingAnonymousMerge,
-          });
-          void get().syncWithBackend();
-          return;
-        }
-        scheduleMutation(
-          () => updateBackendCartItem({ itemId: targetItem.serverCartItemId!, quantity: nextQuantity }),
-          context,
-          set,
-          get,
-        );
+        set({ pendingAnonymousMerge });
+        void get().syncWithBackend();
       },
 
       decreaseQuantity: (identity) => {
-        const userId = associateCurrentIdentity(set, get);
+        const userId = getResolvedOwnerId(get);
         const targetItem = get().items.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
         if (targetItem.quantity <= 1) {
@@ -548,9 +593,9 @@ export const useCart = create<CartStore>()(
           isSameCartLine(item, identity) ? { ...item, quantity: nextQuantity } : item,
         )));
         if (!userId || !canSyncCartLine(targetItem)) return;
-        const context = captureOperation(userId);
-        if (!targetItem.serverCartItemId) {
-          const pendingAnonymousMerge = hasPendingMergeLine(get().pendingAnonymousMerge, identity)
+        captureOperation(userId);
+        const pendingAnonymousMerge = !targetItem.serverCartItemId
+          && hasPendingMergeLine(get().pendingAnonymousMerge, identity)
             ? updatePendingMergeQuantity(
                 get().pendingAnonymousMerge,
                 identity,
@@ -558,35 +603,62 @@ export const useCart = create<CartStore>()(
                 nextQuantity,
               )
             : setPendingAbsoluteQuantity(get().pendingAnonymousMerge, targetItem, nextQuantity);
-          set({
-            pendingAnonymousMerge,
-          });
-          void get().syncWithBackend();
-          return;
-        }
-        scheduleMutation(
-          () => updateBackendCartItem({ itemId: targetItem.serverCartItemId!, quantity: nextQuantity }),
-          context,
-          set,
-          get,
-        );
+        set({ pendingAnonymousMerge });
+        void get().syncWithBackend();
       },
 
       clearCart: () => {
-        const userId = associateCurrentIdentity(set, get);
-        const context = userId ? captureOperation(userId) : null;
+        const userId = getResolvedOwnerId(get);
+        if (userId) captureOperation(userId);
         set({
           ...buildCartState([]),
+          checkoutOutcomeOwnerId: null,
           pendingDeletions: [],
+          pendingClear: Boolean(userId),
           pendingAnonymousMerge: [],
         });
-        if (!context) return;
-        scheduleMutation(clearBackendCart, context, set, get);
+        if (!userId) return;
+        void get().syncWithBackend();
+      },
+
+      clearConfirmedCart: (ownerId) => {
+        if (!get().identityResolved || get().ownerId !== ownerId || activeIdentityId !== ownerId) return;
+        captureOperation(ownerId);
+        set({
+          ...buildCartState([]),
+          checkoutOutcomeOwnerId: null,
+          pendingDeletions: [],
+          pendingAnonymousMerge: [],
+          syncStatus: "idle",
+          syncError: null,
+        });
+      },
+
+      markCheckoutOutcomeUnknown: (ownerId) => {
+        if (!get().identityResolved || get().ownerId !== ownerId || activeIdentityId !== ownerId) return;
+        captureOperation(ownerId);
+        set({
+          checkoutOutcomeOwnerId: ownerId,
+          syncStatus: "error",
+          syncError: "Check your orders before trying checkout again.",
+        });
+      },
+
+      resumeCheckoutAfterReview: (ownerId) => {
+        if (!get().identityResolved || get().ownerId !== ownerId || activeIdentityId !== ownerId) return;
+        set({ checkoutOutcomeOwnerId: null, syncStatus: "idle", syncError: null });
       },
 
       syncWithBackend: async () => {
-        const userId = associateCurrentIdentity(set, get);
+        const userId = getResolvedOwnerId(get);
         if (!userId) return;
+        if (get().checkoutOutcomeOwnerId === userId) {
+          set({
+            syncStatus: "error",
+            syncError: "Check your orders before trying checkout again.",
+          });
+          return;
+        }
 
         const dedupeKey = `${userId}:${operationGeneration}:${operationRevision}`;
         const existing = activeSynchronizations.get(dedupeKey);
@@ -622,18 +694,47 @@ export const useCart = create<CartStore>()(
       partialize: (state) => ({
         items: state.items,
         ownerId: state.ownerId,
+        checkoutOutcomeOwnerId: state.checkoutOutcomeOwnerId,
+        suspendedOwnerId: state.suspendedOwnerId,
+        suspendedItems: state.suspendedItems,
         pendingDeletions: state.pendingDeletions,
         pendingAnonymousMerge: state.pendingAnonymousMerge,
       }),
       onRehydrateStorage: () => (state) => {
         if (!state) return;
-        const restoredState = buildCartState(state.items ?? []);
+        const storedOwnerId = typeof state.ownerId === "string" && state.ownerId.trim()
+          ? state.ownerId
+          : null;
+        const storedItems = Array.isArray(state.items) && state.items.every(isPersistedCartItem)
+          ? state.items
+          : [];
+        const storedSuspendedOwnerId = typeof state.suspendedOwnerId === "string"
+          && state.suspendedOwnerId.trim()
+          ? state.suspendedOwnerId
+          : null;
+        const storedSuspendedItems = Array.isArray(state.suspendedItems)
+          && state.suspendedItems.every(isPersistedCartItem)
+          ? state.suspendedItems
+          : [];
+        const suspendedOwnerId = storedSuspendedOwnerId ?? storedOwnerId;
+        const suspendedItems = storedSuspendedOwnerId ? storedSuspendedItems : storedItems;
+        // Private items remain hidden until the same account is verified. A
+        // different account or a guest clears this suspended snapshot.
+        const restoredState = buildCartState(suspendedOwnerId === null ? storedItems : []);
         state.items = restoredState.items;
         state.itemCount = restoredState.itemCount;
         state.totalAmount = restoredState.totalAmount;
-        state.ownerId = state.ownerId ?? null;
-        state.pendingDeletions = state.pendingDeletions ?? [];
-        state.pendingAnonymousMerge = state.pendingAnonymousMerge ?? [];
+        state.ownerId = null;
+        state.suspendedOwnerId = suspendedOwnerId;
+        state.suspendedItems = suspendedOwnerId === null ? [] : suspendedItems;
+        state.checkoutOutcomeOwnerId = typeof state.checkoutOutcomeOwnerId === "string"
+          && state.checkoutOutcomeOwnerId.trim()
+          ? state.checkoutOutcomeOwnerId
+          : null;
+        state.pendingDeletions = [];
+        state.pendingClear = false;
+        state.pendingAnonymousMerge = [];
+        state.identityResolved = false;
         state.setHasHydrated(true);
       },
     },
