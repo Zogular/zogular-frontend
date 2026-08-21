@@ -1,11 +1,15 @@
 import { ApiError, apiClient } from "@/services/api";
 import {
+  clearPasswordRecoveryIntent,
   clearStoredAuthSession,
-  getLastAuthEmail,
+  createPasswordRecoveryIntent,
+  getPasswordRecoveryIntent as getStoredPasswordRecoveryIntent,
   getStoredAuthUser,
+  storePasswordRecoveryIntent,
   storeAuthSession,
   storeAuthUser,
   storeLastAuthEmail,
+  type PasswordRecoveryIntent,
 } from "@/services/auth-session";
 import {
   appendNextPath,
@@ -225,10 +229,69 @@ export function isEmailVerificationRequiredError(error: unknown): boolean {
   return error.message.trim().toLowerCase() === "please verify your email before logging in.";
 }
 
-let pendingPasswordReset: { email: string; code: string } | null = null;
+let pendingPasswordReset: { intentId: string; email: string; code: string } | null = null;
+
+export function getPasswordRecoveryIntent(): PasswordRecoveryIntent | null {
+  return getStoredPasswordRecoveryIntent();
+}
+
+export function clearPasswordRecoveryState(): void {
+  pendingPasswordReset = null;
+  clearPasswordRecoveryIntent();
+}
+
+export function maskPasswordRecoveryEmail(email: string): string {
+  const [localPart = "", domain = ""] = email.split("@");
+  if (!localPart || !domain) return "your email address";
+  const visiblePrefix = localPart.slice(0, Math.min(2, localPart.length));
+  return `${visiblePrefix}${"*".repeat(Math.max(3, localPart.length - visiblePrefix.length))}@${domain}`;
+}
+
+function requirePasswordRecoverySuccess(payload: unknown): void {
+  const root = asRecord(payload);
+  if (root?.status !== "success" || !asNonEmptyString(root.message)) {
+    throw new ApiError("Password recovery returned an invalid response.", 502, payload);
+  }
+}
+
+export function getPasswordRecoveryErrorMessage(
+  error: unknown,
+  step: "request" | "verify" | "reset",
+): string {
+  if (!(error instanceof ApiError)) {
+    return "Password recovery is temporarily unavailable. Please try again.";
+  }
+  if (error.status === 409) {
+    return "For your security, restart password recovery before continuing.";
+  }
+  if (error.status === 429) {
+    return "Too many attempts. Wait a moment before trying again.";
+  }
+  if (error.status === 408) {
+    return "The request took too long. Check your connection and try again.";
+  }
+  if (error.status >= 500) {
+    return "Password recovery is temporarily unavailable. Please try again.";
+  }
+  if (error.status === 400) {
+    if (step === "request") return "Enter a valid email address and try again.";
+    if (step === "verify") return "That code is invalid or has expired. Request a new code and try again.";
+    return "The reset code is invalid or has expired. Restart password recovery and try again.";
+  }
+  return "Password recovery could not continue. Please try again.";
+}
 
 export function getPendingPasswordReset(): { email: string; code: string } | null {
-  return pendingPasswordReset ? { ...pendingPasswordReset } : null;
+  const intent = getStoredPasswordRecoveryIntent();
+  if (
+    !intent
+    || intent.stage !== "code-verified"
+    || pendingPasswordReset?.intentId !== intent.intentId
+    || pendingPasswordReset.email !== intent.email
+  ) {
+    return null;
+  }
+  return { email: pendingPasswordReset.email, code: pendingPasswordReset.code };
 }
 
 function appendSafeNext(path: string, nextPath?: string | null): string {
@@ -281,10 +344,6 @@ function buildRegisterPayload(input: RegisterInput) {
   };
 }
 
-export function getDemoVerificationEmail(): string {
-  return getLastAuthEmail();
-}
-
 export function getPostLoginRedirectPath(
   user: Pick<AuthUser, "role">,
   preferredPath?: string | null,
@@ -304,6 +363,7 @@ export function getStoredAuthSession(): AuthSession | null {
 }
 
 export async function login(input: LoginInput): Promise<AuthSession> {
+  clearPasswordRecoveryState();
   storeLastAuthEmail(input.email);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.login, {
@@ -340,6 +400,7 @@ export async function login(input: LoginInput): Promise<AuthSession> {
 }
 
 export async function register(input: RegisterInput): Promise<AuthActionResult> {
+  clearPasswordRecoveryState();
   storeLastAuthEmail(input.email);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.register, {
@@ -376,6 +437,7 @@ export async function logout(): Promise<AuthActionResult> {
   // Remove client-visible identity before any network wait. The backend
   // request remains a best-effort cookie/session revocation operation.
   localLogoutPending = true;
+  clearPasswordRecoveryState();
   clearStoredAuthSession();
 
   try {
@@ -455,21 +517,33 @@ export async function verifyPhoneOtp(
 export async function requestPasswordReset(
   input: ForgotPasswordInput,
 ): Promise<AuthActionResult> {
-  storeLastAuthEmail(input.email);
+  clearPasswordRecoveryState();
+  const email = input.email.trim().toLowerCase();
   const safeNextPath = sanitizeInternalNextPath(input.next);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.forgotPassword, {
     method: "POST",
     authMode: "omit",
     csrf: true,
-    body: JSON.stringify({ email: input.email }),
+    body: JSON.stringify({ email }),
   });
+  requirePasswordRecoverySuccess(payload);
 
-  return buildActionResult(
-    payload,
-    "Verification code sent.",
-    appendSafeNext(`/auth/verify-code?email=${encodeURIComponent(input.email)}`, safeNextPath),
-  );
+  let intent: PasswordRecoveryIntent;
+  try {
+    intent = createPasswordRecoveryIntent(email, safeNextPath);
+  } catch {
+    throw new ApiError("Password recovery could not be secured in this browser.", 503);
+  }
+  if (!storePasswordRecoveryIntent(intent)) {
+    throw new ApiError("Password recovery could not be secured in this browser.", 503);
+  }
+
+  return {
+    success: true,
+    message: extractActionMessage(payload, "Verification code sent."),
+    nextPath: "/auth/verify-code",
+  };
 }
 
 export async function verifyEmailToken(token: string): Promise<AuthActionResult> {
@@ -505,47 +579,74 @@ export async function resendVerificationEmail(
 export async function verifyResetCode(
   input: VerifyCodeInput,
 ): Promise<AuthActionResult> {
-  const safeNextPath = sanitizeInternalNextPath(input.next);
+  const intent = getStoredPasswordRecoveryIntent();
+  const email = input.email.trim().toLowerCase();
+  if (!intent || intent.stage !== "code-requested" || intent.email !== email) {
+    clearPasswordRecoveryState();
+    throw new ApiError("Password recovery must be restarted.", 409);
+  }
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.verifyCode, {
     method: "POST",
     authMode: "omit",
     csrf: true,
-    body: JSON.stringify({ email: input.email, code: input.code }),
+    body: JSON.stringify({ email: intent.email, code: input.code }),
   });
+  requirePasswordRecoverySuccess(payload);
 
-  pendingPasswordReset = { email: input.email, code: input.code };
+  const verifiedIntent: PasswordRecoveryIntent = { ...intent, stage: "code-verified" };
+  if (!storePasswordRecoveryIntent(verifiedIntent)) {
+    clearPasswordRecoveryState();
+    throw new ApiError("Password recovery could not be secured in this browser.", 503);
+  }
+  pendingPasswordReset = {
+    intentId: verifiedIntent.intentId,
+    email: verifiedIntent.email,
+    code: input.code,
+  };
 
-  return buildActionResult(
-    payload,
-    "Code verified.",
-    appendSafeNext(`/auth/reset-password?email=${encodeURIComponent(input.email)}`, safeNextPath),
-  );
+  return {
+    success: true,
+    message: extractActionMessage(payload, "Code verified."),
+    nextPath: "/auth/reset-password",
+  };
 }
 
 export async function resetPassword(
   input: ResetPasswordInput,
 ): Promise<AuthActionResult> {
-  const safeNextPath = sanitizeInternalNextPath(input.next);
+  const intent = getStoredPasswordRecoveryIntent();
+  const email = input.email.trim().toLowerCase();
+  if (
+    !intent
+    || intent.stage !== "code-verified"
+    || intent.email !== email
+    || !/^\d{6}$/.test(input.code)
+  ) {
+    clearPasswordRecoveryState();
+    throw new ApiError("Password recovery must be restarted.", 409);
+  }
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resetPassword, {
     method: "POST",
     authMode: "omit",
     csrf: true,
     body: JSON.stringify({
-      email: input.email,
+      email: intent.email,
       code: input.code,
       password: input.password,
       confirmPassword: input.confirmPassword,
     }),
   });
+  requirePasswordRecoverySuccess(payload);
 
-  pendingPasswordReset = null;
-  const loginPath = safeNextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+  const nextPath = intent.nextPath;
+  clearPasswordRecoveryState();
+  const loginPath = nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
 
-  return buildActionResult(
-    payload,
-    "Password updated successfully.",
-    appendSafeNext(loginPath, safeNextPath),
-  );
+  return {
+    success: true,
+    message: extractActionMessage(payload, "Password updated successfully."),
+    nextPath: appendSafeNext(loginPath, nextPath),
+  };
 }
 
 export async function updateMe(
