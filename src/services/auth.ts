@@ -462,10 +462,11 @@ export async function logout(): Promise<AuthActionResult> {
   };
 }
 
-export async function getCurrentUser(options: { persist?: boolean; skipAuthRefresh?: boolean } = {}): Promise<AuthUser> {
+export async function getCurrentUser(options: { persist?: boolean; skipAuthRefresh?: boolean; timeout?: number } = {}): Promise<AuthUser> {
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.me, {
     method: "GET",
     skipAuthRefresh: options.skipAuthRefresh,
+    timeout: options.timeout,
   });
 
   const fallbackEmail = getStoredAuthUser()?.email;

@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { usePathname } from "next/navigation";
-import { User, Package, Heart, MapPin, Settings, LogOut, ChevronRight, Loader2 } from "lucide-react";
+import { AlertCircle, User, Package, Heart, MapPin, Settings, LogOut, ChevronRight, Loader2 } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { Button } from "@/components/ui/button";
 import { signOutAccount } from "@/services/account";
@@ -58,9 +58,22 @@ export default function AccountLayout({
   if (auth.status === "unavailable") {
     return (
       <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
-        <div className="space-y-3 text-center">
-          <p className="text-sm font-semibold text-zinc-700">Your account could not open.</p>
-          <Button type="button" variant="outline" onClick={auth.retry}>Try Again</Button>
+        <div className="w-full max-w-md rounded-3xl border border-red-100 bg-white p-6 text-center shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600">
+            <AlertCircle className="h-6 w-6" aria-hidden="true" />
+          </div>
+          <h1 className="mt-4 text-lg font-black text-zinc-950">Account could not load</h1>
+          <p className="mt-2 text-sm font-medium leading-6 text-zinc-600">
+            Zogular could not check your account right now. Try again, or sign in when the service is available.
+          </p>
+          <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+            <Button type="button" variant="outline" onClick={auth.retry} className="border-red-200 text-red-700 hover:bg-red-50">
+              Retry
+            </Button>
+            <Button asChild className="bg-zinc-900 text-white hover:bg-zinc-800">
+              <Link href={appendNextPath("/auth/login", pathname)}>Sign in</Link>
+            </Button>
+          </div>
         </div>
       </main>
     );
