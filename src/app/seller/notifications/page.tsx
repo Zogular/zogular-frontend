@@ -4,13 +4,13 @@ import { useState, useMemo, useEffect, useCallback } from "react";
 import Link from "next/link";
 import {
   Bell, ShoppingCart, Wallet, AlertTriangle, MessageSquare,
-  Trash2, AlertCircle, Info, ChevronRight, Check
+  AlertCircle, Info, ChevronRight
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { toast, Toaster } from "sonner";
 import { cn } from "@/lib/utils";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { getSellerSafeErrorMessage } from "@/lib/seller-error";
 
 // ============================================================================
 // 1. DATA CONTRACTS
@@ -42,15 +42,6 @@ type NotificationTypeMeta = {
 const notificationsApi = {
   async fetchAll(): Promise<SellerNotification[]> {
     return [];
-  },
-  async markAsRead(): Promise<void> {
-    return;
-  },
-  async markAllAsRead(): Promise<void> {
-    return;
-  },
-  async clearAll(): Promise<void> {
-    return;
   }
 };
 
@@ -103,7 +94,7 @@ export default function SellerNotificationsPage() {
       const data = await notificationsApi.fetchAll();
       setNotifications(data);
     } catch (error) {
-      setError(error instanceof Error ? error.message : "An unknown error occurred");
+      setError(getSellerSafeErrorMessage(error, "notifications"));
     } finally {
       setLoading(false);
     }
@@ -112,41 +103,6 @@ export default function SellerNotificationsPage() {
   useEffect(() => {
     loadNotifications();
   }, [loadNotifications]);
-
-  const handleMarkAsRead = async (id: string, currentReadState: boolean) => {
-    if (currentReadState) return;
-
-    setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: true } : n)));
-    try {
-      await notificationsApi.markAsRead();
-    } catch {
-      setNotifications((prev) => prev.map((n) => (n.id === id ? { ...n, isRead: false } : n)));
-    }
-  };
-
-  const handleMarkAllAsRead = async () => {
-    const hasUnread = notifications.some((n) => !n.isRead);
-    if (!hasUnread) return;
-
-    setNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    toast.success("All notifications marked as read.");
-    try {
-      await notificationsApi.markAllAsRead();
-    } catch {
-      toast.error("Failed to sync with server.");
-    }
-  };
-
-  const handleClearAll = async () => {
-    if (notifications.length === 0) return;
-    setNotifications([]);
-    toast.success("Notifications cleared.");
-    try {
-      await notificationsApi.clearAll();
-    } catch {
-      toast.error("Failed to clear notifications.");
-    }
-  };
 
   const filteredNotifications = useMemo(() => {
     return notifications
@@ -175,7 +131,7 @@ export default function SellerNotificationsPage() {
     return (
       <div className="mt-6 flex flex-col items-center justify-center rounded-3xl border border-red-100 bg-red-50 p-8 text-center">
         <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
-        <h3 className="text-base font-bold text-red-900">System Error</h3>
+        <h3 className="text-base font-bold text-red-900">Notifications could not load</h3>
         <p className="mt-1 text-sm text-red-700">{error}</p>
         <Button onClick={loadNotifications} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">
           Try Again
@@ -186,8 +142,6 @@ export default function SellerNotificationsPage() {
 
   return (
     <div className="mx-auto min-w-0 max-w-250 animate-in space-y-6 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:pb-12">
-      <Toaster position="top-center" />
-
       <div className="shrink-0 flex flex-col justify-between gap-4 md:flex-row md:items-end">
         <div>
           <h1 className="flex items-center gap-3 text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">
@@ -199,14 +153,6 @@ export default function SellerNotificationsPage() {
             )}
           </h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">Stay on top of orders, stock alerts, and payouts.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleMarkAllAsRead} disabled={unreadCount === 0} className="h-10 rounded-xl border-zinc-200 bg-white px-4 text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-50 md:text-sm">
-            <Check className="mr-2 h-4 w-4" /> Mark all read
-          </Button>
-          <Button aria-label="Clear all notifications" variant="ghost" size="icon" onClick={handleClearAll} disabled={notifications.length === 0} className="h-10 w-10 rounded-xl text-zinc-400 hover:bg-red-50 hover:text-red-600">
-            <Trash2 className="h-4 w-4" />
-          </Button>
         </div>
       </div>
 
@@ -309,7 +255,6 @@ export default function SellerNotificationsPage() {
                           <Link
                             key={notification.id}
                             href={notification.link}
-                            onClick={() => handleMarkAsRead(notification.id, notification.isRead)}
                             className="block"
                           >
                             {content}
@@ -318,11 +263,7 @@ export default function SellerNotificationsPage() {
                       }
 
                       return (
-                        <div
-                          key={notification.id}
-                          onClick={() => handleMarkAsRead(notification.id, notification.isRead)}
-                          className={cn(!notification.isRead && "cursor-pointer")}
-                        >
+                        <div key={notification.id}>
                           {content}
                         </div>
                       );

@@ -5,6 +5,7 @@ import { X, Mail, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { BRAND } from "@/config/brand";
+import { getSellerSafeErrorMessage } from "@/lib/seller-error";
 import { supportApi, TicketCategory, TicketPriority } from "@/services/support";
 
 interface ContactSupportModalProps {
@@ -58,11 +59,7 @@ export function ContactSupportModal({
       onSuccess?.(ticket.id);
       onClose();
     } catch (submitError) {
-      setError(
-        submitError instanceof Error
-          ? submitError.message
-          : "Failed to create support ticket.",
-      );
+      setError(getSellerSafeErrorMessage(submitError, "support-create"));
     } finally {
       setLoading(false);
     }

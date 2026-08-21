@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/config/brand";
+import { getSellerSafeErrorMessage } from "@/lib/seller-error";
 
 // Import from our new service layer
 import { supportApi, SupportTicket, SupportStats, TicketStatus, TicketPriority } from "@/services/support";
@@ -84,7 +85,7 @@ export default function SellerSupportPage() {
       const data = await supportApi.fetchTickets();
       setTickets(data);
     } catch (err) {
-      if (!silent) setError(err instanceof Error ? err.message : "An unknown error occurred");
+      if (!silent) setError(getSellerSafeErrorMessage(err, "support-list"));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -124,7 +125,7 @@ export default function SellerSupportPage() {
         const detail = await supportApi.getTicket(selectedTicketId);
         if (isMounted) setSelectedTicketData(detail);
       } catch (err) {
-        if (isMounted) setDetailError(err instanceof Error ? err.message : "Failed to load ticket.");
+        if (isMounted) setDetailError(getSellerSafeErrorMessage(err, "support-detail"));
       } finally {
         if (isMounted) setLoadingTicket(false);
       }
@@ -149,11 +150,7 @@ export default function SellerSupportPage() {
       setSelectedTicketData(updatedTicket);
       loadTickets(true);
     } catch (replyError) {
-      setDetailError(
-        replyError instanceof Error
-          ? replyError.message
-          : "Failed to send reply.",
-      );
+      setDetailError(getSellerSafeErrorMessage(replyError, "support-reply"));
     } finally {
       setReplying(false);
     }
@@ -170,11 +167,7 @@ export default function SellerSupportPage() {
       setSelectedTicketData(updatedTicket);
       loadTickets(true);
     } catch (resolveError) {
-      setDetailError(
-        resolveError instanceof Error
-          ? resolveError.message
-          : "Failed to resolve ticket.",
-      );
+      setDetailError(getSellerSafeErrorMessage(resolveError, "support-resolve"));
     } finally {
       setResolving(false);
     }
@@ -193,7 +186,7 @@ export default function SellerSupportPage() {
   if (error) return (
     <div className="flex flex-col items-center justify-center rounded-3xl border border-red-100 bg-red-50 p-8 text-center mt-6">
       <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
-      <h3 className="text-base font-bold text-red-900">System Error</h3>
+      <h3 className="text-base font-bold text-red-900">Support tickets could not load</h3>
       <p className="mt-1 text-sm text-red-700">{error}</p>
       <Button onClick={() => loadTickets()} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">Try Again</Button>
     </div>
