@@ -58,10 +58,7 @@ function SellerRegisterContent() {
       const result = await register({ ...form, next: nextPath });
       router.push(
         result.nextPath ??
-          appendNextPath(
-            `/seller/check-email?email=${encodeURIComponent(form.email.trim().toLowerCase())}`,
-            nextPath,
-          ),
+          appendNextPath("/seller/check-email", nextPath),
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create account.");

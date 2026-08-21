@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getPostLoginRedirectPath, isEmailVerificationRequiredError, login } from "@/services/auth";
+import { getStoredLastAuthEmail } from "@/services/auth-session";
 import {
   appendNextPath,
   clearAuthRedirectIntent,
@@ -46,7 +47,11 @@ function SellerLoginContent() {
   }, [nextPath]);
 
   useEffect(() => {
-    if (emailParam) setEmail(emailParam);
+    if (emailParam) {
+      setEmail(emailParam);
+    } else {
+      setEmail((current) => current || getStoredLastAuthEmail() || "");
+    }
     if (registered) {
       setSuccess(
         "Seller account created. Please verify your email before signing in.",
@@ -72,8 +77,7 @@ function SellerLoginContent() {
       setError(err instanceof Error ? err.message : "Failed to sign in.");
       setSuccess(null);
       if (isEmailVerificationRequiredError(err)) {
-        const recoveryPath = `/seller/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`;
-        setVerificationRecoveryHref(appendNextPath(recoveryPath, nextPath));
+        setVerificationRecoveryHref(appendNextPath("/seller/check-email", nextPath));
       }
     } finally {
       setIsSubmitting(false);

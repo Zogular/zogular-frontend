@@ -23,7 +23,6 @@ import type {
   ChangePasswordInput,
   ForgotPasswordInput,
   LoginInput,
-  PermissionPreferencesInput,
   RegisterInput,
   ResetPasswordInput,
   UpdateMeInput,
@@ -414,7 +413,7 @@ export async function register(input: RegisterInput): Promise<AuthActionResult> 
     payload,
     "Account created successfully. Please check your email to verify your account.",
     appendSafeNext(
-      `/auth/check-email?email=${encodeURIComponent(input.email.trim().toLowerCase())}`,
+      "/auth/check-email",
       input.next,
     ),
   );
@@ -695,16 +694,4 @@ export async function changePassword(
 
   clearStoredAuthSession();
   return buildActionResult(payload, "Password changed successfully.");
-}
-
-export async function savePermissionPreferences(
-  input: PermissionPreferencesInput,
-): Promise<AuthActionResult> {
-  void input;
-
-  return {
-    success: true,
-    message: "Preferences saved.",
-    nextPath: "/",
-  };
 }

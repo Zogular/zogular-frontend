@@ -6,17 +6,17 @@ export default function ReturnsPage() {
       title="Returns Policy"
       eyebrow="After-purchase support"
       tone="support"
-      description="Zogular supports fair returns so shoppers can buy with confidence while keeping expectations clear for sellers."
-      highlights={["7-day eligible return window", "Original condition checks", "Clear review process", "Support-led resolution"]}
+      description="Zogular reviews after-purchase issues fairly while keeping expectations clear for shoppers and sellers."
+      highlights={["Issue-based review", "Original condition checks", "Clear review process", "Support-led resolution"]}
       stats={[
-        { value: "7d", label: "Window" },
+        { value: "Case", label: "Review" },
         { value: "Fair", label: "Review" },
         { value: "Clear", label: "Steps" },
       ]}
       sections={[
         {
-          title: "Return Window",
-          body: "Most eligible items can be returned within 7 days from delivery, provided they are in original condition and include all accessories.",
+          title: "Return Eligibility",
+          body: "Returns are reviewed by issue type, item condition, and seller terms. Change-of-mind returns are not automatic.",
         },
         {
           title: "Non-Eligible Returns",
@@ -24,13 +24,13 @@ export default function ReturnsPage() {
         },
         {
           title: "How to Start",
-          body: "Open your order history, select the order, and submit a return request with clear details. Our team reviews each case and responds with next steps.",
+          body: "Open your order history when available, then contact support with clear details. Our team reviews each case and responds with next steps.",
         },
       ]}
       steps={[
         {
           title: "Check eligibility",
-          body: "Review whether the item is within the return window and still in return-ready condition.",
+          body: "Review whether the issue, item condition, and seller terms support a return, replacement, or refund review.",
         },
         {
           title: "Submit details",
@@ -44,7 +44,7 @@ export default function ReturnsPage() {
       faqs={[
         {
           question: "Are all products returnable?",
-          answer: "No. Some personal-care, damaged, used, or explicitly non-returnable items may not qualify.",
+          answer: "No. Some products, issue types, used items, or explicitly non-returnable items may not qualify.",
         },
         {
           question: "Where should a shopper start?",

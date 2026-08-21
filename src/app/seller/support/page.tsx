@@ -56,6 +56,7 @@ function StatCard({ title, value, icon: Icon, colorClass }: { title: string; val
 // MAIN PAGE EXPORT
 // ============================================================================
 export default function SellerSupportPage() {
+  const supportEmail = BRAND.supportEmail;
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -214,22 +215,24 @@ export default function SellerSupportPage() {
         </Button>
       </div>
 
-      <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
-            <p className="mt-1 text-sm font-medium text-zinc-600">
-              You can also email support directly if you are unable to open a ticket.
-            </p>
+      {supportEmail ? (
+        <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
+              <p className="mt-1 text-sm font-medium text-zinc-600">
+                You can also email support directly if you are unable to open a ticket.
+              </p>
+            </div>
+            <a
+              href={`mailto:${supportEmail}?subject=Seller%20support%20request`}
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
+            >
+              {supportEmail}
+            </a>
           </div>
-          <a
-            href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
-          >
-            {BRAND.supportEmail}
-          </a>
         </div>
-      </div>
+      ) : null}
 
       {/* 2. SUMMARY CARDS */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 shrink-0">
@@ -327,14 +330,16 @@ export default function SellerSupportPage() {
               <MessageSquare className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
               <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view conversation</h3>
               <p className="mx-auto mt-2 max-w-sm text-xs font-medium leading-relaxed text-zinc-500">
-                Ticket replies stay in-app when support is active. You can still use direct email if you need an offline fallback.
+                Ticket replies stay in-app when support is active.
               </p>
-              <a
-                href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
-                className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50"
-              >
-                {BRAND.supportEmail}
-              </a>
+              {supportEmail ? (
+                <a
+                  href={`mailto:${supportEmail}?subject=Seller%20support%20request`}
+                  className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50"
+                >
+                  {supportEmail}
+                </a>
+              ) : null}
             </div>
           ) : (
             <>

@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { getPostLoginRedirectPath, isEmailVerificationRequiredError, login } from "@/services/auth";
+import { getStoredLastAuthEmail } from "@/services/auth-session";
 import {
   appendNextPath,
   clearAuthRedirectIntent,
@@ -53,7 +54,11 @@ function LoginContent() {
   }, [auth, nextPath, router]);
 
   useEffect(() => {
-    if (emailParam) setEmail(emailParam);
+    if (emailParam) {
+      setEmail(emailParam);
+    } else {
+      setEmail((current) => current || getStoredLastAuthEmail() || "");
+    }
     if (registered) {
       setSuccess("Account created. Please verify your email before signing in.");
     }
@@ -77,8 +82,7 @@ function LoginContent() {
       setError(err instanceof Error ? err.message : "Failed to sign in.");
       setSuccess(null);
       if (isEmailVerificationRequiredError(err)) {
-        const recoveryPath = `/auth/check-email?email=${encodeURIComponent(email.trim().toLowerCase())}`;
-        setVerificationRecoveryHref(appendNextPath(recoveryPath, nextPath));
+        setVerificationRecoveryHref(appendNextPath("/auth/check-email", nextPath));
       }
     } finally {
       setIsSubmitting(false);

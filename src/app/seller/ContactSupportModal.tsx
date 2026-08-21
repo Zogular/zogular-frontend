@@ -24,6 +24,7 @@ export function ContactSupportModal({
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const supportEmail = BRAND.supportEmail;
 
   if (!isOpen) return null;
 
@@ -93,7 +94,7 @@ export function ContactSupportModal({
           Create Support Ticket
         </h2>
         <p className="mb-6 text-xs font-medium text-zinc-500">
-          Open a support ticket here or use email if you need an offline fallback.
+          Open a support ticket here so the operations team can review it in-app.
         </p>
 
         {error ? (
@@ -181,17 +182,19 @@ export function ContactSupportModal({
           </Button>
         </form>
 
-        <div className="mt-6 flex items-center justify-between border-t border-zinc-100 pt-5">
-          <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
-            Email fallback
-          </span>
-          <a
-            href={`mailto:${BRAND.supportEmail}`}
-            className="flex items-center text-xs font-bold text-zinc-500 transition-colors hover:text-zinc-900"
-          >
-            <Mail className="mr-1.5 h-3.5 w-3.5" /> {BRAND.supportEmail}
-          </a>
-        </div>
+        {supportEmail ? (
+          <div className="mt-6 flex items-center justify-between border-t border-zinc-100 pt-5">
+            <span className="text-[10px] font-black uppercase tracking-wider text-zinc-400">
+              Email fallback
+            </span>
+            <a
+              href={`mailto:${supportEmail}`}
+              className="flex items-center text-xs font-bold text-zinc-500 transition-colors hover:text-zinc-900"
+            >
+              <Mail className="mr-1.5 h-3.5 w-3.5" /> {supportEmail}
+            </a>
+          </div>
+        ) : null}
       </div>
     </div>
   );
