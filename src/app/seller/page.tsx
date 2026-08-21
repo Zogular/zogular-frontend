@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect, useCallback, useRef } from "react";
 import {
   AlertCircle, Box, Clock3,
   Package, Plus, ShoppingCart, TrendingUp, Wallet, Bell, Eye,
@@ -16,6 +16,8 @@ import { useSellerApplication } from "@/components/seller/SellerApplicationConte
 import { SellerOperatingHub } from "@/features/seller-hub/sections/SellerOperatingHub";
 import {
   fetchSellerDashboardData,
+  getSellerMetricsErrorMessage,
+  getSellerSnapshotPresentationState,
   type SellerActivityItem,
   type SellerDashboardData,
   type SellerDashboardRange,
@@ -82,6 +84,7 @@ export default function SellerDashboard() {
   const [data, setData] = useState<SellerDashboardData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const requestIdRef = useRef(0);
   
   const [range, setRange] = useState<SellerDashboardRange>("7d");
 
@@ -89,17 +92,18 @@ export default function SellerDashboard() {
   const canReceiveOrders = hasSellerCapability(sellerStatus, "canReceiveOrders");
 
   const loadData = useCallback(async () => {
+    const requestId = ++requestIdRef.current;
     try {
       setLoading(true);
       setError(null);
-      const result = await fetchSellerDashboardData();
-      setData(result);
+      const result = await fetchSellerDashboardData(range);
+      if (requestId === requestIdRef.current) setData(result);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      if (requestId === requestIdRef.current) setError(getSellerMetricsErrorMessage(err));
     } finally {
-      setLoading(false);
+      if (requestId === requestIdRef.current) setLoading(false);
     }
-  }, []);
+  }, [range]);
 
   useEffect(() => {
     if (!canReceiveOrders) {
@@ -109,20 +113,24 @@ export default function SellerDashboard() {
     loadData();
   }, [canReceiveOrders, loadData]);
 
-  const revenueData = useMemo(() => {
-    return data?.revenueByRange[range] || [];
-  }, [data, range]);
+  const grossSalesData = useMemo(() => data?.grossItemSalesTrend ?? [], [data]);
 
-  const totalRevenue = useMemo(() => {
-    return revenueData.reduce((sum, item) => sum + item.revenue, 0);
-  }, [revenueData]);
+  const totalGrossItemSales = useMemo(() => (
+    grossSalesData.reduce((sum, item) => sum + item.grossItemSales, 0)
+  ), [grossSalesData]);
   
   const totalOrders = useMemo(() => {
     return data?.orderStatusData.reduce((sum, item) => sum + item.value, 0) || 0;
   }, [data]);
+  const snapshotState = getSellerSnapshotPresentationState(
+    range,
+    data?.range ?? null,
+    loading,
+    error,
+  );
   
   // --- SYSTEM STATES ---
-  if (loading) return <SellerPageLoading variant="dashboard" />;
+  if (loading && !data) return <SellerPageLoading variant="dashboard" />;
 
   if (!application) {
     return (
@@ -150,12 +158,12 @@ export default function SellerDashboard() {
     );
   }
 
-  if (error || !data) {
+  if (!data) {
     return (
       <div className="flex flex-col items-center justify-center rounded-3xl border border-red-100 bg-red-50 p-8 text-center">
         <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
         <h3 className="text-base font-bold text-red-900">Failed to load dashboard</h3>
-        <p className="mt-1 text-sm text-red-700">{error}</p>
+        <p className="mt-1 text-sm text-red-700">{error ?? "Seller metrics could not be loaded."}</p>
         <Button onClick={loadData} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">
           Try Again
         </Button>
@@ -169,11 +177,28 @@ export default function SellerDashboard() {
       
       <SellerOperatingHub application={application} />
 
+      {snapshotState.isRangeTransition && loading && (
+        <div role="status" className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-950">
+          Loading the requested {range} range. Dashboard figures still show the applied {data.range} snapshot until refresh completes.
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold">
+            The requested {range} range was not applied. Showing the last successful {data.range} snapshot. {error}
+          </p>
+          <Button onClick={loadData} disabled={loading} variant="outline" className="h-9 shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
+            Try refresh again
+          </Button>
+        </div>
+      )}
+
       <div className="pt-4 border-t border-zinc-200">
         <div className="flex flex-col justify-between gap-3 md:flex-row md:items-center">
           <div>
             <h2 className="text-xl font-black tracking-tight text-zinc-900">Performance Analytics</h2>
-            <p className="mt-1 text-sm font-medium text-zinc-500">Review confirmed order revenue, order states, and stock signals. Detailed finance reports are not available yet.</p>
+            <p className="mt-1 text-sm font-medium text-zinc-500">Review gross seller-visible item subtotals, order states, and stock signals. Commission, net, and payout reports are unavailable.</p>
           </div>
           <div className="rounded-xl bg-zinc-100 px-3 py-1.5 text-xs font-bold text-zinc-600 self-start md:self-auto">
             Today: {getTodayLabel()}
@@ -184,7 +209,7 @@ export default function SellerDashboard() {
       {/* KPI HERO CARDS */}
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         
-        {/* Seller Revenue Snapshot */}
+        {/* Gross item sales snapshot */}
         <div className="relative overflow-hidden rounded-3xl border border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] p-4 text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)] md:p-5">
           <div className="absolute -right-4 -top-4 h-24 w-24 rounded-full bg-white/10 blur-xl" />
           <div className="mb-3 flex items-center">
@@ -192,9 +217,9 @@ export default function SellerDashboard() {
               <TrendingUp className="h-4 w-4 text-white" />
             </div>
           </div>
-          <p className="text-xs font-bold uppercase tracking-wider text-[#99e6bc]">Seller Revenue Snapshot</p>
-          <h3 className="mt-0.5 text-xl font-black md:text-2xl">{formatCurrency(totalRevenue)}</h3>
-          <p className="mt-1 text-[10px] md:text-[11px] font-semibold text-white/80">Derived from seller-visible order items in the selected range.</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-[#99e6bc]">Gross Item Sales</p>
+          <h3 className="mt-0.5 text-xl font-black md:text-2xl">{formatCurrency(totalGrossItemSales)}</h3>
+          <p className="mt-1 text-[10px] md:text-[11px] font-semibold text-white/80">Seller-visible item subtotal before commission, adjustments, or payout.</p>
         </div>
 
         <div className="rounded-3xl border border-zinc-200/80 bg-white p-4 shadow-sm md:p-5">
@@ -224,7 +249,7 @@ export default function SellerDashboard() {
             </div>
           </div>
           <p className="text-xs font-bold uppercase tracking-wider text-red-500">Low Stock</p>
-          <h3 className="mt-0.5 text-xl font-black text-red-700 md:text-2xl">{data.lowStockItems.length} Items</h3>
+          <h3 className="mt-0.5 text-xl font-black text-red-700 md:text-2xl">{data.kpis.lowStockProducts} Items</h3>
         </div>
       </div>
 
@@ -238,12 +263,12 @@ export default function SellerDashboard() {
       {/* CHARTS ROW */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[2fr_1fr]">
         
-        {/* Revenue Graph */}
+        {/* Gross item sales graph */}
         <div className="rounded-3xl border border-zinc-200/80 bg-white p-4 shadow-sm md:p-5 flex flex-col min-w-0">
           <div className="mb-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
             <div>
-              <h2 className="text-base font-black text-zinc-900">Revenue Overview</h2>
-              <p className="mt-1 text-xs font-medium text-zinc-500">{formatCurrency(totalRevenue)} from seller-visible order items in the selected period</p>
+              <h2 className="text-base font-black text-zinc-900">Gross Item Sales</h2>
+              <p className="mt-1 text-xs font-medium text-zinc-500">{formatCurrency(totalGrossItemSales)} seller-visible item subtotal in the applied {data.range} UTC period</p>
             </div>
             
             <select
@@ -260,7 +285,7 @@ export default function SellerDashboard() {
 
           <div className="flex-1 min-h-55 w-full min-w-0">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={revenueData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
+              <AreaChart data={grossSalesData} margin={{ top: 10, right: 10, left: -25, bottom: 0 }}>
                 <defs>
                   <linearGradient id="colorRevenue" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="5%" stopColor="#009E49" stopOpacity={0.3} />
@@ -273,9 +298,9 @@ export default function SellerDashboard() {
                 <Tooltip
                   contentStyle={{ backgroundColor: "#ffffff", borderRadius: "12px", border: "1px solid #e4e4e7", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", fontWeight: "bold" }}
                   itemStyle={{ color: "#009E49" }}
-                  formatter={(value) => [formatCurrency(Number(value)), "Revenue"]}
+                  formatter={(value) => [formatCurrency(Number(value)), "Gross item sales"]}
                 />
-                <Area type="monotone" dataKey="revenue" stroke="#009E49" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
+                <Area type="monotone" dataKey="grossItemSales" stroke="#009E49" strokeWidth={3} fillOpacity={1} fill="url(#colorRevenue)" />
               </AreaChart>
             </ResponsiveContainer>
           </div>
