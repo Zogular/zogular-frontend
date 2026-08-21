@@ -1,6 +1,6 @@
 // src/services/support.ts
 
-import { apiClient } from "@/services/api";
+import { ApiError, apiClient } from "@/services/api";
 
 export type TicketStatus = "open" | "waiting-seller" | "waiting-support" | "resolved" | "closed";
 export type TicketPriority = "low" | "medium" | "high" | "urgent";
@@ -34,7 +34,7 @@ export interface SupportStats {
 
 function requireString(val: unknown, fieldName: string): string {
   if (typeof val !== "string" || val.trim() === "") {
-    throw new Error(`Missing required string field: ${fieldName}`);
+    throw new ApiError("Support response was not recognized.", 502, { field: fieldName });
   }
   return val;
 }
@@ -44,7 +44,7 @@ function normalizeStatus(val: unknown): TicketStatus {
   if (["open", "waiting-seller", "waiting-support", "resolved", "closed"].includes(status)) {
     return status as TicketStatus;
   }
-  throw new Error(`Invalid ticket status: ${val}`);
+  throw new ApiError("Support response was not recognized.", 502, { field: "ticket.status" });
 }
 
 function normalizePriority(val: unknown): TicketPriority {
@@ -52,7 +52,7 @@ function normalizePriority(val: unknown): TicketPriority {
   if (["low", "medium", "high", "urgent"].includes(priority)) {
     return priority as TicketPriority;
   }
-  throw new Error(`Invalid ticket priority: ${val}`);
+  throw new ApiError("Support response was not recognized.", 502, { field: "ticket.priority" });
 }
 
 function normalizeCategory(val: unknown): TicketCategory {
@@ -60,7 +60,7 @@ function normalizeCategory(val: unknown): TicketCategory {
   if (["order", "payout", "inventory", "tech", "account", "general"].includes(category)) {
     return category as TicketCategory;
   }
-  throw new Error(`Invalid ticket category: ${val}`);
+  throw new ApiError("Support response was not recognized.", 502, { field: "ticket.category" });
 }
 
 function normalizeSenderType(val: unknown): "support" | "seller" | "system" {
@@ -68,12 +68,12 @@ function normalizeSenderType(val: unknown): "support" | "seller" | "system" {
   if (["support", "seller", "system"].includes(type)) {
     return type as "support" | "seller" | "system";
   }
-  throw new Error(`Invalid sender type: ${val}`);
+  throw new ApiError("Support response was not recognized.", 502, { field: "message.senderType" });
 }
 
 function normalizeMessage(val: unknown): SupportMessage {
   const data = val as Record<string, unknown> | null;
-  if (!data) throw new Error("Missing message data");
+  if (!data) throw new ApiError("Support response was not recognized.", 502, { field: "message" });
   return {
     id: requireString(data.id, "message.id"),
     senderType: normalizeSenderType(data.senderType),
@@ -85,7 +85,7 @@ function normalizeMessage(val: unknown): SupportMessage {
 
 function normalizeTicket(val: unknown): SupportTicket {
   const data = val as Record<string, unknown> | null;
-  if (!data) throw new Error("Missing ticket data");
+  if (!data) throw new ApiError("Support response was not recognized.", 502, { field: "ticket" });
   const messages = Array.isArray(data.messages) ? data.messages.map(normalizeMessage) : [];
 
   return {
@@ -105,7 +105,7 @@ function normalizeTicketsList(payload: unknown): SupportTicket[] {
   const data = root?.data ?? root;
   const tickets = (data as Record<string, unknown>)?.tickets ?? data;
   if (!Array.isArray(tickets)) {
-    throw new Error("Invalid payload: expected an array of tickets");
+    throw new ApiError("Support response was not recognized.", 502, { field: "tickets" });
   }
   return tickets.map(normalizeTicket);
 }

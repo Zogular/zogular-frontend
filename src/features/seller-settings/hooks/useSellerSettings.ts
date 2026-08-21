@@ -3,6 +3,7 @@ import {
   settingsApi,
   StoreSettings,
 } from "@/services/settings";
+import { getSellerSafeErrorMessage } from "@/lib/seller-error";
 
 export type TabType = "profile" | "business" | "fulfillment" | "operations";
 
@@ -31,7 +32,7 @@ export function useSellerSettings() {
       const data = await settingsApi.fetchSettings();
       setSettings(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load settings.");
+      setError(getSellerSafeErrorMessage(err, "settings"));
     } finally {
       setLoading(false);
     }

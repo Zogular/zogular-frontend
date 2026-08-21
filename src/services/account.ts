@@ -2,17 +2,11 @@ import type {
   AccountOverview,
   AccountSettings,
   AccountUserProfile,
-  NotificationPreferences,
 } from "@/types/account";
 import type { Address, AddressType } from "@/types/address";
 import { changePassword, getCurrentUser, logout, updateMe } from "@/services/auth";
 import { getMyOrders } from "@/services/orders";
 import { apiClient } from "@/services/api";
-
-const NOTIFICATION_PREFERENCES: NotificationPreferences = {
-  orders: false,
-  promos: false,
-};
 
 export async function getAccountOverview(): Promise<AccountOverview> {
   const [currentUser, orders, addresses] = await Promise.all([
@@ -156,7 +150,10 @@ export async function getAccountSettings(): Promise<AccountSettings> {
       preferredMoMoNumber: currentUser.preferredMoMoNumber ?? "",
     },
     payments: [],
-    notifications: NOTIFICATION_PREFERENCES,
+    notifications: {
+      orders: false,
+      promos: false,
+    },
   };
 }
 
@@ -190,21 +187,6 @@ export async function updateAccountPassword(input: {
   });
 
   return { success: true };
-}
-
-export async function saveNotificationPreferences(
-  preferences: NotificationPreferences,
-): Promise<NotificationPreferences> {
-  return preferences;
-}
-
-export async function deletePaymentMethod(id: number): Promise<{ deletedId: number }> {
-  return { deletedId: id };
-}
-
-export async function saveAddresses(addresses: Address[]): Promise<Address[]> {
-  // Mock function no longer used directly, replaced by specific CRUD functions
-  return addresses;
 }
 
 export async function signOutAccount(): Promise<{ success: true }> {

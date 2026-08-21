@@ -14,6 +14,7 @@ import { readLocalStorageValue } from "@/lib/persisted-storage";
 import { SellerApplicationContext } from "@/components/seller/SellerApplicationContext";
 import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
+import { getSellerSafeErrorMessage } from "@/lib/seller-error";
 import { getCurrentUser, logout } from "@/services/auth";
 import { AUTH_SESSION_CHANGED_EVENT } from "@/services/auth-session";
 import { ApiError } from "@/services/api";
@@ -287,7 +288,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         throw error;
       }
     } catch (error) {
-      setApplicationError(error instanceof Error ? error.message : "Failed to load seller access state.");
+      setApplicationError(getSellerSafeErrorMessage(error, "workspace"));
     } finally {
       setApplicationLoading(false);
     }
