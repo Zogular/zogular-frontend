@@ -106,7 +106,7 @@ export function SellerTrustChecklist({
           }
           verified={emailVerified}
           icon={emailVerified ? <CheckCircle2 className="h-4 w-4" /> : <Mail className="h-4 w-4" />}
-          ctaHref={user?.email ? `/auth/check-email?email=${encodeURIComponent(user.email)}&next=${encodeURIComponent("/seller/onboarding")}` : "/auth/check-email"}
+          ctaHref="/auth/check-email?next=/seller/onboarding"
           ctaLabel="Verify email"
         />
 

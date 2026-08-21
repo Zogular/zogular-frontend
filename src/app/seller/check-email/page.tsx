@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { resendVerificationEmail } from "@/services/auth";
+import { getStoredLastAuthEmail } from "@/services/auth-session";
 import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
 import { useAccountVerification } from "@/hooks/use-account-verification";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
@@ -25,13 +26,10 @@ export default function SellerCheckEmailPage() {
 function SellerCheckEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedEmail = useMemo(
-    () => searchParams.get("email") ?? "",
-    [searchParams],
-  );
   const isDeliveryFailed = searchParams.get("delivery") === "failed";
   const { user, loadState, emailVerified } = useAccountVerification();
-  const email = user?.email ?? requestedEmail;
+  const [storedEmail, setStoredEmail] = useState<string>("");
+  const email = user?.email ?? storedEmail;
   const nextPath = useMemo(
     () =>
       sanitizeInternalNextPath(searchParams.get("next")) ??
@@ -39,16 +37,16 @@ function SellerCheckEmailContent() {
       SELLER_ONBOARDING_FALLBACK,
     [searchParams],
   );
-  const loginHref = useMemo(() => {
-    const baseHref = appendNextPath("/seller/login", nextPath);
-    if (!email) return baseHref;
-    return `${baseHref}${baseHref.includes("?") ? "&" : "?"}email=${encodeURIComponent(email)}`;
-  }, [email, nextPath]);
+  const loginHref = useMemo(() => appendNextPath("/seller/login", nextPath), [nextPath]);
   const continueHref = nextPath ?? SELLER_ONBOARDING_FALLBACK;
   const [isResending, setIsResending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
+
+  useEffect(() => {
+    setStoredEmail(getStoredLastAuthEmail() ?? "");
+  }, []);
 
   useEffect(() => {
     if (resendSecondsLeft <= 0) return;

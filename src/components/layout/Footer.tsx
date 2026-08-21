@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleHelp, Mail, Package, ReceiptText, ShieldCheck, Store, Truck } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { BRAND } from "@/config/brand";
 
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
@@ -15,7 +16,7 @@ const COMPANY_LINKS = [
 
 const SUPPORT_LINKS = [
   { label: "Help Center", href: "/help" },
-  { label: "Track Order", href: "/track-order" },
+  { label: "Order Help", href: "/track" },
   { label: "Returns Policy", href: "/returns" },
   { label: "Privacy Policy", href: "/privacy" },
 ];
@@ -29,13 +30,14 @@ const CATEGORY_LINKS = [
 
 const FOOTER_ACTION_LINKS = [
   { label: "Seller", href: "/sell", icon: Store },
-  { label: "Track", href: "/track-order", icon: Package },
+  { label: "Orders", href: "/account/orders", icon: Package },
   { label: "Help", href: "/help", icon: CircleHelp },
 ];
 
 // --- MAIN EXPORT ---
 export function Footer() {
   const pathname = usePathname();
+  const supportEmail = BRAND.supportEmail;
 
   const hiddenRoutes = ["/auth", "/seller"];
   if (hiddenRoutes.some((route) => pathname?.startsWith(route))) {
@@ -123,10 +125,12 @@ export function Footer() {
           {/* Contact fallback */}
           <div className="space-y-3 lg:col-span-1">
             <h4 className="text-sm font-bold tracking-wide text-white">Need Help?</h4>
-            <p className="text-[11px] leading-5 text-zinc-400 md:text-xs">Newsletter signup is not live yet. Contact support for marketplace help.</p>
-            <a href="mailto:support@zogular.com" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-xs font-bold text-white hover:border-zinc-700 hover:bg-zinc-800">
-              <Mail className="h-3.5 w-3.5" /> Email support
-            </a>
+            <p className="text-[11px] leading-5 text-zinc-400 md:text-xs">Use the Help Center for marketplace support and order guidance.</p>
+            {supportEmail ? (
+              <a href={`mailto:${supportEmail}`} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-xs font-bold text-white hover:border-zinc-700 hover:bg-zinc-800">
+                <Mail className="h-3.5 w-3.5" /> Email support
+              </a>
+            ) : null}
           </div>
           
         </div>

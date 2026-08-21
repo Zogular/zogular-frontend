@@ -237,6 +237,13 @@ export function storeLastAuthEmail(email: string): void {
   storage.setItem(LAST_AUTH_EMAIL_KEY, email.trim());
 }
 
+export function getStoredLastAuthEmail(): string | null {
+  const storage = getStorage();
+  if (!storage) return null;
+  const value = storage.getItem(LAST_AUTH_EMAIL_KEY);
+  return value && value.trim().length > 0 ? value.trim() : null;
+}
+
 export function storeAuthUser(user: AuthUser): void {
   const storage = getStorage();
   if (!storage) return;
@@ -304,6 +311,7 @@ export function clearStoredAuthSession(): void {
   if (storage) {
     removeLegacyTokenKeys(storage);
     storage.removeItem(AUTH_USER_KEY);
+    storage.removeItem(LAST_AUTH_EMAIL_KEY);
     [...LEGACY_AUTH_USER_KEYS, ...LEGACY_LAST_AUTH_EMAIL_KEYS].forEach((key) => {
       storage.removeItem(key);
     });
