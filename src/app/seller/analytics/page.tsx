@@ -45,6 +45,7 @@ export default function SellerAnalyticsPage() {
     filteredTopProducts,
     filteredCategoryPerformance,
     filteredLowPerformers,
+    snapshotState,
     loadData,
     handleExport,
   } = useSellerAnalytics();
@@ -105,7 +106,7 @@ export default function SellerAnalyticsPage() {
             <option value="30d">Last 30 Days</option>
             <option value="12m">Last 12 Months</option>
           </select>
-          <Button variant="outline" onClick={handleExport} className="h-10 rounded-xl border-zinc-200 bg-white px-4 font-bold text-zinc-700 shadow-sm hover:bg-zinc-50">
+          <Button variant="outline" onClick={handleExport} disabled={!snapshotState.canExport} className="h-10 rounded-xl border-zinc-200 bg-white px-4 font-bold text-zinc-700 shadow-sm hover:bg-zinc-50">
             <Download className="mr-2 h-4 w-4" />
             <span className="hidden sm:inline">Export Snapshot</span>
           </Button>
@@ -118,10 +119,28 @@ export default function SellerAnalyticsPage() {
         description="Commission, payout, settlement, repeat-customer, and conversion reports are not available yet."
       />
 
+      {snapshotState.isRangeTransition && loading && (
+        <div role="status" className="rounded-2xl border border-blue-200 bg-blue-50 px-4 py-3 text-sm font-semibold text-blue-950">
+          Loading the requested {range} range. The figures below still show the applied {data.range} snapshot, and export is disabled until refresh completes.
+        </div>
+      )}
+
+      {error && (
+        <div role="alert" className="flex flex-col gap-3 rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-amber-950 sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-sm font-semibold">
+            The requested {range} range was not applied. Showing the last successful {data.range} snapshot. {error}
+          </p>
+          <Button onClick={loadData} disabled={loading} variant="outline" className="h-9 shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100">
+            <RefreshCcw className="mr-2 h-4 w-4" />
+            Retry refresh
+          </Button>
+        </div>
+      )}
+
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-        <StatCard title="Seller Revenue" value={data.summary.sellerVisibleRevenue} icon={TrendingUp} isCurrency colorClass="border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)]" />
-        <StatCard title="Seller Orders" value={data.summary.sellerVisibleOrders} icon={ShoppingCart} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
-        <StatCard title="Avg Order Value" value={data.summary.avgOrderValue} icon={Receipt} isCurrency colorClass="bg-purple-50/50 border-purple-100 text-purple-950" />
+        <StatCard title="Gross Item Sales" value={data.summary.grossItemSales} icon={TrendingUp} isCurrency colorClass="border-[#008f42] bg-linear-to-br from-[#009E49] to-[#007a38] text-white shadow-[0_8px_20px_rgba(0,158,73,0.2)]" />
+        <StatCard title="Included Orders" value={data.summary.ordersWithGrossItemSales} icon={ShoppingCart} colorClass="bg-blue-50/50 border-blue-100 text-blue-950" />
+        <StatCard title="Avg Item Subtotal" value={data.summary.averageGrossOrderSubtotal} icon={Receipt} isCurrency colorClass="bg-purple-50/50 border-purple-100 text-purple-950" />
         <StatCard title="Delivered Orders" value={data.summary.deliveredOrders} icon={Truck} colorClass="bg-teal-50/50 border-teal-100 text-teal-950" />
         <StatCard title="Buyer Visible Products" value={data.summary.buyerVisibleProducts} icon={Eye} colorClass="bg-indigo-50/50 border-indigo-100 text-indigo-950" />
         <StatCard title="Low Stock Products" value={data.summary.lowStockProducts} icon={AlertTriangle} colorClass="bg-red-50/50 border-red-100 text-red-950" />
@@ -139,7 +158,7 @@ export default function SellerAnalyticsPage() {
             <div className="space-y-3 text-sm">
               <p className="font-bold text-amber-950">Customer cohorts, conversion, commission, and payout analytics are not shown yet.</p>
               <p className="font-medium leading-relaxed text-amber-900/80">
-                This page currently shows only confirmed seller orders, product statuses, and stock signals.
+                This page currently shows seller-visible order item subtotals, product statuses, and stock signals.
               </p>
               <div className="rounded-2xl border border-white/70 bg-white/80 px-4 py-3 text-xs font-bold text-amber-900 shadow-sm">
                 Treat this as an operational snapshot, not a finance or growth report.
@@ -175,7 +194,7 @@ export default function SellerAnalyticsPage() {
                 <tr>
                   <th className="pb-3 font-medium">Product</th>
                   <th className="pb-3 text-right font-medium">Sales</th>
-                  <th className="pb-3 text-right font-medium">Revenue</th>
+                  <th className="pb-3 text-right font-medium">Gross Item Sales</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-50">
@@ -186,7 +205,7 @@ export default function SellerAnalyticsPage() {
                       <p className="text-[10px] text-zinc-400">{product.id}</p>
                     </td>
                     <td className="py-3 text-right font-bold text-zinc-700">{formatNumber(product.sales)}</td>
-                    <td className="py-3 text-right font-black text-[#009E49]">{formatCurrency(product.revenue)}</td>
+                    <td className="py-3 text-right font-black text-[#009E49]">{formatCurrency(product.grossItemSales)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -201,13 +220,13 @@ export default function SellerAnalyticsPage() {
           </h2>
           <div className="space-y-4">
             {filteredCategoryPerformance.map((cat) => {
-              const percentage = Math.max(5, Math.round((cat.revenue / Math.max(data.summary.sellerVisibleRevenue, 1)) * 100));
+              const percentage = Math.max(5, Math.round((cat.grossItemSales / Math.max(data.summary.grossItemSales, 1)) * 100));
               return (
                 <div key={cat.slug} className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="mb-1 flex justify-between">
                       <span className="text-xs font-bold text-zinc-900">{cat.name}</span>
-                      <span className="text-xs font-black text-zinc-900">{formatCurrency(cat.revenue)}</span>
+                      <span className="text-xs font-black text-zinc-900">{formatCurrency(cat.grossItemSales)}</span>
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="h-1.5 flex-1 overflow-hidden rounded-full bg-zinc-100">

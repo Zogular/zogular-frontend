@@ -52,7 +52,7 @@ function RegisterContent() {
       setIsSubmitting(true);
       setError(null);
       const result = await register({ ...form, next: nextPath });
-      router.push(result.nextPath ?? appendNextPath("/auth/permissions", nextPath));
+      router.push(result.nextPath ?? appendNextPath("/auth/check-email", nextPath));
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create account.");
     } finally {

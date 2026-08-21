@@ -44,10 +44,11 @@ test.beforeAll(async () => {
     cwd: process.cwd(),
     env: {
       ...process.env,
+      INTERNAL_BACKEND_URL: `http://127.0.0.1:${backendPort}/api/v1`,
       ADMIN_API_URL: `http://127.0.0.1:${backendPort}/api/v1`,
       NEXT_PUBLIC_API_URL: `http://127.0.0.1:${backendPort}/api/v1`,
     },
-    stdio: "pipe",
+    stdio: "ignore",
     windowsHide: true,
   });
   await waitForFrontend();
@@ -58,7 +59,7 @@ test.afterAll(async () => {
     path.join(correctionEvidenceDirectory, "timings.json"),
     `${JSON.stringify({ generatedAt: new Date().toISOString(), measurements: package4Timings }, null, 2)}\n`,
   );
-  frontendProcess?.kill();
+  await stopFrontendProcess();
   await new Promise<void>((resolve) => backendServer?.close(() => resolve()));
 });
 
@@ -307,81 +308,95 @@ test("optional category-filter failure does not hide successful products", async
 });
 
 for (const viewport of viewports.filter(({ width }) => width !== 1280)) {
-  test(`fixture-based visual QA, not production-runtime proof: truthful states at ${viewport.name}`, async ({ page }) => {
-    await page.setViewportSize(viewport);
-    await ignoreLocalTelemetry(page);
-    const diagnostics = collectDiagnostics(page, [503]);
+  test(`fixture-based visual QA, not production-runtime proof: truthful states at ${viewport.name}`, async ({ browser }) => {
+    const aggregateDiagnostics = { consoleErrors: [] as string[], pageErrors: [] as string[], failedRequests: [] as string[], badResponses: [] as string[] };
 
-    fixtureMode = "true-empty";
-    await page.goto(`${frontendBaseUrl}/`, { waitUntil: "networkidle" });
-    await expect(page.getByRole("heading", { name: "Explore Zogular." })).toBeVisible();
-    const browseProducts = page.getByRole("link", { name: "Browse products" });
-    const searchProducts = page.getByRole("link", { name: "Search" });
-    await expect(browseProducts).toBeVisible();
-    await expect(searchProducts).toBeVisible();
-    if (viewport.width < 768) {
-      const [browseBox, searchBox] = await Promise.all([browseProducts.boundingBox(), searchProducts.boundingBox()]);
-      expect(browseBox).not.toBeNull();
-      expect(searchBox).not.toBeNull();
-      expect(Math.abs(browseBox!.y - searchBox!.y)).toBeLessThanOrEqual(1);
+    async function runScenario(
+      mode: FixtureMode,
+      route: string,
+      assertions: (scenarioPage: Page) => Promise<void>,
+    ) {
+      fixtureMode = mode;
+      const context = await browser.newContext({ viewport: { width: viewport.width, height: viewport.height } });
+      const scenarioPage = await context.newPage();
+      await ignoreLocalTelemetry(scenarioPage);
+      const diagnostics = collectDiagnostics(scenarioPage, [503]);
+      try {
+        await scenarioPage.goto(`${frontendBaseUrl}${route}`, { waitUntil: "networkidle" });
+        await assertions(scenarioPage);
+        await settleScenarioPage(scenarioPage);
+      } finally {
+        await context.close();
+        aggregateDiagnostics.consoleErrors.push(...diagnostics.consoleErrors);
+        aggregateDiagnostics.pageErrors.push(...diagnostics.pageErrors);
+        aggregateDiagnostics.failedRequests.push(...diagnostics.failedRequests);
+        aggregateDiagnostics.badResponses.push(...diagnostics.badResponses);
+      }
     }
-    if (viewport.width < 768) await assertMobileBottomNavigation(page, viewport.height);
-    await assertContained(page);
-    await page.screenshot({ path: path.join(package6EvidenceDirectory, `homepage-no-products-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await page.screenshot({ path: path.join(package6bEvidenceDirectory, `homepage-no-products-${viewport.name}.png`), fullPage: false });
 
-    await page.goto(`${frontendBaseUrl}/category/electronics`, { waitUntil: "networkidle" });
-    await expect(page.getByTestId("listing-true-empty")).toBeVisible();
-    await expect(page.getByText(/approved products?/i)).toHaveCount(0);
-    if (viewport.width >= 1024) await expect(page.getByTestId("desktop-filter-rail")).toBeVisible();
-    await assertContained(page);
-    if (viewport.width < 768) await assertMobileBottomNavigation(page, viewport.height);
-    await page.screenshot({ path: path.join(package6EvidenceDirectory, `true-empty-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await page.screenshot({ path: path.join(package6bEvidenceDirectory, `true-empty-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await assertStateActionsClearNavigation(page, "listing-true-empty");
+    await runScenario("true-empty", "/", async (scenarioPage) => {
+      await expect(scenarioPage.getByRole("heading", { name: "Explore Zogular." })).toBeVisible();
+      const browseProducts = scenarioPage.getByRole("link", { name: "Browse products" });
+      const searchProducts = scenarioPage.getByRole("link", { name: "Search" });
+      await expect(browseProducts).toBeVisible();
+      await expect(searchProducts).toBeVisible();
+      if (viewport.width < 768) {
+        const [browseBox, searchBox] = await Promise.all([browseProducts.boundingBox(), searchProducts.boundingBox()]);
+        expect(browseBox).not.toBeNull();
+        expect(searchBox).not.toBeNull();
+        expect(Math.abs(browseBox!.y - searchBox!.y)).toBeLessThanOrEqual(1);
+        await assertMobileBottomNavigation(scenarioPage, viewport.height);
+      }
+      await assertContained(scenarioPage);
+      await scenarioPage.screenshot({ path: path.join(package6EvidenceDirectory, `homepage-no-products-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await scenarioPage.screenshot({ path: path.join(package6bEvidenceDirectory, `homepage-no-products-${viewport.name}.png`), fullPage: false });
+    });
 
-    fixtureMode = "filtered-zero";
-    await page.goto(`${frontendBaseUrl}/category/electronics?subcategorySlug=phones`, { waitUntil: "networkidle" });
-    await expect(page.getByTestId("listing-filtered-zero")).toBeVisible();
-    await expect(page.getByText(/approved products?/i)).toHaveCount(0);
-    if (viewport.width >= 1024) await expect(page.getByTestId("desktop-filter-rail")).toBeVisible();
-    await assertContained(page);
-    if (viewport.width < 768) await assertMobileBottomNavigation(page, viewport.height);
-    await page.screenshot({ path: path.join(package6EvidenceDirectory, `filtered-zero-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await page.screenshot({ path: path.join(package6bEvidenceDirectory, `filtered-zero-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await assertStateActionsClearNavigation(page, "listing-filtered-zero");
+    await runScenario("true-empty", "/category/electronics", async (scenarioPage) => {
+      await expect(scenarioPage.getByTestId("listing-true-empty")).toBeVisible();
+      await expect(scenarioPage.getByText(/approved products?/i)).toHaveCount(0);
+      if (viewport.width >= 1024) await expect(scenarioPage.getByTestId("desktop-filter-rail")).toBeVisible();
+      await assertContained(scenarioPage);
+      if (viewport.width < 768) await assertMobileBottomNavigation(scenarioPage, viewport.height);
+      await scenarioPage.screenshot({ path: path.join(package6EvidenceDirectory, `true-empty-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await scenarioPage.screenshot({ path: path.join(package6bEvidenceDirectory, `true-empty-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await assertStateActionsClearNavigation(scenarioPage, "listing-true-empty");
+    });
 
-    fixtureMode = "product-failure";
-    await page.goto(`${frontendBaseUrl}/category/electronics`, { waitUntil: "networkidle" });
-    await expect(page.getByTestId("listing-product-failure")).toBeVisible();
-    if (viewport.width >= 1024) await expect(page.getByTestId("desktop-filter-rail")).toBeVisible();
-    await expect(page.getByText(/\b\d[\d,]*\s+approved products\b|showing\s+\d|\b0\s+products\b/i)).toHaveCount(0);
-    await assertContained(page);
-    if (viewport.width < 768) await assertMobileBottomNavigation(page, viewport.height);
-    await page.screenshot({ path: path.join(package6EvidenceDirectory, `request-failure-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await page.screenshot({ path: path.join(package6bEvidenceDirectory, `request-failure-${viewport.name}.png`), fullPage: false });
-    if (viewport.width < 768) await assertStateActionsClearNavigation(page, "listing-product-failure");
+    await runScenario("filtered-zero", "/category/electronics?subcategorySlug=phones", async (scenarioPage) => {
+      await expect(scenarioPage.getByTestId("listing-filtered-zero")).toBeVisible();
+      await expect(scenarioPage.getByText(/approved products?/i)).toHaveCount(0);
+      if (viewport.width >= 1024) await expect(scenarioPage.getByTestId("desktop-filter-rail")).toBeVisible();
+      await assertContained(scenarioPage);
+      if (viewport.width < 768) await assertMobileBottomNavigation(scenarioPage, viewport.height);
+      await scenarioPage.screenshot({ path: path.join(package6EvidenceDirectory, `filtered-zero-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await scenarioPage.screenshot({ path: path.join(package6bEvidenceDirectory, `filtered-zero-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await assertStateActionsClearNavigation(scenarioPage, "listing-filtered-zero");
+    });
 
-    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], failedRequests: [], badResponses: [] });
+    await runScenario("product-failure", "/category/electronics", async (scenarioPage) => {
+      await expect(scenarioPage.getByTestId("listing-product-failure")).toBeVisible();
+      if (viewport.width >= 1024) await expect(scenarioPage.getByTestId("desktop-filter-rail")).toBeVisible();
+      await expect(scenarioPage.getByText(/\b\d[\d,]*\s+approved products\b|showing\s+\d|\b0\s+products\b/i)).toHaveCount(0);
+      await assertContained(scenarioPage);
+      if (viewport.width < 768) await assertMobileBottomNavigation(scenarioPage, viewport.height);
+      await scenarioPage.screenshot({ path: path.join(package6EvidenceDirectory, `request-failure-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await scenarioPage.screenshot({ path: path.join(package6bEvidenceDirectory, `request-failure-${viewport.name}.png`), fullPage: false });
+      if (viewport.width < 768) await assertStateActionsClearNavigation(scenarioPage, "listing-product-failure");
+    });
+
+    expect(aggregateDiagnostics).toEqual({ consoleErrors: [], pageErrors: [], failedRequests: [], badResponses: [] });
   });
 }
 
-test("mobile bottom navigation uses safe auth intent and active-route semantics", async ({ page }) => {
+test("mobile bottom navigation fails closed while authentication is unavailable", async ({ page }) => {
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto(`${frontendBaseUrl}/products`, { waitUntil: "networkidle" });
   const nav = page.getByTestId("mobile-bottom-navigation");
-  await expect(nav.getByRole("link")).toHaveCount(5);
-  await expect(nav.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/auth/login?next=%2Faccount%2Forders");
-  await expect(nav.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/auth/login?next=%2Faccount");
-
-  await page.evaluate(() => {
-    localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "fixture-buyer", firstName: "Fixture", lastName: "Buyer", email: "fixture@example.test", role: "buyer" }));
-    window.dispatchEvent(new Event("zogular:auth-session-changed"));
-  });
-  await expect(nav.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/account/orders");
-  await expect(nav.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
-  await page.goto(`${frontendBaseUrl}/account/orders`, { waitUntil: "networkidle" });
-  await expect(page.getByTestId("mobile-bottom-navigation").getByRole("link", { name: "Orders" })).toHaveAttribute("aria-current", "page");
+  await expect(nav.getByRole("link")).toHaveCount(3);
+  await expect(nav.getByRole("link")).toHaveText(["Home", "Categories", "Cart"]);
+  await expect(nav.getByRole("link", { name: "Cart" })).toHaveAttribute("href", "/cart");
+  await expect(nav.getByRole("link", { name: /Saved|Wishlist|Orders|Account/ })).toHaveCount(0);
   const categoriesLink = page.getByTestId("mobile-bottom-navigation").getByRole("link", { name: "Categories" });
   await categoriesLink.focus();
   await expect(categoriesLink).toBeFocused();
@@ -393,7 +408,40 @@ test("authenticated mobile navigation hydrates with stable account destinations"
   await page.setViewportSize({ width: 390, height: 844 });
   await ignoreLocalTelemetry(page);
   await page.route("**/api/backend/cart", async (route) => {
-    await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { cart: { items: [] } } }) });
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        data: {
+          cart: {
+            id: "11111111-1111-4111-a111-111111111111",
+            items: [],
+            summary: { totalItems: 0, uniqueItems: 0, subtotal: 0 },
+          },
+        },
+      }),
+    });
+  });
+  await page.route("**/api/backend/user/me", async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: "application/json",
+      body: JSON.stringify({
+        status: "success",
+        data: {
+          user: {
+            id: "package-6-buyer",
+            firstName: "QA",
+            lastName: "Buyer",
+            email: "qa-buyer@example.test",
+            role: "USER",
+            telephone: "0970000000",
+            emailVerified: true,
+          },
+        },
+      }),
+    });
   });
   await page.addInitScript(() => {
     window.localStorage.setItem("zogular_auth_user", JSON.stringify({
@@ -547,8 +595,8 @@ async function assertMobileBottomNavigation(page: Page, viewportHeight: number) 
   const nav = page.getByTestId("mobile-bottom-navigation");
   await expect(nav).toBeVisible();
   const links = nav.getByRole("link");
-  await expect(links).toHaveCount(5);
-  await expect(links).toHaveText(["Home", "Categories", "Wishlist", "Orders", "Account"]);
+  await expect(links).toHaveCount(3);
+  await expect(links).toHaveText(["Home", "Categories", "Cart"]);
   const geometry = await nav.evaluate((element) => ({
     nav: element.getBoundingClientRect().toJSON(),
     links: Array.from(element.querySelectorAll("a")).map((link) => link.getBoundingClientRect().toJSON()),
@@ -612,9 +660,23 @@ function collectDiagnostics(page: Page, expectedStatuses: number[] = []) {
   const result = { consoleErrors: [] as string[], pageErrors: [] as string[], failedRequests: [] as string[], badResponses: [] as string[] };
   page.on("console", (message) => { if (message.type() === "error") result.consoleErrors.push(message.text()); });
   page.on("pageerror", (error) => result.pageErrors.push(error.message));
-  page.on("requestfailed", (request) => { if (!request.failure()?.errorText.includes("ERR_ABORTED")) result.failedRequests.push(request.url()); });
+  page.on("requestfailed", (request) => {
+    result.failedRequests.push(JSON.stringify({
+      errorText: request.failure()?.errorText ?? "Unknown request failure",
+      method: request.method(),
+      resourceType: request.resourceType(),
+      url: request.url(),
+    }));
+  });
   page.on("response", (response) => { if (response.status() >= 400 && !expectedStatuses.includes(response.status()) && !response.url().includes("/_vercel/")) result.badResponses.push(`${response.status()} ${response.url()}`); });
   return result;
+}
+
+async function settleScenarioPage(page: Page) {
+  await page.evaluate(() => new Promise<void>((resolve) => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  }));
+  await page.waitForLoadState("networkidle");
 }
 
 async function assertPortAvailable(port: number) {
@@ -623,6 +685,16 @@ async function assertPortAvailable(port: number) {
     server.once("error", reject);
     server.listen(port, "127.0.0.1", () => server.close(() => resolve()));
   });
+}
+
+async function stopFrontendProcess() {
+  if (!frontendProcess || frontendProcess.exitCode !== null) return;
+  const exited = new Promise<void>((resolve) => frontendProcess.once("exit", () => resolve()));
+  frontendProcess.kill();
+  await Promise.race([
+    exited,
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error("Package 6 frontend process did not stop.")), 10_000)),
+  ]);
 }
 
 async function startFixtureBackend(): Promise<Server> {
@@ -644,6 +716,30 @@ async function startFixtureBackend(): Promise<Server> {
       if (fixtureMode === "product-failure") return send(response, 503, { status: "fail", message: "Fixture failure" });
       if (fixtureMode === "malformed") return send(response, 200, { status: "success", data: { products: [] } });
       return sendProducts(response, url);
+    }
+    if (url.pathname === "/api/v1/user/me") {
+      if (request.headers.cookie?.includes("session") || request.headers.cookie?.includes("token")) {
+        return send(response, 200, { status: "success", data: { id: "user-1", email: "user@example.com", name: "Test User", role: "BUYER" } });
+      }
+      return send(response, 200, { status: "success", data: null });
+    }
+    if (url.pathname === "/api/v1/auth/csrf-token") {
+      return send(response, 200, { status: "success", data: { csrfToken: "mock-csrf-token" } });
+    }
+    if (url.pathname === "/api/v1/cart") {
+      return send(response, 200, {
+        status: "success",
+        data: {
+          cart: {
+            id: "11111111-1111-4111-a111-111111111111",
+            items: [],
+            summary: { totalItems: 0, uniqueItems: 0, subtotal: 0 },
+          },
+        },
+      });
+    }
+    if (url.pathname === "/api/v1/wishlist") {
+      return send(response, 200, { status: "success", data: { items: [] } });
     }
     return send(response, 404, { status: "fail", message: "Not found" });
   });

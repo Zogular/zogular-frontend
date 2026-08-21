@@ -52,6 +52,8 @@ export interface SellerOrderEarningsPreview {
 
 export interface SellerOrderItem {
   id: string;
+  productId: string;
+  vendorStatus: SellerOrderStatus;
   name: string;
   brand: string | null;
   price: number;
@@ -158,6 +160,7 @@ interface BackendOrder {
   };
   items: Array<{
     id: string;
+    productId: string;
     quantity: number;
     price: number;
     vendorStatus: string;
@@ -186,6 +189,26 @@ interface BackendOrdersResponse {
     facets: { statuses: Array<{ status: string; count: number }> };
   };
 }
+
+export type SellerOrderCollectionErrorCode =
+  | "malformed-pagination"
+  | "pagination-drift"
+  | "repeated-order"
+  | "incomplete-collection"
+  | "safety-cap-exceeded";
+
+export class SellerOrderCollectionError extends Error {
+  readonly code: SellerOrderCollectionErrorCode;
+
+  constructor(code: SellerOrderCollectionErrorCode) {
+    super("Seller order metrics could not be compiled from a complete server response.");
+    this.name = "SellerOrderCollectionError";
+    this.code = code;
+  }
+}
+
+const SELLER_METRICS_PAGE_SIZE = 100;
+const SELLER_METRICS_MAX_PAGES = 100;
 
 function mapVendorStatus(status?: string | null): SellerOrderStatus {
   switch (status?.trim().toUpperCase()) {
@@ -263,6 +286,8 @@ function mapOrderToDetail(order: BackendOrder): SellerOrderDetail {
 
   const items = order.items.map((item) => ({
     id: item.id,
+    productId: item.productId,
+    vendorStatus: mapVendorStatus(item.vendorStatus),
     name: item.product.title,
     brand: item.product.brand?.trim() || null,
     price: item.price,
@@ -315,6 +340,149 @@ function mapSort(sort: SellerOrderSort) {
   }
 }
 
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value && typeof value === "object") {
+    return `{${Object.entries(value as Record<string, unknown>)
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, entry]) => `${JSON.stringify(key)}:${stableStringify(entry)}`)
+      .join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function assertCompletePageMetadata(
+  response: BackendOrdersResponse,
+  requestedPage: number,
+  expectedTotal?: number,
+  expectedPages?: number,
+): void {
+  const pagination = response?.pagination;
+  const orders = response?.data?.orders;
+  const summary = response?.data?.summary;
+  const statusFacets = response?.data?.facets?.statuses;
+  const values = [
+    pagination?.total,
+    pagination?.page,
+    pagination?.limit,
+    pagination?.pages,
+    response?.results,
+    summary?.totalOrders,
+  ];
+
+  if (
+    response?.status !== "success" ||
+    !Array.isArray(orders) ||
+    !Array.isArray(statusFacets) ||
+    values.some((value) => !Number.isSafeInteger(value) || Number(value) < 0) ||
+    pagination.page !== requestedPage ||
+    pagination.limit !== SELLER_METRICS_PAGE_SIZE ||
+    response.results !== orders.length ||
+    orders.length > pagination.limit
+  ) {
+    throw new SellerOrderCollectionError("malformed-pagination");
+  }
+
+  if (
+    (expectedTotal !== undefined && pagination.total !== expectedTotal) ||
+    (expectedPages !== undefined && pagination.pages !== expectedPages)
+  ) {
+    throw new SellerOrderCollectionError("pagination-drift");
+  }
+
+  const calculatedPages = Math.ceil(pagination.total / pagination.limit);
+  const expectedPageLength = pagination.total === 0
+    ? 0
+    : requestedPage < pagination.pages
+      ? pagination.limit
+      : pagination.total - pagination.limit * (pagination.pages - 1);
+  const facetTotal = statusFacets.reduce((total, facet) => {
+    if (!facet || !Number.isSafeInteger(facet.count) || facet.count < 0 || typeof facet.status !== "string") {
+      throw new SellerOrderCollectionError("malformed-pagination");
+    }
+    return total + facet.count;
+  }, 0);
+
+  if (
+    pagination.pages !== calculatedPages ||
+    summary.totalOrders !== pagination.total ||
+    facetTotal !== pagination.total ||
+    orders.length !== expectedPageLength
+  ) {
+    throw new SellerOrderCollectionError("incomplete-collection");
+  }
+
+}
+
+async function fetchBackendOrderPage(query: SellerOrderQuery): Promise<BackendOrdersResponse> {
+  const sort = mapSort(query.sort);
+  return apiClient<BackendOrdersResponse>("/vendor/orders", {
+    method: "GET",
+    query: {
+      page: query.page,
+      limit: query.limit,
+      search: query.search,
+      status: query.status ? toBackendVendorStatus(query.status) : undefined,
+      createdFrom: query.createdFrom,
+      createdTo: query.createdTo,
+      ...sort,
+    },
+  });
+}
+
+async function collectCompleteSellerOrders(
+  bounds: Pick<SellerOrderQuery, "createdFrom" | "createdTo"> = {},
+): Promise<BackendOrder[]> {
+  const ordersById = new Map<string, BackendOrder>();
+  let expectedTotal: number | undefined;
+  let expectedPages: number | undefined;
+  let expectedSummary: string | undefined;
+  let expectedFacets: string | undefined;
+
+  for (let pageNumber = 1; ; pageNumber += 1) {
+    const response = await fetchBackendOrderPage({
+      page: pageNumber,
+      limit: SELLER_METRICS_PAGE_SIZE,
+      sort: "newest",
+      ...bounds,
+    });
+    assertCompletePageMetadata(response, pageNumber, expectedTotal, expectedPages);
+
+    if (pageNumber === 1) {
+      expectedTotal = response.pagination.total;
+      expectedPages = response.pagination.pages;
+      expectedSummary = stableStringify(response.data.summary);
+      expectedFacets = stableStringify(response.data.facets);
+      if (expectedPages > SELLER_METRICS_MAX_PAGES) {
+        throw new SellerOrderCollectionError("safety-cap-exceeded");
+      }
+    } else if (
+      stableStringify(response.data.summary) !== expectedSummary ||
+      stableStringify(response.data.facets) !== expectedFacets
+    ) {
+      throw new SellerOrderCollectionError("pagination-drift");
+    }
+
+    for (const order of response.data.orders) {
+      if (!order || typeof order.id !== "string" || !order.id.trim()) {
+        throw new SellerOrderCollectionError("malformed-pagination");
+      }
+      if (ordersById.has(order.id)) {
+        throw new SellerOrderCollectionError("repeated-order");
+      }
+      ordersById.set(order.id, order);
+    }
+
+    if (pageNumber >= (expectedPages ?? 0)) break;
+  }
+
+  if (ordersById.size !== expectedTotal) {
+    throw new SellerOrderCollectionError("incomplete-collection");
+  }
+
+  return Array.from(ordersById.values());
+}
+
 export const sellerOrderQueryKeys = {
   all: ["seller", "orders"] as const,
   lists: () => [...sellerOrderQueryKeys.all, "list"] as const,
@@ -324,19 +492,7 @@ export const sellerOrderQueryKeys = {
 
 export const sellerOrdersApi = {
   async fetchPage(query: SellerOrderQuery): Promise<SellerOrdersPageResult> {
-    const sort = mapSort(query.sort);
-    const response = await apiClient<BackendOrdersResponse>("/vendor/orders", {
-      method: "GET",
-      query: {
-        page: query.page,
-        limit: query.limit,
-        search: query.search,
-        status: query.status ? toBackendVendorStatus(query.status) : undefined,
-        createdFrom: query.createdFrom,
-        createdTo: query.createdTo,
-        ...sort,
-      },
-    });
+    const response = await fetchBackendOrderPage(query);
     return {
       orders: response.data.orders.map(mapOrderToSummary),
       pagination: response.pagination,
@@ -350,9 +506,22 @@ export const sellerOrdersApi = {
     };
   },
 
-  async fetchSummaries(): Promise<SellerOrderSummary[]> {
-    const page = await this.fetchPage({ page: 1, limit: 20, sort: "newest" });
-    return page.orders;
+  async fetchSummaries(
+    bounds: Pick<SellerOrderQuery, "createdFrom" | "createdTo"> = {},
+  ): Promise<SellerOrderSummary[]> {
+    const orders = await collectCompleteSellerOrders(bounds);
+    return orders.map(mapOrderToSummary);
+  },
+
+  async fetchAllForMetrics(
+    bounds: Pick<SellerOrderQuery, "createdFrom" | "createdTo"> = {},
+  ): Promise<SellerOrderDetail[]> {
+    const orders = await collectCompleteSellerOrders(bounds);
+    try {
+      return orders.map(mapOrderToDetail);
+    } catch {
+      throw new SellerOrderCollectionError("malformed-pagination");
+    }
   },
 
   async fetchById(orderId: string): Promise<SellerOrderDetail> {

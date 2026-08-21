@@ -30,7 +30,7 @@ export default function AboutPage() {
       steps={[
         {
           title: "Discover locally",
-          body: "Shoppers find verified categories, useful product context, and seller options without digging through noisy listings.",
+          body: "Shoppers can browse clear marketplace categories, useful product context, and seller options without digging through noisy listings.",
         },
         {
           title: "Buy with clarity",

@@ -1,4 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
+import fs from "node:fs";
+import http, { type Server } from "node:http";
 import path from "node:path";
 import { ProductContractError, normalizeProduct } from "../src/lib/normalizers/product";
 import {
@@ -47,6 +49,78 @@ const structuredProduct: BackendProduct = {
     },
   ],
 };
+
+test("canonical ProductCard disables repeated destination prefetch without changing link navigation", () => {
+  const source = fs.readFileSync(path.resolve("src/components/productCard.tsx"), "utf8");
+  expect(source.match(/prefetch=\{false\}/g)).toHaveLength(2);
+  expect(source.match(/href=\{productHref\}/g)).toHaveLength(2);
+});
+
+const fixtureRatedProduct: BackendProduct = {
+  id: "product-1",
+  slug: "samsung-galaxy-a55-5g",
+  title: "Samsung Galaxy A55 5G",
+  description: "Samsung Galaxy A55 5G product detail fixture.",
+  price: 2499,
+  stock: 5,
+  categoryRef: { id: "cat-1", name: "Electronics", slug: "electronics", parentId: null },
+  subcategorySlug: "phones",
+  images: [
+    {
+      url: "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjE2MDAiIHZpZXdCb3g9IjAgMCAxMjAwIDE2MDAiPjxyZWN0IHdpZHRoPSIxMjAwIiBoZWlnaHQ9IjE2MDAiIGZpbGw9IiNlNWU3ZWIiLz48L3N2Zz4=",
+      alt: "Samsung Galaxy A55 5G front view",
+      isPrimary: true,
+      sortOrder: 0,
+      width: 1200,
+      height: 1600,
+    },
+  ],
+  user: { id: "opaque-owner-1" },
+  reviews: [{ rating: 5, user: { firstName: "Review", lastName: "Author" } }],
+};
+
+const fixtureUnratedProduct: BackendProduct = {
+  id: "product-3",
+  slug: "product-without-reviews",
+  title: "Product Without Reviews",
+  description: "Fixture product without verified reviews.",
+  price: 1299,
+  stock: 10,
+  categoryRef: { id: "cat-1", name: "Electronics", slug: "electronics", parentId: null },
+  subcategorySlug: "phones",
+  images: [],
+  user: { id: "opaque-owner-3" },
+  reviews: [],
+};
+
+const fixtureListingProducts: BackendProduct[] = [
+  fixtureRatedProduct,
+  {
+    id: "product-2",
+    slug: "media-missing-test-product",
+    title: "Media Missing Test Product",
+    description: "Fixture product without media.",
+    price: 999,
+    stock: 0,
+    categoryRef: { id: "cat-1", name: "Electronics", slug: "electronics", parentId: null },
+    user: { id: "opaque-owner-2" },
+    images: [],
+    reviews: [],
+  },
+  fixtureUnratedProduct,
+  {
+    id: "product-4",
+    slug: "fourth-fixture-product",
+    title: "Fourth Fixture Product",
+    description: "Fourth fixture product for balanced-card geometry.",
+    price: 1499,
+    stock: 7,
+    categoryRef: { id: "cat-1", name: "Electronics", slug: "electronics", parentId: null },
+    user: { id: "opaque-owner-4" },
+    images: [],
+    reviews: [],
+  },
+];
 
 test("structured public images select the primary image before sort order", () => {
   const product = normalizeBackendProduct(structuredProduct);
@@ -204,9 +278,7 @@ function collectDiagnostics(page: Page): Diagnostics {
   page.on("pageerror", (error) => diagnostics.pageErrors.push(error.message));
   page.on("requestfailed", (request) => {
     const failure = request.failure()?.errorText ?? "unknown failure";
-    if (!failure.includes("ERR_ABORTED")) {
-      diagnostics.failedRequests.push(`${failure} ${request.url()}`);
-    }
+    diagnostics.failedRequests.push(`${failure} ${request.method()} ${request.url()}`);
   });
   page.on("response", (response) => {
     if (
@@ -223,6 +295,8 @@ function collectDiagnostics(page: Page): Diagnostics {
 }
 
 const browserBaseUrl = process.env.PACKAGE1_BASE_URL;
+const fixtureBackendPort = Number(process.env.PACKAGE1_BACKEND_PORT);
+let fixtureBackendServer: Server | undefined;
 const viewports = [
   { name: "320x568", width: 320, height: 568 },
   { name: "390x844", width: 390, height: 844 },
@@ -232,10 +306,59 @@ const viewports = [
   { name: "1440x900", width: 1440, height: 900 },
 ] as const;
 
+function buildCategoryTreeResponse() {
+  return {
+    status: "success",
+    results: 1,
+    data: {
+      categories: [
+        {
+          id: "cat-1",
+          name: "Electronics",
+          slug: "electronics",
+          description: null,
+          icon: null,
+          parentId: null,
+          isActive: true,
+          sortOrder: 0,
+          children: [
+            {
+              id: "cat-2",
+              name: "Phones",
+              slug: "phones",
+              description: null,
+              icon: null,
+              parentId: "cat-1",
+              isActive: true,
+              sortOrder: 0,
+              _count: { products: 2 },
+            },
+          ],
+          _count: { products: fixtureListingProducts.length },
+        },
+      ],
+    },
+  };
+}
+
 test.describe("canonical ProductCard fixture-based browser contract", () => {
-  test.skip(!browserBaseUrl, "PACKAGE1_BASE_URL is required for fixture-based visual QA.");
+  test.describe.configure({ mode: "serial" });
+  test.skip(!browserBaseUrl, "PACKAGE1_BASE_URL must point to a fresh source-aligned production runtime.");
+
+  test.beforeAll(async () => {
+    if (!Number.isSafeInteger(fixtureBackendPort) || fixtureBackendPort < 1 || fixtureBackendPort > 65_535) {
+      throw new Error("PACKAGE1_BACKEND_PORT must identify the task-owned public-product fixture backend used by the production runtime.");
+    }
+    fixtureBackendServer = await startFixtureBackend(fixtureBackendPort);
+  });
+
+  test.afterAll(async () => {
+    await new Promise<void>((resolve) => fixtureBackendServer?.close(() => resolve()));
+  });
 
   test.beforeEach(async ({ page }) => {
+    await page.route(`${browserBaseUrl}/_vercel/insights/**`, (route) => route.fulfill({ status: 200, body: "" }));
+    await page.route(`${browserBaseUrl}/_vercel/speed-insights/**`, (route) => route.fulfill({ status: 200, body: "" }));
     await page.route(`${browserBaseUrl}/api/backend/user/me`, async (route) => {
       await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
     });
@@ -244,6 +367,79 @@ test.describe("canonical ProductCard fixture-based browser contract", () => {
     });
     await page.route(`${browserBaseUrl}/api/backend/auth/refresh-token`, async (route) => {
       await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
+    });
+    await page.route(`${browserBaseUrl}/api/backend/cart`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify({
+          status: "success",
+          data: {
+            cart: {
+              id: "00000000-0000-4000-8000-000000000001",
+              items: [],
+              summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+            },
+          },
+        }),
+      });
+    });
+    await page.route(`${browserBaseUrl}/api/backend/categories`, async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(buildCategoryTreeResponse()),
+      });
+    });
+    await page.route(`${browserBaseUrl}/api/backend/products**`, async (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/samsung-galaxy-a55-5g")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              product: {
+                id: "product-1",
+                slug: "samsung-galaxy-a55-5g",
+                title: "Samsung Galaxy A55 5G",
+                price: 2499,
+                stock: 5,
+                images: fixtureRatedProduct.images,
+                reviews: [{ rating: 5, user: { firstName: "Review", lastName: "Author" } }],
+              },
+            },
+          }),
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/product-without-reviews")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              product: {
+                id: "product-3",
+                slug: "product-without-reviews",
+                title: "Product Without Reviews",
+                price: 1299,
+                stock: 10,
+                images: [],
+                reviews: [],
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({
+        status: 200,
+        contentType: "application/json",
+        body: JSON.stringify(buildProductListResponse(fixtureListingProducts)),
+      });
     });
   });
 
@@ -280,7 +476,7 @@ test.describe("canonical ProductCard fixture-based browser contract", () => {
       const cardHeight = await card.evaluate((element) => element.getBoundingClientRect().height);
       expect(cardHeight).toBeGreaterThan(geometry.height);
       expect(cardHeight).toBeLessThan(geometry.height + 220);
-      const sectionCards = page.getByTestId("product-card").filter({ visible: true });
+      const sectionCards = page.getByTestId("home-new-arrivals").getByTestId("product-card").filter({ visible: true });
       const sectionCardWidths = await sectionCards.evaluateAll((elements) =>
         elements.slice(0, 4).map((element) => element.getBoundingClientRect().width),
       );
@@ -391,3 +587,51 @@ test.describe("canonical ProductCard fixture-based browser contract", () => {
     await expect(page.locator("#product-reviews").getByText(/customer reviews$/)).toHaveCount(0);
   });
 });
+
+async function startFixtureBackend(port: number): Promise<Server> {
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+    if (url.pathname === "/api/v1/categories") {
+      return sendFixtureResponse(response, buildCategoryTreeResponse());
+    }
+    if (url.pathname === "/api/v1/products/new-arrivals" || url.pathname === "/api/v1/products/featured") {
+      return sendFixtureResponse(response, buildProductListResponse(fixtureListingProducts));
+    }
+    if (url.pathname === "/api/v1/products") {
+      return sendFixtureResponse(response, buildProductListResponse(fixtureListingProducts));
+    }
+    if (url.pathname.startsWith("/api/v1/products/")) {
+      const slug = decodeURIComponent(url.pathname.slice("/api/v1/products/".length));
+      const product = fixtureListingProducts.find((candidate) => candidate.slug === slug);
+      return product
+        ? sendFixtureResponse(response, { status: "success", data: { product } })
+        : sendFixtureResponse(response, { status: "fail", message: "Product not found" }, 404);
+    }
+    return sendFixtureResponse(response, { status: "fail", message: "Not found" }, 404);
+  });
+  await new Promise<void>((resolve, reject) => {
+    server.once("error", reject);
+    server.listen(port, "127.0.0.1", resolve);
+  });
+  return server;
+}
+
+function buildProductListResponse(products: readonly BackendProduct[]) {
+  return {
+    status: "success",
+    results: products.length,
+    data: { products },
+    pagination: {
+      page: 1,
+      limit: products.length || 1,
+      total: products.length,
+      pages: products.length === 0 ? 0 : 1,
+    },
+  };
+}
+
+function sendFixtureResponse(response: http.ServerResponse, payload: unknown, status = 200) {
+  response.statusCode = status;
+  response.setHeader("content-type", "application/json");
+  response.end(JSON.stringify(payload));
+}

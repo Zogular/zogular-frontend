@@ -15,8 +15,8 @@ export default function HelpPage() {
       ]}
       sections={[
         {
-          title: "Order Tracking",
-          body: "Use your order ID and purchase email to check your delivery timeline, movement updates, and estimated arrival date.",
+          title: "Order Updates",
+          body: "Sign in and open Your Orders for the most reliable order status and support options.",
         },
         {
           title: "Returns and Refunds",
@@ -30,7 +30,7 @@ export default function HelpPage() {
       steps={[
         {
           title: "Find the order",
-          body: "Use your order ID, account order history, or purchase email so support can locate the issue quickly.",
+          body: "Use your account order history so support can confirm the order belongs to you before reviewing the issue.",
         },
         {
           title: "Share the problem",
@@ -43,16 +43,16 @@ export default function HelpPage() {
       ]}
       faqs={[
         {
-          question: "What is the fastest way to track delivery?",
-          answer: "Use the order ID and purchase email on the tracking page, or open the order from your account history.",
+          question: "What is the fastest way to check an order?",
+          answer: "Sign in and open Your Orders. Support can review the order from there if you need help.",
         },
         {
           question: "Where do returns start?",
           answer: "Start from your order history when possible. The returns policy explains eligibility and review expectations.",
         },
       ]}
-      ctaLabel="Track an Order"
-      ctaHref="/track"
+      ctaLabel="Open Your Orders"
+      ctaHref="/account/orders"
       secondaryCtaLabel="Returns Policy"
       secondaryCtaHref="/returns"
     />

@@ -31,11 +31,6 @@ export interface ResetPasswordInput {
   next?: string | null;
 }
 
-export interface PermissionPreferencesInput {
-  locationEnabled: boolean;
-  notificationsEnabled: boolean;
-}
-
 export type AuthRole = "buyer" | "seller" | "admin" | "support";
 
 export interface AuthUser {

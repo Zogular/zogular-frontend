@@ -695,7 +695,12 @@ test("protected account shell and navigation share one auth policy", () => {
 
   expect(layout).toContain('auth.status !== "authenticated"');
   expect(layout.indexOf('auth.status !== "authenticated"')).toBeLessThan(layout.indexOf("My Account"));
-  expect(navigation).toContain('appendNextPath("/auth/login", "/account/saved")');
+  expect(navigation).toContain('href: "/account/saved"');
+  expect(navigation).toContain('href: "/account/orders"');
+  expect(navigation).toContain('href: "/account"');
+  expect(navigation).toContain('label: "Saved"');
+  expect(navigation).toContain('label: "Cart"');
+  expect(navigation).toContain('href: "/cart"');
   expect(button).toContain('router.push(appendNextPath("/auth/login", pathname))');
   expect(wishlist).not.toContain('persist(');
   expect(wishlist).toContain("removePersistedWishlistData");
@@ -951,16 +956,105 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     });
   }
 
-  for (const destination of [
-    { label: "Wishlist", nextPath: "/account/saved" },
-    { label: "Orders", nextPath: "/account/orders" },
-    { label: "Account", nextPath: "/account" },
-  ] as const) {
-    test(`mobile ${destination.label} navigation preserves sanitized return intent across browser history`, async ({ page }) => {
-      await page.setViewportSize({ width: 390, height: 844 });
+  test("authenticated mobile navigation matches private account routes instead of sign-in recovery", async ({ context }) => {
+    await context.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "account-a", firstName: "Account", lastName: "A", email: "account-a@example.test" }));
+    });
+    await context.route("**/_vercel/insights/script.js", (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
+    await context.route("**/_vercel/speed-insights/script.js", (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
+    await context.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      if (url.pathname.endsWith("/user/me")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
+        return;
+      }
+      if (url.pathname.endsWith("/wishlist")) {
+        const pageNumber = Number(url.searchParams.get("page") ?? "1");
+        const limit = Number(url.searchParams.get("limit") ?? "100");
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], pageNumber, limit)) });
+        return;
+      }
+      if (url.pathname.endsWith("/user/addresses")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { addresses: [] } }) });
+        return;
+      }
+      if (url.pathname.endsWith("/orders")) {
+        const pageNumber = Number(url.searchParams.get("page") ?? "1");
+        const limit = Number(url.searchParams.get("limit") ?? "20");
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload([], pageNumber, limit, 0)) });
+        return;
+      }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      if (url.pathname.endsWith("/categories")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: {} }) });
+    });
+
+    const aggregateDiagnostics: Diagnostics = { consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] };
+
+    async function assertDestination(label: "Saved" | "Orders" | "Account", destination: string, assertion: (destinationPage: Page) => Promise<void>) {
+      const destinationPage = await context.newPage();
+      await destinationPage.setViewportSize({ width: 390, height: 844 });
+      const diagnostics = collectDiagnostics(destinationPage);
+      try {
+        await destinationPage.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
+        const nav = destinationPage.getByRole("navigation", { name: "Mobile navigation" });
+        await expect(nav).toBeVisible();
+        await expect(nav.getByRole("link", { name: "Saved" })).toHaveAttribute("href", "/account/saved");
+        await expect(nav.getByRole("link", { name: "Orders" })).toHaveAttribute("href", "/account/orders");
+        await expect(nav.getByRole("link", { name: "Account" })).toHaveAttribute("href", "/account");
+        await nav.getByRole("link", { name: label }).click();
+        await expect(destinationPage).toHaveURL(`${baseUrl}${destination}`);
+        await assertion(destinationPage);
+        await destinationPage.waitForLoadState("networkidle");
+      } finally {
+        await destinationPage.close();
+        aggregateDiagnostics.consoleErrors.push(...diagnostics.consoleErrors);
+        aggregateDiagnostics.pageErrors.push(...diagnostics.pageErrors);
+        aggregateDiagnostics.unexpectedFailedRequests.push(...diagnostics.unexpectedFailedRequests);
+        aggregateDiagnostics.unexpectedBadResponses.push(...diagnostics.unexpectedBadResponses);
+      }
+    }
+
+    await assertDestination("Saved", "/account/saved", async (destinationPage) => {
+      await expect(destinationPage.getByText("Your wishlist is empty", { exact: true })).toBeVisible();
+      await expect(destinationPage.getByRole("heading", { name: "Welcome back", exact: true })).toHaveCount(0);
+    });
+    await assertDestination("Orders", "/account/orders", async (destinationPage) => {
+      await expect(destinationPage.getByText("No orders found", { exact: true })).toBeVisible();
+      await expect(destinationPage.getByRole("heading", { name: "Welcome back", exact: true })).toHaveCount(0);
+    });
+    await assertDestination("Account", "/account", async (destinationPage) => {
+      await expect(destinationPage.getByRole("heading", { name: "Welcome back, Account!" })).toBeVisible();
+    });
+    expect(aggregateDiagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+  });
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 390, height: 844 }]) {
+    test(`${viewport.width}px guest mobile navigation exposes exactly the public destinations`, async ({ page }) => {
+      await page.setViewportSize(viewport);
       await page.addInitScript(() => localStorage.clear());
       const diagnostics = collectDiagnostics(page, {
-        failedRequests: [{ method: "GET", path: "/api/backend/categories", errorText: "net::ERR_ABORTED" }],
         badResponses: [
           { method: "GET", path: "/api/backend/user/me", status: 401 },
           { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
@@ -980,63 +1074,29 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
           await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
           return;
         }
-        await route.continue();
+        if (url.pathname.endsWith("/categories")) {
+          await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: {} }) });
       });
 
-      await page.goto(baseUrl!, { waitUntil: "networkidle" });
+      await page.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
       const nav = page.getByRole("navigation", { name: "Mobile navigation" });
       await expect(nav).toBeVisible();
-      await nav.getByRole("link", { name: destination.label }).click();
-      const expectedLoginUrl = `${baseUrl}/auth/login?next=${encodeURIComponent(destination.nextPath)}`;
-      await expect(page).toHaveURL(expectedLoginUrl);
-      await expect(page.getByRole("heading", { name: "Welcome back" })).toBeVisible();
-      await page.waitForLoadState("networkidle");
-
-      await page.goBack({ waitUntil: "networkidle" });
-      await expect(page).toHaveURL(`${baseUrl}/`);
-      await page.goForward({ waitUntil: "networkidle" });
-      await expect(page).toHaveURL(expectedLoginUrl);
-      await expect(page.getByText("My Account", { exact: true })).toBeHidden();
+      const links = nav.getByRole("link");
+      await expect(links).toHaveCount(3);
+      await expect(links).toHaveText(["Home", "Categories", "Cart"]);
+      await expect(nav.getByRole("link", { name: "Cart" })).toHaveAttribute("href", "/cart");
+      await expect(nav.getByRole("link", { name: /Saved|Wishlist/ })).toHaveCount(0);
+      await expect(nav.getByRole("link", { name: "Orders" })).toHaveCount(0);
+      await expect(nav.getByRole("link", { name: "Account" })).toHaveCount(0);
+      await nav.getByRole("link", { name: "Cart" }).focus();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(`${baseUrl}/cart`);
       expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
     });
   }
-
-  test("signed-out product cards keep wishlist private and render only valid rating evidence", async ({ page }) => {
-    await page.setViewportSize({ width: 390, height: 844 });
-    await page.addInitScript(() => localStorage.clear());
-    const diagnostics = collectDiagnostics(page, {
-      badResponses: [{ method: "GET", path: "/api/backend/user/me", status: 401 }],
-    });
-    await page.route("**/api/backend/**", async (route) => {
-      const url = new URL(route.request().url());
-      if (url.pathname.endsWith("/user/me")) {
-        await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
-        return;
-      }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
-    });
-
-    await page.goto(`${baseUrl}/`, { waitUntil: "networkidle" });
-    const ratedCard = page.getByTestId("product-card").filter({ hasText: "Samsung Galaxy A55 5G" }).first();
-    const unratedCard = page.getByTestId("product-card").filter({ hasText: "Product Without Reviews" }).first();
-    await expect(ratedCard).toBeVisible();
-    await expect(ratedCard.getByText("5", { exact: true })).toBeVisible();
-    await expect(ratedCard.getByText("(1)", { exact: true })).toBeVisible();
-    await expect(unratedCard).toBeVisible();
-    await expect(unratedCard.locator("svg.lucide-star")).toHaveCount(0);
-    await expect(unratedCard.getByText(/^\(\d+\)$/)).toHaveCount(0);
-
-    const wishlistAction = ratedCard.getByRole("button", { name: "Add to wishlist" });
-    await expect(wishlistAction).toBeEnabled();
-    await wishlistAction.click();
-    await expect(page).toHaveURL(/\/auth\/login\?next=%2F$/);
-    expect(await page.evaluate(() => ({
-      authUser: localStorage.getItem("zogular_auth_user"),
-      currentWishlist: localStorage.getItem("zogular-wishlist-storage"),
-      legacyWishlist: localStorage.getItem("zamoyo-wishlist-storage"),
-    }))).toEqual({ authUser: null, currentWishlist: null, legacyWishlist: null });
-    expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
-  });
 
   test("an HttpOnly refresh cookie restores identity when local storage is empty", async ({ page, context }) => {
     await page.setViewportSize({ width: 390, height: 844 });
@@ -1085,7 +1145,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], pageNumber, limit)) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account/saved`, { waitUntil: "networkidle" });
@@ -1129,7 +1206,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account`, { waitUntil: "networkidle" });
@@ -1144,7 +1238,7 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
 
-  test("desktop account menu has deterministic complete keyboard navigation and keeps guest orders behind sign in", async ({ page }) => {
+  test("desktop guest account menu keeps only public actions with deterministic keyboard navigation", async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.addInitScript(() => localStorage.clear());
     await page.route("**/api/backend/**", async (route) => {
@@ -1161,7 +1255,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "No refresh cookie" }) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
     const diagnostics = collectDiagnostics(page, {
       badResponses: [
@@ -1170,13 +1281,15 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       ],
     });
 
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
     const accountTrigger = page.getByRole("button", { name: "Open sign in menu" });
+    await expect(accountTrigger).toHaveText(/Sign In/);
+    await expect(accountTrigger).not.toHaveText(/My Account/);
     const menu = page.getByRole("menu", { name: "Account options" });
     const signIn = menu.getByRole("menuitem", { name: /sign in/i });
     const register = menu.getByRole("menuitem", { name: "Register" });
-    const orders = menu.getByRole("menuitem", { name: "My Orders" });
     const help = menu.getByRole("menuitem", { name: "Help Center" });
+    await expect(menu.getByRole("menuitem", { name: "My Orders" })).toHaveCount(0);
 
     for (let iteration = 0; iteration < 10; iteration += 1) {
       await accountTrigger.focus();
@@ -1216,10 +1329,6 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
     await expect(signIn).toBeFocused();
     await signIn.press("ArrowDown");
     await expect(register).toBeFocused();
-    await register.press("ArrowDown");
-    await expect(orders).toBeFocused();
-    await menu.getByRole("menuitem", { name: "My Orders" }).click();
-    await expect(page).toHaveURL(/\/auth\/login\?next=%2Faccount%2Forders$/);
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
 
@@ -1253,14 +1362,27 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(sellerApplicationPayload(requestOwner, "APPROVED")) });
         return;
       }
-      if (url.pathname.endsWith("/wishlist")) {
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
         return;
       }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
     const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
     await expect(dashboardLink).toBeVisible();
 
@@ -1327,10 +1449,27 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
         return;
       }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
     const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
     await expect(dashboardLink).toBeVisible();
 
@@ -1383,10 +1522,27 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
         return;
       }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
-    await page.goto(baseUrl!, { waitUntil: "domcontentloaded" });
+    await page.goto(`${baseUrl}/categories`, { waitUntil: "domcontentloaded" });
     await accountARequestStarted.promise;
     currentOwner = "account-b";
     await setBrowserIdentity(page, currentOwner);
@@ -1452,10 +1608,27 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
         return;
       }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
     const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
     await expect(dashboardLink).toBeVisible();
 
@@ -1497,10 +1670,27 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload([], 1, 100)) });
         return;
       }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
       await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
-    await page.goto(baseUrl!, { waitUntil: "networkidle" });
+    await page.goto(`${baseUrl}/categories`, { waitUntil: "networkidle" });
     const dashboardLink = page.getByRole("link", { name: "Seller Dashboard", exact: true });
     const accountTrigger = page.getByRole("button", { name: "Open account menu" });
     const menu = page.getByRole("menu", { name: "Account options" });
@@ -1554,7 +1744,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload(orders, pageNumber, limit, 25)) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account/orders`, { waitUntil: "networkidle" });
@@ -1592,7 +1799,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload(orders, pageNumber, limit, 25)) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account/orders`, { waitUntil: "networkidle" });
@@ -1637,7 +1861,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account`, { waitUntil: "domcontentloaded" });
@@ -1687,7 +1928,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account/settings`, { waitUntil: "networkidle" });
@@ -1793,7 +2051,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
           await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(orderPagePayload([order], pageNumber, limit, 1)) });
           return;
         }
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+        if (url.pathname.endsWith("/cart")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              status: "success",
+              data: {
+                cart: {
+                  id: "00000000-0000-4000-8000-000000000001",
+                  items: [],
+                  summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+                },
+              },
+            }),
+          });
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
       });
 
       await page.goto(`${baseUrl}${identityCase.route}`, { waitUntil: "domcontentloaded" });
@@ -1878,6 +2153,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
           return;
         }
 
+        if (url.pathname.endsWith("/cart")) {
+          await route.fulfill({
+            status: 200,
+            contentType: "application/json",
+            body: JSON.stringify({
+              status: "success",
+              data: {
+                cart: {
+                  id: "00000000-0000-4000-8000-000000000001",
+                  items: [],
+                  summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+                },
+              },
+            }),
+          });
+          return;
+        }
+
         if (!requestOwner) {
           if (url.pathname.endsWith("/user/me")) {
             await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Sign in required" }) });
@@ -1953,9 +2246,26 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(currentUserPayload("account-a")) });
         return;
       }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
       if (!url.pathname.endsWith("/orders/order-fixture")) {
         const data = url.pathname.endsWith("/categories") ? { categories: [] } : {};
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data }) });
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data }) });
         return;
       }
       if (responseMode === "network") {
@@ -2076,11 +2386,28 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         }
         return;
       }
-      if (url.pathname.endsWith("/categories")) {
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: {} }) });
+      if (url.pathname.endsWith("/categories")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: {} }) });
     });
 
     await page.goto(`${baseUrl}/account/addresses`, { waitUntil: "networkidle" });
@@ -2167,11 +2494,28 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(wishlistPagePayload(items, page, limit)) });
         return;
       }
-      if (url.pathname.endsWith("/categories")) {
-        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ success: true, data: {} }) });
+      if (url.pathname.endsWith("/categories")) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: {} }) });
     });
 
     await page.goto(`${baseUrl}/account/saved`, { waitUntil: "networkidle" });
@@ -2223,7 +2567,24 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 503, contentType: "application/json", body: JSON.stringify({ message: "Unavailable" }) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account/saved`, { waitUntil: "networkidle" });
@@ -2260,11 +2621,28 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Unauthorized" }) });
         return;
       }
+      if (url.pathname.endsWith("/cart")) {
+        await route.fulfill({
+          status: 200,
+          contentType: "application/json",
+          body: JSON.stringify({
+            status: "success",
+            data: {
+              cart: {
+                id: "00000000-0000-4000-8000-000000000001",
+                items: [],
+                summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 },
+              },
+            },
+          }),
+        });
+        return;
+      }
       if (url.pathname.endsWith("/user/me") || url.pathname.endsWith("/wishlist")) {
         await route.fulfill({ status: 401, contentType: "application/json", body: JSON.stringify({ message: "Unauthorized" }) });
         return;
       }
-      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { categories: [] } }) });
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
     });
 
     await page.goto(`${baseUrl}/account/saved`, { waitUntil: "networkidle" });

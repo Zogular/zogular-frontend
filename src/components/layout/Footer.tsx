@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleHelp, Mail, Package, ReceiptText, ShieldCheck, Store, Truck } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { BRAND } from "@/config/brand";
 
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
@@ -15,27 +16,23 @@ const COMPANY_LINKS = [
 
 const SUPPORT_LINKS = [
   { label: "Help Center", href: "/help" },
-  { label: "Track Order", href: "/track-order" },
+  { label: "Order Help", href: "/track" },
   { label: "Returns Policy", href: "/returns" },
   { label: "Privacy Policy", href: "/privacy" },
 ];
 
-const CATEGORY_LINKS = [
-  { label: "Phones & Tablets", href: "/category/phones-and-tablets" },
-  { label: "Computing", href: "/category/computing" },
-  { label: "Fashion", href: "/category/fashion" },
-  { label: "Supermarket", href: "/category/supermarket" },
-];
+const CATEGORY_LINK = { label: "Browse Categories", href: "/categories" };
 
 const FOOTER_ACTION_LINKS = [
   { label: "Seller", href: "/sell", icon: Store },
-  { label: "Track", href: "/track-order", icon: Package },
+  { label: "Orders", href: "/account/orders", icon: Package },
   { label: "Help", href: "/help", icon: CircleHelp },
 ];
 
 // --- MAIN EXPORT ---
 export function Footer() {
   const pathname = usePathname();
+  const supportEmail = BRAND.supportEmail;
 
   const hiddenRoutes = ["/auth", "/seller"];
   if (hiddenRoutes.some((route) => pathname?.startsWith(route))) {
@@ -52,7 +49,14 @@ export function Footer() {
           
           {/* Brand & App Download */}
           <div className="space-y-4 lg:col-span-2">
-            <BrandLogo href="/" variant="dark" imageClassName="h-10 w-auto md:h-12" className="focus-visible:ring-offset-zinc-900" />
+            <Link
+              href="/"
+              prefetch={false}
+              aria-label="Zogular"
+              className="inline-flex items-center rounded-xl transition-opacity hover:opacity-90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900"
+            >
+              <BrandLogo variant="dark" imageClassName="h-10 w-auto md:h-12" />
+            </Link>
             <p className="text-xs md:text-sm text-zinc-400 max-w-sm leading-relaxed">
               Zambia&apos;s online marketplace for everyday products.
             </p>
@@ -101,25 +105,24 @@ export function Footer() {
             {/* Categories */}
             <div className="space-y-3">
               <h4 className="text-white font-bold tracking-wide text-sm">Categories</h4>
-              <ul className="space-y-2 text-xs md:text-sm">
-                {CATEGORY_LINKS.map((link) => (
-                  <li key={link.href}>
-                    <Link href={link.href} className="rounded-sm transition-colors hover:text-[#FF6B00] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B00] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900">
-                      {link.label}
-                    </Link>
-                  </li>
-                ))}
-              </ul>
+              <p className="max-w-42 text-xs leading-5 text-zinc-400 md:text-sm">
+                Open the current category directory and browse what is available.
+              </p>
+              <Link href={CATEGORY_LINK.href} className="inline-flex rounded-sm text-xs font-bold transition-colors hover:text-[#FF6B00] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#FF6B00] focus-visible:ring-offset-2 focus-visible:ring-offset-zinc-900 md:text-sm">
+                {CATEGORY_LINK.label}
+              </Link>
             </div>
           </div>
 
           {/* Contact fallback */}
           <div className="space-y-3 lg:col-span-1">
             <h4 className="text-sm font-bold tracking-wide text-white">Need Help?</h4>
-            <p className="text-[11px] leading-5 text-zinc-400 md:text-xs">Newsletter signup is not live yet. Contact support for marketplace help.</p>
-            <a href="mailto:support@zogular.com" className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-xs font-bold text-white hover:border-zinc-700 hover:bg-zinc-800">
-              <Mail className="h-3.5 w-3.5" /> Email support
-            </a>
+            <p className="text-[11px] leading-5 text-zinc-400 md:text-xs">Use the Help Center for marketplace support and order guidance.</p>
+            {supportEmail ? (
+              <a href={`mailto:${supportEmail}`} className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-zinc-800 bg-zinc-900 px-4 text-xs font-bold text-white hover:border-zinc-700 hover:bg-zinc-800">
+                <Mail className="h-3.5 w-3.5" /> Email support
+              </a>
+            ) : null}
           </div>
           
         </div>

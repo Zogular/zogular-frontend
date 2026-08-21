@@ -5,7 +5,6 @@ import {
   CircleHelp,
   Compass,
   FileCheck2,
-  ShieldCheck,
   Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -122,10 +121,7 @@ export function ZogularInfoPage({
             <aside className="animate-in fade-in slide-in-from-bottom-3 rounded-[28px] border border-white/75 bg-white/60 p-4 shadow-[0_24px_58px_rgba(15,23,42,0.1)] backdrop-blur-2xl duration-700">
               <div className="overflow-hidden rounded-2xl border border-white/70 bg-zinc-950 p-5 text-white shadow-inner">
                 <div className="flex items-start justify-between gap-4">
-                  <ShieldCheck className="h-6 w-6 shrink-0 text-[#00c95d]" />
-                  <span className="rounded-full border border-white/10 bg-white/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.14em] text-zinc-300">
-                    Verified
-                  </span>
+                  <Sparkles className="h-6 w-6 shrink-0 text-[#00c95d]" />
                 </div>
                 <p className="mt-4 text-lg font-black leading-tight">Built for trust, speed, and local context.</p>
                 <p className="mt-2 text-sm leading-6 text-zinc-300">

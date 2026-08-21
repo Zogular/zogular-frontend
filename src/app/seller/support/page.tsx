@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import { BRAND } from "@/config/brand";
+import { getSellerSafeErrorMessage } from "@/lib/seller-error";
 
 // Import from our new service layer
 import { supportApi, SupportTicket, SupportStats, TicketStatus, TicketPriority } from "@/services/support";
@@ -56,6 +57,7 @@ function StatCard({ title, value, icon: Icon, colorClass }: { title: string; val
 // MAIN PAGE EXPORT
 // ============================================================================
 export default function SellerSupportPage() {
+  const supportEmail = BRAND.supportEmail;
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -83,7 +85,7 @@ export default function SellerSupportPage() {
       const data = await supportApi.fetchTickets();
       setTickets(data);
     } catch (err) {
-      if (!silent) setError(err instanceof Error ? err.message : "An unknown error occurred");
+      if (!silent) setError(getSellerSafeErrorMessage(err, "support-list"));
     } finally {
       if (!silent) setLoading(false);
     }
@@ -123,7 +125,7 @@ export default function SellerSupportPage() {
         const detail = await supportApi.getTicket(selectedTicketId);
         if (isMounted) setSelectedTicketData(detail);
       } catch (err) {
-        if (isMounted) setDetailError(err instanceof Error ? err.message : "Failed to load ticket.");
+        if (isMounted) setDetailError(getSellerSafeErrorMessage(err, "support-detail"));
       } finally {
         if (isMounted) setLoadingTicket(false);
       }
@@ -148,11 +150,7 @@ export default function SellerSupportPage() {
       setSelectedTicketData(updatedTicket);
       loadTickets(true);
     } catch (replyError) {
-      setDetailError(
-        replyError instanceof Error
-          ? replyError.message
-          : "Failed to send reply.",
-      );
+      setDetailError(getSellerSafeErrorMessage(replyError, "support-reply"));
     } finally {
       setReplying(false);
     }
@@ -169,11 +167,7 @@ export default function SellerSupportPage() {
       setSelectedTicketData(updatedTicket);
       loadTickets(true);
     } catch (resolveError) {
-      setDetailError(
-        resolveError instanceof Error
-          ? resolveError.message
-          : "Failed to resolve ticket.",
-      );
+      setDetailError(getSellerSafeErrorMessage(resolveError, "support-resolve"));
     } finally {
       setResolving(false);
     }
@@ -192,7 +186,7 @@ export default function SellerSupportPage() {
   if (error) return (
     <div className="flex flex-col items-center justify-center rounded-3xl border border-red-100 bg-red-50 p-8 text-center mt-6">
       <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
-      <h3 className="text-base font-bold text-red-900">System Error</h3>
+      <h3 className="text-base font-bold text-red-900">Support tickets could not load</h3>
       <p className="mt-1 text-sm text-red-700">{error}</p>
       <Button onClick={() => loadTickets()} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">Try Again</Button>
     </div>
@@ -214,22 +208,24 @@ export default function SellerSupportPage() {
         </Button>
       </div>
 
-      <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-          <div>
-            <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
-            <p className="mt-1 text-sm font-medium text-zinc-600">
-              You can also email support directly if you are unable to open a ticket.
-            </p>
+      {supportEmail ? (
+        <div className="rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm md:p-6">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <p className="text-[10px] font-black uppercase tracking-wider text-zinc-500">Direct Contact Fallback</p>
+              <p className="mt-1 text-sm font-medium text-zinc-600">
+                You can also email support directly if you are unable to open a ticket.
+              </p>
+            </div>
+            <a
+              href={`mailto:${supportEmail}?subject=Seller%20support%20request`}
+              className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
+            >
+              {supportEmail}
+            </a>
           </div>
-          <a
-            href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
-            className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
-          >
-            {BRAND.supportEmail}
-          </a>
         </div>
-      </div>
+      ) : null}
 
       {/* 2. SUMMARY CARDS */}
       <div className="grid grid-cols-2 gap-3 md:grid-cols-4 shrink-0">
@@ -284,10 +280,12 @@ export default function SellerSupportPage() {
               const isSelected = selectedTicketId === ticket.id;
               
               return (
-                <div 
+                <button
+                  type="button"
                   key={ticket.id} 
                   onClick={() => setSelectedTicketId(ticket.id)}
-                  className={cn("cursor-pointer rounded-2xl border p-4 transition-all duration-200", 
+                  aria-pressed={isSelected}
+                  className={cn("w-full rounded-2xl border p-4 text-left transition-all duration-200 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-900",
                     isSelected ? "border-zinc-900 bg-zinc-900 text-white shadow-md" : "border-zinc-200 bg-white hover:border-zinc-300 shadow-sm"
                   )}
                 >
@@ -304,7 +302,7 @@ export default function SellerSupportPage() {
                       <PriIcon className={cn("h-3.5 w-3.5", isSelected ? "text-zinc-400" : PRIORITY_UI[ticket.priority].color)} />
                     </div>
                   </div>
-                </div>
+                </button>
               );
             })
           )}
@@ -327,14 +325,16 @@ export default function SellerSupportPage() {
               <MessageSquare className="mx-auto mb-3 h-8 w-8 text-zinc-300" />
               <h3 className="text-sm font-bold text-zinc-500">Select a ticket to view conversation</h3>
               <p className="mx-auto mt-2 max-w-sm text-xs font-medium leading-relaxed text-zinc-500">
-                Ticket replies stay in-app when support is active. You can still use direct email if you need an offline fallback.
+                Ticket replies stay in-app when support is active.
               </p>
-              <a
-                href={`mailto:${BRAND.supportEmail}?subject=Seller%20support%20request`}
-                className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50"
-              >
-                {BRAND.supportEmail}
-              </a>
+              {supportEmail ? (
+                <a
+                  href={`mailto:${supportEmail}?subject=Seller%20support%20request`}
+                  className="mt-4 inline-flex h-10 items-center justify-center rounded-xl border border-zinc-200 bg-white px-4 text-xs font-black text-zinc-900 shadow-sm transition-colors hover:bg-zinc-50"
+                >
+                  {supportEmail}
+                </a>
+              ) : null}
             </div>
           ) : (
             <>

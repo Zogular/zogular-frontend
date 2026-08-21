@@ -2,36 +2,44 @@ import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 import { BRAND } from "@/config/brand";
 
 export default function CareersPage() {
+  const careersEmail = BRAND.careersEmail;
+  const sections = [
+    {
+      title: "How We Work",
+      body: "We build carefully, review quality rigorously, and stay close to customer behavior. Strong ownership matters across engineering, design, operations, and support.",
+    },
+    {
+      title: "Future Opportunities",
+      body: "Zogular may need product, operations, seller success, and customer support talent as the marketplace grows. Open roles will be shared when hiring is active.",
+    },
+    careersEmail
+      ? {
+          title: "General Interest",
+          body: `Send your profile and area of interest to ${careersEmail}. Include examples of practical work, customer impact, or marketplace operations experience.`,
+        }
+      : {
+          title: "General Interest",
+          body: "We are not listing open roles right now. Check this page later for hiring updates as Zogular grows.",
+        },
+  ];
+
   return (
     <ZogularInfoPage
       title="Careers at Zogular"
       eyebrow="Build with us"
       tone="company"
-      description="We are growing a commerce platform that serves real shoppers and sellers in Zambia. If you care about quality product execution and local impact, we would love to hear from you."
+      description="Zogular is building a commerce platform for real shoppers and sellers in Zambia. Hiring updates will appear here when roles are available."
       highlights={["Customer-first execution", "Platform operations", "Product quality", "Local impact"]}
       stats={[
         { value: "1", label: "Mission" },
-        { value: "Fast", label: "Teams" },
+        { value: "Future", label: "Roles" },
         { value: "Local", label: "Impact" },
       ]}
-      sections={[
-        {
-          title: "How We Work",
-          body: "We ship fast, review quality rigorously, and stay close to customer behavior. Cross-functional collaboration and ownership are expected across engineering, design, operations, and support.",
-        },
-        {
-          title: "Who We Need",
-          body: "We are actively interested in product engineers, platform operations specialists, seller success managers, and logistics-focused customer support professionals.",
-        },
-        {
-          title: "How to Apply",
-          body: `Send your profile and role interest to ${BRAND.careersEmail} with examples of impactful work. We prioritize candidates who are practical, customer-centric, and execution focused.`,
-        },
-      ]}
+      sections={sections}
       steps={[
         {
-          title: "Show your work",
-          body: "Send a short profile with examples that show product judgment, operational ownership, or customer impact.",
+          title: "Check updates",
+          body: "Open opportunities will be listed here when Zogular is hiring.",
         },
         {
           title: "Meet the mission",
@@ -44,16 +52,18 @@ export default function CareersPage() {
       ]}
       faqs={[
         {
-          question: "Are roles remote or local?",
-          answer: "Role format depends on the team, but platform operations and support roles may require strong local context.",
+          question: "Is Zogular hiring right now?",
+          answer: careersEmail
+            ? "General interest messages are accepted through the configured careers contact, but specific openings are shared only when available."
+            : "There are no public openings listed right now. This page will be updated when hiring is active.",
         },
         {
-          question: "What should applicants include?",
-          answer: "Include the role you want, examples of work, and the kind of commerce problem you are excited to solve.",
+          question: "Where will open roles appear?",
+          answer: "Open roles and application details will be shown on this page when they are available.",
         },
       ]}
-      ctaLabel="Shop Zogular"
-      ctaHref="/"
+      ctaLabel={careersEmail ? "Send General Interest" : undefined}
+      ctaHref={careersEmail ? `mailto:${careersEmail}` : undefined}
       secondaryCtaLabel="Seller Hub"
       secondaryCtaHref="/sell"
     />

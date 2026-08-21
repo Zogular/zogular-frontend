@@ -29,6 +29,7 @@ export function DiscoverySectionHeader({
       {action ? (
         <Link
           href={action.href}
+          prefetch={false}
           className="inline-flex min-h-11 shrink-0 items-center gap-1 rounded-full px-3 text-sm font-bold text-[#007d3a] outline-none transition-colors hover:bg-emerald-50 focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2"
         >
           {action.label}

@@ -43,6 +43,7 @@ export function HomeCategoryRail({ categories }: { categories: readonly HomeCate
           return <li key={category.id} className="min-w-[108px] max-w-[148px] flex-1 snap-start sm:min-w-[124px]">
             <Link
               href={`/category/${category.slug}`}
+              prefetch={false}
               data-testid="home-category-link"
               className="flex min-h-[76px] h-full flex-col justify-center rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-left outline-none transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 motion-reduce:transition-none max-[340px]:min-h-[68px] sm:min-h-[84px]"
             >

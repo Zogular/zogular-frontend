@@ -1,26 +1,36 @@
+import { ApiError } from "@/services/api";
 import {
   SELLER_CATALOG_CATEGORIES,
+  SellerCatalogCollectionError,
   fetchSellerCatalogProducts,
   type SellerProductListing,
 } from "@/services/seller-catalog";
 import {
+  SellerOrderCollectionError,
   sellerOrdersApi,
   type SellerOrderDetail,
+  type SellerOrderItem,
   type SellerOrderStatus,
 } from "@/services/seller-orders";
+
 export type SellerDashboardRange = "7d" | "30d" | "12m";
 export type SellerAnalyticsTimeRange = "24h" | SellerDashboardRange;
 export type SellerAnalyticsCategoryFilter = "all" | string;
 
+export interface SellerMetricsUtcBounds {
+  createdFrom: string;
+  createdTo: string;
+}
+
 export interface SellerTrendPoint {
   label: string;
-  revenue: number;
+  grossItemSales: number;
   orders: number;
 }
 
-export interface SellerRevenuePoint {
+export interface SellerGrossSalesPoint {
   label: string;
-  revenue: number;
+  grossItemSales: number;
 }
 
 export interface SellerOrderStatusPoint {
@@ -51,7 +61,9 @@ export interface SellerActivityItem {
 }
 
 export interface SellerDashboardData {
-  revenueByRange: Record<SellerDashboardRange, SellerRevenuePoint[]>;
+  range: SellerDashboardRange;
+  bounds: SellerMetricsUtcBounds;
+  grossItemSalesTrend: SellerGrossSalesPoint[];
   orderStatusData: SellerOrderStatusPoint[];
   lowStockItems: SellerLowStockItem[];
   recentOrders: SellerRecentOrder[];
@@ -59,6 +71,7 @@ export interface SellerDashboardData {
   kpis: {
     pendingOrders: number;
     activeProducts: number;
+    lowStockProducts: number;
     payoutAvailable: number;
     payoutPending: number;
   };
@@ -69,14 +82,14 @@ export interface SellerProductPerformance {
   name: string;
   category: string;
   sales: number;
-  revenue: number;
+  grossItemSales: number;
   stock: number;
 }
 
 export interface SellerCategoryPerformance {
   name: string;
   slug: string;
-  revenue: number;
+  grossItemSales: number;
   sales: number;
 }
 
@@ -97,10 +110,12 @@ export interface SellerAnalyticsActivityEvent {
 }
 
 export interface SellerAnalyticsData {
+  range: SellerAnalyticsTimeRange;
+  bounds: SellerMetricsUtcBounds;
   summary: {
-    sellerVisibleRevenue: number;
-    sellerVisibleOrders: number;
-    avgOrderValue: number;
+    grossItemSales: number;
+    ordersWithGrossItemSales: number;
+    averageGrossOrderSubtotal: number;
     deliveredOrders: number;
     buyerVisibleProducts: number;
     lowStockProducts: number;
@@ -117,6 +132,20 @@ export interface SellerAnalyticsData {
   categoryPerformance: SellerCategoryPerformance[];
   lowPerformers: SellerLowPerformer[];
   recentActivity: SellerAnalyticsActivityEvent[];
+}
+
+export interface SellerSnapshotPresentationState {
+  appliedRange: SellerAnalyticsTimeRange | null;
+  isRangeTransition: boolean;
+  isStale: boolean;
+  canExport: boolean;
+}
+
+export class SellerMetricsIntegrityError extends Error {
+  constructor() {
+    super("Seller metrics could not be verified from the available order timestamps.");
+    this.name = "SellerMetricsIntegrityError";
+  }
 }
 
 const ORDER_STATUS_COLORS: Record<SellerOrderStatus, string> = {
@@ -141,20 +170,37 @@ const ORDER_STATUS_LABELS: Record<SellerOrderStatus, string> = {
   unknown: "Status unavailable",
 };
 
-export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
+const RANGE_DURATION_MS: Partial<Record<SellerAnalyticsTimeRange, number>> = {
+  "24h": 24 * 60 * 60 * 1_000,
+  "7d": 7 * 24 * 60 * 60 * 1_000,
+  "30d": 30 * 24 * 60 * 60 * 1_000,
+};
+
+const GROSS_ITEM_SALES_STATUSES = new Set<SellerOrderStatus>([
+  "new",
+  "confirmed",
+  "processing",
+  "shipped",
+  "delivered",
+]);
+
+export async function fetchSellerDashboardData(
+  range: SellerDashboardRange = "7d",
+  now: Date = new Date(),
+): Promise<SellerDashboardData> {
+  const bounds = getSellerMetricsUtcBounds(range, now);
   const [orders, products] = await Promise.all([
-    fetchSellerOrderDetails(),
+    fetchSellerOrdersForRange(bounds),
     fetchSellerCatalogProducts(),
   ]);
-  const revenueOrders = orders.filter(isRevenueOrder);
+  const grossSalesOrders = orders.filter(isGrossItemSalesOrder);
   const lowStockItems = getLowStockItems(products);
 
   return {
-    revenueByRange: {
-      "7d": buildRevenuePoints(revenueOrders, "7d"),
-      "30d": buildRevenuePoints(revenueOrders, "30d"),
-      "12m": buildRevenuePoints(revenueOrders, "12m"),
-    },
+    range,
+    bounds,
+    grossItemSalesTrend: buildTrendPoints(grossSalesOrders, range, bounds)
+      .map(({ label, grossItemSales }) => ({ label, grossItemSales })),
     orderStatusData: buildOrderStatusData(orders),
     lowStockItems,
     recentOrders: orders
@@ -164,98 +210,277 @@ export async function fetchSellerDashboardData(): Promise<SellerDashboardData> {
       .map((order) => ({
         id: order.id,
         customer: order.customer.name,
-        total: order.totals.total,
+        total: order.totals.subtotal,
         status: order.status,
       })),
     recentActivity: buildDashboardActivity(orders, lowStockItems),
     kpis: {
       pendingOrders: orders.filter((order) => ["new", "confirmed", "processing"].includes(order.status)).length,
       activeProducts: products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length,
+      lowStockProducts: products.filter((product) => product.stock <= product.lowStockThreshold).length,
       payoutAvailable: 0,
       payoutPending: 0,
     },
   };
 }
 
-export async function fetchSellerAnalyticsData(range: SellerAnalyticsTimeRange): Promise<SellerAnalyticsData> {
+export async function fetchSellerAnalyticsData(
+  range: SellerAnalyticsTimeRange,
+  now: Date = new Date(),
+): Promise<SellerAnalyticsData> {
+  const bounds = getSellerMetricsUtcBounds(range, now);
   const [orders, products] = await Promise.all([
-    fetchSellerOrderDetails(),
+    fetchSellerOrdersForRange(bounds),
     fetchSellerCatalogProducts(),
   ]);
-  const revenueOrders = orders.filter(isRevenueOrder);
-  const refundOrders = orders.filter((order) => order.status === "refund");
-  const salesRevenue = sumRevenue(revenueOrders);
-  const totalOrders = revenueOrders.length;
-  const topProducts = buildProductPerformance(revenueOrders, products);
-  const categoryPerformance = buildCategoryPerformance(revenueOrders);
+  const grossSalesOrders = orders.filter(isGrossItemSalesOrder);
+  const grossItemSales = sumGrossItemSales(grossSalesOrders);
+  const productPerformance = buildProductPerformance(grossSalesOrders, products);
   const buyerVisibleProducts = products.filter((product) => isSellerProductBuyerVisibleStatus(product.status)).length;
   const lowStockProducts = products.filter((product) => product.stock <= product.lowStockThreshold).length;
   const deliveredOrders = orders.filter((order) => order.status === "delivered").length;
 
   return {
+    range,
+    bounds,
     summary: {
-      sellerVisibleRevenue: salesRevenue,
-      sellerVisibleOrders: totalOrders,
-      avgOrderValue: totalOrders ? roundMoney(salesRevenue / totalOrders) : 0,
+      grossItemSales,
+      ordersWithGrossItemSales: grossSalesOrders.length,
+      averageGrossOrderSubtotal: grossSalesOrders.length
+        ? roundMoney(grossItemSales / grossSalesOrders.length)
+        : 0,
       deliveredOrders,
       buyerVisibleProducts,
       lowStockProducts,
     },
-    trends: buildTrendPoints(revenueOrders, range),
+    trends: buildTrendPoints(grossSalesOrders, range, bounds),
     orderStats: {
       total: orders.length,
       delivered: deliveredOrders,
       processing: orders.filter((order) => ["new", "confirmed", "processing"].includes(order.status)).length,
       cancelled: orders.filter((order) => order.status === "cancelled").length,
-      refunded: refundOrders.length,
+      refunded: orders.filter((order) => order.status === "refund").length,
     },
-    topProducts,
-    categoryPerformance,
-    lowPerformers: buildLowPerformers(products, topProducts),
+    topProducts: productPerformance.slice(0, 6),
+    categoryPerformance: buildCategoryPerformance(grossSalesOrders),
+    lowPerformers: buildLowPerformers(products, productPerformance),
     recentActivity: buildAnalyticsActivity(orders, products),
   };
 }
 
-async function fetchSellerOrderDetails(): Promise<SellerOrderDetail[]> {
-  const summaries = await sellerOrdersApi.fetchSummaries();
-  return Promise.all(summaries.map((order) => sellerOrdersApi.fetchById(order.id)));
+export function getSellerMetricsUtcBounds(
+  range: SellerAnalyticsTimeRange,
+  now: Date = new Date(),
+): SellerMetricsUtcBounds {
+  const endMs = now.getTime();
+  if (!Number.isFinite(endMs)) throw new SellerMetricsIntegrityError();
+
+  const end = new Date(endMs);
+  const duration = RANGE_DURATION_MS[range];
+  const start = duration === undefined
+    ? addUtcMonths(end, -12)
+    : new Date(endMs - duration);
+
+  return {
+    createdFrom: start.toISOString(),
+    createdTo: end.toISOString(),
+  };
 }
 
-function isRevenueOrder(order: SellerOrderDetail): boolean {
-  return order.status !== "cancelled" && order.status !== "refund";
+export function getSellerMetricsErrorMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    if (error.status === 401 || error.status === 403) {
+      return "Your seller session cannot access metrics right now. Sign in again or check your seller status.";
+    }
+    if (error.status === 408 || error.status === 503) {
+      return "Seller metrics could not be refreshed. Check your connection and try again.";
+    }
+    return "Seller metrics are temporarily unavailable. Try again shortly.";
+  }
+
+  if (
+    error instanceof SellerOrderCollectionError ||
+    error instanceof SellerCatalogCollectionError ||
+    error instanceof SellerMetricsIntegrityError
+  ) {
+    return "A complete seller metrics snapshot could not be verified. No partial totals are being shown.";
+  }
+
+  return "Seller metrics could not be loaded. Try again.";
 }
 
-function buildRevenuePoints(orders: SellerOrderDetail[], range: SellerDashboardRange): SellerRevenuePoint[] {
-  return buildTrendPoints(orders, range).map(({ label, revenue }) => ({ label, revenue }));
+export function getSellerSnapshotPresentationState(
+  requestedRange: SellerAnalyticsTimeRange,
+  appliedRange: SellerAnalyticsTimeRange | null,
+  loading: boolean,
+  error: string | null,
+): SellerSnapshotPresentationState {
+  const isRangeTransition = appliedRange !== null && appliedRange !== requestedRange;
+  return {
+    appliedRange,
+    isRangeTransition,
+    isStale: appliedRange !== null && (isRangeTransition || error !== null),
+    canExport: appliedRange === requestedRange && !loading && error === null,
+  };
 }
 
-function buildTrendPoints(orders: SellerOrderDetail[], range: SellerAnalyticsTimeRange): SellerTrendPoint[] {
-  const labels = getRangeLabels(range);
-  const buckets = labels.map((label) => ({ label, revenue: 0, orders: 0 }));
+export function buildSellerAnalyticsCsv(
+  data: SellerAnalyticsData,
+  categoryFilter: SellerAnalyticsCategoryFilter,
+  products: SellerProductPerformance[] = data.topProducts,
+  lowPerformers: SellerLowPerformer[] = data.lowPerformers,
+): string {
+  const reportRows = [
+    ["Metric", "Value"],
+    ["Snapshot Type", "Seller-visible order and catalog snapshot"],
+    ["Range", data.range],
+    ["Category Filter", categoryFilter],
+    ["Gross item sales", String(Math.round(data.summary.grossItemSales))],
+    ["Orders included in gross item sales", String(data.summary.ordersWithGrossItemSales)],
+    ["Average seller-visible item subtotal", String(Math.round(data.summary.averageGrossOrderSubtotal))],
+    ["Delivered Orders", String(data.summary.deliveredOrders)],
+    ["Buyer-visible Products", String(data.summary.buyerVisibleProducts)],
+    ["Low-stock Products", String(data.summary.lowStockProducts)],
+    [""],
+    ["Top Products", ""],
+    ["Product", "Sales", "Gross item sales"],
+    ...products.map((product) => [
+      product.name,
+      String(product.sales),
+      String(Math.round(product.grossItemSales)),
+    ]),
+    [""],
+    ["Low Performers", ""],
+    ["Product", "Issue", "Stock"],
+    ...lowPerformers.map((item) => [item.name, item.issue, String(item.stock)]),
+  ];
 
-  orders.forEach((order) => {
-    const bucket = buckets[getBucketIndex(order.createdAt, range, labels.length)];
-    if (!bucket) return;
-    bucket.revenue = roundMoney(bucket.revenue + order.earnings.productSubtotal);
-    bucket.orders += 1;
+  return reportRows
+    .map((row) => row.map((value) => `"${String(value ?? "").replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+}
+
+async function fetchSellerOrdersForRange(bounds: SellerMetricsUtcBounds): Promise<SellerOrderDetail[]> {
+  const orders = await sellerOrdersApi.fetchAllForMetrics(bounds);
+  const fromMs = Date.parse(bounds.createdFrom);
+  const toMs = Date.parse(bounds.createdTo);
+
+  return orders.filter((order) => {
+    const createdAtMs = Date.parse(order.createdAt);
+    if (!Number.isFinite(createdAtMs)) throw new SellerMetricsIntegrityError();
+    return createdAtMs >= fromMs && createdAtMs <= toMs;
   });
-
-  return buckets;
 }
 
-function getRangeLabels(range: SellerAnalyticsTimeRange): string[] {
-  if (range === "24h") return ["00:00", "06:00", "12:00", "18:00"];
-  if (range === "7d") return ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-  if (range === "30d") return ["W1", "W2", "W3", "W4", "W5"];
-  return ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+function isGrossItemSalesOrder(order: SellerOrderDetail): boolean {
+  return order.items.some(isGrossItemSalesLine);
 }
 
-function getBucketIndex(createdAt: string, range: SellerAnalyticsTimeRange, bucketCount: number): number {
-  const date = new Date(createdAt);
-  if (range === "24h") return Math.min(bucketCount - 1, Math.floor(date.getUTCHours() / 6));
-  if (range === "7d") return (date.getUTCDay() + 6) % 7;
-  if (range === "30d") return Math.min(bucketCount - 1, Math.floor((date.getUTCDate() - 1) / 7));
-  return date.getUTCMonth();
+function isGrossItemSalesLine(item: SellerOrderItem): boolean {
+  return GROSS_ITEM_SALES_STATUSES.has(item.vendorStatus);
+}
+
+function getOrderGrossItemSales(order: SellerOrderDetail): number {
+  return roundMoney(order.items.reduce(
+    (total, item) => isGrossItemSalesLine(item) ? total + item.price * item.quantity : total,
+    0,
+  ));
+}
+
+function buildTrendPoints(
+  orders: SellerOrderDetail[],
+  range: SellerAnalyticsTimeRange,
+  bounds: SellerMetricsUtcBounds,
+): SellerTrendPoint[] {
+  const buckets = buildTimeBuckets(range, bounds);
+
+  for (const order of orders) {
+    const createdAtMs = Date.parse(order.createdAt);
+    if (!Number.isFinite(createdAtMs)) throw new SellerMetricsIntegrityError();
+    const bucket = buckets.find((candidate, index) => (
+      createdAtMs >= candidate.startMs &&
+      (index === buckets.length - 1 ? createdAtMs <= candidate.endMs : createdAtMs < candidate.endMs)
+    ));
+    if (!bucket) throw new SellerMetricsIntegrityError();
+    bucket.grossItemSales = roundMoney(bucket.grossItemSales + getOrderGrossItemSales(order));
+    bucket.orders += 1;
+  }
+
+  return buckets.map(({ label, grossItemSales, orders: count }) => ({
+    label,
+    grossItemSales,
+    orders: count,
+  }));
+}
+
+function buildTimeBuckets(range: SellerAnalyticsTimeRange, bounds: SellerMetricsUtcBounds) {
+  const start = new Date(bounds.createdFrom);
+  const end = new Date(bounds.createdTo);
+  const bucketCount = range === "24h" ? 4 : range === "30d" ? 5 : range === "12m" ? 12 : 7;
+  const totalMs = end.getTime() - start.getTime();
+
+  return Array.from({ length: bucketCount }, (_, index) => {
+    const bucketStart = range === "12m"
+      ? addUtcMonths(start, index)
+      : new Date(start.getTime() + (totalMs / bucketCount) * index);
+    const bucketEnd = range === "12m"
+      ? index === bucketCount - 1 ? end : addUtcMonths(start, index + 1)
+      : new Date(start.getTime() + (totalMs / bucketCount) * (index + 1));
+
+    return {
+      label: formatBucketLabel(bucketStart, range),
+      startMs: bucketStart.getTime(),
+      endMs: bucketEnd.getTime(),
+      grossItemSales: 0,
+      orders: 0,
+    };
+  });
+}
+
+function formatBucketLabel(date: Date, range: SellerAnalyticsTimeRange): string {
+  if (range === "24h") {
+    return new Intl.DateTimeFormat("en-GB", {
+      hour: "2-digit",
+      minute: "2-digit",
+      hourCycle: "h23",
+      timeZone: "UTC",
+    }).format(date);
+  }
+  if (range === "7d") {
+    return new Intl.DateTimeFormat("en-GB", {
+      weekday: "short",
+      day: "2-digit",
+      timeZone: "UTC",
+    }).format(date);
+  }
+  if (range === "30d") {
+    return new Intl.DateTimeFormat("en-GB", {
+      day: "2-digit",
+      month: "short",
+      timeZone: "UTC",
+    }).format(date);
+  }
+  return new Intl.DateTimeFormat("en-GB", {
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(date);
+}
+
+function addUtcMonths(date: Date, months: number): Date {
+  const absoluteMonth = date.getUTCFullYear() * 12 + date.getUTCMonth() + months;
+  const year = Math.floor(absoluteMonth / 12);
+  const month = ((absoluteMonth % 12) + 12) % 12;
+  const lastDay = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+  return new Date(Date.UTC(
+    year,
+    month,
+    Math.min(date.getUTCDate(), lastDay),
+    date.getUTCHours(),
+    date.getUTCMinutes(),
+    date.getUTCSeconds(),
+    date.getUTCMilliseconds(),
+  ));
 }
 
 function buildOrderStatusData(orders: SellerOrderDetail[]): SellerOrderStatusPoint[] {
@@ -296,45 +521,47 @@ function buildProductPerformance(
   const productById = new Map(products.map((product) => [product.id, product]));
   const stats = new Map<string, SellerProductPerformance>();
 
-  orders.forEach((order) => {
-    order.items.forEach((item) => {
-      const product = productById.get(item.id);
-      const current = stats.get(item.id) ?? {
-        id: item.id,
+  for (const order of orders) {
+    for (const item of order.items) {
+      if (!isGrossItemSalesLine(item)) continue;
+      const product = productById.get(item.productId);
+      const current = stats.get(item.productId) ?? {
+        id: item.productId,
         name: product?.title ?? item.name,
         category: product?.categorySlug ?? item.categorySlug,
         sales: 0,
-        revenue: 0,
+        grossItemSales: 0,
         stock: product?.stock ?? 0,
       };
       current.sales += item.quantity;
-      current.revenue = roundMoney(current.revenue + item.price * item.quantity);
-      stats.set(item.id, current);
-    });
-  });
+      current.grossItemSales = roundMoney(current.grossItemSales + item.price * item.quantity);
+      stats.set(item.productId, current);
+    }
+  }
 
-  return Array.from(stats.values()).sort((a, b) => b.revenue - a.revenue).slice(0, 6);
+  return Array.from(stats.values()).sort((left, right) => right.grossItemSales - left.grossItemSales);
 }
 
 function buildCategoryPerformance(orders: SellerOrderDetail[]): SellerCategoryPerformance[] {
   const categoryNames = new Map(SELLER_CATALOG_CATEGORIES.map((category) => [category.slug, category.name]));
   const stats = new Map<string, SellerCategoryPerformance>();
 
-  orders.forEach((order) => {
-    order.items.forEach((item) => {
+  for (const order of orders) {
+    for (const item of order.items) {
+      if (!isGrossItemSalesLine(item)) continue;
       const current = stats.get(item.categorySlug) ?? {
         name: categoryNames.get(item.categorySlug) ?? toTitleCase(item.categorySlug),
         slug: item.categorySlug,
-        revenue: 0,
+        grossItemSales: 0,
         sales: 0,
       };
-      current.revenue = roundMoney(current.revenue + item.price * item.quantity);
+      current.grossItemSales = roundMoney(current.grossItemSales + item.price * item.quantity);
       current.sales += item.quantity;
       stats.set(item.categorySlug, current);
-    });
-  });
+    }
+  }
 
-  return Array.from(stats.values()).sort((a, b) => b.revenue - a.revenue);
+  return Array.from(stats.values()).sort((left, right) => right.grossItemSales - left.grossItemSales);
 }
 
 function buildLowPerformers(
@@ -344,7 +571,7 @@ function buildLowPerformers(
   const soldProductIds = new Set(performance.map((product) => product.id));
   const rows: SellerLowPerformer[] = [];
 
-  products.forEach((product) => {
+  for (const product of products) {
     if (product.stock <= product.lowStockThreshold) {
       rows.push({
         id: product.id,
@@ -353,10 +580,7 @@ function buildLowPerformers(
         issue: "low-stock",
         stock: product.stock,
       });
-      return;
-    }
-
-    if (isSellerProductBuyerVisibleStatus(product.status) && !soldProductIds.has(product.id)) {
+    } else if (isSellerProductBuyerVisibleStatus(product.status) && !soldProductIds.has(product.id)) {
       rows.push({
         id: product.id,
         name: product.title,
@@ -365,7 +589,7 @@ function buildLowPerformers(
         stock: product.stock,
       });
     }
-  });
+  }
 
   return rows.slice(0, 6);
 }
@@ -389,14 +613,14 @@ function buildDashboardActivity(
     });
   }
 
-  lowStockItems.slice(0, 2).forEach((item) => {
+  for (const item of lowStockItems.slice(0, 2)) {
     activity.push({
       id: `stock-${item.id}`,
       text: item.stock === 0 ? `${item.name} is out of stock.` : `${item.name} is below its restock threshold.`,
       time: "Needs attention",
       tone: "warning",
     });
-  });
+  }
 
   return activity.slice(0, 5);
 }
@@ -407,51 +631,49 @@ function buildAnalyticsActivity(
 ): SellerAnalyticsActivityEvent[] {
   const events: SellerAnalyticsActivityEvent[] = [];
 
-  orders.slice().sort(sortByCreatedAtDesc).slice(0, 3).forEach((order) => {
-    const isRefundStatus = order.status === "refund";
+  for (const order of orders.slice().sort(sortByCreatedAtDesc).slice(0, 3)) {
+    const refundReview = order.status === "refund";
     events.push({
       id: `order-${order.id}`,
-      type: isRefundStatus ? "refund" : "order",
-      message: isRefundStatus
+      type: refundReview ? "refund" : "order",
+      message: refundReview
         ? `Order ${order.id} moved into refund review status.`
         : `Order ${order.id} placed by ${order.customer.name}`,
-      amount: isRefundStatus ? undefined : order.earnings.productSubtotal,
+      amount: isGrossItemSalesOrder(order) ? getOrderGrossItemSales(order) : undefined,
       time: formatRelativeTime(order.createdAt),
     });
-  });
+  }
 
-  products
-    .filter((product) => product.stock <= product.lowStockThreshold)
-    .slice(0, 2)
-    .forEach((product) => {
-      events.push({
-        id: `stock-${product.id}`,
-        type: "stock",
-        message: product.stock === 0 ? `${product.title} is out of stock` : `${product.title} needs restock`,
-        time: "Needs attention",
-      });
+  for (const product of products
+    .filter((item) => item.stock <= item.lowStockThreshold)
+    .slice(0, 2)) {
+    events.push({
+      id: `stock-${product.id}`,
+      type: "stock",
+      message: product.stock === 0 ? `${product.title} is out of stock` : `${product.title} needs restock`,
+      time: "Needs attention",
     });
+  }
 
   return events.slice(0, 7);
 }
 
-function sumRevenue(orders: SellerOrderDetail[]): number {
-  return roundMoney(orders.reduce((sum, order) => sum + order.earnings.productSubtotal, 0));
+function sumGrossItemSales(orders: SellerOrderDetail[]): number {
+  return roundMoney(orders.reduce((sum, order) => sum + getOrderGrossItemSales(order), 0));
 }
 
-function sortByCreatedAtDesc(a: SellerOrderDetail, b: SellerOrderDetail): number {
-  return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
+function sortByCreatedAtDesc(left: SellerOrderDetail, right: SellerOrderDetail): number {
+  return Date.parse(right.createdAt) - Date.parse(left.createdAt);
 }
 
 function formatRelativeTime(isoDate: string): string {
-  const diffMs = Date.now() - new Date(isoDate).getTime();
+  const diffMs = Date.now() - Date.parse(isoDate);
   const diffHours = Math.max(0, Math.floor(diffMs / 36e5));
   if (diffHours < 1) return "Just now";
   if (diffHours < 24) return `${diffHours}h ago`;
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) return `${diffDays}d ago`;
-  const diffWeeks = Math.floor(diffDays / 7);
-  return `${diffWeeks}w ago`;
+  return `${Math.floor(diffDays / 7)}w ago`;
 }
 
 function toTitleCase(value: string): string {

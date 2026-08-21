@@ -80,8 +80,9 @@ export function EditorialDiscoveryIntro({ hasProducts }: EditorialDiscoveryIntro
               <Link
                 key={action.href}
                 href={action.href}
+                prefetch={false}
                 className={cn(
-                  "relative inline-flex min-h-11 w-fit shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 text-sm font-black outline-none before:absolute before:inset-x-0 before:inset-y-[3px] before:rounded-xl before:transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-[#102018] motion-reduce:before:duration-0 motion-reduce:before:transition-none sm:px-4",
+                  "relative inline-flex min-h-11 w-fit shrink-0 items-center justify-center gap-2 whitespace-nowrap px-3 text-sm font-black outline-none before:absolute before:inset-x-0 before:inset-y-[3px] before:rounded-xl before:transition-colors focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-1 focus-visible:ring-offset-[#102018] motion-reduce:duration-0 motion-reduce:transition-none motion-reduce:before:duration-0 motion-reduce:before:transition-none sm:px-4",
                   index === 0
                     ? "text-zinc-950 before:bg-[#ff9d00] hover:before:bg-[#ffad29]"
                     : "text-white before:border before:border-white/65 before:bg-white/10 hover:before:bg-white/20",

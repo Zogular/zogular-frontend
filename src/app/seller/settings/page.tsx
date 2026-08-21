@@ -33,12 +33,7 @@ export default function SellerSettingsPage() {
     setActiveTab,
     isSeoOpen,
     setIsSeoOpen,
-    logoFileLabel,
-    bannerFileLabel,
-    logoInputRef,
-    bannerInputRef,
     loadSettings,
-    handleAssetUpload,
     updateSetting,
   } = useSellerSettings();
 
@@ -61,8 +56,8 @@ export default function SellerSettingsPage() {
     return (
       <div className="flex flex-col items-center justify-center rounded-3xl border border-red-100 bg-red-50 p-8 text-center mt-6">
         <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
-        <h3 className="text-base font-bold text-red-900">System Error</h3>
-        <p className="mt-1 text-sm text-red-700">{error || "Settings not found."}</p>
+        <h3 className="text-base font-bold text-red-900">Settings could not load</h3>
+        <p className="mt-1 text-sm text-red-700">{error || "Zogular could not load your seller settings right now. Try again."}</p>
         <Button onClick={loadSettings} variant="outline" className="mt-4 border-red-200 text-red-700 hover:bg-red-100">
           Try Again
         </Button>
@@ -155,11 +150,6 @@ export default function SellerSettingsPage() {
               settings={settings}
               disabled={isWritePending}
               updateSetting={updateSetting}
-              logoInputRef={logoInputRef}
-              bannerInputRef={bannerInputRef}
-              handleAssetUpload={handleAssetUpload}
-              logoFileLabel={logoFileLabel}
-              bannerFileLabel={bannerFileLabel}
               isSeoOpen={isSeoOpen}
               setIsSeoOpen={setIsSeoOpen}
             />

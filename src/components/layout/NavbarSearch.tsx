@@ -6,7 +6,6 @@ import { Search, Tag, FolderTree, ArrowRight } from "lucide-react";
 import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
 import { cn } from "@/lib/utils";
 import { getSearchIndex, searchFromIndex } from "@/services/search";
-import { getProductCategoryLabel, getProductTitle } from "@/lib/normalizers/product";
 import type { SearchIndex } from "@/types/search";
 
 type NavbarSearchProps = {
@@ -57,7 +56,7 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
 
   const results = React.useMemo(() => {
     if (!searchIndex) return { products: [], categories: [], totalCount: 0 };
-    return searchFromIndex(searchIndex, deferredQuery, { productLimit: 5, categoryLimit: 5 });
+    return searchFromIndex(searchIndex, deferredQuery, { productLimit: 0, categoryLimit: 5 });
   }, [deferredQuery, searchIndex]);
 
   const normalizedQuery = query.trim();
@@ -73,7 +72,7 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
 
   return (
     <div ref={containerRef} className="relative w-full">
-      <Command shouldFilter={false} className="overflow-visible bg-transparent p-0">
+      <Command id={mobile ? "mobile-navbar-search" : "desktop-navbar-search"} label={mobile ? "Mobile product search" : "Desktop product search"} shouldFilter={false} className="overflow-visible bg-transparent p-0">
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -111,45 +110,11 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
         {isOpen ? (
           <div className="absolute left-0 top-full z-50 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-200/80 bg-white/95 shadow-[0_18px_40px_rgba(15,23,42,0.12)] backdrop-blur-2xl">
             <CommandList className={cn("max-h-96", mobile && "max-h-[60vh]")}>
-              {results.totalCount === 0 ? (
+              {hasQuery && results.categories.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm font-medium text-zinc-500">
-                  No results found.
+                  No category matches yet. Search all products instead.
                 </div>
               ) : null}
-
-              {results.products.length > 0 ? (
-                <CommandGroup heading="Products">
-                  {results.products.map((product) => (
-                    <CommandItem
-                      key={product.slug}
-                      value={`product-${product.slug}`}
-                      onSelect={() => {
-                        router.push(`/product/${product.slug}`);
-                        setIsOpen(false);
-                      }}
-                      className="items-start rounded-xl px-3 py-3"
-                    >
-                      <div className="relative h-12 w-12 shrink-0 overflow-hidden rounded-xl border border-zinc-200/70 bg-zinc-50">
-                        <div
-                          className="absolute inset-1 bg-contain bg-center bg-no-repeat mix-blend-multiply"
-                          style={{ backgroundImage: `url('${product.image}')` }}
-                        />
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-sm font-bold text-zinc-900">{getProductTitle(product)}</p>
-                        <p className="mt-0.5 truncate text-xs font-medium text-zinc-500">
-                          {getProductCategoryLabel(product) ?? "Product"}
-                        </p>
-                      </div>
-                      <span className="ml-2 shrink-0 text-xs font-black text-zinc-900">
-                        K{product.price.toLocaleString()}
-                      </span>
-                    </CommandItem>
-                  ))}
-                </CommandGroup>
-              ) : null}
-
-              {results.products.length > 0 && results.categories.length > 0 ? <CommandSeparator /> : null}
 
               {results.categories.length > 0 ? (
                 <CommandGroup heading="Categories">
@@ -181,15 +146,12 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
 
               {hasQuery ? (
                 <>
-                  <CommandSeparator />
+                  {results.categories.length > 0 ? <CommandSeparator /> : null}
                   <CommandGroup heading="Actions">
                     <CommandItem onSelect={navigateToSearch} className="rounded-xl px-3 py-3">
                       <Search className="h-4 w-4 text-[#FF6B00]" />
-                      <span className="font-semibold text-zinc-900">Search for &quot;{normalizedQuery}&quot;</span>
-                    </CommandItem>
-                    <CommandItem onSelect={navigateToSearch} className="rounded-xl px-3 py-3">
-                      <ArrowRight className="h-4 w-4 text-[#009E49]" />
-                      <span className="font-semibold text-zinc-900">View all results</span>
+                      <span className="font-semibold text-zinc-900">Search all products for &quot;{normalizedQuery}&quot;</span>
+                      <ArrowRight className="ml-auto h-4 w-4 text-[#009E49]" />
                     </CommandItem>
                   </CommandGroup>
                 </>

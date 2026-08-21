@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { resendVerificationEmail } from "@/services/auth";
+import { getStoredLastAuthEmail } from "@/services/auth-session";
 import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
 import { AuthLoadingSkeleton } from "@/components/auth/AuthLoadingSkeleton";
 import { useAccountVerification } from "@/hooks/use-account-verification";
@@ -24,30 +25,27 @@ export default function CheckEmailPage() {
 function CheckEmailContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const requestedEmail = useMemo(
-    () => searchParams.get("email") ?? "",
-    [searchParams],
-  );
   const isDeliveryFailed = useMemo(
     () => searchParams.get("delivery") === "failed",
     [searchParams],
   );
   const { user, loadState, emailVerified } = useAccountVerification();
-  const email = user?.email ?? requestedEmail;
+  const [storedEmail, setStoredEmail] = useState<string>("");
+  const email = user?.email ?? storedEmail;
   const nextPath = useMemo(
     () => sanitizeInternalNextPath(searchParams.get("next")) ?? getAuthRedirectIntent(),
     [searchParams],
   );
   const continueHref = nextPath ?? "/";
-  const loginHref = useMemo(() => {
-    const baseHref = appendNextPath("/auth/login", nextPath);
-    if (!email) return baseHref;
-    return `${baseHref}${baseHref.includes("?") ? "&" : "?"}email=${encodeURIComponent(email)}`;
-  }, [email, nextPath]);
+  const loginHref = useMemo(() => appendNextPath("/auth/login", nextPath), [nextPath]);
   const [isResending, setIsResending] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [resendSecondsLeft, setResendSecondsLeft] = useState(0);
+
+  useEffect(() => {
+    setStoredEmail(getStoredLastAuthEmail() ?? "");
+  }, []);
 
   useEffect(() => {
     if (resendSecondsLeft <= 0) return;

@@ -4,8 +4,8 @@ import {
 } from "@/services/auth-session";
 
 export class ApiError extends Error {
-  status: number;
-  details?: unknown;
+  readonly status: number;
+  readonly details?: unknown;
 
   constructor(message: string, status: number, details?: unknown) {
     super(message);
@@ -16,7 +16,9 @@ export class ApiError extends Error {
 }
 
 const REMOTE_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000/api/v1";
+  process.env.INTERNAL_BACKEND_URL ||
+  process.env.NEXT_PUBLIC_API_URL ||
+  "http://localhost:5000/api/v1";
 const BROWSER_BASE_URL = process.env.NEXT_PUBLIC_API_PROXY_URL || "/api/backend";
 
 const BASE_URL =
@@ -46,23 +48,28 @@ function buildUrl(endpoint: string, query?: FetchOptions["query"]): string {
   if (!query) return url.toString();
 
   for (const [key, value] of Object.entries(query)) {
-    if (value === null || value === undefined) continue;
-    url.searchParams.set(key, String(value));
+    if (value !== undefined && value !== null) {
+      url.searchParams.append(key, String(value));
+    }
   }
 
   return url.toString();
 }
 
 function isJsonResponse(contentType: string | null): boolean {
-  return contentType?.includes("application/json") ?? false;
+  return Boolean(contentType?.includes("application/json"));
 }
 
 function isJsonString(value: string): boolean {
-  const trimmed = value.trim();
-  return trimmed.startsWith("{") && trimmed.endsWith("}");
+  try {
+    const parsed = JSON.parse(value);
+    return Boolean(parsed) && typeof parsed === "object";
+  } catch {
+    return false;
+  }
 }
 
-function getRequestMethod(options: RequestInit): string {
+function getRequestMethod(options: FetchOptions): string {
   return (options.method ?? "GET").toUpperCase();
 }
 
@@ -115,6 +122,12 @@ async function fetchWithTimeout(
 ): Promise<Response> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const onAbort = () => controller.abort();
+
+  if (init.signal) {
+    if (init.signal.aborted) controller.abort();
+    else init.signal.addEventListener("abort", onAbort);
+  }
 
   try {
     return await fetch(url, {
@@ -124,6 +137,9 @@ async function fetchWithTimeout(
     });
   } finally {
     clearTimeout(timeoutId);
+    if (init.signal) {
+      init.signal.removeEventListener("abort", onAbort);
+    }
   }
 }
 

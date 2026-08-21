@@ -136,10 +136,63 @@ export class ProductListContractError extends Error {
   }
 }
 
+const PUBLIC_ALLOWED_PRODUCT_STATUSES = new Set(["APPROVED", "PUBLISHED"]);
+const PUBLIC_NON_PUBLIC_PRODUCT_STATUSES = new Set([
+  "DRAFT",
+  "PENDING",
+  "PENDING_REVIEW",
+  "NEEDS_CHANGES",
+  "REJECTED",
+  "PAUSED",
+  "SUSPENDED",
+  "HIDDEN",
+]);
+
 function asString(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim().length > 0) return value.trim();
   if (typeof value === "number" && Number.isFinite(value)) return String(value);
   return undefined;
+}
+
+function normalizeStatusToken(value: string): string {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+export function getPublicProductStatusResolution(product: BackendProduct): "public" | "non-public" {
+  const statusValues = [
+    ["status", product.status],
+    ["moderationStatus", product.moderationStatus],
+    ["sellerVisibility", product.sellerVisibility],
+  ] as const;
+
+  for (const [field, rawValue] of statusValues) {
+    if (rawValue === undefined) continue;
+    if (typeof rawValue !== "string") {
+      throw new ProductListContractError(`Public product ${field} has an invalid status.`);
+    }
+
+    const normalized = normalizeStatusToken(rawValue);
+    if (!normalized) {
+      throw new ProductListContractError(`Public product ${field} has an invalid status.`);
+    }
+
+    if (PUBLIC_ALLOWED_PRODUCT_STATUSES.has(normalized) || normalized === "VISIBLE") continue;
+    if (PUBLIC_NON_PUBLIC_PRODUCT_STATUSES.has(normalized)) return "non-public";
+
+    throw new ProductListContractError(`Public product ${field} has an unknown status.`);
+  }
+
+  return "public";
+}
+
+function normalizePublicBackendProduct(product: BackendProduct): Product | null {
+  if (getPublicProductStatusResolution(product) === "non-public") return null;
+  return normalizeBackendProduct(product);
+}
+
+function normalizePublicBackendProductDetail(product: BackendProduct): ProductDetail | null {
+  if (getPublicProductStatusResolution(product) === "non-public") return null;
+  return normalizeBackendProductDetail(product);
 }
 
 function toNumber(value: unknown, fallback = 0): number {
@@ -436,7 +489,7 @@ async function fetchBackendProductDetailBySlug(slug: string): Promise<ProductDet
       cache: "no-store",
     });
     const product = payload.data?.product;
-    return product ? normalizeBackendProductDetail(product) : null;
+    return product ? normalizePublicBackendProductDetail(product) : null;
   } catch (error) {
     if (error instanceof ApiError && error.status === 404) return null;
     throw error;
@@ -533,7 +586,9 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
     total,
     pages,
   } = parseProductListPayload(payload);
-  const products = rawProducts.map(normalizeBackendProduct);
+  const products = rawProducts
+    .map(normalizePublicBackendProduct)
+    .filter((product): product is Product => product !== null);
   const totalPages = Math.max(1, pages);
   const startItem = total === 0 ? 0 : (page - 1) * limit + 1;
   const endItem = Math.min(page * limit, total);
@@ -655,9 +710,12 @@ async function fetchBackendRelatedProducts(
       cache: "no-store",
       query: { limit },
     });
-    const products = extractBackendProducts(payload).map(normalizeBackendProduct);
+    const products = extractBackendProducts(payload)
+      .map(normalizePublicBackendProduct)
+      .filter((product): product is Product => product !== null);
     return products.length ? products : null;
-  } catch {
+  } catch (error) {
+    if (error instanceof ProductListContractError) throw error;
     return null;
   }
 }
@@ -691,7 +749,9 @@ async function fetchBackendProductCollection(
   }
 
   try {
-    return response.data.products.map(normalizeBackendProduct);
+    return response.data.products
+      .map(normalizePublicBackendProduct)
+      .filter((product): product is Product => product !== null);
   } catch {
     throw new ProductListContractError("Product collection contains an invalid product.");
   }
@@ -705,7 +765,8 @@ export async function getHomeNewArrivals(
 }
 
 export async function getHomeMostViewed(limit = 10): Promise<Product[]> {
-  return fetchBackendProductCollection("/products/featured", { limit });
+  const result = await fetchBackendProducts({ page: 1, limit, sort: "popular" });
+  return result.products;
 }
 
 export async function getHomeExploreMore(limit = 10): Promise<Product[]> {

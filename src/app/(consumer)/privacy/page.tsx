@@ -24,7 +24,7 @@ export default function PrivacyPage() {
         },
         {
           title: "Your Control",
-          body: "You can request account data updates through support channels. Sensitive payment processing follows provider-level security controls.",
+          body: "You can request account data updates through account settings or support channels. Payment and delivery records are used only to support platform operations.",
         },
       ]}
       steps={[
@@ -44,7 +44,7 @@ export default function PrivacyPage() {
       faqs={[
         {
           question: "Does Zogular process payments directly?",
-          answer: "Sensitive payment handling follows provider-level controls; Zogular uses payment data only to support platform operations.",
+          answer: "Zogular uses payment-related data only to support orders, account help, and platform operations.",
         },
         {
           question: "Can account details be updated?",

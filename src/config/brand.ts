@@ -1,12 +1,21 @@
+export function normalizePublicEmail(value: string | undefined, { disallowResend = false }: { disallowResend?: boolean } = {}): string {
+  const email = value?.trim() ?? "";
+  if (!email) return "";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return "";
+  const domain = email.split("@").pop()?.toLowerCase() ?? "";
+  if (disallowResend && (domain === "resend.dev" || domain.endsWith(".resend.dev"))) return "";
+  return email;
+}
+
 export const BRAND = {
   name: "Zogular",
   wordmark: "ZOGULAR",
   slug: "zogular",
   tagline: "Zambia's Online Marketplace",
   description: "Connecting buyers and sellers across Zambia",
-  supportEmail: process.env.NEXT_PUBLIC_SUPPORT_EMAIL ?? "onboarding@resend.dev",
-  careersEmail: process.env.NEXT_PUBLIC_CAREERS_EMAIL ?? "onboarding@resend.dev",
-  adminEmail: process.env.NEXT_PUBLIC_ADMIN_EMAIL ?? "onboarding@resend.dev",
+  supportEmail: normalizePublicEmail(process.env.NEXT_PUBLIC_SUPPORT_EMAIL, { disallowResend: true }),
+  careersEmail: normalizePublicEmail(process.env.NEXT_PUBLIC_CAREERS_EMAIL),
+  adminEmail: normalizePublicEmail(process.env.NEXT_PUBLIC_ADMIN_EMAIL),
   domain: process.env.NEXT_PUBLIC_PUBLIC_DOMAIN ?? "zogular-frontend.vercel.app",
   assets: {
     wordmarkLight: "/brand/zogular-wordmark-light.png",
