@@ -33,12 +33,7 @@ export default function SellerSettingsPage() {
     setActiveTab,
     isSeoOpen,
     setIsSeoOpen,
-    logoFileLabel,
-    bannerFileLabel,
-    logoInputRef,
-    bannerInputRef,
     loadSettings,
-    handleAssetUpload,
     updateSetting,
   } = useSellerSettings();
 
@@ -155,11 +150,6 @@ export default function SellerSettingsPage() {
               settings={settings}
               disabled={isWritePending}
               updateSetting={updateSetting}
-              logoInputRef={logoInputRef}
-              bannerInputRef={bannerInputRef}
-              handleAssetUpload={handleAssetUpload}
-              logoFileLabel={logoFileLabel}
-              bannerFileLabel={bannerFileLabel}
               isSeoOpen={isSeoOpen}
               setIsSeoOpen={setIsSeoOpen}
             />

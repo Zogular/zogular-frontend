@@ -3,7 +3,7 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone } from "lucide-react";
+import { ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone, LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +11,6 @@ import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorStat
 import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
-import { useCart } from "@/hooks/use-cart";
 import { useAuthSession } from "@/hooks/use-auth-session";
 
 const STATUS_CONFIG = {
@@ -165,7 +164,7 @@ export default function InvoicePage({
             </div>
             {invoice.status === "shipped" && (
               <p className="mt-4 text-center text-sm font-medium text-blue-700">
-                Rider contact will appear here once assigned.
+                Delivery updates are coordinated by Zogular support from the latest order status. Contact support if the address, timing, or handoff details need attention.
               </p>
             )}
           </div>
@@ -260,6 +259,17 @@ export default function InvoicePage({
                 </a>
               )}
             </div>
+            <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
+              <div className="flex gap-2">
+                <LifeBuoy className="mt-0.5 h-4 w-4 shrink-0 text-[#009E49]" />
+                <div>
+                  <p className="text-sm font-bold text-zinc-900">Need order help?</p>
+                  <p className="mt-1 text-xs font-medium leading-relaxed text-zinc-600">
+                    Share your order number with Zogular support for help with delivery, address changes, or payment questions.
+                  </p>
+                </div>
+              </div>
+            </div>
             <div className="space-y-2">
               <Link href="/categories">
                 <Button 
@@ -268,49 +278,6 @@ export default function InvoicePage({
                   Browse Products
                 </Button>
               </Link>
-              {(() => {
-                const canReorderAll = invoice.items.every(
-                  (item) =>
-                    Boolean(item.productId) &&
-                    Boolean(item.slug) &&
-                    Boolean(item.image) &&
-                    Boolean(item.name) &&
-                    typeof item.price === "number" &&
-                    typeof item.qty === "number" &&
-                    item.qty > 0
-                );
-
-                return (
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant="outline"
-                      className="h-11 w-full rounded-xl border-zinc-200 font-bold text-zinc-900 hover:bg-zinc-50 sm:w-auto"
-                      disabled={!canReorderAll}
-                      onClick={() => {
-                        if (!canReorderAll) return;
-                        const cart = useCart.getState();
-                        invoice.items.forEach((item) => {
-                          cart.addItem({
-                            id: item.productId as string,
-                            slug: item.slug as string,
-                            image: item.image as string,
-                            name: item.name as string,
-                            price: item.price,
-                            quantity: item.qty,
-                          });
-                        });
-                      }}
-                    >
-                      Order Again
-                    </Button>
-                    {!canReorderAll && (
-                      <p className="text-xs font-medium text-red-600 sm:max-w-[200px]">
-                        Some items are missing product details. Please browse products instead.
-                      </p>
-                    )}
-                  </div>
-                );
-              })()}
             </div>
           </div>
 

@@ -1,6 +1,6 @@
-import { type SellerWalletBalances } from "@/services/platform-finance";
 import { throwBackendPendingFeature } from "@/services/backend-pending";
 import { type ProviderReference } from "@/services/payment-provider";
+import { type SellerWalletBalances } from "@/services/platform-finance";
 
 export type PayoutStatus = "pending" | "successful" | "failed" | "cancelled";
 
@@ -37,29 +37,9 @@ export interface SellerWalletDashboard {
 export const SELLER_WALLET_BACKEND_PENDING_NOTICE =
   "Wallet balances, payout methods, fees, and transfers are not available yet. This page does not show or move real money.";
 
-const WALLET: SellerWalletBalances = {
-  pendingBalance: 0,
-  availableBalance: 0,
-  totalSales: 0,
-  totalWithdrawn: 0,
-  totalCommissionPaid: 0,
-  totalPayoutFeesPaid: 0,
-  paymentProcessingFeesAbsorbed: 0,
-  totalRefunds: 0,
-};
-
-const METHODS: PayoutMethod[] = [];
-
-const HISTORY: PayoutTransaction[] = [];
-
 export const sellerWalletApi = {
   async fetchDashboard(): Promise<SellerWalletDashboard> {
-    await delay(350);
-    return {
-      balances: { ...WALLET },
-      history: HISTORY.map((item) => ({ ...item })),
-      methods: METHODS.map((item) => ({ ...item })),
-    };
+    throwBackendPendingFeature("Seller payout dashboard");
   },
   async requestPayout(amount: number, method: PayoutMethod): Promise<PayoutTransaction> {
     void amount;
@@ -76,7 +56,3 @@ export const sellerWalletApi = {
     throwBackendPendingFeature("Seller payout failure mutation");
   },
 };
-
-function delay(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}

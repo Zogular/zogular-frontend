@@ -1,18 +1,12 @@
-import { Search, Image as ImageIcon, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, ChevronDown, ChevronUp } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { BRAND } from "@/config/brand";
-import { cn } from "@/lib/utils";
 import type { StoreSettings } from "@/services/settings";
 
 export function StoreProfileForm({
   settings,
   disabled = false,
   updateSetting,
-  logoInputRef,
-  bannerInputRef,
-  handleAssetUpload,
-  logoFileLabel,
-  bannerFileLabel,
   isSeoOpen,
   setIsSeoOpen,
 }: {
@@ -23,11 +17,6 @@ export function StoreProfileForm({
     field: F,
     value: StoreSettings[K][F],
   ) => void;
-  logoInputRef: React.RefObject<HTMLInputElement | null>;
-  bannerInputRef: React.RefObject<HTMLInputElement | null>;
-  handleAssetUpload: (field: "logo" | "banner", file: File | null) => void;
-  logoFileLabel: string | null;
-  bannerFileLabel: string | null;
   isSeoOpen: boolean;
   setIsSeoOpen: (value: boolean) => void;
 }) {
@@ -86,79 +75,37 @@ export function StoreProfileForm({
           <div className="flex gap-4 pt-2 border-t border-zinc-100">
             <div className="space-y-1.5 flex-1">
               <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Store Logo Preview</label>
-              <div
-                onClick={() => {
-                  if (!disabled) logoInputRef.current?.click();
-                }}
-                className={cn(
-                  "flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 transition-colors",
-                  disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:bg-zinc-100",
-                )}
-                role="button"
-                aria-disabled={disabled}
-              >
+              <div className="flex h-20 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50">
                 {settings.profile.logo ? (
                   <div
                     className="flex h-full w-full items-center gap-3 rounded-xl bg-cover bg-center px-3"
                     style={{ backgroundImage: `url('${settings.profile.logo}')` }}
                   >
                     <div className="rounded-md bg-white/85 px-2 py-1 text-[10px] font-bold text-zinc-700">
-                      {logoFileLabel ?? "Logo selected"}
+                      Current logo
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <ImageIcon className="h-4 w-4" />
-                    <span className="text-xs font-bold">{disabled ? "Upload support pending" : "Upload Logo"}</span>
-                  </div>
+                  <span className="px-3 text-center text-xs font-bold text-zinc-500">No logo provided by your current seller profile.</span>
                 )}
               </div>
-              <input
-                ref={logoInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => handleAssetUpload("logo", event.target.files?.[0] ?? null)}
-                disabled={disabled}
-              />
             </div>
             <div className="space-y-1.5 flex-1">
               <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Cover Banner Preview</label>
-              <div
-                onClick={() => {
-                  if (!disabled) bannerInputRef.current?.click();
-                }}
-                className={cn(
-                  "flex h-20 items-center justify-center rounded-xl border-2 border-dashed border-zinc-200 bg-zinc-50 transition-colors",
-                  disabled ? "cursor-not-allowed opacity-70" : "cursor-pointer hover:bg-zinc-100",
-                )}
-                role="button"
-                aria-disabled={disabled}
-              >
+              <div className="flex h-20 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50">
                 {settings.profile.banner ? (
                   <div
                     className="flex h-full w-full items-center gap-3 rounded-xl bg-cover bg-center px-3"
                     style={{ backgroundImage: `url('${settings.profile.banner}')` }}
                   >
                     <div className="rounded-md bg-white/85 px-2 py-1 text-[10px] font-bold text-zinc-700">
-                      {bannerFileLabel ?? "Banner selected"}
+                      Current banner
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center gap-2 text-zinc-500">
-                    <ImageIcon className="h-4 w-4" />
-                    <span className="text-xs font-bold">{disabled ? "Upload support pending" : "Upload Banner"}</span>
-                  </div>
+                  <span className="px-3 text-center text-xs font-bold text-zinc-500">No banner provided by your current seller profile.</span>
                 )}
               </div>
-              <input
-                ref={bannerInputRef}
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={(event) => handleAssetUpload("banner", event.target.files?.[0] ?? null)}
-                disabled={disabled}
-              />
             </div>
           </div>
         </div>
