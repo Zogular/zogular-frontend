@@ -23,7 +23,7 @@ export function ProductImagesSection({
   imageWarnings: Record<string, string>;
   images: SellerProductImage[];
   onImageSelection: (files: FileList | null) => void;
-  onRemoveImage: (imageId: string) => void;
+  onRemoveImage: (imageId: string) => void | Promise<void>;
   onRetryImageUpload: (imageId: string) => Promise<void>;
   onSetImageAlt: (imageId: string, alt: string) => void;
   onSetImageVariant: (imageId: string, linkedVariantValue: string) => void;
@@ -98,9 +98,29 @@ export function ProductImagesSection({
                           : "Uploading"}
                     </span>
                   ) : null}
-                  <div className="absolute inset-x-2 bottom-2 flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
-                    <button type="button" onClick={() => onSetPrimaryImage(image.id)} className="flex-1 rounded-lg bg-white/95 px-2 py-1 text-[10px] font-bold text-zinc-700 shadow-sm">Set</button>
-                    <button type="button" onClick={() => onRemoveImage(image.id)} className="rounded-lg bg-rose-500 px-2 py-1 text-[10px] font-bold text-white shadow-sm">Remove</button>
+                  <div className="absolute inset-x-2 bottom-2 flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => onSetPrimaryImage(image.id)}
+                      disabled={image.removalStatus === "removing"}
+                      aria-label={`Set ${image.name} as primary product image`}
+                      className="min-h-11 min-w-11 flex-1 rounded-xl bg-white/95 px-3 py-2 text-xs font-bold text-zinc-700 shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-[#009E49] disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      Set
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => void onRemoveImage(image.id)}
+                      disabled={image.removalStatus === "removing"}
+                      aria-label={
+                        image.removalStatus === "removing"
+                          ? `Removing ${image.name}`
+                          : `Remove ${image.name}`
+                      }
+                      className="min-h-11 min-w-11 rounded-xl bg-rose-500 px-3 py-2 text-xs font-bold text-white shadow-sm outline-none transition focus-visible:ring-2 focus-visible:ring-rose-200 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {image.removalStatus === "removing" ? "Removing" : "Remove"}
+                    </button>
                   </div>
                 </div>
                 <div className="space-y-2 p-2">

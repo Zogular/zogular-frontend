@@ -1,6 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
-import { uploadSellerProductImage } from "@/services/seller-product-image-uploads";
+import {
+  removeTemporarySellerProductImageUpload,
+  uploadSellerProductImage,
+} from "@/services/seller-product-image-uploads";
 import type { SellerProductImage } from "@/services/seller-catalog";
 import {
   ACCEPTED_IMAGE_TYPES,
@@ -29,11 +32,33 @@ function normalizeInitialImages(initialImages: SellerProductImage[]) {
   });
 }
 
+export function startExclusiveImageRemoval(
+  removalPromises: Map<string, Promise<void>>,
+  imageId: string,
+  taskFactory: () => Promise<void>,
+) {
+  const existingRemoval = removalPromises.get(imageId);
+  if (existingRemoval) {
+    return existingRemoval;
+  }
+
+  const task = Promise.resolve()
+    .then(taskFactory)
+    .finally(() => {
+      if (removalPromises.get(imageId) === task) {
+        removalPromises.delete(imageId);
+      }
+    });
+  removalPromises.set(imageId, task);
+  return task;
+}
+
 export function useProductImages(initialImages: SellerProductImage[] = []) {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const objectUrlsRef = useRef<string[]>([]);
   const imageFilesRef = useRef(new Map<string, File>());
   const uploadPromisesRef = useRef(new Map<string, Promise<void>>());
+  const removalPromisesRef = useRef(new Map<string, Promise<void>>());
   const [images, setImages] = useState<SellerProductImage[]>(() =>
     normalizeInitialImages(initialImages),
   );
@@ -66,6 +91,25 @@ export function useProductImages(initialImages: SellerProductImage[] = []) {
 
     URL.revokeObjectURL(url);
     objectUrlsRef.current = objectUrlsRef.current.filter((item) => item !== url);
+  };
+
+  const removeImageLocally = (imageId: string, image?: SellerProductImage) => {
+    revokeTrackedObjectUrl(image?.localPreviewUrl);
+    revokeTrackedObjectUrl(image?.url);
+    imageFilesRef.current.delete(imageId);
+    uploadPromisesRef.current.delete(imageId);
+
+    setImages((current) => {
+      const remaining = current.filter((candidate) => candidate.id !== imageId);
+      const hasPrimary = remaining.some((candidate) => candidate.isPrimary);
+
+      return remaining.map((candidate, index) => ({
+        ...candidate,
+        isPrimary: hasPrimary ? candidate.isPrimary : index === 0,
+        sortOrder: index,
+      }));
+    });
+    setImageWarnings((current) => withoutRecordKey(current, imageId));
   };
 
   const updateImageById = (imageId: string, updater: (image: SellerProductImage) => SellerProductImage) => {
@@ -120,6 +164,7 @@ export function useProductImages(initialImages: SellerProductImage[] = []) {
           ...image,
           url: uploadedImage.url,
           publicId: uploadedImage.publicId,
+          uploadReservationId: uploadedImage.uploadReservationId,
           alt: image.alt ?? image.name,
           processedWidth: uploadedImage.width ?? image.processedWidth,
           processedHeight: uploadedImage.height ?? image.processedHeight,
@@ -337,24 +382,40 @@ export function useProductImages(initialImages: SellerProductImage[] = []) {
     return imagesRef.current;
   };
 
-  const removeImage = (imageId: string) => {
+  const removeImage = async (imageId: string) => {
     const existingImage = imagesRef.current.find((image) => image.id === imageId);
-    revokeTrackedObjectUrl(existingImage?.localPreviewUrl);
-    revokeTrackedObjectUrl(existingImage?.url);
-    imageFilesRef.current.delete(imageId);
-    uploadPromisesRef.current.delete(imageId);
+    if (existingImage?.uploadReservationId && existingImage.publicId) {
+      const uploadReservationId = existingImage.uploadReservationId;
+      const publicId = existingImage.publicId;
 
-    setImages((current) => {
-      const remaining = current.filter((image) => image.id !== imageId);
-      const hasPrimary = remaining.some((image) => image.isPrimary);
+      return startExclusiveImageRemoval(removalPromisesRef.current, imageId, async () => {
+        updateImageById(imageId, (image) => ({
+          ...image,
+          removalStatus: "removing",
+          uploadError: undefined,
+        }));
 
-      return remaining.map((image, index) => ({
-        ...image,
-        isPrimary: hasPrimary ? image.isPrimary : index === 0,
-        sortOrder: index,
-      }));
-    });
-    setImageWarnings((current) => withoutRecordKey(current, imageId));
+        try {
+          await removeTemporarySellerProductImageUpload({
+            uploadReservationId,
+            publicId,
+          });
+          removeImageLocally(imageId, existingImage);
+        } catch (error) {
+          updateImageById(imageId, (image) => ({
+            ...image,
+            removalStatus: "failed",
+            uploadError:
+              error instanceof Error
+                ? error.message
+                : "Image could not be removed. Try again.",
+          }));
+          toast.error("Image could not be removed. Try again.");
+        }
+      });
+    }
+
+    removeImageLocally(imageId, existingImage);
   };
 
   const setPrimaryImage = (imageId: string) => {
