@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useState } from "react";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Download, ExternalLink, FileText, X, ZoomIn, ZoomOut } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -52,6 +52,9 @@ export function MediaPreviewModal({
             <DialogTitle className="text-sm font-bold text-zinc-100 truncate">
               {title}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Preview this uploaded document in a secure dialog.
+            </DialogDescription>
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">

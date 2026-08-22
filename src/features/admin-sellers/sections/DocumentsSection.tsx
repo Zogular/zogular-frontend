@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRight, FileText } from "lucide-react";
-import type { VendorApplication } from "@/types/seller";
+import { ArrowUpRight, FileText, Loader2 } from "lucide-react";
+import { getAdminSellerDocumentAccess } from "@/services/admin/vendor-applications";
+import { getSellerDocumentAccessMessage } from "@/services/seller-document-uploads";
+import type { SellerDocumentType, VendorApplication } from "@/types/seller";
 import { SectionCard } from "./TrustChecksSection";
 import { MediaPreviewModal } from "@/components/ui/media-preview-modal";
 
@@ -23,11 +25,11 @@ export function DocumentsSection({
     >
       <div className="overflow-hidden rounded-2xl border border-stone-200/60 bg-white/50">
         <div className="divide-y divide-stone-200/50">
-          <DocumentCard label="NRC front" url={nrcFrontUrl} />
-          <DocumentCard label="NRC back" url={application.nrcBackUrl} />
-          <DocumentCard label="Shop photo" url={shopPhotoUrl} />
+          <DocumentCard applicationId={application.id} documentType="NRC_FRONT" label="NRC front" url={nrcFrontUrl} />
+          <DocumentCard applicationId={application.id} documentType="NRC_BACK" label="NRC back" url={application.nrcBackUrl} />
+          <DocumentCard applicationId={application.id} documentType="SHOP_PHOTO" label="Shop photo" url={shopPhotoUrl} />
           {isRegisteredBusiness ? (
-            <DocumentCard label="PACRA document" url={application.pacraDocumentUrl} />
+            <DocumentCard applicationId={application.id} documentType="PACRA_DOCUMENT" label="PACRA document" url={application.pacraDocumentUrl} />
           ) : null}
         </div>
       </div>
@@ -47,28 +49,53 @@ export function DocumentsSection({
   );
 }
 
-function DocumentCard({ label, url }: { label: string; url?: string }) {
+function DocumentCard({
+  applicationId,
+  documentType,
+  label,
+  url,
+}: {
+  applicationId: string;
+  documentType: SellerDocumentType;
+  label: string;
+  url?: string;
+}) {
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [opening, setOpening] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const hasUrl = Boolean(url?.trim());
 
+  async function openPreview() {
+    if (!hasUrl || opening) return;
+    setError(null);
+    setOpening(true);
+    try {
+      const access = await getAdminSellerDocumentAccess(applicationId, documentType);
+      setPreviewUrl(access.signedUrl);
+      setPreviewOpen(true);
+    } catch (caught) {
+      setError(getSellerDocumentAccessMessage(caught));
+    } finally {
+      setOpening(false);
+    }
+  }
+
   return (
-    <div className="flex items-center justify-between gap-4 px-4 py-3 transition-colors hover:bg-stone-50/50">
+    <div className="px-4 py-3 transition-colors hover:bg-stone-50/50">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
       <div className="flex shrink-0 items-center gap-3.5">
         {hasUrl ? (
           <button
             type="button"
-            onClick={() => setPreviewOpen(true)}
-            className="group relative block h-10 w-14 shrink-0 overflow-hidden rounded-md border border-stone-200/60 bg-stone-100 shadow-sm transition hover:shadow-md cursor-pointer"
+            onClick={openPreview}
+            disabled={opening}
+            className="group relative flex h-11 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-stone-200/60 bg-stone-100 shadow-sm transition hover:shadow-md disabled:cursor-wait disabled:opacity-70 cursor-pointer"
           >
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src={url!}
-              alt={label}
-              className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-110"
-            />
+            {opening ? <Loader2 className="h-4 w-4 animate-spin text-stone-500" /> : <FileText className="h-4 w-4 text-stone-500" />}
           </button>
         ) : (
-          <div className="flex h-10 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-stone-200 bg-stone-50">
+          <div className="flex h-11 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-stone-200 bg-stone-50">
             <FileText className="h-4 w-4 text-stone-300" />
           </div>
         )}
@@ -81,21 +108,26 @@ function DocumentCard({ label, url }: { label: string; url?: string }) {
         <>
           <button
             type="button"
-            onClick={() => setPreviewOpen(true)}
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-lg border border-stone-200/60 bg-white px-2.5 py-1.5 text-[10px] font-black uppercase tracking-wider text-stone-700 shadow-sm transition hover:bg-stone-50 cursor-pointer"
+            onClick={openPreview}
+            disabled={opening}
+            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-stone-200/60 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-stone-700 shadow-sm transition hover:bg-stone-50 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
           >
-            View full <ArrowUpRight className="h-3 w-3" />
+            {opening ? "Opening" : "View full"} {opening ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpRight className="h-3 w-3" />}
           </button>
           <MediaPreviewModal
             isOpen={previewOpen}
             onClose={() => setPreviewOpen(false)}
-            url={url}
+            url={previewUrl}
             title={label}
           />
         </>
       ) : (
         <span className="shrink-0 text-[11px] font-bold text-stone-400">Not provided</span>
       )}
+      </div>
+      {error ? (
+        <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold leading-5 text-rose-700">{error}</p>
+      ) : null}
     </div>
   );
 }
