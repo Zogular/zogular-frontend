@@ -137,7 +137,7 @@ export function SellerDocumentUploadCard({
             htmlFor={fileInputId}
             aria-disabled={disabled || state.status === "uploading"}
             className={cn(
-              "inline-flex h-10 items-center rounded-2xl border border-[#dbcab1] bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#6b5a46] transition-colors hover:bg-white",
+              "inline-flex h-11 items-center rounded-2xl border border-[#dbcab1] bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#6b5a46] transition-colors hover:bg-white",
               disabled || state.status === "uploading"
                 ? "pointer-events-none opacity-60"
                 : "cursor-pointer",
@@ -157,7 +157,7 @@ export function SellerDocumentUploadCard({
               variant="outline"
               disabled={disabled}
               onClick={() => void onRetry()}
-              className="h-10 rounded-2xl border-rose-200 bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-rose-700 hover:bg-white"
+              className="h-11 rounded-2xl border-rose-200 bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-rose-700 hover:bg-white"
             >
               <RefreshCw className="mr-2 h-4 w-4" />
               Retry
@@ -170,7 +170,7 @@ export function SellerDocumentUploadCard({
                 type="button"
                 onClick={() => setPreviewOpen(true)}
                 className={cn(
-                  "inline-flex h-10 items-center rounded-2xl border border-[#dbcab1] bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#6b5a46] transition-colors hover:bg-white cursor-pointer",
+                  "inline-flex h-11 items-center rounded-2xl border border-[#dbcab1] bg-white/78 px-3.5 text-[11px] font-black uppercase tracking-[0.14em] text-[#6b5a46] transition-colors hover:bg-white cursor-pointer",
                   disabled && "pointer-events-none opacity-60",
                 )}
               >

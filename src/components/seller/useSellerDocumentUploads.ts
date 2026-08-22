@@ -179,7 +179,6 @@ export function useSellerDocumentUploads({
     }
 
     await ensureApplication();
-    onUrlChange(field, "");
 
     revokeObjectUrl(field);
     const fileKind = getFileKindFromFile(file);
@@ -192,12 +191,12 @@ export function useSellerDocumentUploads({
 
     fileRefs.current.set(field, file);
 
-    setFieldState(field, () => ({
+    setFieldState(field, (current) => ({
       status: "uploading",
       progress: 0,
       error: undefined,
       previewUrl,
-      uploadedUrl: "",
+      uploadedUrl: current.uploadedUrl,
       fileName: file.name,
       fileKind,
     }));
