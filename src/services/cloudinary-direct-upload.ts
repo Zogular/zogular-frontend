@@ -6,6 +6,7 @@ export type SignedCloudinaryUploadConfig = {
   folder: string;
   publicId: string;
   resourceType: "image" | "auto";
+  type?: "upload" | "authenticated";
   uploadUrl: string;
   allowedFormats: string[];
   allowedMimeTypes: string[];
@@ -44,6 +45,12 @@ export function isAllowedCloudinaryUploadFile(
   );
 }
 
+export function isSupportedCloudinaryDeliveryType(
+  value: unknown,
+): value is NonNullable<SignedCloudinaryUploadConfig["type"]> {
+  return value === "upload" || value === "authenticated";
+}
+
 export function uploadFileToCloudinary(
   uploadConfig: SignedCloudinaryUploadConfig,
   file: File,
@@ -59,6 +66,9 @@ export function uploadFileToCloudinary(
     formData.set("signature", uploadConfig.signature);
     formData.set("folder", uploadConfig.folder);
     formData.set("public_id", uploadConfig.publicId);
+    if (isSupportedCloudinaryDeliveryType(uploadConfig.type)) {
+      formData.set("type", uploadConfig.type);
+    }
 
     xhr.open("POST", uploadConfig.uploadUrl);
 

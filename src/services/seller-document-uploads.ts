@@ -1,6 +1,7 @@
 import { ApiError, apiClient } from "@/services/api";
 import {
   isAllowedCloudinaryUploadFile,
+  isSupportedCloudinaryDeliveryType,
   uploadFileToCloudinary,
   type SignedCloudinaryUploadConfig,
 } from "@/services/cloudinary-direct-upload";
@@ -25,6 +26,172 @@ export type UploadedSellerDocument = {
 export type SellerDocumentUploadSignature =
   SellerDocumentSignatureResponse["data"];
 
+export type SellerDocumentAccess = {
+  documentType: SellerDocumentType;
+  signedUrl: string;
+  expiresAt: number;
+  ttlSeconds: number;
+  resourceType: "image" | "raw" | "video";
+  type: "authenticated";
+};
+
+type SellerDocumentAccessResponse = {
+  status: string;
+  data: unknown;
+};
+
+export const SELLER_DOCUMENT_ACCESS_ERROR =
+  "Document preview is not available right now. Please try again.";
+const SELLER_DOCUMENT_ACCESS_TTL_SECONDS = 10 * 60;
+const SELLER_DOCUMENT_ACCESS_CLOCK_SKEW_SECONDS = 30;
+const CLOUDINARY_PRIVATE_DOWNLOAD_HOST = "api.cloudinary.com";
+const CLOUDINARY_ACCESS_RESOURCE_TYPES = new Set(["image", "raw", "video"]);
+
+export class SellerDocumentAccessError extends Error {
+  readonly status: number;
+
+  constructor(message: string, status: number) {
+    super(message);
+    this.name = "SellerDocumentAccessError";
+    this.status = status;
+  }
+}
+
+function asRecord(value: unknown): Record<string, unknown> | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  return value as Record<string, unknown>;
+}
+
+export function getSellerDocumentAccessMessage(error: unknown): string {
+  if (error instanceof SellerDocumentAccessError) return error.message;
+
+  if (error instanceof ApiError) {
+    switch (error.status) {
+      case 401:
+        return "Please sign in again to view this document.";
+      case 403:
+        return "You do not have access to view this document.";
+      case 404:
+        return "This document is not available yet.";
+      case 409:
+        return "This document needs to be uploaded again before it can be viewed.";
+      case 408:
+        return "Document preview took too long. Check your connection and try again.";
+      default:
+        return SELLER_DOCUMENT_ACCESS_ERROR;
+    }
+  }
+
+  return SELLER_DOCUMENT_ACCESS_ERROR;
+}
+
+export function toSellerDocumentAccessError(error: unknown): SellerDocumentAccessError {
+  if (error instanceof SellerDocumentAccessError) return error;
+  const status = error instanceof ApiError ? error.status : 503;
+  return new SellerDocumentAccessError(getSellerDocumentAccessMessage(error), status);
+}
+
+function parseIntegerQueryParam(value: string | null): number | null {
+  if (!value || !/^\d+$/.test(value)) return null;
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) ? parsed : null;
+}
+
+function parseSignedDocumentUrl(
+  value: string,
+  expectedResourceType: SellerDocumentAccess["resourceType"],
+  expectedExpiresAt: number,
+): string | null {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    return null;
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.hostname !== CLOUDINARY_PRIVATE_DOWNLOAD_HOST
+  ) {
+    return null;
+  }
+
+  const segments = url.pathname.split("/").filter(Boolean);
+  if (
+    segments.length !== 4 ||
+    segments[0] !== "v1_1" ||
+    !segments[1] ||
+    segments[2] !== expectedResourceType ||
+    segments[3] !== "download"
+  ) {
+    return null;
+  }
+
+  if (
+    url.searchParams.get("type") !== "authenticated" ||
+    parseIntegerQueryParam(url.searchParams.get("expires_at")) !== expectedExpiresAt ||
+    !url.searchParams.get("public_id")?.trim()
+  ) {
+    return null;
+  }
+
+  const format = url.searchParams.get("format");
+  if (format !== null && !format.trim()) {
+    return null;
+  }
+
+  return url.toString();
+}
+
+export function normalizeSellerDocumentAccess(
+  payload: unknown,
+  expectedDocumentType: SellerDocumentType,
+  nowSeconds = Math.floor(Date.now() / 1000),
+): SellerDocumentAccess {
+  const root = asRecord(payload);
+  const data = root?.status === "success" ? asRecord(root.data) : null;
+  const documentType = data?.documentType;
+  const expiresAt = data?.expiresAt;
+  const ttlSeconds = data?.ttlSeconds;
+  const resourceType = data?.resourceType;
+  const type = data?.type;
+  const normalizedResourceType = typeof resourceType === "string" && CLOUDINARY_ACCESS_RESOURCE_TYPES.has(resourceType)
+    ? resourceType as SellerDocumentAccess["resourceType"]
+    : null;
+  const signedUrl = typeof data?.signedUrl === "string" && normalizedResourceType && typeof expiresAt === "number"
+    ? parseSignedDocumentUrl(data.signedUrl.trim(), normalizedResourceType, expiresAt)
+    : null;
+  const expiresAtDelta = typeof expiresAt === "number" ? expiresAt - nowSeconds : Number.NaN;
+
+  if (
+    documentType !== expectedDocumentType ||
+    !signedUrl ||
+    !normalizedResourceType ||
+    typeof expiresAt !== "number" ||
+    !Number.isInteger(expiresAt) ||
+    !Number.isFinite(expiresAtDelta) ||
+    expiresAt <= nowSeconds ||
+    typeof ttlSeconds !== "number" ||
+    !Number.isInteger(ttlSeconds) ||
+    ttlSeconds !== SELLER_DOCUMENT_ACCESS_TTL_SECONDS ||
+    expiresAtDelta > ttlSeconds + SELLER_DOCUMENT_ACCESS_CLOCK_SKEW_SECONDS ||
+    type !== "authenticated"
+  ) {
+    throw new SellerDocumentAccessError(SELLER_DOCUMENT_ACCESS_ERROR, 502);
+  }
+
+  return {
+    documentType: expectedDocumentType,
+    signedUrl,
+    expiresAt,
+    ttlSeconds,
+    resourceType: normalizedResourceType,
+    type,
+  };
+}
+
 function toUploadMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 401) {
@@ -47,6 +214,14 @@ function toUploadMessage(error: unknown): string {
   return "Document upload could not be completed. Please try again.";
 }
 
+function assertSellerDocumentDeliveryType(uploadConfig: SignedCloudinaryUploadConfig) {
+  if (uploadConfig.type === undefined) return;
+
+  if (!isSupportedCloudinaryDeliveryType(uploadConfig.type) || uploadConfig.type !== "authenticated") {
+    throw new Error("Document upload is not available right now. Please try again shortly.");
+  }
+}
+
 export async function getSellerDocumentUploadSignature(
   documentType: SellerDocumentType,
 ): Promise<SellerDocumentUploadSignature> {
@@ -62,6 +237,21 @@ export async function getSellerDocumentUploadSignature(
   return response.data;
 }
 
+export async function getSellerDocumentAccess(
+  documentType: SellerDocumentType,
+): Promise<SellerDocumentAccess> {
+  try {
+    const response = await apiClient<SellerDocumentAccessResponse>(
+      `/vendor/uploads/seller-documents/${encodeURIComponent(documentType)}/access`,
+      { method: "GET" },
+    );
+
+    return normalizeSellerDocumentAccess(response, documentType);
+  } catch (error) {
+    throw toSellerDocumentAccessError(error);
+  }
+}
+
 export async function uploadSellerDocument(
   file: File,
   documentType: SellerDocumentType,
@@ -69,6 +259,7 @@ export async function uploadSellerDocument(
 ): Promise<UploadedSellerDocument> {
   try {
     const uploadConfig = await getSellerDocumentUploadSignature(documentType);
+    assertSellerDocumentDeliveryType(uploadConfig);
 
     if (file.size > uploadConfig.maxFileSize) {
       throw new Error("This file is too large. Use a file under 5MB.");

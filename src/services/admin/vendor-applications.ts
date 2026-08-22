@@ -7,6 +7,12 @@ import type {
   VendorApplication,
 } from "@/types/seller";
 import { normalizePayoutDestination, parsePayoutMode } from "@/lib/payout-destination";
+import {
+  normalizeSellerDocumentAccess,
+  toSellerDocumentAccessError,
+  type SellerDocumentAccess,
+} from "@/services/seller-document-uploads";
+import type { SellerDocumentType } from "@/types/seller";
 
 const ADMIN_VENDOR_APPLICATIONS_ENDPOINT = "/admin/vendor-applications";
 
@@ -256,6 +262,22 @@ export async function getVendorApplicationById(id: string): Promise<VendorApplic
   );
 
   return normalizeVendorApplication(payload);
+}
+
+export async function getAdminSellerDocumentAccess(
+  applicationId: string,
+  documentType: SellerDocumentType,
+): Promise<SellerDocumentAccess> {
+  try {
+    const payload = await apiClient<unknown>(
+      `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(applicationId)}/documents/${encodeURIComponent(documentType)}/access`,
+      { method: "GET" },
+    );
+
+    return normalizeSellerDocumentAccess(payload, documentType);
+  } catch (error) {
+    throw toSellerDocumentAccessError(error);
+  }
 }
 
 export async function approveVendorApplication(
