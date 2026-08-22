@@ -22,6 +22,7 @@ export interface SellerProductImage {
   alt?: string;
   isPrimary: boolean;
   publicId?: string;
+  uploadReservationId?: string;
   sortOrder?: number;
   originalWidth?: number;
   originalHeight?: number;
@@ -30,6 +31,7 @@ export interface SellerProductImage {
   wasAutoCropped?: boolean;
   linkedVariantValue?: string;
   uploadStatus?: "idle" | "uploading" | "uploaded" | "failed";
+  removalStatus?: "removing" | "failed";
   uploadError?: string;
   localPreviewUrl?: string;
 }
@@ -1223,6 +1225,7 @@ function normalizePayloadImages(images?: SellerProductImage[]) {
   return (images ?? []).map((image, index) => ({
     url: image.url,
     publicId: image.publicId ?? null,
+    uploadReservationId: image.uploadReservationId ?? null,
     alt: image.alt?.trim() || image.name,
     isPrimary: image.isPrimary || index === 0,
     sortOrder: index,

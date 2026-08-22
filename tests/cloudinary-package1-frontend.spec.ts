@@ -16,7 +16,11 @@ import {
   uploadSellerDocument,
 } from "../src/services/seller-document-uploads";
 import { getAdminSellerDocumentAccess } from "../src/services/admin/vendor-applications";
-import { uploadSellerProductImage } from "../src/services/seller-product-image-uploads";
+import {
+  removeTemporarySellerProductImageUpload,
+  uploadSellerProductImage,
+} from "../src/services/seller-product-image-uploads";
+import { startExclusiveImageRemoval } from "../src/app/seller/products/new/_hooks/useProductImages";
 
 const repoRoot = path.resolve(__dirname, "..");
 const backendRequire = createRequire(path.join(repoRoot, "../zogular-backend/package.json"));
@@ -176,16 +180,7 @@ function installMockXhr(captured: CapturedUpload[]) {
   class MockXhr {
     upload: { onprogress: ((event: ProgressEvent) => void) | null } = { onprogress: null };
     status = 200;
-    responseText = JSON.stringify({
-      secure_url: "https://res.cloudinary.com/zogular/image/authenticated/v1/file-1.jpg",
-      public_id: "zogular/test/file-1",
-      format: "jpg",
-      bytes: 1234,
-      width: 640,
-      height: 480,
-      resource_type: "image",
-      original_filename: "file-1",
-    });
+    responseText = "";
     onerror: (() => void) | null = null;
     onabort: (() => void) | null = null;
     onload: (() => void) | null = null;
@@ -198,6 +193,22 @@ function installMockXhr(captured: CapturedUpload[]) {
     send(body: XMLHttpRequestBodyInit | null) {
       if (!(body instanceof FormData)) throw new Error("Expected FormData upload body.");
       captured.push({ url: this.url, formData: body });
+      const publicId = String(body.get("public_id") ?? "zogular/test/file-1");
+      const folder = String(body.get("folder") ?? "").replace(/\/+$/, "");
+      const responsePublicId = folder && !publicId.startsWith(`${folder}/`) ? `${folder}/${publicId}` : publicId;
+      const deliveryType = String(body.get("type") ?? "authenticated");
+      this.responseText = JSON.stringify({
+        secure_url: `https://res.cloudinary.com/zogular/image/${deliveryType}/v1/${responsePublicId}.jpg`,
+        public_id: responsePublicId,
+        format: "jpg",
+        bytes: 1234,
+        width: 640,
+        height: 480,
+        resource_type: "image",
+        version: 1,
+        signature: "cloudinary-response-signature",
+        original_filename: "file-1",
+      });
       this.onload?.();
     }
   }
@@ -486,6 +497,83 @@ test("seller document upload rejects public delivery without uploading the file"
 test("product image upload remains on the product signature endpoint and carries public upload type when supplied", async () => {
   const uploads: CapturedUpload[] = [];
   const restoreXhr = installMockXhr(uploads);
+  const fetchMock = installMockFetch(async (url, init) => {
+    if (url.pathname.endsWith("/auth/csrf-token")) return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
+    if (url.pathname.endsWith("/vendor/uploads/product-image/signature")) {
+      return jsonResponse({ status: "success", data: baseUploadConfig({
+        folder: "",
+        publicId: "zogular/products/seller-1/product-image-1",
+        reservedPublicId: "zogular/products/seller-1/product-image-1",
+        reservationId: "11111111-1111-4111-8111-111111111111",
+        type: "upload",
+        maxFileSize: 3_000_000,
+      }) });
+    }
+    if (url.pathname.endsWith("/vendor/uploads/product-image/confirm")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(body.reservationId).toBe("11111111-1111-4111-8111-111111111111");
+      expect(body.publicId).toBe("zogular/products/seller-1/product-image-1");
+      expect(body.resourceType).toBe("image");
+      expect(body.deliveryType).toBe("upload");
+      expect(body.signature).toBe("cloudinary-response-signature");
+      return jsonResponse({
+        status: "success",
+        data: {
+          reservationId: "11111111-1111-4111-8111-111111111111",
+          publicId: "zogular/products/seller-1/product-image-1",
+          url: "https://res.cloudinary.com/zogular/image/upload/v1/zogular/products/seller-1/product-image-1.jpg",
+          width: 640,
+          height: 480,
+        },
+      });
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  });
+
+  try {
+    const uploaded = await uploadSellerProductImage(new File(["x"], "product.jpg", { type: "image/jpeg" }));
+    expect(fetchMock.requests).toContain("POST /api/v1/vendor/uploads/product-image/signature");
+    expect(fetchMock.requests).toContain("POST /api/v1/vendor/uploads/product-image/confirm");
+    expect(uploaded.uploadReservationId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(uploads).toHaveLength(1);
+    expect(uploads[0].formData.get("type")).toBe("upload");
+    expect(uploads[0].formData.has("folder")).toBe(false);
+  } finally {
+    fetchMock.restore();
+    restoreXhr();
+  }
+});
+
+test("temporary product image removal uses the backend cleanup endpoint", async () => {
+  const fetchMock = installMockFetch((url, init) => {
+    if (url.pathname.endsWith("/auth/csrf-token")) return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
+    if (url.pathname.endsWith("/vendor/uploads/product-image/remove")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(body.reservationId).toBe("11111111-1111-4111-8111-111111111111");
+      expect(body.publicId).toBe("zogular/products/seller-1/product-image-1");
+      return jsonResponse({
+        status: "success",
+        data: { status: "queued", reservationId: "11111111-1111-4111-8111-111111111111" },
+      }, 202);
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  });
+
+  try {
+    const result = await removeTemporarySellerProductImageUpload({
+      uploadReservationId: "11111111-1111-4111-8111-111111111111",
+      publicId: "zogular/products/seller-1/product-image-1",
+    });
+    expect(result.status).toBe("queued");
+    expect(fetchMock.requests).toContain("POST /api/v1/vendor/uploads/product-image/remove");
+  } finally {
+    fetchMock.restore();
+  }
+});
+
+test("product image upload keeps old backend signatures compatible before reservation rollout", async () => {
+  const uploads: CapturedUpload[] = [];
+  const restoreXhr = installMockXhr(uploads);
   const fetchMock = installMockFetch((url) => {
     if (url.pathname.endsWith("/auth/csrf-token")) return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
     if (url.pathname.endsWith("/vendor/uploads/product-image/signature")) {
@@ -495,14 +583,142 @@ test("product image upload remains on the product signature endpoint and carries
   });
 
   try {
-    await uploadSellerProductImage(new File(["x"], "product.jpg", { type: "image/jpeg" }));
+    const uploaded = await uploadSellerProductImage(new File(["x"], "legacy-product.jpg", { type: "image/jpeg" }));
+    expect(uploaded.uploadReservationId).toBeUndefined();
     expect(fetchMock.requests).toContain("POST /api/v1/vendor/uploads/product-image/signature");
+    expect(fetchMock.requests).not.toContain("POST /api/v1/vendor/uploads/product-image/confirm");
     expect(uploads).toHaveLength(1);
-    expect(uploads[0].formData.get("type")).toBe("upload");
   } finally {
     fetchMock.restore();
     restoreXhr();
   }
+});
+
+test("product image upload rejects partial reservation contracts before Cloudinary upload", async () => {
+  for (const partialConfig of [
+    baseUploadConfig({
+      folder: "",
+      publicId: "zogular/products/seller-1/product-image-1",
+      reservationId: "11111111-1111-4111-8111-111111111111",
+      reservedPublicId: undefined,
+      type: "upload",
+      maxFileSize: 3_000_000,
+    }),
+    baseUploadConfig({
+      folder: "",
+      publicId: "zogular/products/seller-1/product-image-1",
+      reservationId: undefined,
+      reservedPublicId: "zogular/products/seller-1/product-image-1",
+      type: "upload",
+      maxFileSize: 3_000_000,
+    }),
+  ]) {
+    const uploads: CapturedUpload[] = [];
+    const restoreXhr = installMockXhr(uploads);
+    const fetchMock = installMockFetch((url) => {
+      if (url.pathname.endsWith("/auth/csrf-token")) {
+        return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
+      }
+      if (url.pathname.endsWith("/vendor/uploads/product-image/signature")) {
+        return jsonResponse({ status: "success", data: partialConfig });
+      }
+      throw new Error(`Unexpected request ${url.pathname}`);
+    });
+
+    try {
+      await expect(uploadSellerProductImage(new File(["x"], "partial.jpg", { type: "image/jpeg" }))).rejects.toThrow(
+        "Image upload reservation was incomplete. Please try again.",
+      );
+      expect(uploads).toHaveLength(0);
+      expect(fetchMock.requests).not.toContain("POST /api/v1/vendor/uploads/product-image/confirm");
+    } finally {
+      fetchMock.restore();
+      restoreXhr();
+    }
+  }
+});
+
+test("temporary product image removal can retry after a failed backend removal", async () => {
+  let attempts = 0;
+  const fetchMock = installMockFetch((url, init) => {
+    if (url.pathname.endsWith("/auth/csrf-token")) return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
+    if (url.pathname.endsWith("/vendor/uploads/product-image/remove")) {
+      attempts += 1;
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(body.reservationId).toBe("11111111-1111-4111-8111-111111111111");
+      expect(body.publicId).toBe("zogular/products/seller-1/product-image-1");
+      if (attempts === 1) {
+        return jsonResponse({ status: "error", message: "temporary failure SECRET" }, 503);
+      }
+      return jsonResponse({
+        status: "success",
+        data: { status: "queued", reservationId: "11111111-1111-4111-8111-111111111111" },
+      }, 202);
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  });
+
+  try {
+    await expect(removeTemporarySellerProductImageUpload({
+      uploadReservationId: "11111111-1111-4111-8111-111111111111",
+      publicId: "zogular/products/seller-1/product-image-1",
+    })).rejects.toThrow();
+    const retry = await removeTemporarySellerProductImageUpload({
+      uploadReservationId: "11111111-1111-4111-8111-111111111111",
+      publicId: "zogular/products/seller-1/product-image-1",
+    });
+    expect(retry.status).toBe("queued");
+    expect(attempts).toBe(2);
+  } finally {
+    fetchMock.restore();
+  }
+});
+
+test("seller product image hook keeps reserved images until backend removal succeeds", () => {
+  const hookSource = readSource("src/app/seller/products/new/_hooks/useProductImages.ts");
+  const componentSource = readSource("src/app/seller/products/new/_components/ProductImagesSection.tsx");
+
+  expect(hookSource).toContain("removalPromisesRef");
+  expect(hookSource).toContain("startExclusiveImageRemoval(removalPromisesRef.current");
+  expect(hookSource).toContain("existingImage?.uploadReservationId && existingImage.publicId");
+  expect(hookSource).not.toContain('existingImage.uploadStatus === "uploaded"');
+  expect(hookSource).toContain('removalStatus: "removing"');
+  expect(hookSource).toContain('removalStatus: "failed"');
+  expect(componentSource).toContain("min-h-11");
+  expect(componentSource).toContain("aria-label");
+  expect(componentSource).toContain("Removing");
+  expect(componentSource).toContain('disabled={image.removalStatus === "removing"}');
+});
+
+test("seller product image removal guard prevents duplicate in-flight backend removal and allows retry", async () => {
+  const removals = new Map<string, Promise<void>>();
+  let calls = 0;
+  let releaseFirst: () => void = () => {
+    throw new Error("Removal release was not initialized.");
+  };
+  const firstTask = startExclusiveImageRemoval(removals, "image-1", async () => {
+    calls += 1;
+    await new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+    throw new Error("temporary failure");
+  });
+  const duplicateTask = startExclusiveImageRemoval(removals, "image-1", async () => {
+    calls += 1;
+  });
+
+  expect(duplicateTask).toBe(firstTask);
+  expect(calls).toBe(0);
+  await Promise.resolve();
+  expect(calls).toBe(1);
+  releaseFirst();
+  await expect(firstTask).rejects.toThrow("temporary failure");
+  expect(removals.has("image-1")).toBe(false);
+
+  await startExclusiveImageRemoval(removals, "image-1", async () => {
+    calls += 1;
+  });
+  expect(calls).toBe(2);
 });
 
 test("document access parser accepts the installed Cloudinary private download URL shape", () => {

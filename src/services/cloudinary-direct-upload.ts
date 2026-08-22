@@ -5,6 +5,8 @@ export type SignedCloudinaryUploadConfig = {
   cloudName: string;
   folder: string;
   publicId: string;
+  reservedPublicId?: string;
+  reservationId?: string;
   resourceType: "image" | "auto";
   type?: "upload" | "authenticated";
   uploadUrl: string;
@@ -21,6 +23,8 @@ export type CloudinaryDirectUploadResponse = {
   bytes?: number;
   width?: number;
   height?: number;
+  version?: number;
+  signature?: string;
   resource_type?: string;
   error?: {
     message?: string;
@@ -64,7 +68,9 @@ export function uploadFileToCloudinary(
     formData.set("api_key", uploadConfig.apiKey);
     formData.set("timestamp", String(uploadConfig.timestamp));
     formData.set("signature", uploadConfig.signature);
-    formData.set("folder", uploadConfig.folder);
+    if (uploadConfig.folder.trim()) {
+      formData.set("folder", uploadConfig.folder);
+    }
     formData.set("public_id", uploadConfig.publicId);
     if (isSupportedCloudinaryDeliveryType(uploadConfig.type)) {
       formData.set("type", uploadConfig.type);
