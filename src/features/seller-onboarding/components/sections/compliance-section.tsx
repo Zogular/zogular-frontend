@@ -1,6 +1,7 @@
 import { ShieldCheck } from "lucide-react";
 import type { FieldErrors, UseFormRegister, UseFormWatch } from "react-hook-form";
 import { Input } from "@/components/ui/input";
+import { getSellerDocumentAccess } from "@/services/seller-document-uploads";
 import { sellerOnboardingClasses } from "../../constants/seller-onboarding-ui";
 import type { SellerOnboardingDocumentConfig, SellerOnboardingFormValues, SellerOnboardingViewModel } from "../../types/seller-onboarding.types";
 import { ApplicationSectionCard } from "../shared/application-section-card";
@@ -70,6 +71,10 @@ export function ComplianceSection({
                 error={uploadState?.error ?? documentErrors[document.key]}
                 disabled={disabled}
                 onSelectFile={(file) => onSelectDocument(document, file)}
+                onRequestPreviewUrl={async () => {
+                  const access = await getSellerDocumentAccess(document.documentType);
+                  return access.signedUrl;
+                }}
               />
             );
           })}

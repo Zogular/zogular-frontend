@@ -23,6 +23,7 @@ export type UploadTileProps = {
   error?: string;
   disabled?: boolean;
   onSelectFile?: (file: File | null) => void;
+  onRequestPreviewUrl?: () => Promise<string>;
 };
 
 export function UploadTile({
@@ -36,15 +37,45 @@ export function UploadTile({
   error,
   disabled = false,
   onSelectFile,
+  onRequestPreviewUrl,
 }: UploadTileProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const resolvedStatus = uploading ? "pending" : status;
   const locked = disabled || uploading;
 
   const openFilePicker = () => {
     if (locked) return;
     inputRef.current?.click();
+  };
+
+  const openPreview = async () => {
+    if (!url || previewLoading) return;
+    setPreviewError(null);
+
+    if (!onRequestPreviewUrl) {
+      setPreviewUrl(url);
+      setPreviewOpen(true);
+      return;
+    }
+
+    setPreviewLoading(true);
+    try {
+      const nextUrl = await onRequestPreviewUrl();
+      setPreviewUrl(nextUrl);
+      setPreviewOpen(true);
+    } catch (error) {
+      setPreviewError(
+        error instanceof Error && error.message.trim()
+          ? error.message
+          : "Document preview is not available right now. Please try again.",
+      );
+    } finally {
+      setPreviewLoading(false);
+    }
   };
 
   return (
@@ -79,6 +110,11 @@ export function UploadTile({
           {error}
         </p>
       ) : null}
+      {previewError ? (
+        <p className="mt-3 rounded-2xl bg-[#FBE9E4] px-3 py-2 text-xs font-bold leading-5 text-[#A5442E] break-words">
+          {previewError}
+        </p>
+      ) : null}
       <input
         ref={inputRef}
         type="file"
@@ -98,16 +134,17 @@ export function UploadTile({
             <>
               <button
                 type="button"
-                onClick={() => setPreviewOpen(true)}
-                className="inline-flex h-9 min-w-[82px] flex-1 items-center justify-center rounded-xl border border-[#D8C9B8] bg-[#FFFCF8] px-3 text-xs font-black text-[#1F1A14] hover:bg-white cursor-pointer"
+                onClick={openPreview}
+                disabled={previewLoading}
+                className="inline-flex min-h-11 min-w-[82px] flex-1 items-center justify-center rounded-xl border border-[#D8C9B8] bg-[#FFFCF8] px-3 py-2 text-xs font-black text-[#1F1A14] hover:bg-white disabled:cursor-wait disabled:opacity-70 cursor-pointer"
               >
-                <Eye className="mr-1.5 h-3.5 w-3.5" />
-                View
+                {previewLoading ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}
+                {previewLoading ? "Opening" : "View"}
               </button>
               <MediaPreviewModal
                 isOpen={previewOpen}
                 onClose={() => setPreviewOpen(false)}
-                url={url}
+                url={previewUrl}
                 title={title}
               />
             </>
@@ -118,7 +155,7 @@ export function UploadTile({
             disabled={locked}
             onClick={openFilePicker}
             className={cn(
-              "inline-flex h-9 min-w-[96px] flex-1 items-center justify-center rounded-xl border border-[#D8C9B8] bg-[#FFFCF8] px-3 text-xs font-black text-[#1F1A14] hover:bg-white",
+              "inline-flex min-h-11 min-w-[96px] flex-1 items-center justify-center rounded-xl border border-[#D8C9B8] bg-[#FFFCF8] px-3 py-2 text-xs font-black text-[#1F1A14] hover:bg-white",
               locked ? "opacity-60" : "cursor-pointer",
             )}
           >
