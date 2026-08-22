@@ -452,22 +452,76 @@ test("direct upload appends optional supported Cloudinary type and keeps old sig
   expect(isSupportedCloudinaryDeliveryType("private")).toBe(false);
 });
 
-test("seller document uploads require authenticated delivery only when the new type field is supplied", async () => {
+test("seller document uploads reserve, upload with authenticated delivery, then confirm before returning", async () => {
   const uploads: CapturedUpload[] = [];
   const restoreXhr = installMockXhr(uploads);
   const fetchMock = installMockFetch((url, init) => {
     if (url.pathname.endsWith("/auth/csrf-token")) return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
     if (url.pathname.endsWith("/vendor/uploads/seller-document/signature") && init?.body?.toString().includes("NRC_FRONT")) {
-      return jsonResponse({ status: "success", data: baseUploadConfig({ type: "authenticated" }) });
+      return jsonResponse({ status: "success", data: baseUploadConfig({
+        folder: "",
+        publicId: "zogular/seller-documents/seller-1/nrc-front-1",
+        reservedPublicId: "zogular/seller-documents/seller-1/nrc-front-1",
+        reservationId: "11111111-1111-4111-8111-111111111111",
+        type: "authenticated",
+      }) });
+    }
+    if (url.pathname.endsWith("/vendor/uploads/seller-document/confirm")) {
+      const body = JSON.parse(String(init?.body ?? "{}")) as Record<string, unknown>;
+      expect(body.reservationId).toBe("11111111-1111-4111-8111-111111111111");
+      expect(body.documentType).toBe("NRC_FRONT");
+      expect(body.publicId).toBe("zogular/seller-documents/seller-1/nrc-front-1");
+      expect(body.resourceType).toBe("image");
+      expect(body.deliveryType).toBe("authenticated");
+      expect(body.signature).toBe("cloudinary-response-signature");
+      return jsonResponse({
+        status: "success",
+        data: {
+          reservationId: "11111111-1111-4111-8111-111111111111",
+          documentType: "NRC_FRONT",
+          publicId: "zogular/seller-documents/seller-1/nrc-front-1",
+          url: "https://res.cloudinary.com/zogular/image/authenticated/v1/zogular/seller-documents/seller-1/nrc-front-1.jpg",
+          resourceType: "image",
+          type: "authenticated",
+        },
+      });
     }
     throw new Error(`Unexpected request ${url.pathname}`);
   });
 
   try {
     const uploaded = await uploadSellerDocument(new File(["x"], "nrc.jpg", { type: "image/jpeg" }), "NRC_FRONT");
-    expect(uploaded.publicId).toBe("zogular/test/file-1");
+    expect(uploaded.reservationId).toBe("11111111-1111-4111-8111-111111111111");
+    expect(uploaded.publicId).toBe("zogular/seller-documents/seller-1/nrc-front-1");
     expect(uploads[0].formData.get("type")).toBe("authenticated");
+    expect(uploads[0].formData.has("folder")).toBe(false);
     expect(fetchMock.requests).toContain("POST /api/v1/vendor/uploads/seller-document/signature");
+    expect(fetchMock.requests).toContain("POST /api/v1/vendor/uploads/seller-document/confirm");
+  } finally {
+    fetchMock.restore();
+    restoreXhr();
+  }
+});
+
+test("seller document upload rejects partial reservation contracts before Cloudinary upload", async () => {
+  const uploads: CapturedUpload[] = [];
+  const restoreXhr = installMockXhr(uploads);
+  const fetchMock = installMockFetch((url) => {
+    if (url.pathname.endsWith("/auth/csrf-token")) return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
+    if (url.pathname.endsWith("/vendor/uploads/seller-document/signature")) {
+      return jsonResponse({ status: "success", data: baseUploadConfig({
+        type: "authenticated",
+        reservedPublicId: "zogular/seller-documents/seller-1/nrc-front-1",
+      }) });
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  });
+
+  try {
+    await expect(uploadSellerDocument(new File(["x"], "nrc.jpg", { type: "image/jpeg" }), "NRC_FRONT")).rejects.toThrow(
+      "Document upload is not available right now. Please try again shortly.",
+    );
+    expect(uploads).toHaveLength(0);
   } finally {
     fetchMock.restore();
     restoreXhr();
@@ -857,7 +911,9 @@ test.describe("browser QA for seller/admin document previews", () => {
   test.skip(!BROWSER_QA_ENABLED, "Set CLOUDINARY_PACKAGE1_BROWSER=1 and TEST_BASE_URL to run browser QA.");
 
   for (const viewport of [
+    { width: 320, height: 568 },
     { width: 390, height: 844 },
+    { width: 768, height: 1024 },
     { width: 1440, height: 900 },
   ]) {
     test(`seller document preview uses fresh access and handles failures at ${viewport.width}px`, async ({ browser }, testInfo) => {

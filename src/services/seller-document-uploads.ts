@@ -14,6 +14,7 @@ type SellerDocumentSignatureResponse = {
 
 export type UploadedSellerDocument = {
   url: string;
+  reservationId: string | null;
   publicId: string;
   format: string | null;
   bytes: number | null;
@@ -38,6 +39,18 @@ export type SellerDocumentAccess = {
 type SellerDocumentAccessResponse = {
   status: string;
   data: unknown;
+};
+
+type SellerDocumentConfirmResponse = {
+  status: string;
+  data: {
+    reservationId: string;
+    documentType: SellerDocumentType;
+    publicId: string;
+    url: string;
+    resourceType: string;
+    type: "authenticated";
+  };
 };
 
 export const SELLER_DOCUMENT_ACCESS_ERROR =
@@ -215,9 +228,15 @@ function toUploadMessage(error: unknown): string {
 }
 
 function assertSellerDocumentDeliveryType(uploadConfig: SignedCloudinaryUploadConfig) {
-  if (uploadConfig.type === undefined) return;
-
   if (!isSupportedCloudinaryDeliveryType(uploadConfig.type) || uploadConfig.type !== "authenticated") {
+    throw new Error("Document upload is not available right now. Please try again shortly.");
+  }
+}
+
+function assertCompleteSellerDocumentReservation(uploadConfig: SignedCloudinaryUploadConfig) {
+  const hasReservationId = Boolean(uploadConfig.reservationId?.trim());
+  const hasReservedPublicId = Boolean(uploadConfig.reservedPublicId?.trim());
+  if (!hasReservationId || !hasReservedPublicId || uploadConfig.reservedPublicId !== uploadConfig.publicId) {
     throw new Error("Document upload is not available right now. Please try again shortly.");
   }
 }
@@ -260,6 +279,7 @@ export async function uploadSellerDocument(
   try {
     const uploadConfig = await getSellerDocumentUploadSignature(documentType);
     assertSellerDocumentDeliveryType(uploadConfig);
+    assertCompleteSellerDocumentReservation(uploadConfig);
 
     if (file.size > uploadConfig.maxFileSize) {
       throw new Error("This file is too large. Use a file under 5MB.");
@@ -271,13 +291,44 @@ export async function uploadSellerDocument(
 
     const payload = await uploadFileToCloudinary(uploadConfig, file, onProgress);
 
-    if (!payload.secure_url || !payload.public_id) {
+    if (!payload.secure_url || !payload.public_id || !payload.version || !payload.signature || !payload.resource_type) {
       throw new Error("Upload could not be completed. Please try again.");
     }
 
+    const confirmed = await apiClient<SellerDocumentConfirmResponse>(
+      "/vendor/uploads/seller-document/confirm",
+      {
+        method: "POST",
+        csrf: true,
+        body: JSON.stringify({
+          reservationId: uploadConfig.reservationId,
+          documentType,
+          publicId: payload.public_id,
+          secureUrl: payload.secure_url,
+          resourceType: payload.resource_type,
+          deliveryType: uploadConfig.type,
+          version: payload.version,
+          signature: payload.signature,
+          format: payload.format ?? null,
+          bytes: payload.bytes ?? null,
+        }),
+      },
+    );
+    if (
+      confirmed.status !== "success" ||
+      confirmed.data.reservationId !== uploadConfig.reservationId ||
+      confirmed.data.publicId !== uploadConfig.reservedPublicId ||
+      confirmed.data.type !== "authenticated" ||
+      confirmed.data.resourceType !== payload.resource_type ||
+      confirmed.data.url !== payload.secure_url
+    ) {
+      throw new Error("Upload could not be confirmed. Please try again.");
+    }
+
     return {
-      url: payload.secure_url,
-      publicId: payload.public_id,
+      url: confirmed.data.url,
+      reservationId: confirmed.data.reservationId,
+      publicId: confirmed.data.publicId,
       format: payload.format?.trim() || null,
       bytes: typeof payload.bytes === "number" ? payload.bytes : null,
       width: typeof payload.width === "number" ? payload.width : null,
