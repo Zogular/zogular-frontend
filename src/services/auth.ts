@@ -368,6 +368,7 @@ export async function login(input: LoginInput): Promise<AuthSession> {
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.login, {
     method: "POST",
     authMode: "omit",
+    csrf: true,
     body: JSON.stringify(input),
   });
 

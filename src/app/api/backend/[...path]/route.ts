@@ -11,6 +11,12 @@ function getBaseUrl(isAdmin: boolean): string {
 
 const CSRF_ENDPOINT = "/auth/csrf-token";
 const STATE_CHANGING_METHODS = new Set(["POST", "PUT", "PATCH", "DELETE"]);
+const CSRF_COOKIE_NAME = "_csrf";
+const CSRF_HEADER_NAMES = ["x-csrf-token", "csrf-token", "x-xsrf-token"];
+const CSRF_PREPARE_ERROR_RESPONSE = {
+  status: "fail",
+  message: "We could not prepare this secure request. Please try again.",
+};
 
 // These routes must NEVER receive auth cookies — forwarding a stale
 // accessToken causes the backend jwt.verify() to throw "jwt expired"
@@ -68,7 +74,29 @@ function extractCsrfToken(payload: unknown, headers: Headers): string | undefine
   return typeof token === "string" && token.trim() ? token : undefined;
 }
 
-async function getBackendCsrfHeaders(requestCookie: string | null, isAdmin: boolean): Promise<Record<string, string>> {
+function hasCookie(cookieHeader: string | null, name: string): boolean {
+  return Boolean(cookieHeader?.split(";").some((cookie) => cookie.trim().startsWith(`${name}=`)));
+}
+
+function getIncomingCsrfHeader(request: Request): string | null {
+  for (const name of CSRF_HEADER_NAMES) {
+    const value = request.headers.get(name);
+    if (value?.trim()) return value;
+  }
+
+  return null;
+}
+
+function hasUsableIncomingCsrf(request: Request, requestCookie: string | null): boolean {
+  return Boolean(getIncomingCsrfHeader(request) && hasCookie(requestCookie, CSRF_COOKIE_NAME));
+}
+
+type BackendCsrfHeaders = {
+  token: string;
+  cookie: string;
+};
+
+async function getBackendCsrfHeaders(requestCookie: string | null, isAdmin: boolean): Promise<BackendCsrfHeaders | null> {
   const response = await fetch(`${getBaseUrl(isAdmin).replace(/\/$/, "")}${CSRF_ENDPOINT}`, {
     method: "GET",
     headers: {
@@ -79,16 +107,15 @@ async function getBackendCsrfHeaders(requestCookie: string | null, isAdmin: bool
   });
   const payload = await parseBackendResponse(response);
 
-  if (!response.ok) return {};
+  if (!response.ok) return null;
 
   const token = extractCsrfToken(payload, response.headers);
   const csrfCookie = toCookieHeader(getSetCookieHeaders(response.headers));
   const cookie = [requestCookie, csrfCookie].filter(Boolean).join("; ");
 
-  return {
-    ...(token ? { "X-CSRF-Token": token } : {}),
-    ...(cookie ? { Cookie: cookie } : {}),
-  };
+  if (!token || !hasCookie(cookie || null, CSRF_COOKIE_NAME)) return null;
+
+  return { token, cookie };
 }
 
 function copyRequestHeaders(request: Request): Headers {
@@ -155,9 +182,23 @@ async function handler(request: Request, context: RouteContext) {
   }
 
   if (STATE_CHANGING_METHODS.has(method)) {
-    const csrfHeaders = await getBackendCsrfHeaders(requestCookie, isAdminBackendPath);
-    for (const [key, value] of Object.entries(csrfHeaders)) {
-      headers.set(key, value);
+    if (hasUsableIncomingCsrf(request, requestCookie)) {
+      const csrfToken = getIncomingCsrfHeader(request);
+      if (csrfToken) headers.set("X-CSRF-Token", csrfToken);
+    } else {
+      let csrfHeaders: BackendCsrfHeaders | null = null;
+      try {
+        csrfHeaders = await getBackendCsrfHeaders(requestCookie, isAdminBackendPath);
+      } catch {
+        csrfHeaders = null;
+      }
+
+      if (!csrfHeaders) {
+        return NextResponse.json(CSRF_PREPARE_ERROR_RESPONSE, { status: 503 });
+      }
+
+      headers.set("X-CSRF-Token", csrfHeaders.token);
+      headers.set("Cookie", csrfHeaders.cookie);
     }
   }
 
