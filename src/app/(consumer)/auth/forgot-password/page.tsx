@@ -27,7 +27,7 @@ function ForgotPasswordContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const nextPath = sanitizeInternalNextPath(searchParams.get("next"));
-  const loginPath = nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+  const loginPath = nextPath?.startsWith("/admin") ? "/admin/login" : nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
   const loginHref = appendNextPath(loginPath, nextPath);
   const [email, setEmail] = useState(searchParams.get("email") ?? "");
   const [isSubmitting, setIsSubmitting] = useState(false);

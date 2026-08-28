@@ -81,7 +81,7 @@ function ResetPasswordContent() {
         confirmPassword,
         next: intent.nextPath,
       });
-      const loginPath = intent.nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+      const loginPath = intent.nextPath?.startsWith("/admin") ? "/admin/login" : intent.nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
       router.push(result.nextPath ?? appendNextPath(loginPath, intent.nextPath));
     } catch (caughtError) {
       setError(getPasswordRecoveryErrorMessage(caughtError, "reset"));

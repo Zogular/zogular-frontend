@@ -560,8 +560,9 @@ export async function verifyEmailToken(token: string): Promise<AuthActionResult>
 export async function resendVerificationEmail(
   email: string,
   nextPath?: string | null,
+  options: { rememberEmail?: boolean } = {},
 ): Promise<AuthActionResult> {
-  storeLastAuthEmail(email);
+  if (options.rememberEmail !== false) storeLastAuthEmail(email);
   const safeNextPath = sanitizeInternalNextPath(nextPath);
 
   const payload = await apiClient<unknown>(AUTH_ENDPOINTS.resendVerification, {
@@ -641,7 +642,11 @@ export async function resetPassword(
 
   const nextPath = intent.nextPath;
   clearPasswordRecoveryState();
-  const loginPath = nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login";
+  const loginPath = nextPath?.startsWith("/admin")
+    ? "/admin/login"
+    : nextPath?.startsWith("/seller")
+      ? "/seller/login"
+      : "/auth/login";
 
   return {
     success: true,

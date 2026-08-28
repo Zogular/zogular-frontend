@@ -36,7 +36,7 @@ test("registration no longer routes through fake permissions or persists no-op p
 });
 
 test("email verification preserves safe next intent without putting mailbox context in check-email URLs", () => {
-  expect(authServiceSource).toContain('appendSafeNext(\n      "/auth/check-email"');
+  expect(authServiceSource).toMatch(/appendSafeNext\(\s*"\/auth\/check-email"/);
   expect(authServiceSource).not.toMatch(/\/auth\/check-email\?email=/);
   expect(checkEmailSource).not.toContain('searchParams.get("email")');
   expect(checkEmailSource).toContain("getStoredLastAuthEmail");

@@ -168,7 +168,10 @@ test("recovery hops use fixed routes while preserving only sanitized stored next
   expect(authSource).not.toMatch(/verify-code\?email|reset-password\?email/);
   expect(authSource).toContain('nextPath: "/auth/verify-code"');
   expect(authSource).toContain('nextPath: "/auth/reset-password"');
-  expect(authSource).toContain('nextPath?.startsWith("/seller") ? "/seller/login" : "/auth/login"');
+  expect(authSource).toContain('nextPath?.startsWith("/admin")');
+  expect(authSource).toContain('nextPath?.startsWith("/seller")');
+  expect(authSource).toContain('"/seller/login"');
+  expect(authSource).toContain('"/auth/login"');
 });
 
 test("masked recovery destination never renders the full mailbox", () => {

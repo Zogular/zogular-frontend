@@ -14,6 +14,7 @@ const ADMIN_LOGOUT_ENDPOINT =
 const ADMIN_SESSION_ENDPOINT =
   process.env.ADMIN_AUTH_SESSION_ENDPOINT ?? "/user/me";
 const CSRF_ENDPOINT = "/auth/csrf-token";
+const CHANGE_TEMPORARY_PASSWORD_ENDPOINT = "/user/change-temporary-password";
 
 const BACKEND_ADMIN_ROLE_TO_UI_ROLE: Record<string, AdminRole> = {
   SUPER_ADMIN: "super_admin",
@@ -37,6 +38,7 @@ export const ADMIN_BACKEND_ENDPOINTS = {
   login: ADMIN_LOGIN_ENDPOINT,
   logout: ADMIN_LOGOUT_ENDPOINT,
   session: ADMIN_SESSION_ENDPOINT,
+  changeTemporaryPassword: CHANGE_TEMPORARY_PASSWORD_ENDPOINT,
 } as const;
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -181,6 +183,11 @@ export function getBackendMessage(payload: unknown, fallback: string): string {
   return getStringByKeys(records, ["message", "detail", "error"]) ?? fallback;
 }
 
+export function getBackendCode(payload: unknown): string | undefined {
+  const records = collectCandidateRecords(payload);
+  return getStringByKeys(records, ["code", "errorCode", "reason", "action"])?.trim().toUpperCase();
+}
+
 function extractCsrfToken(payload: unknown, headers: Headers): string | undefined {
   const records = collectCandidateRecords(payload);
   return (
@@ -229,12 +236,12 @@ export async function getBackendCsrfHeaders(): Promise<Record<string, string>> {
   const payload = await parseBackendResponse(response);
 
   if (!response.ok) {
-    throw new Error(getBackendMessage(payload, "Could not prepare a secure admin request."));
+    throw new Error("Could not prepare a secure admin request.");
   }
 
   const token = extractCsrfToken(payload, response.headers);
   if (!token) {
-    throw new Error("Backend did not return a CSRF token.");
+    throw new Error("Could not prepare a secure admin request.");
   }
 
   const cookieHeader = toCookieHeader(getSetCookieHeaders(response.headers));
