@@ -38,6 +38,12 @@ let csrfTokenPromise: Promise<string> | null = null;
 let authRefreshPromise: Promise<boolean> | null = null;
 let authSessionRevision = 0;
 
+export function resetApiClientSecurityStateForTests(): void {
+  csrfTokenPromise = null;
+  authRefreshPromise = null;
+  authSessionRevision = 0;
+}
+
 function buildUrl(endpoint: string, query?: FetchOptions["query"]): string {
   const base =
     typeof window !== "undefined" && BASE_URL.startsWith("/")
@@ -109,7 +115,7 @@ function extractCsrfToken(payload: unknown): string {
   const token = data?.csrfToken ?? root?.csrfToken;
 
   if (typeof token !== "string" || !token.trim()) {
-    throw new ApiError("Backend did not return a CSRF token.", 500, payload);
+    throw new ApiError("Failed to prepare a secure request.", 500, payload);
   }
 
   return token;
@@ -146,30 +152,34 @@ async function fetchWithTimeout(
 async function requestCsrfToken(timeout: number): Promise<string> {
   if (!csrfTokenPromise) {
     csrfTokenPromise = (async () => {
-      const headers = new Headers();
-      headers.set("Accept", "application/json");
+      try {
+        const headers = new Headers();
+        headers.set("Accept", "application/json");
 
-      const response = await fetchWithTimeout(
-        buildUrl("/auth/csrf-token"),
-        { method: "GET", headers },
-        timeout,
-      );
-
-      const contentType = response.headers.get("content-type");
-      const payload = isJsonResponse(contentType)
-        ? await response.json()
-        : await response.text();
-
-      if (!response.ok) {
-        csrfTokenPromise = null;
-        throw new ApiError(
-          extractMessage(payload, "Failed to prepare a secure request."),
-          response.status,
-          payload,
+        const response = await fetchWithTimeout(
+          buildUrl("/auth/csrf-token"),
+          { method: "GET", headers },
+          timeout,
         );
-      }
 
-      return extractCsrfToken(payload);
+        const contentType = response.headers.get("content-type");
+        const payload = isJsonResponse(contentType)
+          ? await response.json()
+          : await response.text();
+
+        if (!response.ok) {
+          throw new ApiError(
+            "Failed to prepare a secure request.",
+            response.status,
+            payload,
+          );
+        }
+
+        return extractCsrfToken(payload);
+      } catch (error) {
+        csrfTokenPromise = null;
+        throw error;
+      }
     })();
   }
 
