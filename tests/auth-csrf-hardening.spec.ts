@@ -303,7 +303,7 @@ test("auth CSRF hardening stays in the approved files and direct-backend mode is
   const apiSource = fs.readFileSync(path.resolve("src/services/api.ts"), "utf8");
   const proxySource = fs.readFileSync(path.resolve("src/app/api/backend/[...path]/route.ts"), "utf8");
 
-  expect(authSource).toContain('csrf: true,\n    body: JSON.stringify(input)');
+  expect(authSource).toMatch(/csrf:\s*true,\s*body:\s*JSON\.stringify\(input\)/);
   expect(apiSource).toContain("csrfTokenPromise = null;");
   expect(proxySource).toContain("CSRF_PREPARE_ERROR_RESPONSE");
   expect(proxySource).toContain("hasUsableIncomingCsrf(request, requestCookie)");
