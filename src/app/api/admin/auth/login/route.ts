@@ -10,10 +10,12 @@ import {
   buildBackendUrl,
   extractAdminSessionToken,
   extractSessionTokenFromSetCookie,
+  getBackendCode,
   getBackendCsrfHeaders,
   getBackendMessage,
   parseBackendResponse,
 } from "@/services/admin/backend-session";
+import { sanitizeAdminNextPath } from "@/services/admin/verification-recovery";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -26,10 +28,22 @@ function asNonEmptyString(value: unknown): string | undefined {
   return normalized.length > 0 ? normalized : undefined;
 }
 
+function isSafeTemporaryPasswordUserId(value: unknown): value is string {
+  return typeof value === "string" && /^[A-Za-z0-9_-]{8,128}$/.test(value);
+}
+
+function extractChangePasswordUserId(payload: unknown): string | null {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  const userId = data?.userId ?? root?.userId;
+  return isSafeTemporaryPasswordUserId(userId) ? userId : null;
+}
+
 export async function POST(request: Request) {
   const body = await request.json().catch(() => null);
   const email = asNonEmptyString(asRecord(body)?.email)?.toLowerCase();
   const password = asNonEmptyString(asRecord(body)?.password);
+  const nextPath = sanitizeAdminNextPath(asNonEmptyString(asRecord(body)?.nextPath));
 
   if (!email || !password) {
     return NextResponse.json(
@@ -41,12 +55,10 @@ export async function POST(request: Request) {
   let csrfHeaders: Record<string, string>;
   try {
     csrfHeaders = await getBackendCsrfHeaders();
-  } catch (error) {
+  } catch {
     return NextResponse.json(
       {
-        message: error instanceof Error
-          ? error.message
-          : "Could not prepare a secure admin request.",
+        message: "Could not prepare a secure admin sign in. Please try again.",
       },
       { status: 502 },
     );
@@ -64,9 +76,32 @@ export async function POST(request: Request) {
   });
   const payload = await parseBackendResponse(backendResponse);
 
+  if (
+    backendResponse.ok &&
+    asRecord(payload)?.status === "pending" &&
+    getBackendCode(payload) === "CHANGE_PASSWORD_REQUIRED"
+  ) {
+    const userId = extractChangePasswordUserId(payload);
+    if (!userId) {
+      return NextResponse.json(
+        { message: "Admin sign-in needs a password update. Please try again." },
+        { status: 502 },
+      );
+    }
+
+    return NextResponse.json({
+      success: false,
+      status: "pending",
+      action: "CHANGE_PASSWORD_REQUIRED",
+      message: "Set a private password to continue.",
+      userId,
+    });
+  }
+
   if (!backendResponse.ok) {
     return NextResponse.json(
       {
+        code: getBackendCode(payload),
         message: getBackendMessage(
           payload,
           "Admin authentication failed. Check your credentials and try again.",
@@ -98,7 +133,7 @@ export async function POST(request: Request) {
   const response = NextResponse.json({
     success: true,
     message: "Admin session established.",
-    nextPath: ADMIN_DASHBOARD_PATH,
+    nextPath: nextPath ?? ADMIN_DASHBOARD_PATH,
     identity,
   });
 

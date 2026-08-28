@@ -5,10 +5,17 @@ import { AlertCircle, CheckCircle2, Loader2, X } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
+import { ApiError } from "@/services/api";
 import { BrandLogo } from "@/components/brand/BrandLogo";
 import { verifyEmailToken } from "@/services/auth";
 import type { AuthActionResult } from "@/types/auth";
 import { appendNextPath, getAuthRedirectIntent, sanitizeInternalNextPath } from "@/services/auth-intent";
+import {
+  clearAdminVerificationRecoveryContext,
+  getAdminLoginPath,
+  getAdminVerificationRecoveryPath,
+  sanitizeAdminNextPath,
+} from "@/services/admin/verification-recovery";
 
 type VerifyState = "loading" | "success" | "error";
 
@@ -27,19 +34,65 @@ function verifyEmailTokenOnce(token: string): Promise<AuthActionResult> {
   return request;
 }
 
+function getErrorCode(payload: unknown): string | null {
+  const queue: unknown[] = [payload];
+  const seen = new Set<Record<string, unknown>>();
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object" || Array.isArray(current)) continue;
+    const record = current as Record<string, unknown>;
+    if (seen.has(record)) continue;
+    seen.add(record);
+    for (const key of ["code", "errorCode", "reason", "action"]) {
+      const value = record[key];
+      if (typeof value === "string" && value.trim()) return value.trim().toUpperCase();
+    }
+    for (const key of ["data", "payload", "result", "error"]) {
+      if (key in record) queue.push(record[key]);
+    }
+  }
+  return null;
+}
+
+function getVerificationFailureMessage(error: unknown): string {
+  if (error instanceof ApiError) {
+    const code = getErrorCode(error.details);
+    if (code === "VERIFICATION_TOKEN_EXPIRED") {
+      return "This verification link has expired. Request a new link and try again.";
+    }
+    if (
+      code === "VERIFICATION_TOKEN_REQUIRED" ||
+      code === "VERIFICATION_TOKEN_INVALID" ||
+      error.status === 400
+    ) {
+      return "This verification link is invalid or has already been used.";
+    }
+    if (error.status === 429) {
+      return "Too many attempts. Wait a moment, then try again.";
+    }
+  }
+
+  return "We could not verify this email right now. Try again.";
+}
+
 export default function VerifyEmailPage() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
-  const nextPath = sanitizeInternalNextPath(searchParams.get("next")) ?? getAuthRedirectIntent();
+  const rawNextPath = searchParams.get("next");
+  const adminNextPath = sanitizeAdminNextPath(rawNextPath);
+  const nextPath = adminNextPath ?? sanitizeInternalNextPath(rawNextPath) ?? getAuthRedirectIntent();
   const [state, setState] = useState<VerifyState>("loading");
   const [message, setMessage] = useState("Verifying your email...");
   const verifiedTokenRef = useRef<string | null>(null);
 
-  // Determine login href based on whether the next path is seller-scoped
+  const isAdminFlow = Boolean(adminNextPath);
   const isSellerFlow = nextPath?.startsWith("/seller");
-  const loginHref = isSellerFlow
+  const loginHref = isAdminFlow
+    ? getAdminLoginPath(adminNextPath)
+    : isSellerFlow
     ? appendNextPath("/seller/login", nextPath)
     : appendNextPath("/auth/login", nextPath);
+  const adminRecoveryHref = isAdminFlow ? getAdminVerificationRecoveryPath(adminNextPath) : null;
 
   useEffect(() => {
     let active = true;
@@ -61,12 +114,13 @@ export default function VerifyEmailPage() {
       try {
         const result = await verifyEmailTokenOnce(token);
         if (!active) return;
+        if (isAdminFlow) clearAdminVerificationRecoveryContext();
         setState("success");
         setMessage(result.message);
       } catch (err) {
         if (!active) return;
         setState("error");
-        setMessage(err instanceof Error ? err.message : "We could not verify this email.");
+        setMessage(getVerificationFailureMessage(err));
       }
     };
 
@@ -75,7 +129,7 @@ export default function VerifyEmailPage() {
     return () => {
       active = false;
     };
-  }, [token]);
+  }, [isAdminFlow, token]);
 
   const isSuccess = state === "success";
   const isLoading = state === "loading";
@@ -93,6 +147,11 @@ export default function VerifyEmailPage() {
               <BrandLogo variant="dark" imageClassName="h-9 w-auto drop-shadow-md" priority />
             </div>
             <div className="space-y-3">
+              {isAdminFlow ? (
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/25 bg-emerald-400/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
+                  Admin
+                </div>
+              ) : null}
               {isSellerFlow ? (
                 <div className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300/25 bg-emerald-400/12 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-emerald-200">
                   Seller Portal
@@ -114,12 +173,19 @@ export default function VerifyEmailPage() {
               className="h-11 w-full rounded-xl border border-[#009E49]/50 bg-[#009E49]/90 text-base font-extrabold text-white shadow-[0_0_15px_rgba(0,158,73,0.3)] backdrop-blur-md transition-all hover:scale-[1.02] hover:bg-[#009E49]"
             >
               {isSuccess
-                ? isSellerFlow
+                ? isAdminFlow
+                  ? "Continue to admin sign in"
+                  : isSellerFlow
                   ? "Continue to seller sign in"
                   : "Continue to login"
                 : "Back to login"}
             </Button>
           </Link>
+          {adminRecoveryHref && !isLoading && !isSuccess ? (
+            <Link href={adminRecoveryHref} className="mt-4 block rounded-sm text-center text-sm font-bold text-zinc-300 outline-none hover:text-white focus-visible:ring-2 focus-visible:ring-white">
+              Request a new admin verification link
+            </Link>
+          ) : null}
         </div>
       </div>
 
