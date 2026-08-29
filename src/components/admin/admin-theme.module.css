@@ -1,0 +1,102 @@
+.adminScope {
+  --admin-canvas-warm: #efe5d6;
+  --admin-canvas-depth: #e4d4bf;
+  --admin-surface-cream: #fff8ec;
+  --admin-surface-mist: #f6eedf;
+  --admin-ink: #171a16;
+  --admin-ink-soft: #5f625a;
+  --admin-canopy: #075b36;
+  --admin-canopy-deep: #063b29;
+  --admin-ember: #d96a1f;
+  --admin-escalation: #b83b32;
+  --admin-copper-muted: #b88746;
+  color: var(--admin-ink);
+  color-scheme: light;
+}
+
+.tactileSurface {
+  border: 1px solid color-mix(in srgb, var(--admin-copper-muted) 30%, transparent);
+  box-shadow:
+    inset 0 1px 0 rgb(255 248 236 / 88%),
+    0 16px 36px rgb(6 59 41 / 7%);
+}
+
+.darkAnchor {
+  border: 1px solid rgb(255 248 236 / 12%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 248 236 / 10%),
+    0 18px 38px rgb(6 59 41 / 16%);
+}
+
+.navItem {
+  color: rgb(255 248 236 / 72%);
+}
+
+.navItem:hover {
+  background: rgb(255 248 236 / 8%);
+  color: var(--admin-surface-cream);
+}
+
+.navActive {
+  border: 1px solid rgb(255 248 236 / 16%);
+  background: rgb(255 248 236 / 12%);
+  box-shadow:
+    inset 0 1px 0 rgb(255 248 236 / 13%),
+    inset 3px 0 0 var(--admin-ember);
+  color: var(--admin-surface-cream);
+  backdrop-filter: blur(8px);
+}
+
+.mobileDrawer {
+  backface-visibility: hidden;
+  will-change: transform, opacity;
+}
+
+:global(body):has(.mobileDrawer) :global([data-slot="sheet-overlay"]) {
+  background: rgb(6 59 41 / 18%);
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  will-change: opacity;
+}
+
+.activityRail {
+  position: relative;
+  overflow: hidden;
+}
+
+.activityCursor {
+  position: absolute;
+  inset-block: 0;
+  left: 0;
+  width: 18%;
+  border-radius: inherit;
+  background: var(--admin-surface-cream);
+  box-shadow: 0 0 14px rgb(255 248 236 / 70%);
+  animation: admin-activity-scan 1.55s ease-in-out infinite alternate;
+  will-change: transform;
+}
+
+@keyframes admin-activity-scan {
+  from {
+    transform: translate3d(0, 0, 0);
+  }
+  to {
+    transform: translate3d(455%, 0, 0);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mobileDrawer,
+  :global(body):has(.mobileDrawer) :global([data-slot="sheet-overlay"]) {
+    animation: none !important;
+    transition: none !important;
+    will-change: auto;
+  }
+
+  .activityCursor {
+    width: 32%;
+    animation: none;
+    transform: translate3d(106%, 0, 0);
+    will-change: auto;
+  }
+}

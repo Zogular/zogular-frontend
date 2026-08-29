@@ -1,22 +1,42 @@
 "use client";
 
-import { useEffect, useState, createContext, useContext } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Store, Package, LifeBuoy, LogOut, Menu, X, Sparkles, FolderTree,
-  Truck, LayoutDashboard, Users, ShieldCheck,
+  FolderTree,
+  LayoutDashboard,
+  LifeBuoy,
+  LogOut,
+  Menu,
+  Package,
+  ShieldCheck,
+  Store,
+  Truck,
+  Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { BrandLogo } from "@/components/brand/BrandLogo";
+import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
-import type { AdminIdentity } from "@/services/admin/session";
-import type { Permission } from "@/services/rbac";
+import { logoutAdmin } from "@/services/admin/auth";
 import {
   adminIdentityHasPermission,
   getAdminInitials,
+  type AdminIdentity,
 } from "@/services/admin/session";
-import { logoutAdmin } from "@/services/admin/auth";
+import type { Permission } from "@/services/rbac";
+import theme from "@/components/admin/admin-theme.module.css";
 
 export const AdminIdentityContext = createContext<AdminIdentity | null>(null);
 
@@ -24,21 +44,145 @@ export function useAdminIdentity() {
   return useContext(AdminIdentityContext);
 }
 
-type NavItem = { name: string; href: string; icon: React.ComponentType<{ className?: string }>; permission: Permission; pending?: boolean };
+export interface AdminNavItem {
+  name: string;
+  href: string;
+  icon: React.ComponentType<{ className?: string }>;
+  permission: Permission;
+}
 
-const NAV_ITEMS: NavItem[] = [
-  { name: "Dashboard", href: "/admin/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
-  { name: "Sellers CRM", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
-  { name: "Buyers", href: "/admin/buyers", icon: Users, permission: "view_buyers" },
-  { name: "Master Catalog", href: "/admin/products", icon: Package, permission: "view_products" },
-  { name: "Order Queue", href: "/admin/orders", icon: Truck, permission: "view_orders" },
+export const ADMIN_NAV_ITEMS: readonly AdminNavItem[] = [
+  { name: "Overview", href: "/admin/dashboard", icon: LayoutDashboard, permission: "view_dashboard" },
+  { name: "Seller Management", href: "/admin/sellers", icon: Store, permission: "view_sellers" },
+  { name: "Customer Management", href: "/admin/buyers", icon: Users, permission: "view_buyers" },
+  { name: "Products & Review", href: "/admin/products", icon: Package, permission: "view_products" },
+  { name: "Orders", href: "/admin/orders", icon: Truck, permission: "view_orders" },
   { name: "Categories", href: "/admin/categories", icon: FolderTree, permission: "manage_content" },
-  { name: "Support Hub", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
-  { name: "Access Control", href: "/admin/access", icon: ShieldCheck, permission: "manage_admins" },
+  { name: "Support", href: "/admin/support", icon: LifeBuoy, permission: "view_support_tickets" },
+  { name: "Admins & Roles", href: "/admin/access", icon: ShieldCheck, permission: "manage_admins" },
 ];
 
+const ADMIN_DESKTOP_MEDIA_QUERY = "(min-width: 64rem)";
+
 function getAdminPageTitle(pathname: string) {
-  return [...NAV_ITEMS].sort((a, b) => b.href.length - a.href.length).find((item) => pathname === item.href || pathname.startsWith(`${item.href}/`))?.name ?? "Admin";
+  return [...ADMIN_NAV_ITEMS]
+    .sort((left, right) => right.href.length - left.href.length)
+    .find(
+      (item) =>
+        pathname === item.href || pathname.startsWith(`${item.href}/`),
+    )?.name ?? "Admin";
+}
+
+function formatRole(role: string) {
+  return role
+    .split("_")
+    .filter(Boolean)
+    .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+    .join(" ");
+}
+
+function AdminNavigation({
+  items,
+  pathname,
+  onNavigate,
+}: {
+  items: readonly AdminNavItem[];
+  pathname: string;
+  onNavigate?: () => void;
+}) {
+  return (
+    <nav aria-label="Admin navigation" className="min-h-0 flex-1 overflow-y-auto px-3 py-4">
+      <ul className="space-y-1">
+        {items.map((item) => {
+          const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+          return (
+            <li key={item.href}>
+              <Link
+                href={item.href}
+                prefetch={false}
+                aria-current={active ? "page" : undefined}
+                onClick={onNavigate}
+                className={cn(
+                  "flex min-h-11 items-center gap-3 rounded-xl px-3 py-2 text-sm font-medium outline-none transition-[background-color,color,box-shadow] focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)] focus-visible:ring-offset-2 focus-visible:ring-offset-[var(--admin-canopy-deep)] motion-reduce:transition-none",
+                  active
+                    ? theme.navActive
+                    : theme.navItem,
+                )}
+              >
+                <item.icon
+                  className={cn(
+                    "size-4 shrink-0",
+                    active
+                      ? "text-[var(--admin-ember)]"
+                      : "text-[color:rgba(255,248,236,0.46)]",
+                  )}
+                />
+                <span className="min-w-0 flex-1">{item.name}</span>
+              </Link>
+            </li>
+          );
+        })}
+      </ul>
+    </nav>
+  );
+}
+
+function AdminAccount({ identity }: { identity: AdminIdentity }) {
+  return (
+    <div className="border-t border-[color:rgba(255,248,236,0.12)] p-4">
+      <div className="flex items-center gap-3">
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-xl border border-[color:rgba(255,248,236,0.2)] bg-[var(--admin-copper-muted)] text-sm font-bold text-[var(--admin-ink)] shadow-[inset_0_1px_0_rgba(255,248,236,0.45)]">
+          {getAdminInitials(identity.name)}
+        </div>
+        <div className="min-w-0 flex-1">
+          <p className="truncate text-sm font-semibold text-[var(--admin-surface-cream)]">{identity.name}</p>
+          <p className="truncate text-xs text-[color:rgba(255,248,236,0.62)]">{formatRole(identity.claims.role)}</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function AdminSidebarContent({
+  identity,
+  items,
+  pathname,
+  onNavigate,
+  mobile,
+}: {
+  identity: AdminIdentity;
+  items: readonly AdminNavItem[];
+  pathname: string;
+  onNavigate?: () => void;
+  mobile?: boolean;
+}) {
+  return (
+    <div className="flex h-full min-h-0 flex-col bg-[var(--admin-canopy-deep)] text-[var(--admin-surface-cream)]">
+      <div className="relative flex min-h-16 shrink-0 items-center justify-between border-b border-[color:rgba(255,248,236,0.12)] px-4 before:absolute before:inset-y-4 before:left-0 before:w-1 before:rounded-r-full before:bg-[var(--admin-ember)]">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <BrandLogo variant="dark" imageClassName="h-7 w-auto" priority />
+          <span className="rounded-md border border-[color:rgba(184,135,70,0.55)] bg-[color:rgba(184,135,70,0.13)] px-1.5 py-0.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--admin-surface-cream)]">
+            Admin
+          </span>
+        </div>
+        {mobile ? (
+          <SheetClose asChild>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon"
+              className="size-11 text-[color:rgba(255,248,236,0.75)] hover:bg-[color:rgba(255,248,236,0.1)] hover:text-[var(--admin-surface-cream)]"
+              aria-label="Close admin menu"
+            >
+              <X />
+            </Button>
+          </SheetClose>
+        ) : null}
+      </div>
+      <AdminNavigation items={items} pathname={pathname} onNavigate={onNavigate} />
+      <AdminAccount identity={identity} />
+    </div>
+  );
 }
 
 export default function AdminShell({
@@ -52,31 +196,32 @@ export default function AdminShell({
   const router = useRouter();
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isSigningOut, setIsSigningOut] = useState(false);
-  const [isDesktop, setIsDesktop] = useState(false);
-
-  const authorizedNavItems = NAV_ITEMS.filter(item => adminIdentityHasPermission(identity, item.permission));
-  const pageTitle = getAdminPageTitle(pathname);
 
   useEffect(() => {
-    const mediaQuery = window.matchMedia("(min-width: 1024px)");
-    const update = () => setIsDesktop(mediaQuery.matches);
-    update();
-    mediaQuery.addEventListener("change", update);
-    return () => mediaQuery.removeEventListener("change", update);
+    const desktopViewport = window.matchMedia(ADMIN_DESKTOP_MEDIA_QUERY);
+    const closeMobileMenuAtDesktop = (event: MediaQueryListEvent) => {
+      if (event.matches) setIsMobileMenuOpen(false);
+    };
+
+    desktopViewport.addEventListener("change", closeMobileMenuAtDesktop);
+    return () => desktopViewport.removeEventListener("change", closeMobileMenuAtDesktop);
   }, []);
+
+  const authorizedNavItems = ADMIN_NAV_ITEMS.filter((item) =>
+    adminIdentityHasPermission(identity, item.permission),
+  );
+  const pageTitle = getAdminPageTitle(pathname);
 
   const handleSignOut = async () => {
     if (isSigningOut) return;
-
     setIsSigningOut(true);
-
     try {
       const session = await logoutAdmin();
       toast.success(session.message);
       router.replace(session.nextPath);
       router.refresh();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "Could not end admin session.";
+      const message = error instanceof Error ? error.message : "Could not sign out. Try again.";
       toast.error(message);
     } finally {
       setIsSigningOut(false);
@@ -84,103 +229,86 @@ export default function AdminShell({
   };
 
   return (
-    <div className="flex h-dvh overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(0,158,73,0.12),transparent_32rem),linear-gradient(135deg,#f8fafc_0%,#e4e4e7_45%,#f4f4f5_100%)]">
+    <AdminIdentityContext.Provider value={identity}>
+      <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+        <div
+          className={cn(theme.adminScope, "flex h-dvh min-w-0 overflow-hidden bg-[var(--admin-canvas-warm)]")}
+          data-testid="admin-shell-root"
+        >
+          <aside
+            className="hidden h-dvh w-64 shrink-0 border-r border-[color:rgba(184,135,70,0.3)] lg:block"
+            data-testid="admin-desktop-sidebar"
+          >
+            <AdminSidebarContent
+              identity={identity}
+              items={authorizedNavItems}
+              pathname={pathname}
+            />
+          </aside>
 
-      {/* Mobile Sidebar Overlay */}
-      {isMobileMenuOpen && (
-        <div className="fixed inset-0 z-40 bg-zinc-900/50 backdrop-blur-sm lg:hidden" onClick={() => setIsMobileMenuOpen(false)} />
-      )}
+          <SheetContent
+            side="left"
+            showCloseButton={false}
+            className={cn(theme.adminScope, theme.mobileDrawer, "gap-0 border-r border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-canopy-deep)] p-0 motion-reduce:transition-none")}
+            style={{ width: "min(19rem, calc(100vw - 2rem))", maxWidth: "none" }}
+            data-testid="admin-mobile-drawer"
+          >
+            <SheetHeader className="sr-only">
+              <SheetTitle>Admin navigation</SheetTitle>
+              <SheetDescription>Open an admin workspace page.</SheetDescription>
+            </SheetHeader>
+            <AdminSidebarContent
+              identity={identity}
+              items={authorizedNavItems}
+              pathname={pathname}
+              onNavigate={() => setIsMobileMenuOpen(false)}
+              mobile
+            />
+          </SheetContent>
 
-      {/* Sidebar Architecture */}
-      <aside
-        aria-hidden={!isDesktop && !isMobileMenuOpen}
-        inert={!isDesktop && !isMobileMenuOpen}
-        className={cn(
-        "fixed inset-y-0 left-0 z-50 h-dvh w-72 flex-col overflow-hidden border-r border-white/10 bg-zinc-950 text-white shadow-2xl shadow-zinc-950/30 transition-transform duration-300 lg:static lg:flex lg:translate-x-0",
-        isMobileMenuOpen ? "flex translate-x-0" : "-translate-x-full"
-      )}>
-        {/* Branding & Environment Badge */}
-        <div className="flex h-18 shrink-0 items-center justify-between border-b border-white/10 px-6">
-          <div className="flex items-center gap-2">
-            <BrandLogo variant="dark" imageClassName="h-8 w-auto" />
-            <span className="rounded-md border border-emerald-400/30 bg-emerald-400/10 px-2 py-0.5 text-[10px] font-black uppercase tracking-wider text-emerald-300">Admin</span>
-          </div>
-          <button aria-label="Close admin menu" className="rounded-lg p-2 text-zinc-400 hover:bg-white/10 hover:text-white lg:hidden" onClick={() => setIsMobileMenuOpen(false)}><X className="h-5 w-5" /></button>
-        </div>
+          <main className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
+            <header className="flex min-h-16 shrink-0 items-center justify-between gap-3 border-b border-[color:rgba(184,135,70,0.32)] bg-[var(--admin-surface-cream)] px-3 pt-safe shadow-[inset_0_-1px_0_rgba(255,248,236,0.75)] sm:px-5 lg:px-8">
+              <div className="flex min-w-0 items-center gap-2.5">
+                <SheetTrigger asChild>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    className="size-11 shrink-0 text-[var(--admin-canopy-deep)] hover:bg-[var(--admin-surface-mist)] lg:hidden"
+                    aria-label="Open admin menu"
+                    data-testid="admin-menu-button"
+                  >
+                    <Menu />
+                  </Button>
+                </SheetTrigger>
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-semibold text-[var(--admin-ink)]">{pageTitle}</p>
+                  <p className="truncate text-xs text-[var(--admin-ink-soft)]">Admin workspace</p>
+                </div>
+              </div>
 
-        {/* Navigation Map */}
-        <div className="min-h-0 flex-1 space-y-1.5 overflow-y-auto overscroll-contain px-4 py-6 hide-scrollbar">
-          {authorizedNavItems.map((item) => {
-            const isActive = pathname === item.href || pathname.startsWith(`${item.href}/`);
-            const navClasses = cn(
-              "flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-left text-sm font-bold transition-all",
-              isActive
-                ? "border border-emerald-300/30 bg-emerald-400/15 text-emerald-100 shadow-lg shadow-emerald-950/30"
-                : "text-zinc-300 hover:bg-white/8 hover:text-white"
-            );
-
-            return (
-              <Link
-                key={item.name}
-                href={item.href}
-                onClick={() => setIsMobileMenuOpen(false)}
-                className={navClasses}
+              <Button
+                type="button"
+                variant="ghost"
+                className="h-11 shrink-0 px-3 text-sm font-medium text-[var(--admin-ink-soft)] hover:bg-[color:rgba(184,59,50,0.08)] hover:text-[var(--admin-escalation)]"
+                onClick={handleSignOut}
+                disabled={isSigningOut}
               >
-                <item.icon className={cn("h-4 w-4 shrink-0", isActive ? "text-emerald-300" : "text-zinc-500")} />
-                <span className="min-w-0 flex-1 truncate">{item.name}</span>
-                {item.pending ? <span className="rounded-full border border-amber-300/20 bg-amber-300/10 px-2 py-0.5 text-[8px] font-black uppercase tracking-wide text-amber-200">Pending</span> : null}
-              </Link>
-            );
-          })}
-        </div>
+                <LogOut />
+                <span className="hidden sm:inline">{isSigningOut ? "Signing out" : "Sign out"}</span>
+                <span className="sr-only sm:hidden">{isSigningOut ? "Signing out" : "Sign out"}</span>
+              </Button>
+            </header>
 
-        {/* Active Session Block */}
-        <div className="border-t border-white/10 p-4">
-          <div className="rounded-3xl border border-white/10 bg-white/7 p-3 shadow-xl shadow-black/20 backdrop-blur-xl">
-            <div className="mb-3 flex items-center gap-2 rounded-2xl border border-emerald-300/15 bg-emerald-400/10 px-3 py-2 text-[10px] font-black uppercase tracking-wider text-emerald-200">
-              <Sparkles className="h-3.5 w-3.5" />
-              Privileged Session
+            <div
+              className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-[var(--admin-canvas-warm)] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7"
+              data-testid="admin-main-scroll"
+            >
+              {children}
             </div>
-            <div className="flex items-center gap-3">
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white text-zinc-950 font-black shadow-md">
-                {getAdminInitials(identity.name)}
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-bold text-white">{identity.name}</p>
-                <p className="text-[10px] font-black uppercase tracking-wider text-emerald-300">{identity.claims.role.replace(/_/g, " ")}</p>
-              </div>
-            </div>
-          </div>
+          </main>
         </div>
-      </aside>
-
-      {/* Main Execution Area */}
-      <main className="flex h-dvh min-w-0 flex-1 flex-col overflow-hidden">
-        {/* Topbar */}
-        <header className="flex min-h-16 shrink-0 items-center justify-between border-b border-white/60 bg-white/70 px-4 pt-safe pb-2 shadow-sm shadow-zinc-900/5 backdrop-blur-xl lg:px-8">
-          <div className="flex min-w-0 items-center gap-3">
-            <button aria-label="Open admin menu" className="rounded-lg p-2 text-zinc-500 hover:bg-zinc-100 lg:hidden" onClick={() => setIsMobileMenuOpen(true)}><Menu className="h-5 w-5" /></button>
-            <div className="min-w-0 lg:hidden"><p className="truncate text-sm font-black text-zinc-950">{pageTitle}</p><p className="text-[9px] font-black uppercase tracking-wider text-zinc-500">Admin workspace</p></div>
-          </div>
-
-          <div className="hidden items-center gap-2 rounded-full border border-emerald-300/40 bg-emerald-50/80 px-3 py-1 text-xs font-bold text-emerald-700 shadow-sm shadow-emerald-900/5 lg:flex">
-            <span className="relative flex h-2 w-2"><span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-green-400 opacity-75"></span><span className="relative inline-flex h-2 w-2 rounded-full bg-green-500"></span></span>
-            Backend session active
-          </div>
-
-          <button onClick={handleSignOut} disabled={isSigningOut} className="flex items-center gap-2 rounded-xl border border-rose-200/70 bg-white/80 px-3 py-2 text-xs font-bold text-rose-700 shadow-sm transition-all hover:bg-rose-50 hover:shadow-md disabled:cursor-not-allowed disabled:opacity-60">
-            <LogOut className="h-4 w-4" /> {isSigningOut ? "Signing Out" : "Sign Out"}
-          </button>
-        </header>
-
-        {/* Page Injection */}
-        <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-4 lg:p-8">
-          <AdminIdentityContext.Provider value={identity}>
-            {children}
-          </AdminIdentityContext.Provider>
-        </div>
-      </main>
-
-    </div>
+      </Sheet>
+    </AdminIdentityContext.Provider>
   );
 }
