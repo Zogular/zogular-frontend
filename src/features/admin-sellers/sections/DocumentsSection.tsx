@@ -2,78 +2,70 @@
 
 import { useState } from "react";
 import { ArrowUpRight, FileText, Loader2 } from "lucide-react";
+import { MediaPreviewModal } from "@/components/ui/media-preview-modal";
 import { getAdminSellerDocumentAccess } from "@/services/admin/vendor-applications";
 import { getSellerDocumentAccessMessage } from "@/services/seller-document-uploads";
-import type { SellerDocumentType, VendorApplication } from "@/types/seller";
+import type { SellerDocumentType } from "@/types/seller";
+import type { SellerReviewDetail } from "../types/seller-review.types";
 import { SectionCard } from "./TrustChecksSection";
-import { MediaPreviewModal } from "@/components/ui/media-preview-modal";
 
-export function DocumentsSection({
-  application,
-}: {
-  application: VendorApplication;
-}) {
-  const isRegisteredBusiness = application.sellerType === "REGISTERED_BUSINESS";
-  const nrcFrontUrl = application.nrcFrontUrl || application.idDocument;
-  const shopPhotoUrl = application.shopPhotoUrl || application.userPic;
+export function DocumentsSection({ detail }: { detail: SellerReviewDetail }) {
+  const { application } = detail;
+  const { documents } = detail.review.evidence;
+  const { canViewSensitiveFields } = detail.review.capabilities;
+  const rows: Array<{ type: SellerDocumentType; label: string }> = [
+    { type: "NRC_FRONT", label: "NRC front" },
+    { type: "NRC_BACK", label: "NRC back" },
+    { type: "SHOP_PHOTO", label: "Shop photo" },
+    ...(application.sellerType === "REGISTERED_BUSINESS"
+      ? [{ type: "PACRA_DOCUMENT" as const, label: "PACRA document" }]
+      : []),
+  ];
 
   return (
-    <SectionCard
-      title="Documents and photos"
-      description="Identity, shop, and registration files provided during onboarding."
-      icon={FileText}
-    >
-      <div className="overflow-hidden rounded-2xl border border-stone-200/60 bg-white/50">
-        <div className="divide-y divide-stone-200/50">
-          <DocumentCard applicationId={application.id} documentType="NRC_FRONT" label="NRC front" url={nrcFrontUrl} />
-          <DocumentCard applicationId={application.id} documentType="NRC_BACK" label="NRC back" url={application.nrcBackUrl} />
-          <DocumentCard applicationId={application.id} documentType="SHOP_PHOTO" label="Shop photo" url={shopPhotoUrl} />
-          {isRegisteredBusiness ? (
-            <DocumentCard applicationId={application.id} documentType="PACRA_DOCUMENT" label="PACRA document" url={application.pacraDocumentUrl} />
-          ) : null}
-        </div>
+    <SectionCard title="Signed documents" description="Open a fresh protected preview when a document is available." icon={FileText}>
+      <div className="overflow-hidden rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-mist)]">
+        {rows.map((row) => (
+          <DocumentRow
+            key={row.type}
+            applicationId={application.id}
+            documentType={row.type}
+            label={row.label}
+            access={getSellerDocumentPresentation(documents[row.type], canViewSensitiveFields)}
+          />
+        ))}
       </div>
-
-      <div className="mt-6 overflow-hidden rounded-2xl border border-stone-200/60 bg-white/50">
-        <dl className="divide-y divide-stone-200/50">
-          <DocMeta label="NRC number" value={application.nrcNumber} />
-          {isRegisteredBusiness ? (
-            <DocMeta label="PACRA number" value={application.pacraNumber} />
-          ) : null}
-          {application.tpin ? (
-            <DocMeta label="TPIN" value={application.tpin} />
-          ) : null}
-        </dl>
-      </div>
+      <dl className="mt-4 grid gap-2 sm:grid-cols-3">
+        <DocumentNumber label="NRC" value={application.nrcNumber} restricted={!canViewSensitiveFields} />
+        {application.sellerType === "REGISTERED_BUSINESS" ? <DocumentNumber label="PACRA" value={application.pacraNumber} restricted={!canViewSensitiveFields} /> : null}
+        <DocumentNumber label="TPIN" value={application.tpin} restricted={!canViewSensitiveFields} />
+      </dl>
     </SectionCard>
   );
 }
 
-function DocumentCard({
-  applicationId,
-  documentType,
-  label,
-  url,
-}: {
-  applicationId: string;
-  documentType: SellerDocumentType;
-  label: string;
-  url?: string;
-}) {
-  const [previewOpen, setPreviewOpen] = useState(false);
+export type SellerDocumentPresentation = "available" | "restricted" | "absent";
+
+export function getSellerDocumentPresentation(
+  evidencePresent: boolean,
+  canViewSensitiveFields: boolean,
+): SellerDocumentPresentation {
+  if (!evidencePresent) return "absent";
+  return canViewSensitiveFields ? "available" : "restricted";
+}
+
+function DocumentRow({ applicationId, documentType, label, access }: { applicationId: string; documentType: SellerDocumentType; label: string; access: SellerDocumentPresentation }) {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [opening, setOpening] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const hasUrl = Boolean(url?.trim());
 
   async function openPreview() {
-    if (!hasUrl || opening) return;
-    setError(null);
+    if (access !== "available" || opening) return;
     setOpening(true);
+    setError(null);
     try {
       const access = await getAdminSellerDocumentAccess(applicationId, documentType);
       setPreviewUrl(access.signedUrl);
-      setPreviewOpen(true);
     } catch (caught) {
       setError(getSellerDocumentAccessMessage(caught));
     } finally {
@@ -82,61 +74,30 @@ function DocumentCard({
   }
 
   return (
-    <div className="px-4 py-3 transition-colors hover:bg-stone-50/50">
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="flex shrink-0 items-center gap-3.5">
-        {hasUrl ? (
-          <button
-            type="button"
-            onClick={openPreview}
-            disabled={opening}
-            className="group relative flex h-11 w-14 shrink-0 items-center justify-center overflow-hidden rounded-md border border-stone-200/60 bg-stone-100 shadow-sm transition hover:shadow-md disabled:cursor-wait disabled:opacity-70 cursor-pointer"
-          >
-            {opening ? <Loader2 className="h-4 w-4 animate-spin text-stone-500" /> : <FileText className="h-4 w-4 text-stone-500" />}
-          </button>
-        ) : (
-          <div className="flex h-11 w-14 shrink-0 items-center justify-center rounded-md border border-dashed border-stone-200 bg-stone-50">
-            <FileText className="h-4 w-4 text-stone-300" />
+    <div className="border-b border-[color:rgba(184,135,70,0.18)] p-3 last:border-b-0 sm:p-4">
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-cream)] text-[var(--admin-canopy)]"><FileText className="size-4" /></div>
+          <div className="min-w-0">
+            <p className="text-sm font-semibold text-[var(--admin-ink)]">{label}</p>
+            <p data-testid={`document-state-${documentType}`} className="text-xs text-[var(--admin-ink-soft)]">
+              {access === "available" ? "Available for review" : access === "restricted" ? "Restricted access" : "Not provided"}
+            </p>
           </div>
-        )}
-        <div className="min-w-0">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">{label}</p>
         </div>
-      </div>
-
-      {hasUrl ? (
-        <>
-          <button
-            type="button"
-            onClick={openPreview}
-            disabled={opening}
-            className="inline-flex min-h-11 shrink-0 items-center justify-center gap-1.5 rounded-lg border border-stone-200/60 bg-white px-3 py-2 text-[10px] font-black uppercase tracking-wider text-stone-700 shadow-sm transition hover:bg-stone-50 disabled:cursor-wait disabled:opacity-70 cursor-pointer"
-          >
-            {opening ? "Opening" : "View full"} {opening ? <Loader2 className="h-3 w-3 animate-spin" /> : <ArrowUpRight className="h-3 w-3" />}
+        {access === "available" ? (
+          <button type="button" onClick={openPreview} disabled={opening} className="inline-flex min-h-11 shrink-0 items-center gap-2 rounded-xl border border-[color:rgba(7,91,54,0.25)] bg-[var(--admin-surface-cream)] px-3 text-xs font-semibold text-[var(--admin-canopy)] outline-none hover:bg-[color:rgba(7,91,54,0.06)] focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)] disabled:cursor-wait disabled:opacity-70">
+            {opening ? <Loader2 className="size-4 animate-spin motion-reduce:animate-none" /> : <ArrowUpRight className="size-4" />}
+            {opening ? "Opening" : "View"}
           </button>
-          <MediaPreviewModal
-            isOpen={previewOpen}
-            onClose={() => setPreviewOpen(false)}
-            url={previewUrl}
-            title={label}
-          />
-        </>
-      ) : (
-        <span className="shrink-0 text-[11px] font-bold text-stone-400">Not provided</span>
-      )}
+        ) : null}
       </div>
-      {error ? (
-        <p className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-bold leading-5 text-rose-700">{error}</p>
-      ) : null}
+      {error ? <p role="status" className="mt-3 rounded-xl bg-rose-50 px-3 py-2 text-xs font-medium leading-5 text-[var(--admin-escalation)]">{error}</p> : null}
+      <MediaPreviewModal isOpen={Boolean(previewUrl)} onClose={() => setPreviewUrl(null)} url={previewUrl} title={label} />
     </div>
   );
 }
 
-function DocMeta({ label, value }: { label: string; value?: string }) {
-  return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3 transition-colors hover:bg-stone-50/50 sm:items-center">
-      <dt className="shrink-0 pt-0.5 text-xs font-bold text-stone-600 sm:pt-0">{label}</dt>
-      <dd className="break-words text-right text-sm font-black text-stone-950">{value || "Not provided"}</dd>
-    </div>
-  );
+function DocumentNumber({ label, value, restricted }: { label: string; value: string | null; restricted: boolean }) {
+  return <div className="rounded-xl border border-[color:rgba(184,135,70,0.22)] bg-[var(--admin-surface-mist)] px-3 py-3"><dt className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--admin-ink-soft)]">{label}</dt><dd data-testid={`document-number-${label.toLowerCase()}`} className="mt-1 break-words text-sm font-semibold text-[var(--admin-ink)]">{restricted ? "Restricted access" : value || "Not provided"}</dd></div>;
 }

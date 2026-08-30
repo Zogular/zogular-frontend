@@ -1,32 +1,35 @@
+import { History } from "lucide-react";
 import { formatAdminDate } from "@/components/admin/sellers/VendorApplicationReviewUI";
-import type { VendorApplication } from "@/types/seller";
+import type { SellerReviewHistoryEntry } from "../types/seller-review.types";
 import { SectionCard } from "./TrustChecksSection";
 
-export function TimelineSection({
-  application,
-}: {
-  application: VendorApplication;
-}) {
-  return (
-    <SectionCard title="Application timeline" description="Key dates recorded for this seller.">
-      <div className="space-y-2">
-        <TimelineRow label="Created" value={formatAdminDate(application.createdAt)} />
-        <TimelineRow label="Updated" value={formatAdminDate(application.updatedAt)} />
-        <TimelineRow label="Submitted" value={formatAdminDate(application.submittedAt)} />
-        <TimelineRow label="Last reviewed" value={formatAdminDate(application.reviewedAt)} />
-        {application.reviewedBy ? (
-          <TimelineRow label="Reviewed by" value={application.reviewedBy} />
-        ) : null}
-      </div>
-    </SectionCard>
-  );
-}
+const ACTION_LABELS: Record<SellerReviewHistoryEntry["action"], string> = {
+  APPROVED: "Approved",
+  PROVISIONAL_GRANTED: "Provisional access granted",
+  INFORMATION_REQUESTED: "Information requested",
+  REJECTED: "Rejected",
+  RESTRICTED: "Restricted",
+  SUSPENDED: "Suspended",
+};
 
-function TimelineRow({ label, value }: { label: string; value: string }) {
+export function DecisionHistorySection({ history }: { history: SellerReviewHistoryEntry[] }) {
   return (
-    <div className="flex items-center justify-between gap-3 rounded-xl border border-stone-200/50 bg-stone-50/40 px-3 py-2">
-      <p className="text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">{label}</p>
-      <p className="text-[11px] font-bold text-stone-800">{value}</p>
-    </div>
+    <SectionCard title="Decision history" description="Recorded review decisions, newest first." icon={History}>
+      {history.length ? (
+        <ol className="space-y-3">
+          {history.map((entry) => (
+            <li key={entry.id} className="rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-mist)] p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <p className="text-sm font-semibold text-[var(--admin-ink)]">{ACTION_LABELS[entry.action]}</p>
+                <time className="text-xs text-[var(--admin-ink-soft)]" dateTime={entry.timestamp}>{formatAdminDate(entry.timestamp)}</time>
+              </div>
+              <p className="mt-1 text-xs text-[var(--admin-ink-soft)]">{entry.previousStatus.replaceAll("_", " ")} → {entry.newStatus.replaceAll("_", " ")}</p>
+              <p className="mt-2 text-xs font-medium text-[var(--admin-ink)]">{entry.actorDisplayName || "Authorized administrator"}</p>
+              {entry.reason ? <p className="mt-2 border-l-2 border-[var(--admin-ember)] pl-3 text-sm leading-5 text-[var(--admin-ink-soft)]">{entry.reason}</p> : null}
+            </li>
+          ))}
+        </ol>
+      ) : <p className="rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-mist)] p-4 text-sm text-[var(--admin-ink-soft)]">No review decisions have been recorded.</p>}
+    </SectionCard>
   );
 }

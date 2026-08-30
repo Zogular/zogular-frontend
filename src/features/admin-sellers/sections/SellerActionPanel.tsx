@@ -1,137 +1,39 @@
 "use client";
 
-import {
-  Ban,
-  CheckCheck,
-  ChevronDown,
-  MessageSquareWarning,
-  MoreVertical,
-  ShieldAlert,
-  ShieldCheck,
-} from "lucide-react";
+import { Ban, CheckCheck, MessageSquareWarning, ShieldAlert, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import {
-  ActionMenu,
-  ActionMenuContent,
-  ActionMenuItem,
-  ActionMenuSeparator,
-  ActionMenuTrigger,
-} from "@/components/ui/action-menu";
-import type { VendorApplicationAdminAction } from "../types/admin-seller.types";
-import { getAvailableVendorActions } from "@/features/admin-sellers/lib/vendor-action-availability";
-import type { VendorApplication } from "@/types/seller";
+import { toVendorApplicationAdminActions, type VendorApplicationAdminAction } from "../types/admin-seller.types";
+import type { SellerReviewCapabilities } from "../types/seller-review.types";
 
-export function SellerActionPanel({
-  application,
-  onAction,
-  canApprove,
-  canSuspend,
-}: {
-  application: VendorApplication;
-  onAction: (action: VendorApplicationAdminAction) => void;
-  canApprove: boolean;
-  canSuspend: boolean;
-}) {
-  const availableActions = getAvailableVendorActions(application, canApprove, canSuspend);
+const ACTION_UI: Record<VendorApplicationAdminAction, { label: string; icon: React.ComponentType<{ className?: string }>; className: string }> = {
+  "approve-approved": { label: "Approve seller", icon: CheckCheck, className: "bg-[var(--admin-canopy)] text-white hover:bg-[var(--admin-canopy-deep)]" },
+  "approve-provisional": { label: "Grant provisional access", icon: ShieldCheck, className: "border-[color:rgba(7,91,54,0.26)] bg-[color:rgba(7,91,54,0.07)] text-[var(--admin-canopy)] hover:bg-[color:rgba(7,91,54,0.12)]" },
+  "needs-info": { label: "Request information", icon: MessageSquareWarning, className: "border-[color:rgba(217,106,31,0.3)] bg-[color:rgba(217,106,31,0.08)] text-[var(--admin-ember)] hover:bg-[color:rgba(217,106,31,0.14)]" },
+  reject: { label: "Reject application", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
+  restrict: { label: "Restrict seller", icon: ShieldAlert, className: "border-[color:rgba(217,106,31,0.3)] bg-[color:rgba(217,106,31,0.08)] text-[var(--admin-ember)] hover:bg-[color:rgba(217,106,31,0.14)]" },
+  suspend: { label: "Suspend seller", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
+};
 
-  if (availableActions.length === 0) return null;
+export function SellerActionPanel({ capabilities, disabled, compact = false, onAction }: { capabilities: SellerReviewCapabilities; disabled: boolean; compact?: boolean; onAction: (action: VendorApplicationAdminAction) => void }) {
+  const actions = toVendorApplicationAdminActions(capabilities.availableActions);
+
+  if (compact && actions.length === 0) return null;
 
   return (
-    <section className="rounded-2xl border border-stone-200/50 bg-white/90 p-4 shadow-[0_2px_12px_rgba(15,23,42,0.03)] sm:p-5">
-      <h2 className="text-sm font-black tracking-tight text-stone-900">Review actions</h2>
-      <p className="mt-0.5 text-[11px] font-medium text-stone-500">
-        Take action on this seller application.
+    <section className={`rounded-2xl border border-[color:rgba(184,135,70,0.34)] bg-[var(--admin-surface-cream)] shadow-[0_14px_32px_rgba(6,59,41,0.09)] ${compact ? "p-2" : "p-4"}`} aria-label="Seller review actions">
+      <h2 className={compact ? "sr-only" : "text-sm font-semibold text-[var(--admin-ink)]"}>Review actions</h2>
+      <p className={compact ? "sr-only" : "mt-1 text-xs leading-5 text-[var(--admin-ink-soft)]"}>
+        {capabilities.canManageStatus ? "Choose an action provided for this application." : "Your role does not include seller status changes."}
       </p>
-
-      <div className="mt-4 space-y-2">
-        {availableActions.includes("approve-approved") && (
-          <Button
-            onClick={() => onAction("approve-approved")}
-            className="h-9 w-full justify-start gap-2 rounded-xl bg-[#009E49] text-xs font-bold text-white shadow-sm shadow-emerald-900/15 hover:bg-[#00853d]"
-          >
-            <CheckCheck className="h-3.5 w-3.5" />
-            Approve seller
-          </Button>
-        )}
-
-        {availableActions.includes("approve-provisional") && (
-          <Button
-            variant="outline"
-            onClick={() => onAction("approve-provisional")}
-            className="h-9 w-full justify-start gap-2 rounded-xl border-sky-200 bg-sky-50/70 text-xs font-bold text-sky-700 hover:bg-sky-100"
-          >
-            <ShieldCheck className="h-3.5 w-3.5" />
-            Grant provisional access
-          </Button>
-        )}
-
-        {availableActions.includes("needs-info") && (
-          <Button
-            variant="outline"
-            onClick={() => onAction("needs-info")}
-            className="h-9 w-full justify-start gap-2 rounded-xl border-amber-200 bg-amber-50/70 text-xs font-bold text-amber-700 hover:bg-amber-100"
-          >
-            <MessageSquareWarning className="h-3.5 w-3.5" />
-            Request more information
-          </Button>
-        )}
-
-        {(availableActions.includes("reject") || availableActions.includes("restrict") || availableActions.includes("suspend")) && (
-          <div className="pt-1">
-            <ActionMenu>
-              <ActionMenuTrigger asChild>
-                <Button
-                  variant="outline"
-                  className="h-9 w-full justify-between gap-2 rounded-xl border-stone-200 bg-stone-50/80 text-xs font-bold text-stone-600 hover:bg-stone-100"
-                >
-                  <span className="flex items-center gap-2">
-                    <MoreVertical className="h-3.5 w-3.5" />
-                    More actions
-                  </span>
-                  <ChevronDown className="h-3 w-3 opacity-50" />
-                </Button>
-              </ActionMenuTrigger>
-              <ActionMenuContent className="w-52">
-                {availableActions.includes("reject") && (
-                  <ActionMenuItem
-                    onClick={() => onAction("reject")}
-                    className="text-rose-700 hover:bg-rose-50"
-                  >
-                    <Ban className="h-3.5 w-3.5" />
-                    Reject application
-                  </ActionMenuItem>
-                )}
-
-                {(availableActions.includes("restrict") || availableActions.includes("suspend")) && (
-                  <>
-                    {availableActions.includes("reject") ? <ActionMenuSeparator /> : null}
-
-                    {availableActions.includes("restrict") && (
-                      <ActionMenuItem
-                        onClick={() => onAction("restrict")}
-                        className="text-amber-700 hover:bg-amber-50"
-                      >
-                        <ShieldAlert className="h-3.5 w-3.5" />
-                        Restrict seller
-                      </ActionMenuItem>
-                    )}
-
-                    {availableActions.includes("suspend") && (
-                      <ActionMenuItem
-                        onClick={() => onAction("suspend")}
-                        className="text-stone-700 hover:bg-stone-100"
-                      >
-                        <Ban className="h-3.5 w-3.5" />
-                        Suspend seller
-                      </ActionMenuItem>
-                    )}
-                  </>
-                )}
-              </ActionMenuContent>
-            </ActionMenu>
-          </div>
-        )}
-      </div>
+      {actions.length ? (
+        <div className={compact ? "flex max-w-full gap-2 overflow-x-auto overscroll-x-contain" : "mt-3 grid gap-2 sm:grid-cols-2 xl:grid-cols-1"}>
+          {actions.map((action) => {
+            const meta = ACTION_UI[action];
+            const Icon = meta.icon;
+            return <Button key={action} type="button" variant={action === "approve-approved" ? "default" : "outline"} disabled={disabled} onClick={() => onAction(action)} className={`min-h-11 justify-start rounded-xl text-xs font-semibold ${compact ? "shrink-0" : ""} ${meta.className}`}><Icon className="size-4" />{meta.label}</Button>;
+          })}
+        </div>
+      ) : <p className="mt-3 rounded-xl bg-[var(--admin-surface-mist)] p-3 text-sm text-[var(--admin-ink-soft)]">No actions are available for the current status.</p>}
     </section>
   );
 }

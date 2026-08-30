@@ -10,6 +10,7 @@ import { useAdminIdentity } from "@/components/admin/AdminShell";
 import {
   approveVendorApplication,
   getVendorApplications,
+  getSellerReviewSafeError,
   rejectVendorApplication,
   requestVendorApplicationInfo,
   restrictVendorApplication,
@@ -147,23 +148,24 @@ export function useSellersList() {
 
     try {
       setIsActionSubmitting(true);
+      const expectedUpdatedAt = activeApplication.updatedAt;
       if (activeAction === "approve-approved") {
-        await approveVendorApplication(activeApplication.id, { status: "APPROVED", adminNotes: payload.adminNotes });
+        await approveVendorApplication(activeApplication.id, { status: "APPROVED", expectedUpdatedAt, adminNotes: payload.adminNotes });
         toast.success("Seller approved.");
       } else if (activeAction === "approve-provisional") {
-        await approveVendorApplication(activeApplication.id, { status: "PROVISIONAL", adminNotes: payload.adminNotes });
+        await approveVendorApplication(activeApplication.id, { status: "PROVISIONAL", expectedUpdatedAt, adminNotes: payload.adminNotes });
         toast.success("Seller approved as provisional.");
       } else if (activeAction === "needs-info") {
-        await requestVendorApplicationInfo(activeApplication.id, payload.reason ?? "", payload.adminNotes);
+        await requestVendorApplicationInfo(activeApplication.id, { reason: payload.reason ?? "", expectedUpdatedAt, adminNotes: payload.adminNotes });
         toast.success("Needs-info request sent.");
       } else if (activeAction === "reject") {
-        await rejectVendorApplication(activeApplication.id, payload.reason ?? "", payload.adminNotes);
+        await rejectVendorApplication(activeApplication.id, { reason: payload.reason ?? "", expectedUpdatedAt, adminNotes: payload.adminNotes });
         toast.success("Seller application rejected.");
       } else if (activeAction === "restrict") {
-        await restrictVendorApplication(activeApplication.id, payload.adminNotes);
+        await restrictVendorApplication(activeApplication.id, { adminNotes: payload.adminNotes ?? "", expectedUpdatedAt });
         toast.success("Seller restricted.");
       } else if (activeAction === "suspend") {
-        await suspendVendorApplication(activeApplication.id, payload.adminNotes);
+        await suspendVendorApplication(activeApplication.id, { adminNotes: payload.adminNotes ?? "", expectedUpdatedAt });
         toast.success("Seller suspended.");
       }
 
@@ -171,7 +173,9 @@ export function useSellersList() {
       setActiveApplication(null);
       loadApplications();
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Failed to update seller application.");
+      const safeError = getSellerReviewSafeError(error);
+      toast.error(safeError.message);
+      if (safeError.kind === "conflict") loadApplications();
     } finally {
       setIsActionSubmitting(false);
     }

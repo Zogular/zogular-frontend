@@ -13,6 +13,14 @@ import {
   type SellerDocumentAccess,
 } from "@/services/seller-document-uploads";
 import type { SellerDocumentType } from "@/types/seller";
+import {
+  SellerReviewContractError,
+  parseSellerReviewResponse,
+} from "@/features/admin-sellers/types/seller-review.contract";
+import type {
+  SellerReviewDetail,
+  SellerReviewSafeError,
+} from "@/features/admin-sellers/types/seller-review.types";
 
 const ADMIN_VENDOR_APPLICATIONS_ENDPOINT = "/admin/vendor-applications";
 
@@ -69,8 +77,20 @@ export class AdminVendorApplicationListContractError extends Error {
 }
 
 export interface ApproveVendorApplicationPayload {
-  status?: "PROVISIONAL" | "APPROVED";
+  status: "PROVISIONAL" | "APPROVED";
+  expectedUpdatedAt: string;
   adminNotes?: string;
+}
+
+export interface ReasonedVendorApplicationPayload {
+  reason: string;
+  expectedUpdatedAt: string;
+  adminNotes?: string;
+}
+
+export interface NotedVendorApplicationPayload {
+  adminNotes: string;
+  expectedUpdatedAt: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -136,34 +156,6 @@ function normalizeUser(value: unknown): VendorApplication["user"] {
     phoneVerifiedAt: asNullableString(record.phoneVerifiedAt),
     isActive: Boolean(record.isActive),
   };
-}
-
-function findApplicationRecord(payload: unknown): Record<string, unknown> | null {
-  const root = asRecord(payload);
-  if (!root) return null;
-
-  const data = asRecord(root.data);
-  const candidates: unknown[] = [
-    data?.application,
-    data?.vendorApplication,
-    root.application,
-    root.vendorApplication,
-    data,
-    root,
-  ];
-
-  for (const candidate of candidates) {
-    const record = asRecord(candidate);
-    // Ignore `status` for duck-typing because the API response root has `{ status: "success" }`
-    if (record && (record.id || record.sellerType || record.storeName || record.ownerFullName)) {
-      // Ensure we don't accidentally match the root wrapper by verifying it has typical application fields
-      if (record.id || record.sellerType || record.storeName) {
-        return record;
-      }
-    }
-  }
-
-  return null;
 }
 
 function normalizeVendorApplicationRecord(record: Record<string, unknown>): VendorApplication {
@@ -233,15 +225,6 @@ function normalizeVendorApplicationRecord(record: Record<string, unknown>): Vend
     userPic: asString(record.userPic) || undefined,
     user: normalizeUser(record.user),
   };
-}
-
-function normalizeVendorApplication(payload: unknown): VendorApplication {
-  const record = findApplicationRecord(payload);
-  if (!record) {
-    throw new ApiError("Vendor application response was not recognized.", 500, payload);
-  }
-
-  return normalizeVendorApplicationRecord(record);
 }
 
 function isNonNegativeInteger(value: unknown): value is number {
@@ -358,15 +341,20 @@ export async function getVendorApplications(
   return parseAdminVendorApplicationListResponse(payload);
 }
 
-export async function getVendorApplicationById(id: string): Promise<VendorApplication> {
+export async function getVendorApplicationById(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SellerReviewDetail> {
   const payload = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}`,
     {
       method: "GET",
+      cache: "no-store",
+      signal,
     },
   );
 
-  return normalizeVendorApplication(payload);
+  return parseSellerReviewResponse(payload);
 }
 
 export async function getAdminSellerDocumentAccess(
@@ -387,95 +375,162 @@ export async function getAdminSellerDocumentAccess(
 
 export async function approveVendorApplication(
   id: string,
-  payload: ApproveVendorApplicationPayload = {},
-): Promise<VendorApplication> {
+  payload: ApproveVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/approve`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        status: payload.status ?? "APPROVED",
+        status: payload.status,
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
         adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function rejectVendorApplication(
   id: string,
-  rejectionReason: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: ReasonedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/reject`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        rejectionReason: rejectionReason.trim(),
-        adminNotes: adminNotes?.trim() || undefined,
+        rejectionReason: payload.reason.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function requestVendorApplicationInfo(
   id: string,
-  needsInfoReason: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: ReasonedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/needs-info`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        needsInfoReason: needsInfoReason.trim(),
-        adminNotes: adminNotes?.trim() || undefined,
+        needsInfoReason: payload.reason.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function restrictVendorApplication(
   id: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: NotedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/restrict`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        adminNotes: adminNotes?.trim() || "",
+        adminNotes: payload.adminNotes.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function suspendVendorApplication(
   id: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: NotedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/suspend`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        adminNotes: adminNotes?.trim() || "",
+        adminNotes: payload.adminNotes.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
+}
+
+function assertExpectedUpdatedAt(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || !normalized.includes("T") || Number.isNaN(Date.parse(normalized))) {
+    throw new SellerReviewContractError();
+  }
+  return normalized;
+}
+
+export function getSellerReviewSafeError(error: unknown): SellerReviewSafeError {
+  if (error instanceof SellerReviewContractError) {
+    return {
+      kind: "malformed",
+      message: "This seller review could not be verified. Try again.",
+    };
+  }
+
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return {
+        kind: "unauthenticated",
+        message: "Your admin access could not be confirmed. Sign in again.",
+      };
+    }
+    if (error.status === 403) {
+      return {
+        kind: "forbidden",
+        message: "You do not have permission to review this seller application.",
+      };
+    }
+    if (error.status === 404) {
+      return {
+        kind: "not-found",
+        message: "This seller application is no longer available.",
+      };
+    }
+    if (error.status === 409) {
+      return {
+        kind: "conflict",
+        message: "Another reviewer changed this application. Refresh before taking another action.",
+      };
+    }
+    if (error.status === 408) {
+      return {
+        kind: "timeout",
+        message: "The seller review is taking too long to load. Try again.",
+      };
+    }
+  }
+
+  return {
+    kind: "unavailable",
+    message: "The seller review is temporarily unavailable. Try again.",
+  };
+}
+
+export function shouldRetrySellerReviewQuery(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (failureCount >= 1) return false;
+  const kind = getSellerReviewSafeError(error).kind;
+  return kind === "timeout" || kind === "unavailable";
 }

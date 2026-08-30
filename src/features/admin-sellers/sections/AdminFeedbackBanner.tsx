@@ -1,10 +1,10 @@
 import { FileWarning, MessageSquareWarning, StickyNote } from "lucide-react";
-import type { VendorApplication } from "@/types/seller";
+import type { SellerReviewApplication } from "../types/seller-review.types";
 
 export function AdminFeedbackBanner({
   application,
 }: {
-  application: VendorApplication;
+  application: SellerReviewApplication;
 }) {
   const hasNeedsInfo = application.status === "NEEDS_INFO" && application.needsInfoReason;
   const hasRejection = application.status === "REJECTED" && application.rejectionReason;
