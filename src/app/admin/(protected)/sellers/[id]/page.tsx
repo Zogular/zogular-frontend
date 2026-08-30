@@ -1,123 +1,97 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellerDetail } from "@/features/admin-sellers/hooks/use-seller-detail";
 import {
+  ADMIN_SELLER_QUEUE_PATH,
+  canReturnToAdminSellerQueue,
+} from "@/features/admin-sellers/lib/seller-review-navigation";
+import {
   AdminFeedbackBanner,
+  DecisionHistorySection,
   DocumentsSection,
-  FuturePlaceholders,
+  EvidenceSection,
   IdentityStoreSection,
   PayoutDetailsSection,
   SellerActionPanel,
   SellerOverviewSection,
-  TimelineSection,
-  TrustChecksSection,
+  SellerReviewErrorState,
+  SellerReviewInlineNotice,
+  SellerReviewLoadingState,
 } from "@/features/admin-sellers/sections";
 
 export default function AdminSellerReviewPage() {
-  const {
-    application,
-    loading,
-    activeAction,
-    isActionSubmitting,
-    canApprove,
-    canSuspend,
-    openAction,
-    closeAction,
-    handleActionConfirm,
-  } = useSellerDetail();
+  const router = useRouter();
+  const review = useSellerDetail();
 
-  if (loading) {
-    return (
-      <div className="mx-auto max-w-[96rem] space-y-5 pb-12">
-        <div className="h-10 w-56 animate-pulse rounded-xl bg-stone-200/60" />
-        <div className="h-56 animate-pulse rounded-[2rem] bg-stone-200/60" />
-        <div className="grid gap-5 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-          <div className="space-y-5">
-            <div className="h-72 animate-pulse rounded-[1.75rem] bg-stone-200/60" />
-            <div className="h-64 animate-pulse rounded-[1.75rem] bg-stone-200/60" />
-          </div>
-          <div className="space-y-5">
-            <div className="h-52 animate-pulse rounded-[1.75rem] bg-stone-200/60" />
-            <div className="h-44 animate-pulse rounded-[1.75rem] bg-stone-200/60" />
-          </div>
-        </div>
-      </div>
-    );
+  function returnToSellerQueue() {
+    if (
+      canReturnToAdminSellerQueue(
+        document.referrer,
+        window.location.origin,
+        window.history.length,
+      )
+    ) {
+      router.back();
+      return;
+    }
+
+    router.push(ADMIN_SELLER_QUEUE_PATH);
   }
 
-  if (!application) {
-    return (
-      <div className="mx-auto max-w-[96rem] pb-12">
-        <div className="rounded-[2rem] border border-stone-200/60 bg-white/90 p-8 shadow-sm">
-          <p className="text-lg font-black text-stone-900">Seller application unavailable.</p>
-          <p className="mt-2 text-sm font-medium text-stone-500">
-            This application could not be loaded. It may have been removed or is inaccessible.
-          </p>
-          <Button asChild className="mt-5 rounded-xl bg-stone-900 font-black text-white hover:bg-stone-800">
-            <Link href="/admin/sellers">Back to seller queue</Link>
-          </Button>
-        </div>
-      </div>
-    );
+  if (review.loading) return <SellerReviewLoadingState />;
+  if (!review.detail) {
+    return review.loadError
+      ? <SellerReviewErrorState error={review.loadError} onRetry={() => void review.retryLoad()} />
+      : null;
   }
+
+  const { application } = review.detail;
+  const actionPanel = (
+    <SellerActionPanel
+      capabilities={review.detail.review.capabilities}
+      disabled={review.actionsDisabled}
+      onAction={review.openAction}
+    />
+  );
 
   return (
-    <div className="mx-auto max-w-[96rem] animate-in space-y-4 pb-12 fade-in slide-in-from-bottom-4 duration-500">
-      {/* Back nav */}
-      <Button
-        asChild
-        variant="outline"
-        className="w-fit rounded-xl border-stone-200 bg-white/80 font-black text-stone-700 shadow-sm hover:bg-white"
-      >
-        <Link href="/admin/sellers">
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Seller applications
-        </Link>
+    <div className="mx-auto max-w-[96rem] space-y-4 pb-24 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 xl:pb-8">
+      <Button type="button" variant="outline" onClick={returnToSellerQueue} className="min-h-11 border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-surface-cream)] text-[var(--admin-ink)] hover:bg-[var(--admin-surface-mist)]">
+        <ArrowLeft />Seller applications
       </Button>
 
-      {/* Overview hero */}
-      <SellerOverviewSection application={application} />
-
-      {/* Admin feedback banners */}
+      <SellerOverviewSection application={application} isRefreshing={review.isRefreshing} onRefresh={() => void review.refreshReview()} />
+      {review.refreshError ? <SellerReviewInlineNotice error={review.refreshError} onRefresh={() => void review.refreshReview()} /> : null}
+      {review.conflictError ? <SellerReviewInlineNotice error={review.conflictError} onRefresh={() => void review.refreshConflict()} /> : null}
+      {review.actionError && !review.conflictError ? <SellerReviewInlineNotice error={review.actionError} /> : null}
       <AdminFeedbackBanner application={application} />
 
-      {/* Two-column layout */}
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1.2fr)_minmax(320px,0.8fr)]">
-        {/* Left: main content */}
-        <div className="space-y-4">
+      <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_21rem]">
+        <div className="min-w-0 space-y-4">
+          <EvidenceSection detail={review.detail} />
           <IdentityStoreSection application={application} />
-          <DocumentsSection application={application} />
-          <PayoutDetailsSection application={application} />
+          <DocumentsSection detail={review.detail} />
+          <PayoutDetailsSection detail={review.detail} />
+          <DecisionHistorySection history={review.detail.review.history} />
         </div>
-
-        {/* Right: operations sidebar */}
-        <div className="space-y-4 xl:sticky xl:top-6 xl:self-start">
-          <SellerActionPanel
-            application={application}
-            onAction={openAction}
-            canApprove={canApprove}
-            canSuspend={canSuspend}
-          />
-          <TrustChecksSection application={application} />
-          <TimelineSection application={application} />
-          <FuturePlaceholders />
-        </div>
+        <aside className="hidden xl:block"><div className="sticky top-0">{actionPanel}</div></aside>
       </div>
 
-      {/* Action dialog */}
+      <div className="fixed inset-x-4 bottom-3 z-20 xl:hidden">
+        <SellerActionPanel capabilities={review.detail.review.capabilities} disabled={review.actionsDisabled} compact onAction={review.openAction} />
+      </div>
+
       <SellerReviewActionDialog
-        open={Boolean(activeAction)}
-        onOpenChange={(open) => {
-          if (!open) closeAction();
-        }}
-        action={activeAction}
+        open={Boolean(review.activeAction)}
+        onOpenChange={(open) => { if (!open) review.closeAction(); }}
+        action={review.activeAction}
         application={application}
-        submitting={isActionSubmitting}
-        onConfirm={handleActionConfirm}
+        submitting={review.isActionSubmitting}
+        onConfirm={review.handleActionConfirm}
       />
     </div>
   );

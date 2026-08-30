@@ -1,86 +1,43 @@
-import {
-  Building2,
-  FileBadge2,
-  Mail,
-  MapPin,
-  Phone,
-  Store,
-  Tag,
-  UserRound,
-} from "lucide-react";
+import { Building2, Mail, MapPin, Phone, Store, Tag, UserRound } from "lucide-react";
 import { getSellerTypeLabel } from "@/components/admin/sellers/VendorApplicationReviewUI";
-import type { VendorApplication } from "@/types/seller";
+import type { SellerReviewApplication } from "../types/seller-review.types";
 import { SectionCard } from "./TrustChecksSection";
 
-export function IdentityStoreSection({
-  application,
-}: {
-  application: VendorApplication;
-}) {
+export function IdentityStoreSection({ application }: { application: SellerReviewApplication }) {
   return (
-    <SectionCard
-      title="Identity and store details"
-      description="Owner identity, store profile, contact, and location."
-      icon={UserRound}
-    >
-      <div className="overflow-hidden rounded-2xl border border-stone-200/60 bg-white/50">
-        <dl className="divide-y divide-stone-200/50">
-          <DetailRow icon={UserRound} label="Owner full name" value={application.ownerFullName || "Not provided"} />
-          <DetailRow icon={Store} label="Store name" value={application.storeName || "Not provided"} />
-          <DetailRow icon={Building2} label="Business name" value={application.legalBusinessName || application.businessName || "Not provided"} />
-          <DetailRow icon={FileBadge2} label="Seller type" value={getSellerTypeLabel(application.sellerType)} />
-          <DetailRow icon={Mail} label="Business email" value={application.businessEmail || application.user?.email || "Not provided"} />
-          <DetailRow icon={Phone} label="Business phone" value={application.businessPhone || application.user?.telephone || "Not provided"} />
-          <DetailRow icon={MapPin} label="District" value={application.district || "Not provided"} />
-          <DetailRow icon={MapPin} label="Address" value={application.businessAddress || "Not provided"} />
-        </dl>
-      </div>
+    <SectionCard title="Identity and store" description="The account and store information supplied for review." icon={UserRound}>
+      <dl className="overflow-hidden rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-mist)]">
+        <DetailRow icon={UserRound} label="Owner" value={application.ownerFullName || "Not provided"} />
+        <DetailRow icon={Store} label="Store" value={application.storeName || "Not provided"} />
+        <DetailRow icon={Building2} label="Registered name" value={application.legalBusinessName || "Not provided"} />
+        <DetailRow icon={Tag} label="Seller type" value={getSellerTypeLabel(application.sellerType)} />
+        <DetailRow icon={Mail} label="Business email" value={application.businessEmail || application.account.email || "Not provided"} />
+        <DetailRow icon={Phone} label="Business phone" value={application.businessPhone || application.account.telephone || "Not provided"} />
+        <DetailRow icon={MapPin} label="District" value={application.district || "Not provided"} />
+        <DetailRow icon={MapPin} label="Address" value={application.businessAddress || "Not provided"} />
+      </dl>
 
-      {application.productCategories.length > 0 ? (
-        <div className="mt-5">
-          <p className="mb-2.5 text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">
-            Product categories
-          </p>
-          <div className="flex flex-wrap gap-1.5">
+      <div className="mt-4">
+        <p className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[var(--admin-ink-soft)]">Product categories</p>
+        {application.productCategories.length ? (
+          <div className="mt-2 flex flex-wrap gap-2">
             {application.productCategories.map((category) => (
-              <span
-                key={category}
-                className="inline-flex items-center gap-1.5 rounded-full border border-[#009E49]/20 bg-emerald-50/80 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-[#009E49]"
-              >
-                <Tag className="h-3 w-3" />
+              <span key={category} className="rounded-full border border-[color:rgba(7,91,54,0.22)] bg-[color:rgba(7,91,54,0.07)] px-3 py-1 text-xs font-semibold text-[var(--admin-canopy)]">
                 {category}
               </span>
             ))}
           </div>
-        </div>
-      ) : (
-        <div className="mt-5">
-          <p className="text-[10px] font-black uppercase tracking-[0.18em] text-stone-400">
-            Product categories
-          </p>
-          <p className="mt-1 text-xs font-bold text-stone-400">No categories declared.</p>
-        </div>
-      )}
+        ) : <p className="mt-2 text-sm text-[var(--admin-ink-soft)]">No categories provided.</p>}
+      </div>
     </SectionCard>
   );
 }
 
-function DetailRow({
-  icon: Icon,
-  label,
-  value,
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string;
-}) {
+function DetailRow({ icon: Icon, label, value }: { icon: React.ComponentType<{ className?: string }>; label: string; value: string }) {
   return (
-    <div className="flex items-start justify-between gap-4 px-4 py-3 transition-colors hover:bg-stone-50/50 sm:items-center">
-      <div className="flex shrink-0 items-center gap-2.5 pt-0.5 sm:pt-0">
-        <Icon className="h-4 w-4 shrink-0 text-stone-400" />
-        <dt className="text-xs font-bold text-stone-600">{label}</dt>
-      </div>
-      <dd className="break-words text-right text-sm font-black text-stone-950">{value}</dd>
+    <div className="grid grid-cols-[minmax(7rem,0.4fr)_minmax(0,0.6fr)] gap-3 border-b border-[color:rgba(184,135,70,0.18)] px-3 py-3 last:border-b-0 sm:px-4">
+      <dt className="flex items-start gap-2 text-xs font-medium text-[var(--admin-ink-soft)]"><Icon className="mt-0.5 size-3.5 shrink-0" />{label}</dt>
+      <dd className="min-w-0 break-words text-right text-sm font-semibold text-[var(--admin-ink)]">{value}</dd>
     </div>
   );
 }

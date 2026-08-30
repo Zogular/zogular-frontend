@@ -31,6 +31,7 @@ import {
 import { getAvailableVendorActions } from "@/features/admin-sellers/lib/vendor-action-availability";
 import { cn } from "@/lib/utils";
 import type { SellerApplicationStatus, SellerType, VendorApplication } from "@/types/seller";
+import type { SellerReviewApplication } from "@/features/admin-sellers/types/seller-review.types";
 
 import type { VendorApplicationAdminAction } from "@/features/admin-sellers/types/admin-seller.types";
 
@@ -204,7 +205,14 @@ export function getSellerTypeLabel(type: SellerType) {
   return SELLER_TYPE_LABELS[type];
 }
 
-export function getApplicationPrimaryName(application: VendorApplication) {
+type ReviewDialogApplication = Pick<
+  SellerReviewApplication,
+  "id" | "status" | "sellerType" | "ownerFullName" | "storeName" | "legalBusinessName"
+> & { businessName?: string };
+
+export function getApplicationPrimaryName(
+  application: Pick<VendorApplication, "storeName" | "legalBusinessName" | "businessName"> | ReviewDialogApplication,
+) {
   return application.storeName || application.legalBusinessName || application.businessName || "Untitled seller";
 }
 
@@ -354,7 +362,7 @@ interface SellerReviewActionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   action: VendorApplicationAdminAction | null;
-  application: VendorApplication | null;
+  application: ReviewDialogApplication | null;
   submitting?: boolean;
   onConfirm: (payload: { reason?: string; adminNotes?: string }) => Promise<void> | void;
 }
@@ -374,6 +382,8 @@ export function SellerReviewActionDialog({
 
   if (!copy || !application) return null;
   const actionCopy = copy;
+  const reasonId = `seller-review-${application.id}-reason`;
+  const noteId = `seller-review-${application.id}-note`;
 
   async function handleConfirm() {
     if (actionCopy.requireReason && reason.trim().length < 5) return;
@@ -413,10 +423,11 @@ export function SellerReviewActionDialog({
 
           {actionCopy.reasonLabel ? (
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+              <label htmlFor={reasonId} className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
                 {actionCopy.reasonLabel}
               </label>
               <Textarea
+                id={reasonId}
                 value={reason}
                 onChange={(event) => setReason(event.target.value)}
                 placeholder={actionCopy.reasonPlaceholder}
@@ -427,11 +438,12 @@ export function SellerReviewActionDialog({
 
           {actionCopy.noteLabel ? (
             <div className="space-y-2">
-              <label className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
+              <label htmlFor={noteId} className="text-[10px] font-black uppercase tracking-[0.18em] text-zinc-500">
                 {actionCopy.noteLabel}
               </label>
               {actionCopy.requireNote ? (
                 <Textarea
+                  id={noteId}
                   value={adminNotes}
                   onChange={(event) => setAdminNotes(event.target.value)}
                   placeholder={actionCopy.notePlaceholder}
@@ -439,6 +451,7 @@ export function SellerReviewActionDialog({
                 />
               ) : (
                 <Input
+                  id={noteId}
                   value={adminNotes}
                   onChange={(event) => setAdminNotes(event.target.value)}
                   placeholder={actionCopy.notePlaceholder}
@@ -450,7 +463,7 @@ export function SellerReviewActionDialog({
         </div>
 
         <DialogFooter className="gap-3 border-t border-zinc-100 px-6 py-5 sm:justify-between">
-          <Button variant="outline" onClick={() => handleOpenChange(false)} className="rounded-xl border-zinc-200 font-black">
+          <Button variant="outline" onClick={() => handleOpenChange(false)} className="min-h-11 rounded-xl border-zinc-200 font-black">
             Cancel
           </Button>
           <Button
@@ -460,7 +473,7 @@ export function SellerReviewActionDialog({
               (actionCopy.requireReason && reason.trim().length < 5) ||
               (actionCopy.requireNote && adminNotes.trim().length < 5)
             }
-            className={cn("rounded-xl font-black", actionCopy.confirmClassName)}
+            className={cn("min-h-11 rounded-xl font-black", actionCopy.confirmClassName)}
           >
             {actionCopy.confirmLabel}
           </Button>
