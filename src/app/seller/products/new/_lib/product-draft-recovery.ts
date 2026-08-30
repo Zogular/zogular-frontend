@@ -5,6 +5,7 @@ import {
 } from "@/services/product-content-policy";
 import type { CategoryFieldValue } from "../_components/CategorySpecificDetails";
 import type { CategorySelection } from "./category-selection";
+import type { ProductCategoryServerErrors } from "./product-category-errors";
 
 const DRAFT_VERSION = 1;
 const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;
@@ -15,6 +16,7 @@ export const PRODUCT_SUBMISSION_RECOVERY_QUERY_PARAM = "submissionRecovery" as c
 export type ProductSubmissionRecoveryHint =
   | "content-policy"
   | "snapshot-conflict"
+  | "category-validation"
   | "submit-failed";
 
 export type RecoverableProductDraft = {
@@ -32,6 +34,7 @@ export type RecoverableProductDraft = {
   lowStockThreshold: string;
   submittedCategory: CategorySelection | null;
   categoryFieldValues: CategoryFieldValue[];
+  categoryFallbackNote?: string;
   deliveryType: "standard" | "express";
   packageWeight: string;
   hasDiscount: boolean;
@@ -54,6 +57,12 @@ export type ProductSubmissionRecovery =
       version: typeof SUBMISSION_RECOVERY_VERSION;
       savedAt: number;
       kind: "snapshot-conflict";
+    }
+  | {
+      version: typeof SUBMISSION_RECOVERY_VERSION;
+      savedAt: number;
+      kind: "category-validation";
+      errors: ProductCategoryServerErrors;
     };
 
 export function getProductDraftStorageKey(sellerId: string) {
@@ -64,7 +73,8 @@ export function writeProductSubmissionRecovery(
   productId: string,
   recovery:
     | { kind: "content-policy"; issues: readonly StoredProductContentPolicyIssue[] }
-    | { kind: "snapshot-conflict" },
+    | { kind: "snapshot-conflict" }
+    | { kind: "category-validation"; errors: ProductCategoryServerErrors },
 ) {
   if (typeof window === "undefined") return false;
 
@@ -181,6 +191,7 @@ export function hasRecoverableProductDraft(draft: RecoverableProductDraft) {
     draft.sku.trim() ||
     draft.submittedCategory ||
     draft.categoryFieldValues.some((field) => field.value.trim()) ||
+    draft.categoryFallbackNote?.trim() ||
     draft.specs.some((spec) => spec.name.trim() || spec.value.trim()) ||
     draft.variantOptions.colors.trim() ||
     draft.variantOptions.sizes.trim() ||
@@ -209,6 +220,7 @@ export function parseProductSubmissionRecoveryHint(
 ): ProductSubmissionRecoveryHint | null {
   return value === "content-policy" ||
     value === "snapshot-conflict" ||
+    value === "category-validation" ||
     value === "submit-failed"
     ? value
     : null;
@@ -227,6 +239,9 @@ function isProductSubmissionRecovery(value: unknown): value is ProductSubmission
   }
 
   if (record.kind === "snapshot-conflict") return true;
+  if (record.kind === "category-validation") {
+    return isStoredCategoryValidationErrors(record.errors);
+  }
   if (record.kind !== "content-policy" || !Array.isArray(record.issues) || !record.issues.length) {
     return false;
   }
@@ -234,6 +249,19 @@ function isProductSubmissionRecovery(value: unknown): value is ProductSubmission
   return restoreProductContentPolicyIssues(
     record.issues as StoredProductContentPolicyIssue[],
   ).length > 0;
+}
+
+function isStoredCategoryValidationErrors(value: unknown): value is ProductCategoryServerErrors {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as Record<string, unknown>;
+  const attributeErrors = record.attributeErrors;
+  if (!attributeErrors || typeof attributeErrors !== "object" || Array.isArray(attributeErrors)) return false;
+  if (!Object.values(attributeErrors).every((message) => typeof message === "string" && message.length > 0 && message.length <= 500)) return false;
+  for (const key of ["categoryMessage", "detailsMessage", "firstAttributeId"] as const) {
+    const item = record[key];
+    if (item !== undefined && (typeof item !== "string" || item.length > 500)) return false;
+  }
+  return true;
 }
 
 function getBrowserStorage(kind: "local" | "session"): Storage | null {

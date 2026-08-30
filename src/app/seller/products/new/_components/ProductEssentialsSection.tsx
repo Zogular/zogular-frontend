@@ -47,9 +47,10 @@ export function ProductEssentialsSection({
 
       <GlassSection title="Category Selector" subtitle="Choose the nearest final category. Use Other under the correct parent when the exact match is missing." icon={<FolderTree className="h-4 w-4" />}>
         <button
-          id="product-category"
+          id="product-category-selector"
           type="button"
           onClick={onOpenCategory}
+          aria-describedby={categoryError ? "product-category-error" : undefined}
           className={`flex min-h-14 w-full items-center justify-between rounded-2xl border bg-white/80 px-4 text-left shadow-inner transition-all hover:border-[#009E49] ${
             categoryError ? "border-rose-300" : "border-zinc-200"
           }`}
@@ -66,7 +67,7 @@ export function ProductEssentialsSection({
             Other category selected. This listing will carry stricter review metadata.
           </p>
         ) : null}
-        {fieldError(categoryError)}
+        {fieldError(categoryError, "product-category-error")}
       </GlassSection>
     </>
   );
