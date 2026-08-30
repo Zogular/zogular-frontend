@@ -22,7 +22,31 @@ export interface AdminVendorApplicationListParams {
   search?: string;
   status?: SellerApplicationStatus | "all";
   sellerType?: SellerType | "all";
+  sort?: AdminVendorApplicationSort;
+  direction?: AdminVendorApplicationSortDirection;
+  signal?: AbortSignal;
 }
+
+export type AdminVendorApplicationSort =
+  | "submittedAt"
+  | "createdAt"
+  | "updatedAt"
+  | "storeName";
+
+export type AdminVendorApplicationSortDirection = "asc" | "desc";
+
+export const SELLER_APPLICATION_STATUSES: readonly SellerApplicationStatus[] = [
+  "DRAFT",
+  "SUBMITTED",
+  "NEEDS_INFO",
+  "PROVISIONAL",
+  "APPROVED",
+  "RESTRICTED",
+  "SUSPENDED",
+  "REJECTED",
+];
+
+export type AdminVendorApplicationStatusFacets = Record<SellerApplicationStatus, number>;
 
 export interface AdminVendorApplicationListResponse {
   applications: VendorApplication[];
@@ -32,6 +56,16 @@ export interface AdminVendorApplicationListResponse {
     limit: number;
     pages: number;
   };
+  facets: {
+    byStatus: AdminVendorApplicationStatusFacets;
+  };
+}
+
+export class AdminVendorApplicationListContractError extends Error {
+  constructor() {
+    super("Seller application list response did not match the expected contract.");
+    this.name = "AdminVendorApplicationListContractError";
+  }
 }
 
 export interface ApproveVendorApplicationPayload {
@@ -210,35 +244,104 @@ function normalizeVendorApplication(payload: unknown): VendorApplication {
   return normalizeVendorApplicationRecord(record);
 }
 
-function normalizeListPayload(payload: unknown): AdminVendorApplicationListResponse {
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
+}
+
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isValidDateString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function assertListApplicationRecord(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  if (
+    !record ||
+    typeof record.id !== "string" ||
+    !record.id.trim() ||
+    !SELLER_APPLICATION_STATUSES.includes(record.status as SellerApplicationStatus) ||
+    (record.sellerType !== "INDIVIDUAL" && record.sellerType !== "REGISTERED_BUSINESS") ||
+    !isValidDateString(record.createdAt) ||
+    !isValidDateString(record.updatedAt)
+  ) {
+    throw new AdminVendorApplicationListContractError();
+  }
+
+  for (const field of ["submittedAt", "reviewedAt"] as const) {
+    if (record[field] !== null && record[field] !== undefined && !isValidDateString(record[field])) {
+      throw new AdminVendorApplicationListContractError();
+    }
+  }
+
+  return record;
+}
+
+export function parseAdminVendorApplicationListResponse(
+  payload: unknown,
+): AdminVendorApplicationListResponse {
   const root = asRecord(payload);
   const data = asRecord(root?.data);
-  const rawApplications = Array.isArray(data?.applications) ? data?.applications : [];
+  const rawApplications = data?.applications;
   const pagination = asRecord(root?.pagination);
+  const facets = asRecord(root?.facets);
+  const byStatus = asRecord(facets?.byStatus);
+
+  if (
+    root?.status !== "success" ||
+    !Array.isArray(rawApplications) ||
+    !pagination ||
+    !isNonNegativeInteger(pagination.total) ||
+    !isPositiveInteger(pagination.page) ||
+    !isPositiveInteger(pagination.limit) ||
+    !isNonNegativeInteger(pagination.pages) ||
+    pagination.pages !== Math.ceil(pagination.total / pagination.limit) ||
+    rawApplications.length > pagination.limit ||
+    !facets ||
+    !byStatus
+  ) {
+    throw new AdminVendorApplicationListContractError();
+  }
+
+  const parsedFacets = {} as AdminVendorApplicationStatusFacets;
+  for (const status of SELLER_APPLICATION_STATUSES) {
+    const count = byStatus[status];
+    if (!isNonNegativeInteger(count)) {
+      throw new AdminVendorApplicationListContractError();
+    }
+    parsedFacets[status] = count;
+  }
+
+  if (Object.keys(byStatus).some((status) => !SELLER_APPLICATION_STATUSES.includes(status as SellerApplicationStatus))) {
+    throw new AdminVendorApplicationListContractError();
+  }
 
   return {
-    applications: rawApplications
-      .map((item) => asRecord(item))
-      .filter((item): item is Record<string, unknown> => Boolean(item))
-      .map(normalizeVendorApplicationRecord),
+    applications: rawApplications.map(assertListApplicationRecord).map(normalizeVendorApplicationRecord),
     pagination: {
-      total:
-        typeof pagination?.total === "number" ? pagination.total : rawApplications.length,
-      page: typeof pagination?.page === "number" ? pagination.page : 1,
-      limit: typeof pagination?.limit === "number" ? pagination.limit : rawApplications.length,
-      pages: typeof pagination?.pages === "number" ? pagination.pages : 1,
+      total: pagination.total,
+      page: pagination.page,
+      limit: pagination.limit,
+      pages: pagination.pages,
     },
+    facets: { byStatus: parsedFacets },
   };
 }
 
-function buildListQuery(params: AdminVendorApplicationListParams = {}) {
+export function buildAdminVendorApplicationListQuery(
+  params: AdminVendorApplicationListParams = {},
+) {
   return {
     page: params.page ?? 1,
-    limit: params.limit ?? 100,
+    limit: params.limit ?? 20,
     search: params.search?.trim() || undefined,
     status: params.status && params.status !== "all" ? params.status : undefined,
     sellerType:
       params.sellerType && params.sellerType !== "all" ? params.sellerType : undefined,
+    sort: params.sort ?? "submittedAt",
+    direction: params.direction ?? "desc",
   };
 }
 
@@ -247,10 +350,12 @@ export async function getVendorApplications(
 ): Promise<AdminVendorApplicationListResponse> {
   const payload = await apiClient<unknown>(ADMIN_VENDOR_APPLICATIONS_ENDPOINT, {
     method: "GET",
-    query: buildListQuery(params),
+    cache: "no-store",
+    query: buildAdminVendorApplicationListQuery(params),
+    signal: params.signal,
   });
 
-  return normalizeListPayload(payload);
+  return parseAdminVendorApplicationListResponse(payload);
 }
 
 export async function getVendorApplicationById(id: string): Promise<VendorApplication> {
