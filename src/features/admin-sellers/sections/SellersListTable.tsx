@@ -2,10 +2,10 @@ import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 import {
   StatusBadge,
-  SellerTypeBadge,
   formatAdminDate,
   getApplicationLocation,
   getApplicationPrimaryName,
+  getSellerTypeLabel,
 } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import type { VendorApplicationAdminAction } from "@/features/admin-sellers/types/admin-seller.types";
 import { getAvailableVendorActions } from "@/features/admin-sellers/lib/vendor-action-availability";
@@ -19,16 +19,13 @@ import {
 } from "@/components/ui/action-menu";
 import type { VendorApplication } from "@/types/seller";
 import { Button } from "@/components/ui/button";
-import type { CollectionViewMode } from "@/components/shared/CollectionViewToggle";
 
 interface SellersListTableProps {
   applications: VendorApplication[];
   onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
   canApprove: boolean;
   canSuspend: boolean;
-  mobileView: CollectionViewMode;
-  hasMore?: boolean;
-  onLoadMore?: () => void;
+  isRefreshing: boolean;
 }
 
 export function SellersListTable({
@@ -36,191 +33,114 @@ export function SellersListTable({
   onOpenAction,
   canApprove,
   canSuspend,
-  mobileView,
-  hasMore,
-  onLoadMore,
+  isRefreshing,
 }: SellersListTableProps) {
   return (
-    <div className="w-full space-y-6">
-      {/* Desktop Table View */}
-      <div className="hidden md:block overflow-hidden rounded-[2rem] border border-stone-200 bg-white/70 shadow-[0_8px_32px_rgba(15,23,42,0.04)] backdrop-blur-xl">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left border-collapse whitespace-nowrap">
-            <thead>
-              <tr className="border-b border-stone-200 bg-stone-50/50 text-[11px] font-black uppercase tracking-[0.18em] text-stone-500">
-                <th className="px-4 py-3.5">Seller</th>
-                <th className="px-4 py-3.5">Type</th>
-                <th className="px-4 py-3.5">Contact</th>
-                <th className="px-4 py-3.5">Location</th>
-                <th className="px-4 py-3.5">Timeline</th>
-                <th className="px-4 py-3.5">Status</th>
-                <th className="px-4 py-3.5 text-right">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-stone-100 text-xs font-bold text-stone-700">
-              {applications.map((application) => {
-                const availableActions = getAvailableVendorActions(application, canApprove, canSuspend);
-                return (
-                <tr key={application.id} className="transition-colors hover:bg-stone-50/50">
-                  <td className="px-4 py-3.5">
-                    <div className="font-black text-stone-950 text-sm">{getApplicationPrimaryName(application)}</div>
-                    <div className="mt-0.5 text-stone-500 font-medium">{application.ownerFullName}</div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <SellerTypeBadge sellerType={application.sellerType} />
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div>{application.businessPhone || application.user?.telephone || "No phone"}</div>
-                    <div className="mt-0.5 text-stone-500 font-medium">{application.businessEmail || application.user?.email || "No email"}</div>
-                  </td>
-                  <td className="px-4 py-3.5 max-w-[200px] truncate text-ellipsis">
-                    {getApplicationLocation(application) || "Not provided"}
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <div suppressHydrationWarning>Sub: {formatAdminDate(application.submittedAt || application.createdAt)}</div>
-                    <div className="mt-0.5 text-stone-500 font-medium" suppressHydrationWarning>Rev: {formatAdminDate(application.reviewedAt)}</div>
-                  </td>
-                  <td className="px-4 py-3.5">
-                    <StatusBadge status={application.status} />
-                  </td>
-                  <td className="px-4 py-3.5 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button asChild variant="outline" size="sm" className="h-8 rounded-lg border-stone-200 bg-white font-black text-stone-700 shadow-sm hover:bg-stone-50">
-                        <Link href={`/admin/sellers/${application.id}`}>Review</Link>
-                      </Button>
-                      
-                      {availableActions.length > 0 && (
-                        <ActionMenu>
-                          <ActionMenuTrigger asChild>
-                            <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-100">
-                              <MoreHorizontal className="h-4 w-4" />
-                            </Button>
-                          </ActionMenuTrigger>
-                          <ActionMenuContent>
-                            <ActionMenuNote>Manage Seller</ActionMenuNote>
-                            <ActionMenuSeparator />
-                            {availableActions.includes("approve-approved") && (
-                              <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>
-                                Approve
-                              </ActionMenuItem>
-                            )}
-                            {availableActions.includes("approve-provisional") && (
-                              <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>
-                                Approve Provisional
-                              </ActionMenuItem>
-                            )}
-                            {availableActions.includes("needs-info") && (
-                              <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>
-                                Needs Info
-                              </ActionMenuItem>
-                            )}
-                            {availableActions.includes("reject") && (
-                              <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">
-                                Reject
-                              </ActionMenuItem>
-                            )}
-                            {availableActions.some(a => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(a)) &&
-                             availableActions.some(a => ["restrict", "suspend"].includes(a)) && (
-                              <ActionMenuSeparator />
-                            )}
-                            {availableActions.includes("restrict") && (
-                              <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500">
-                                Restrict
-                              </ActionMenuItem>
-                            )}
-                            {availableActions.includes("suspend") && (
-                              <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">
-                                Suspend
-                              </ActionMenuItem>
-                            )}
-                          </ActionMenuContent>
-                        </ActionMenu>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              )})}
-            </tbody>
-          </table>
+    <section
+      aria-label="Seller applications"
+      aria-busy={isRefreshing}
+      className="relative overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-cream)] shadow-[0_16px_34px_rgb(6_59_41_/_7%)]"
+    >
+      {isRefreshing ? (
+        <div className="absolute inset-x-0 top-0 z-10 h-1 overflow-hidden bg-[color-mix(in_srgb,var(--admin-canopy)_14%,transparent)]" aria-hidden="true">
+          <div className="h-full w-1/3 bg-[var(--admin-ember)]" />
         </div>
+      ) : null}
+
+      <div className="hidden overflow-x-auto md:block">
+        <table className="w-full border-collapse text-left">
+          <thead>
+            <tr className="border-b border-[color-mix(in_srgb,var(--admin-copper-muted)_30%,transparent)] bg-[var(--admin-canopy-deep)] text-[10px] font-black uppercase text-[var(--admin-surface-mist)]">
+              <th className="px-4 py-3">Seller</th>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Contact</th>
+              <th className="px-4 py-3">Location</th>
+              <th className="px-4 py-3">Submitted</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-[color-mix(in_srgb,var(--admin-copper-muted)_22%,transparent)] text-xs text-[var(--admin-ink)]">
+            {applications.map((application) => (
+              <tr key={application.id} className="transition-colors hover:bg-[var(--admin-surface-mist)]">
+                <td className="max-w-64 px-4 py-3">
+                  <Link
+                    href={`/admin/sellers/${application.id}`}
+                    prefetch={false}
+                    className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
+                  >
+                    {getApplicationPrimaryName(application)}
+                  </Link>
+                  <span className="mt-0.5 block truncate font-semibold text-[var(--admin-ink-soft)]">
+                    {application.ownerFullName || "Owner not provided"}
+                  </span>
+                </td>
+                <td className="px-4 py-3 font-bold">{getSellerTypeLabel(application.sellerType)}</td>
+                <td className="max-w-60 px-4 py-3">
+                  <span className="block truncate font-bold">{application.businessPhone || application.user?.telephone || "No phone"}</span>
+                  <span className="mt-0.5 block truncate text-[var(--admin-ink-soft)]">{application.businessEmail || application.user?.email || "No email"}</span>
+                </td>
+                <td className="max-w-52 px-4 py-3">
+                  <span className="block truncate">{getApplicationLocation(application) || "Not provided"}</span>
+                </td>
+                <td className="px-4 py-3 font-semibold" suppressHydrationWarning>
+                  {formatAdminDate(application.submittedAt || application.createdAt)}
+                </td>
+                <td className="px-4 py-3"><StatusBadge status={application.status} /></td>
+                <td className="px-4 py-3 text-right">
+                  <div className="flex items-center justify-end gap-1">
+                    <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)] hover:bg-[color-mix(in_srgb,var(--admin-canopy)_10%,var(--admin-surface-mist))]">
+                      <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review</Link>
+                    </Button>
+                    <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+                  </div>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
 
-      {/* Mobile Stacked View */}
-      <div className={mobileView === "grid" ? "grid grid-cols-1 gap-2.5 min-[540px]:grid-cols-2 md:hidden" : "md:hidden overflow-hidden rounded-[1.6rem] border border-stone-200 bg-white/80 shadow-sm backdrop-blur-xl"}>
+      <div className="divide-y divide-[color-mix(in_srgb,var(--admin-copper-muted)_26%,transparent)] md:hidden">
         {applications.map((application) => (
-          <article
-            key={application.id}
-            className={mobileView === "grid" ? "flex flex-col gap-2.5 rounded-[1.35rem] border border-stone-200 bg-white/80 p-3 shadow-sm backdrop-blur-xl" : "p-3.5"}
-          >
-            {mobileView === "grid" ? (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-sm font-black text-stone-950">
-                      {getApplicationPrimaryName(application)}
-                    </h2>
-                    <p className="mt-0.5 text-xs font-bold text-stone-500">{application.ownerFullName}</p>
-                  </div>
-                  <SellerMobileActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
-                </div>
+          <article key={application.id} className="p-3.5">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0 flex-1">
+                <Link
+                  href={`/admin/sellers/${application.id}`}
+                  prefetch={false}
+                  className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
+                >
+                  {getApplicationPrimaryName(application)}
+                </Link>
+                <p className="mt-0.5 truncate text-xs font-semibold text-[var(--admin-ink-soft)]">
+                  {application.ownerFullName || "Owner not provided"}
+                </p>
+              </div>
+              <StatusBadge status={application.status} />
+            </div>
 
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <StatusBadge status={application.status} />
-                  <SellerTypeBadge sellerType={application.sellerType} />
-                </div>
+            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+              <MobileField label="Type" value={application.sellerType === "REGISTERED_BUSINESS" ? "Registered business" : "Individual"} />
+              <MobileField label="Submitted" value={formatAdminDate(application.submittedAt || application.createdAt)} />
+              <MobileField label="Phone" value={application.businessPhone || application.user?.telephone || "No phone"} />
+              <MobileField label="Location" value={getApplicationLocation(application) || "Not provided"} />
+            </dl>
 
-                <div className="rounded-[1rem] border border-stone-200 bg-stone-50/80 px-2.5">
-                  <MobileSellerRow label="Contact" value={application.businessPhone || application.user?.telephone || "No phone"} />
-                  <MobileSellerRow label="Location" value={getApplicationLocation(application) || "Not provided"} />
-                  <MobileSellerRow label="Submitted" value={formatAdminDate(application.submittedAt || application.createdAt)} />
-                  <MobileSellerRow label="Reviewed" value={formatAdminDate(application.reviewedAt)} isLast />
-                </div>
-
-                <Button asChild variant="outline" className="h-9 w-full rounded-xl border-stone-200 bg-stone-50 text-xs font-black text-stone-900 shadow-sm hover:bg-stone-100">
-                  <Link href={`/admin/sellers/${application.id}`}>Review Application</Link>
-                </Button>
-              </>
-            ) : (
-              <>
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0 flex-1">
-                    <h2 className="truncate text-[13px] font-black text-stone-950">{getApplicationPrimaryName(application)}</h2>
-                    <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.14em] text-stone-500">{application.ownerFullName}</p>
-                  </div>
-                  <StatusBadge status={application.status} />
-                </div>
-                <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-stone-600">
-                  <span className="inline-flex items-center gap-1"><span className="text-[8px] font-black uppercase tracking-[0.16em] text-stone-400">Type</span><span>{application.sellerType === "REGISTERED_BUSINESS" ? "Business" : "Individual"}</span></span>
-                  <span className="inline-flex items-center gap-1"><span className="text-[8px] font-black uppercase tracking-[0.16em] text-stone-400">Phone</span><span>{application.businessPhone || application.user?.telephone || "No phone"}</span></span>
-                </div>
-                <div className="mt-2 flex items-center justify-between gap-2">
-                  <Button asChild variant="outline" className="h-8 rounded-xl border-stone-200 bg-stone-50 px-3 font-black text-[10px] text-stone-900 shadow-sm hover:bg-stone-100">
-                    <Link href={`/admin/sellers/${application.id}`}>Review</Link>
-                  </Button>
-                  <SellerMobileActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
-                </div>
-              </>
-            )}
+            <div className="mt-3 flex items-center justify-between border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)] pt-2.5">
+              <Button asChild variant="outline" size="sm" className="h-9 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)]">
+                <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review application</Link>
+              </Button>
+              <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+            </div>
           </article>
         ))}
       </div>
-
-      {hasMore && onLoadMore && (
-        <div className="flex justify-center pt-4 pb-8">
-          <Button
-            variant="outline"
-            onClick={onLoadMore}
-            className="rounded-full border-stone-200 bg-white px-8 font-black text-stone-700 shadow-sm hover:bg-stone-50"
-          >
-            Load more sellers
-          </Button>
-        </div>
-      )}
-    </div>
+    </section>
   );
 }
 
-function SellerMobileActionMenu({
+function SellerActionMenu({
   application,
   onOpenAction,
   canApprove,
@@ -231,59 +151,38 @@ function SellerMobileActionMenu({
   canApprove: boolean;
   canSuspend: boolean;
 }) {
-  const availableActions = getAvailableVendorActions(application, canApprove, canSuspend);
-  if (availableActions.length === 0) return null;
+  const actions = getAvailableVendorActions(application, canApprove, canSuspend);
+  if (actions.length === 0) return null;
+  const reviewActions = actions.filter((action) => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(action));
+  const statusActions = actions.filter((action) => ["restrict", "suspend"].includes(action));
 
   return (
     <ActionMenu>
       <ActionMenuTrigger asChild>
-        <Button variant="ghost" size="icon" className="h-8 w-8 shrink-0 rounded-lg text-stone-500 hover:text-stone-900 hover:bg-stone-100">
-          <MoreHorizontal className="h-4 w-4" />
+        <Button variant="ghost" size="icon" aria-label={`Manage ${getApplicationPrimaryName(application)}`} className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]">
+          <MoreHorizontal className="size-4" />
         </Button>
       </ActionMenuTrigger>
       <ActionMenuContent>
-        <ActionMenuNote>Manage Seller</ActionMenuNote>
+        <ActionMenuNote>Manage seller</ActionMenuNote>
         <ActionMenuSeparator />
-        {availableActions.includes("approve-approved") && (
-          <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem>
-        )}
-        {availableActions.includes("approve-provisional") && (
-          <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve Provisional</ActionMenuItem>
-        )}
-        {availableActions.includes("needs-info") && (
-          <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs Info</ActionMenuItem>
-        )}
-        {availableActions.includes("reject") && (
-          <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">Reject</ActionMenuItem>
-        )}
-        {availableActions.some(a => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(a)) &&
-         availableActions.some(a => ["restrict", "suspend"].includes(a)) && (
-          <ActionMenuSeparator />
-        )}
-        {availableActions.includes("restrict") && (
-          <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-700 hover:bg-amber-50 focus-visible:ring-amber-500">Restrict</ActionMenuItem>
-        )}
-        {availableActions.includes("suspend") && (
-          <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-600 hover:bg-rose-50 focus-visible:ring-rose-500">Suspend</ActionMenuItem>
-        )}
+        {actions.includes("approve-approved") ? <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem> : null}
+        {actions.includes("approve-provisional") ? <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve provisional</ActionMenuItem> : null}
+        {actions.includes("needs-info") ? <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs info</ActionMenuItem> : null}
+        {actions.includes("reject") ? <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-700">Reject</ActionMenuItem> : null}
+        {reviewActions.length > 0 && statusActions.length > 0 ? <ActionMenuSeparator /> : null}
+        {actions.includes("restrict") ? <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-800">Restrict</ActionMenuItem> : null}
+        {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-700">Suspend</ActionMenuItem> : null}
       </ActionMenuContent>
     </ActionMenu>
   );
 }
 
-function MobileSellerRow({
-  label,
-  value,
-  isLast = false,
-}: {
-  label: string;
-  value: string;
-  isLast?: boolean;
-}) {
+function MobileField({ label, value }: { label: string; value: string }) {
   return (
-    <div className={`${!isLast ? "border-b border-stone-200" : ""} grid grid-cols-[auto_minmax(0,1fr)] items-center gap-3 py-2`}>
-      <span className="text-[9px] font-black uppercase tracking-[0.16em] text-stone-500">{label}</span>
-      <span className="truncate text-right text-[11px] font-bold text-stone-900">{value}</span>
+    <div className="min-w-0">
+      <dt className="text-[9px] font-black uppercase text-[var(--admin-ink-soft)]">{label}</dt>
+      <dd className="mt-0.5 truncate font-bold text-[var(--admin-ink)]" suppressHydrationWarning>{value}</dd>
     </div>
   );
 }
