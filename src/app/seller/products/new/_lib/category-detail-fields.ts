@@ -28,6 +28,7 @@ const SMARTPHONE_DETAILS: CategoryDetailGroup = {
   id: "smartphones",
   title: "Phone Details",
   description: "Capture the phone specs buyers compare first.",
+  reviewNote: "These compatibility specifications are saved with the draft, but only fields loaded from the category service are governed review requirements.",
   fields: [
     phaseOneField({ id: "ram", label: "RAM", type: "select", options: ["2GB", "3GB", "4GB", "6GB", "8GB", "12GB", "16GB+"], required: true }),
     phaseOneField({ id: "storage", label: "Storage", type: "select", options: ["32GB", "64GB", "128GB", "256GB", "512GB", "1TB"], required: true }),
@@ -42,6 +43,7 @@ const FOOTWEAR_DETAILS: CategoryDetailGroup = {
   id: "footwear",
   title: "Shoe Details",
   description: "Show the fit, style, and variants shoppers need before checkout.",
+  reviewNote: "These compatibility specifications are saved with the draft, but only fields loaded from the category service are governed review requirements.",
   fields: [
     phaseOneField({ id: "shoe-size", label: "Size", type: "text", placeholder: "e.g. EU 42 / UK 8", required: true }),
     phaseOneField({ id: "color", label: "Color", type: "text", placeholder: "e.g. Black, White" }),
@@ -56,6 +58,7 @@ const BEAUTY_DETAILS: CategoryDetailGroup = {
   id: "beauty-personal-care",
   title: "Beauty / Personal Care Details",
   description: "Add safety, suitability, and usage details for personal care products.",
+  reviewNote: "These compatibility specifications are saved with the draft, but only fields loaded from the category service are governed review requirements.",
   fields: [
     phaseOneField({ id: "volume", label: "Volume / Size", type: "text", placeholder: "e.g. 250ml, 50g", required: true }),
     phaseOneField({ id: "skin-type", label: "Skin Type", type: "select", options: ["All skin types", "Dry", "Oily", "Combination", "Sensitive"] }),
@@ -69,6 +72,7 @@ const GENERIC_DETAILS: CategoryDetailGroup = {
   id: "generic",
   title: "Category Details",
   description: "Add the details that matter for this product type.",
+  reviewNote: "These are manual draft specifications, not backend-governed required attributes.",
   fields: [
     phaseOneField({ id: "brand-model", label: "Brand / Model", type: "text", placeholder: "e.g. Samsung Galaxy A55" }),
     phaseOneField({ id: "key-feature", label: "Key Feature", type: "text", placeholder: "e.g. Waterproof, wireless, handmade" }),
@@ -101,8 +105,21 @@ export function getCategoryDetailGroup(selection: CategorySelection): CategoryDe
   return GENERIC_DETAILS;
 }
 
-export function categoryAttributesToDetailGroup(attributes: CategoryAttributeOption[], fallback: CategoryDetailGroup): CategoryDetailGroup {
-  if (!attributes.length) return fallback;
+export function categoryAttributesToDetailGroup(
+  attributes: CategoryAttributeOption[],
+  fallback: CategoryDetailGroup,
+  useManualFallback: boolean,
+): CategoryDetailGroup {
+  if (!attributes.length) {
+    return useManualFallback
+      ? fallback
+      : {
+          ...fallback,
+          description: "This category has no governed seller fields beyond the standard product details.",
+          reviewNote: undefined,
+          fields: [],
+        };
+  }
 
   return {
     id: fallback.id,
@@ -131,9 +148,10 @@ export function getCategoryDetailGroupById(groupId: string): CategoryDetailGroup
 function phaseOneField(field: Omit<CategoryDetailField, "attributeId" | "slug" | "source">): CategoryDetailField {
   return {
     ...field,
+    required: false,
     attributeId: field.id,
     slug: field.id,
-    source: "phase-1",
+    source: "manual",
   };
 }
 

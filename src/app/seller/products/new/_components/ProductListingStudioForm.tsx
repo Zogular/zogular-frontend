@@ -6,7 +6,7 @@ import { Barcode, Box, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSi
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProductContentPolicyFeedback } from "@/components/shared/ProductContentPolicyFeedback";
-import { fetchCategoryAttributes, fetchCategoryTree, type CategoryAttributeOption, type CategoryNode } from "@/services/categories-api";
+import { type CategoryNode } from "@/services/categories-api";
 import { Toaster, toast } from "sonner";
 import { createSellerCatalogProduct, submitSellerProductForReview, type CreateSellerProductInput, type ProductCondition, type SellerProductListing, type SellerProductStatus } from "@/services/seller-catalog";
 import {
@@ -19,14 +19,19 @@ import {
   type ProductContentPolicyIssue,
 } from "@/services/product-content-policy";
 import { CategoryDrawer } from "./CategoryDrawer";
+import { CategoryChangeConfirmationDialog, type CategoryChangeImpact } from "./CategoryChangeConfirmationDialog";
+import { CategorySchemaFailureFallback } from "./CategorySchemaFailureFallback";
 import { CategorySpecificDetails, type CategoryFieldValue } from "./CategorySpecificDetails";
 import { ListingReadiness, type ListingReadinessItem } from "./ListingReadiness";
 import { ProductEssentialsSection } from "./ProductEssentialsSection";
 import { ProductImagesSection } from "./ProductImagesSection";
 import { fieldError, GlassSection, inputErrorClass, InputField, ProductListingMobileActions, ProductListingStudioHeader, ToggleSwitch } from "./ProductListingStudioPrimitives";
 import { useProductImages } from "../_hooks/useProductImages";
+import { useProductCategoryContracts } from "../_hooks/useProductCategoryContracts";
 import { categoryAttributesToDetailGroup, getCategoryDetailGroup, type CategoryDetailField } from "../_lib/category-detail-fields";
 import { buildSelectionFromLegacy, flattenCategoryNodes, makeCategorySelection, type CategorySelection, type PickerSelection } from "../_lib/category-selection";
+import { parseProductCategoryServerErrors } from "../_lib/product-category-errors";
+import { reconcileCategoryFieldValues, validateCategoryIntegrity } from "../_lib/category-form-integrity";
 import {
   buildSku,
   buildVariants,
@@ -158,16 +163,23 @@ export function ProductListingStudioForm({
   const [sku, setSku] = useState(initialProduct?.sku ?? "");
   const [lowStockThreshold, setLowStockThreshold] = useState(initialProduct ? String(initialProduct.lowStockThreshold) : "5");
 
-  const [categoryTree, setCategoryTree] = useState<CategoryNode[]>([]);
   const [categorySearch, setCategorySearch] = useState("");
   const [isCategoryOpen, setIsCategoryOpen] = useState(false);
   const [browsePath, setBrowsePath] = useState<CategoryNode[]>([]);
   const [pickerSelection, setPickerSelection] = useState<PickerSelection | null>(null);
   const [submittedCategory, setSubmittedCategory] = useState<CategorySelection | null>(initialCategory);
-  const [categoryAttributes, setCategoryAttributes] = useState<CategoryAttributeOption[]>([]);
-  const [categoryTreeStatus, setCategoryTreeStatus] = useState<"loading" | "success" | "error">("loading");
-  const [categoryAttributesStatus, setCategoryAttributesStatus] = useState<"loading" | "success" | "error">("success");
-  const [attributesRetry, setAttributesRetry] = useState(0);
+  const {
+    categoryTree,
+    categoryTreeStatus,
+    retryCategoryTree,
+    categoryAttributes,
+    categoryAttributesStatus,
+    retryCategoryAttributes,
+    loadAttributesForSelection,
+  } = useProductCategoryContracts(submittedCategory);
+  const [categoryFieldErrors, setCategoryFieldErrors] = useState<Record<string, string>>({});
+  const [categoryChangeImpact, setCategoryChangeImpact] = useState<CategoryChangeImpact | null>(null);
+  const [categoryFallbackNote, setCategoryFallbackNote] = useState("");
 
   const [deliveryType, setDeliveryType] = useState(initialProduct?.deliveryType ?? "standard");
   const [packageWeight, setPackageWeight] = useState(initialProduct ? String(initialProduct.logistics.weightKG) : "");
@@ -202,6 +214,16 @@ export function ProductListingStudioForm({
       window.setTimeout(tryFocus, 50);
     };
     window.setTimeout(tryFocus, 0);
+  }, []);
+
+  const focusCategoryError = useCallback((attributeId?: string, hasCategoryError = false) => {
+    window.setTimeout(() => {
+      const target = attributeId
+        ? document.querySelector<HTMLElement>(`[data-category-attribute-id="${CSS.escape(attributeId)}"]`)
+        : document.getElementById(hasCategoryError ? "product-category-selector" : "product-category-details");
+      target?.focus();
+      target?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }, 0);
   }, []);
 
   const resolvePolicyIssuesForForm = useCallback((issues: readonly ProductContentPolicyIssue[]) => {
@@ -247,10 +269,21 @@ export function ProductListingStudioForm({
       }
     }
 
+    if (recovery?.kind === "category-validation") {
+      setCategoryFieldErrors(recovery.errors.attributeErrors);
+      setErrors((current) => ({
+        ...current,
+        ...(recovery.errors.categoryMessage ? { category: recovery.errors.categoryMessage } : {}),
+        ...(recovery.errors.detailsMessage ? { categoryDetails: recovery.errors.detailsMessage } : {}),
+      }));
+      focusCategoryError(recovery.errors.firstAttributeId, Boolean(recovery.errors.categoryMessage));
+      return;
+    }
+
     if (recoveryHint === "content-policy" || recoveryHint === "submit-failed") {
       setSubmissionRecoveryFallback(recoveryHint);
     }
-  }, [focusPolicyIssue, initialProduct, isEditMode, resolvePolicyIssuesForForm, searchParams]);
+  }, [focusCategoryError, focusPolicyIssue, initialProduct, isEditMode, resolvePolicyIssuesForForm, searchParams]);
 
   useEffect(() => {
     if (isEditMode) {
@@ -275,6 +308,7 @@ export function ProductListingStudioForm({
       setLowStockThreshold(recovered.lowStockThreshold);
       setSubmittedCategory(recovered.submittedCategory);
       setCategoryFieldValues(recovered.categoryFieldValues);
+      setCategoryFallbackNote(recovered.categoryFallbackNote ?? "");
       setDeliveryType(recovered.deliveryType);
       setPackageWeight(recovered.packageWeight);
       setHasDiscount(recovered.hasDiscount);
@@ -306,6 +340,7 @@ export function ProductListingStudioForm({
     lowStockThreshold,
     submittedCategory,
     categoryFieldValues,
+    categoryFallbackNote,
     deliveryType,
     packageWeight,
     hasDiscount,
@@ -315,7 +350,7 @@ export function ProductListingStudioForm({
     variantOptions,
     seo,
     dimensions,
-  }), [brand, categoryFieldValues, condition, deliveryType, description, dimensions, hasDiscount, hasVariants, location, lowStockThreshold, packageWeight, price, productName, salePrice, seo, showAdvanced, sku, specs, stock, submittedCategory, variantOptions]);
+  }), [brand, categoryFallbackNote, categoryFieldValues, condition, deliveryType, description, dimensions, hasDiscount, hasVariants, location, lowStockThreshold, packageWeight, price, productName, salePrice, seo, showAdvanced, sku, specs, stock, submittedCategory, variantOptions]);
 
   useEffect(() => {
     if (!draftRecoveryReady || !draftStorageKey || serverDraftCreatedRef.current) return;
@@ -343,15 +378,23 @@ export function ProductListingStudioForm({
   );
   const categoryDetailGroup = useMemo(() => {
     if (!fallbackCategoryDetailGroup) return null;
-    return categoryAttributesToDetailGroup(categoryAttributes, fallbackCategoryDetailGroup);
-  }, [categoryAttributes, fallbackCategoryDetailGroup]);
+    return categoryAttributesToDetailGroup(
+      categoryAttributes,
+      fallbackCategoryDetailGroup,
+      !submittedCategory?.isBackendCategory,
+    );
+  }, [categoryAttributes, fallbackCategoryDetailGroup, submittedCategory?.isBackendCategory]);
   const requiredCategoryFieldsComplete = useMemo(() => {
     if (categoryAttributesStatus === "loading" || categoryAttributesStatus === "error") return false;
     if (!categoryDetailGroup) return false;
-    const requiredFields = categoryDetailGroup.fields.filter((field) => field.required);
+    const requiredFields = categoryDetailGroup.fields.filter((field) => field.source === "backend" && field.required);
     if (!requiredFields.length) return true;
     return requiredFields.every((field) => categoryFieldValues.some((item) => item.attributeId === field.attributeId && item.value.trim()));
   }, [categoryDetailGroup, categoryFieldValues, categoryAttributesStatus]);
+  const governedCategoryFieldIds = useMemo(
+    () => new Set(categoryDetailGroup?.fields.filter((field) => field.source === "backend").map((field) => field.attributeId) ?? []),
+    [categoryDetailGroup],
+  );
   const currentLevel = browsePath.length ? browsePath[browsePath.length - 1].children ?? [] : categoryTree;
   const flatCategoryNodes = useMemo(() => flattenCategoryNodes(categoryTree), [categoryTree]);
   const searchResults = useMemo(() => {
@@ -374,63 +417,16 @@ export function ProductListingStudioForm({
     () => [
       { label: "Images added", done: images.length > 0, detail: `${images.length}/${MAX_IMAGES}` },
       { label: "Name added", done: Boolean(productName.trim()), detail: productName.trim() ? "Ready" : "Pending" },
-      { label: "Category selected", done: Boolean(submittedCategory), detail: submittedCategory?.leafName ?? "Pending" },
+      { label: "Final category confirmed", done: Boolean(submittedCategory?.isBackendCategory), detail: submittedCategory?.isBackendCategory ? submittedCategory.leafName : "Pending" },
       { label: "Details completed", done: Boolean(description.trim() && price && stock && requiredCategoryFieldsComplete), detail: categoryAttributesStatus === "loading" ? "Loading" : revealDetails ? "In progress" : "Locked" },
       {
         label: canSubmitForReview ? "Ready for review" : "Draft ready for later review",
-        done: Boolean(images.length && productName.trim() && submittedCategory && price && stock && description.trim() && requiredCategoryFieldsComplete),
+        done: Boolean(images.length && productName.trim() && submittedCategory?.isBackendCategory && price && stock && description.trim() && requiredCategoryFieldsComplete),
         detail: canSubmitForReview ? "Final check" : "Awaiting seller approval",
       },
     ],
     [canSubmitForReview, description, images.length, categoryAttributesStatus, price, productName, requiredCategoryFieldsComplete, revealDetails, stock, submittedCategory],
   );
-
-  const loadCategoryTree = () => {
-    let isMounted = true;
-    setCategoryTreeStatus("loading");
-    fetchCategoryTree().then((categories) => {
-      if (isMounted) {
-        setCategoryTree(categories);
-        setCategoryTreeStatus("success");
-      }
-    }).catch(() => {
-      if (isMounted) setCategoryTreeStatus("error");
-    });
-    return () => {
-      isMounted = false;
-    };
-  };
-
-  useEffect(() => {
-    return loadCategoryTree();
-  }, []);
-
-  useEffect(() => {
-    if (!submittedCategory || submittedCategory.isOther || !submittedCategory.isBackendCategory) {
-      setCategoryAttributes([]);
-      setCategoryAttributesStatus("success");
-      return;
-    }
-
-    let isCurrent = true;
-    setCategoryAttributesStatus("loading");
-    setCategoryAttributes([]);
-
-    fetchCategoryAttributes(submittedCategory.leafSlug)
-      .then((attributes) => {
-        if (isCurrent) {
-          setCategoryAttributes(attributes);
-          setCategoryAttributesStatus("success");
-        }
-      })
-      .catch(() => {
-        if (isCurrent) setCategoryAttributesStatus("error");
-      });
-
-    return () => {
-      isCurrent = false;
-    };
-  }, [submittedCategory, attributesRetry]);
 
   const addSpec = () => setSpecs((current) => [...current, { name: "", value: "" }]);
   const removeSpec = (index: number) => setSpecs((current) => current.filter((_, i) => i !== index));
@@ -456,6 +452,7 @@ export function ProductListingStudioForm({
       if (!existing) return [...current, nextValue];
       return current.map((item) => item.attributeId === field.attributeId ? nextValue : item);
     });
+    setCategoryFieldErrors((current) => withoutRecordKey(current, field.attributeId));
     setErrors((current) => withoutRecordKey(current, "categoryDetails"));
   };
 
@@ -466,11 +463,8 @@ export function ProductListingStudioForm({
       if (!images.length) nextErrors.images = "Add at least one product image before review.";
       if (images.some((image) => image.processedWidth !== image.processedHeight)) nextErrors.images = "Product images must be processed into square listing images.";
       if (!productName.trim()) nextErrors.productName = "Product name required.";
-      if (!submittedCategory) nextErrors.category = "Submit a final category first.";
       if (!description.trim()) nextErrors.description = "Description required before submission.";
-      if (categoryAttributesStatus === "loading") nextErrors.categoryDetails = "Wait for category attributes to finish loading.";
-      else if (categoryAttributesStatus === "error") nextErrors.categoryDetails = "Category attributes are unavailable.";
-      else if (!requiredCategoryFieldsComplete) nextErrors.categoryDetails = "Complete the required category-specific fields.";
+      Object.assign(nextErrors, validateCategoryIntegrity(status, submittedCategory, categoryAttributesStatus, requiredCategoryFieldsComplete));
       if (!price || Number(price) <= 0) nextErrors.price = "Valid price required.";
       if (!stock || Number(stock) < 0) nextErrors.stock = "Valid stock required.";
       if (hasVariants && !variantOptions.colors.trim() && !variantOptions.sizes.trim()) nextErrors.variants = "Add at least one color or size.";
@@ -478,7 +472,6 @@ export function ProductListingStudioForm({
 
     if (status === "draft") {
       if (!productName.trim() && !images.length) nextErrors.productName = "Add a name or image before saving a draft.";
-      if (!submittedCategory) nextErrors.category = "A category is required to save a draft.";
       if (price && Number(price) <= 0) nextErrors.price = "Price must be greater than zero.";
       if (stock && Number(stock) < 0) nextErrors.stock = "Stock cannot be negative.";
     }
@@ -505,6 +498,7 @@ export function ProductListingStudioForm({
     }
 
     setContentPolicyIssues([]);
+    setCategoryFieldErrors({});
     setHasSnapshotConflict(false);
     setSubmissionRecoveryFallback(null);
     setIsSubmitting(true);
@@ -521,23 +515,19 @@ export function ProductListingStudioForm({
         throw new Error("Only uploaded Cloudinary images can be saved to this product.");
       }
 
-      if (!submittedCategory) {
-        throw new Error("Category selection is required.");
-      }
-
       const category = submittedCategory;
-      const finalSKU = sku.trim() || buildSku(category.subcategoryName, productName || "Draft product");
-      const finalWeight = packageWeight ? Number(packageWeight) : getDefaultWeight(category.subcategoryName);
+      const finalSKU = sku.trim() || buildSku(category?.subcategoryName ?? "uncategorized", productName || "Draft product");
+      const finalWeight = packageWeight ? Number(packageWeight) : getDefaultWeight(category?.subcategoryName ?? "uncategorized");
       const normalizedStock = stock ? Number(stock) : 0;
       const normalizedPrice = price ? Number(price) : 0;
-      const moderationFlags = category.isOther ? ["category_other_selected", `category_path:${category.path.join(" > ")}`] : [];
+      const moderationFlags = category?.isOther ? ["category_other_selected", `category_path:${category.path.join(" > ")}`] : [];
       const payloadStatus: SellerProductStatus = isEditMode && initialProduct && status === "draft" ? initialProduct.status : status;
 
       const categorySpecifications = categoryFieldValues
         .filter((item) => item.value.trim())
         .map((item) => ({ name: item.name, value: item.value.trim() }));
       const categoryAttributePayload = categoryFieldValues
-        .filter((item) => item.value.trim())
+        .filter((item) => item.value.trim() && governedCategoryFieldIds.has(item.attributeId))
         .map((item) => ({
           attributeId: item.attributeId,
           slug: item.slug,
@@ -551,10 +541,13 @@ export function ProductListingStudioForm({
         location: location.trim(),
         condition,
         description: description.trim(),
-        categoryName: category.categoryName,
-        categorySlug: category.categorySlug,
-        subcategoryName: category.subcategoryName,
-        subcategorySlug: category.subcategorySlug,
+        categoryId: category?.isBackendCategory ? category.leafId : undefined,
+        categoryLeafSlug: category?.isBackendCategory ? category.leafSlug : undefined,
+        categorySelectionKind: category?.isBackendCategory ? "backend" : category ? "manual" : "none",
+        categoryName: category?.categoryName ?? "",
+        categorySlug: category?.categorySlug ?? "",
+        subcategoryName: category?.subcategoryName ?? "",
+        subcategorySlug: category?.subcategorySlug ?? "",
         status: payloadStatus,
         price: normalizedPrice,
         salePrice: hasDiscount ? Number(salePrice) : null,
@@ -571,6 +564,7 @@ export function ProductListingStudioForm({
         attributes: categoryAttributePayload,
         specifications: [
           ...categorySpecifications,
+          ...(categoryFallbackNote.trim() ? [{ name: "Manual category note", value: categoryFallbackNote.trim() }] : []),
           ...specs.filter((s) => s.name.trim() && s.value.trim()),
         ],
         seo: {
@@ -586,7 +580,7 @@ export function ProductListingStudioForm({
               moderationFlags,
               riskScore: null,
               duplicateWarnings: [],
-              categorySuggestions: [category.path.join(" > ")],
+              categorySuggestions: category ? [category.path.join(" > ")] : [],
               imageSafetyWarnings: [],
             }
           : undefined,
@@ -631,10 +625,17 @@ export function ProductListingStudioForm({
     } catch (err) {
       const parsedPolicyIssues = parseProductContentPolicyError(err);
       const isSnapshotConflict = isProductSnapshotConflict(err);
+      const categoryServerErrors = parseProductCategoryServerErrors(
+        err,
+        categoryFieldValues.filter((item) => item.value.trim() && governedCategoryFieldIds.has(item.attributeId)),
+        governedCategoryFieldIds,
+      );
 
       if (createdDraftId) {
         const recoveryHint = parsedPolicyIssues
           ? "content-policy"
+          : categoryServerErrors
+            ? "category-validation"
           : isSnapshotConflict
             ? "snapshot-conflict"
             : "submit-failed";
@@ -650,6 +651,11 @@ export function ProductListingStudioForm({
           writeProductSubmissionRecovery(createdDraftId, {
             kind: "snapshot-conflict",
           });
+        } else if (categoryServerErrors) {
+          writeProductSubmissionRecovery(createdDraftId, {
+            kind: "category-validation",
+            errors: categoryServerErrors,
+          });
         }
 
         router.replace(getProductSubmissionRecoveryHref(createdDraftId, recoveryHint));
@@ -660,6 +666,18 @@ export function ProductListingStudioForm({
         const policyIssues = resolvePolicyIssuesForForm(parsedPolicyIssues);
         setContentPolicyIssues(policyIssues);
         if (policyIssues[0]) focusPolicyIssue(policyIssues[0]);
+        return;
+      }
+
+      if (categoryServerErrors) {
+        setCategoryFieldErrors(categoryServerErrors.attributeErrors);
+        setErrors((current) => ({
+          ...current,
+          ...(categoryServerErrors.categoryMessage ? { category: categoryServerErrors.categoryMessage } : {}),
+          ...(categoryServerErrors.detailsMessage ? { categoryDetails: categoryServerErrors.detailsMessage } : {}),
+        }));
+        focusCategoryError(categoryServerErrors.firstAttributeId, Boolean(categoryServerErrors.categoryMessage));
+        toast.error("Review the highlighted category details.");
         return;
       }
 
@@ -678,14 +696,54 @@ export function ProductListingStudioForm({
     }
   };
 
-  const submitCategory = () => {
+  const applyCategorySelection = (selection: CategorySelection, retained: CategoryFieldValue[] = []) => {
+    setSubmittedCategory(selection);
+    setCategoryFieldValues(retained);
+    setCategoryFieldErrors({});
+    setErrors((current) => withoutRecordKey(withoutRecordKey(current, "category"), "categoryDetails"));
+    setIsCategoryOpen(false);
+  };
+
+  const submitCategory = async () => {
     if (!canSubmitCategory || !pickerSelection) return;
     const selection = makeCategorySelection(pickerSelection);
     if (!selection) return;
-    setSubmittedCategory(selection);
-    setCategoryFieldValues([]);
-    setErrors((current) => withoutRecordKey(current, "category"));
+
+    if (selection.leafId === submittedCategory?.leafId || !categoryFieldValues.some((item) => item.value.trim())) {
+      applyCategorySelection(selection, categoryFieldValues);
+      return;
+    }
+
+    let nextAttributes: Awaited<ReturnType<typeof loadAttributesForSelection>> = [];
+    let schemaUnavailable = false;
+    try {
+      nextAttributes = await loadAttributesForSelection(selection);
+    } catch {
+      schemaUnavailable = selection.isBackendCategory;
+    }
+
+    const { retained, movedToManual } = reconcileCategoryFieldValues(categoryFieldValues, nextAttributes);
+
+    setCategoryChangeImpact({ selection, retained, movedToManual, schemaUnavailable });
     setIsCategoryOpen(false);
+  };
+
+  const confirmCategoryChange = () => {
+    if (!categoryChangeImpact) return;
+    if (categoryChangeImpact.movedToManual.length) {
+      setSpecs((current) => [
+        ...current,
+        ...categoryChangeImpact.movedToManual.map((item) => ({ name: item.name, value: item.value })),
+      ]);
+    }
+    applyCategorySelection(categoryChangeImpact.selection, categoryChangeImpact.retained);
+    setCategoryChangeImpact(null);
+    window.setTimeout(() => document.getElementById("product-category-selector")?.focus(), 0);
+  };
+
+  const cancelCategoryChange = () => {
+    setCategoryChangeImpact(null);
+    window.setTimeout(() => document.getElementById("product-category-selector")?.focus(), 0);
   };
 
   const selectBrowseNode = (node: CategoryNode) => {
@@ -801,6 +859,15 @@ export function ProductListingStudioForm({
               submittedCategory={submittedCategory}
             />
 
+            {categoryTreeStatus === "error" && !submittedCategory ? (
+              <CategorySchemaFailureFallback
+                title="Categories are unavailable"
+                note={categoryFallbackNote}
+                onNoteChange={setCategoryFallbackNote}
+                onRetry={() => void retryCategoryTree()}
+              />
+            ) : null}
+
             {revealDetails ? (
               <>
                 <GlassSection title="Description" subtitle="Give shoppers enough detail to buy with confidence." icon={<ListPlus className="h-4 w-4" />}>
@@ -841,18 +908,14 @@ export function ProductListingStudioForm({
                 </GlassSection>
 
                 {categoryAttributesStatus === "error" ? (
-                  <div className="rounded-2xl border border-red-200 bg-red-50/80 p-4 shadow-sm">
-                    <div className="flex items-start gap-3">
-                      <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-                      <div>
-                        <h4 className="text-sm font-black text-red-900">Attributes temporarily unavailable</h4>
-                        <p className="mt-1 text-xs font-semibold leading-relaxed text-red-700">We could not load the required attributes for this category.</p>
-                        <Button type="button" onClick={() => setAttributesRetry((c) => c + 1)} className="mt-3 h-9 rounded-xl bg-red-100 px-4 text-xs font-bold text-red-800 hover:bg-red-200">
-                          Retry
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
+                  <>
+                    <CategorySchemaFailureFallback
+                      note={categoryFallbackNote}
+                      onNoteChange={setCategoryFallbackNote}
+                      onRetry={() => void retryCategoryAttributes()}
+                    />
+                    {fieldError(errors.categoryDetails, "product-category-details-error")}
+                  </>
                 ) : categoryDetailGroup ? (
                   <>
                     {submittedCategory?.isBackendCategory ? (
@@ -874,8 +937,10 @@ export function ProductListingStudioForm({
                       group={categoryDetailGroup}
                       values={categoryFieldValues}
                       onChange={updateCategoryFieldValue}
+                      fieldErrors={categoryFieldErrors}
+                      sectionError={errors.categoryDetails}
                     />
-                    {fieldError(errors.categoryDetails)}
+                    {fieldError(errors.categoryDetails, "product-category-details-error")}
                   </>
                 ) : null}
 
@@ -1027,7 +1092,13 @@ export function ProductListingStudioForm({
         onSelectOther={() => setPickerSelection({ path: browsePath, isOther: true })}
         onSubmitCategory={submitCategory}
         categoryTreeStatus={categoryTreeStatus}
-        onRetryCategoryTree={loadCategoryTree}
+        onRetryCategoryTree={() => void retryCategoryTree()}
+      />
+
+      <CategoryChangeConfirmationDialog
+        impact={categoryChangeImpact}
+        onCancel={cancelCategoryChange}
+        onConfirm={confirmCategoryChange}
       />
 
       <ProductListingMobileActions
