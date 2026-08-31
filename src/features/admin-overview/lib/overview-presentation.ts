@@ -1,14 +1,34 @@
 import type { Permission } from "@/services/rbac";
-import { adminIdentityHasPermission, type AdminIdentity } from "@/services/admin/session";
+import {
+  adminIdentityHasPermission,
+  type AdminIdentity,
+} from "@/services/admin/session";
 import type {
-  AdminDashboardMetric,
-  AdminDashboardPriorityKey,
-  AdminDashboardSnapshotKey,
-  AdminDashboardSummary,
-} from "@/features/admin-overview/types/dashboard-summary";
+  AdminDashboardOverview,
+  AdminDashboardOverviewGroupBy,
+  AdminDashboardOverviewPeriod,
+} from "@/features/admin-overview/types/dashboard-overview";
 
-export interface PriorityPresentation {
-  key: AdminDashboardPriorityKey;
+export type QueueKey =
+  | "sellerReviews"
+  | "productReviews"
+  | "ordersNeedingAction"
+  | "openSupportRequests";
+
+export type SnapshotKey =
+  | "activeSellers"
+  | "publishedProducts"
+  | "customers"
+  | "openOrders";
+
+export type FlowKey =
+  | "sellerApplicationsSubmitted"
+  | "productsCreated"
+  | "ordersCreated"
+  | "supportTicketsOpened";
+
+export interface QueuePresentation {
+  key: QueueKey;
   label: string;
   detail: string;
   href: string;
@@ -16,11 +36,17 @@ export interface PriorityPresentation {
 }
 
 export interface SnapshotPresentation {
-  key: AdminDashboardSnapshotKey;
+  key: SnapshotKey;
   label: string;
 }
 
-export const PRIORITY_PRESENTATION: readonly PriorityPresentation[] = [
+export interface FlowPresentation {
+  key: FlowKey;
+  label: string;
+  shortLabel: string;
+}
+
+export const QUEUE_PRESENTATION: readonly QueuePresentation[] = [
   {
     key: "sellerReviews",
     label: "Seller reviews",
@@ -58,43 +84,166 @@ export const SNAPSHOT_PRESENTATION: readonly SnapshotPresentation[] = [
   { key: "openOrders", label: "Open orders" },
 ];
 
-export interface AttentionItem extends PriorityPresentation {
+export const FLOW_PRESENTATION: readonly FlowPresentation[] = [
+  {
+    key: "sellerApplicationsSubmitted",
+    label: "Seller applications submitted",
+    shortLabel: "Seller applications",
+  },
+  { key: "productsCreated", label: "Products created", shortLabel: "Products" },
+  { key: "ordersCreated", label: "Orders created", shortLabel: "Orders" },
+  {
+    key: "supportTicketsOpened",
+    label: "Support tickets opened",
+    shortLabel: "Support tickets",
+  },
+];
+
+export const PERIOD_OPTIONS: readonly {
+  value: AdminDashboardOverviewPeriod;
+  label: string;
+  shortLabel: string;
+}[] = [
+  { value: "LAST_7_DAYS", label: "Last 7 days", shortLabel: "7 days" },
+  { value: "LAST_30_DAYS", label: "Last 30 days", shortLabel: "30 days" },
+  { value: "MONTH_TO_DATE", label: "Month to date", shortLabel: "Month" },
+  { value: "QUARTER_TO_DATE", label: "Quarter to date", shortLabel: "Quarter" },
+];
+
+export const GROUP_BY_OPTIONS: Readonly<
+  Record<AdminDashboardOverviewPeriod, readonly AdminDashboardOverviewGroupBy[]>
+> = {
+  LAST_7_DAYS: ["DAY"],
+  LAST_30_DAYS: ["DAY", "WEEK"],
+  MONTH_TO_DATE: ["DAY", "WEEK"],
+  QUARTER_TO_DATE: ["WEEK"],
+};
+
+export interface AttentionItem extends Omit<QueuePresentation, "href"> {
   count: number;
+  href: string | null;
+  oldestWaitingLabel: string | null;
+}
+
+export interface UnavailableActivitySeriesItem {
+  key: FlowKey;
+  label: string;
+  reason: "PERMISSION_REQUIRED" | "DATA_SOURCE_UNAVAILABLE";
+  message: string;
+}
+
+type UnavailableMetric = {
+  availability: "UNAVAILABLE";
+  reason: "PERMISSION_REQUIRED" | "DATA_SOURCE_UNAVAILABLE";
+};
+
+export function formatQueueWaitingAge(seconds: number): string {
+  if (seconds < 60) return "Oldest waiting less than a minute";
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) {
+    return `Oldest waiting ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) {
+    return `Oldest waiting ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  const days = Math.floor(hours / 24);
+  return `Oldest waiting ${days} ${days === 1 ? "day" : "days"}`;
 }
 
 export function getNeedsAttentionItems(
-  summary: AdminDashboardSummary,
+  overview: AdminDashboardOverview,
   identity: AdminIdentity,
 ): AttentionItem[] {
-  return PRIORITY_PRESENTATION.flatMap((item) => {
-    const metric = summary.priorities[item.key];
-    if (
-      metric.availability !== "AVAILABLE" ||
-      metric.count === 0 ||
-      !adminIdentityHasPermission(identity, item.permission)
-    ) {
+  return QUEUE_PRESENTATION.flatMap((item) => {
+    const metric = overview.queues[item.key];
+    if (metric.availability !== "AVAILABLE" || metric.value === 0) {
       return [];
     }
-    return [{ ...item, count: metric.count }];
+    return [
+      {
+        ...item,
+        count: metric.value,
+        href: adminIdentityHasPermission(identity, item.permission)
+          ? item.href
+          : null,
+        oldestWaitingLabel:
+          metric.oldestItemAgeSeconds === null
+            ? null
+            : formatQueueWaitingAge(metric.oldestItemAgeSeconds),
+      },
+    ];
   }).sort((left, right) => right.count - left.count);
 }
 
-export function getUnavailableMetricCopy(metric: AdminDashboardMetric): string {
-  if (metric.availability === "AVAILABLE") return "";
+export function getUnavailableMetricCopy(metric: UnavailableMetric): string {
   return metric.reason === "PERMISSION_REQUIRED"
     ? "Not available for your role"
     : "Temporarily unavailable";
 }
 
-export function isAdminOverviewEmpty(summary: AdminDashboardSummary): boolean {
-  const metrics = [
-    ...PRIORITY_PRESENTATION.map((item) => summary.priorities[item.key]),
-    ...SNAPSHOT_PRESENTATION.map((item) => summary.snapshot[item.key]),
-  ];
-  return (
-    metrics.every((metric) => metric.availability === "AVAILABLE") &&
-    metrics.every(
-      (metric) => metric.availability !== "AVAILABLE" || metric.count === 0,
-    )
+export function getUnavailableActivitySeriesItems(
+  overview: AdminDashboardOverview,
+): UnavailableActivitySeriesItem[] {
+  return FLOW_PRESENTATION.flatMap((item) => {
+    const series = overview.operationalActivity.series[item.key];
+    if (series.availability === "AVAILABLE") return [];
+    return [
+      {
+        key: item.key,
+        label: item.label,
+        reason: series.reason,
+        message: getUnavailableMetricCopy(series),
+      },
+    ];
+  });
+}
+
+export function getSectionUnavailableCopy(
+  availability: "AVAILABLE" | "PARTIAL" | "UNAVAILABLE",
+  metrics: readonly ({ availability: "AVAILABLE" } | UnavailableMetric)[],
+  label: string,
+): string | null {
+  if (availability === "AVAILABLE") return null;
+  if (availability === "PARTIAL") {
+    return `Some ${label} are temporarily unavailable or restricted.`;
+  }
+  const permissionOnly = metrics.every(
+    (metric) =>
+      metric.availability === "UNAVAILABLE" &&
+      metric.reason === "PERMISSION_REQUIRED",
   );
+  return permissionOnly
+    ? `${label[0].toUpperCase()}${label.slice(1)} are not available for your role.`
+    : `${label[0].toUpperCase()}${label.slice(1)} are temporarily unavailable.`;
+}
+
+export function formatSignedCount(value: number): string {
+  if (value === 0) return "No change";
+  const amount = Math.abs(value).toLocaleString("en-ZM");
+  return value > 0
+    ? `${amount} more than the previous period`
+    : `${amount} fewer than the previous period`;
+}
+
+export function formatPercentageChange(value: number | null): string {
+  if (value === null) {
+    return "Percentage unavailable because the previous period was zero";
+  }
+  if (value === 0) return "0% change";
+  return `${Math.abs(value).toLocaleString("en-ZM", {
+    maximumFractionDigits: 1,
+  })}% ${value > 0 ? "increase" : "decrease"}`;
+}
+
+export function isAdminOverviewEmpty(overview: AdminDashboardOverview): boolean {
+  const metrics = [
+    ...QUEUE_PRESENTATION.map((item) => overview.queues[item.key]),
+    ...SNAPSHOT_PRESENTATION.map((item) => overview.snapshot[item.key]),
+    ...FLOW_PRESENTATION.map((item) => overview.periodFlows[item.key]),
+  ];
+  return metrics.every((metric) => {
+    if (metric.availability !== "AVAILABLE") return false;
+    return "value" in metric ? metric.value === 0 : metric.currentValue === 0;
+  });
 }
