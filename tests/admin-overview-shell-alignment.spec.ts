@@ -388,6 +388,12 @@ test("overview and shell use the approved routes, labels, motion, and accessible
   const pageSource = readSource("src/app/admin/(protected)/dashboard/page.tsx");
   const shellSource = readSource("src/components/admin/AdminShell.tsx");
   const paletteSource = readSource("src/components/admin/admin-theme.module.css");
+  const capabilitySource = readSource("src/features/admin-platform/config/capability-registry.ts");
+  const shellNavigationSource = [
+    "src/features/admin-shell/components/AdminNavigation.tsx",
+    "src/features/admin-shell/components/AdminSidebar.tsx",
+    "src/features/admin-shell/components/AdminHeader.tsx",
+  ].map(readSource).join("\n");
   const overviewSource = [
     "src/features/admin-overview/components/AdminOverview.tsx",
     "src/features/admin-overview/components/OverviewHeader.tsx",
@@ -401,26 +407,28 @@ test("overview and shell use the approved routes, labels, motion, and accessible
   expect(pageSource).not.toMatch(/getVendorApplications|adminOrdersApi|adminProductsApi|adminSupportApi/);
   for (const [label, href] of [
     ["Overview", "/admin/dashboard"],
-    ["Seller Management", "/admin/sellers"],
-    ["Customer Management", "/admin/buyers"],
-    ["Products & Review", "/admin/products"],
-    ["Orders", "/admin/orders"],
-    ["Categories", "/admin/categories"],
+    ["Sellers", "/admin/sellers"],
+    ["Customers", "/admin/buyers"],
+    ["Products and Moderation", "/admin/products"],
+    ["Categories and Attributes", "/admin/categories"],
+    ["Orders and Fulfillment", "/admin/orders"],
     ["Support", "/admin/support"],
-    ["Admins & Roles", "/admin/access"],
+    ["Admins, Teams, and Roles", "/admin/access"],
   ]) {
-    expect(shellSource).toContain(`name: "${label}", href: "${href}"`);
+    expect(capabilitySource).toContain(`label: "${label}"`);
+    expect(capabilitySource).toContain(`currentRoute: "${href}"`);
   }
   expect(shellSource).toContain("<Sheet");
-  expect(shellSource.match(/\{ name: "[^"]+", href: "\/admin\/[^"]+"/g)).toHaveLength(8);
-  expect(shellSource).toContain("prefetch={false}");
-  expect(shellSource).toContain('aria-current={active ? "page" : undefined}');
-  expect(shellSource).toContain('aria-label="Open admin menu"');
-  expect(shellSource).toContain("size-11");
+  expect(shellSource).toContain("buildAdminShellNavigation(identity)");
+  expect(shellSource).not.toContain("ADMIN_NAV_ITEMS");
+  expect(shellNavigationSource).toContain("prefetch={false}");
+  expect(shellNavigationSource).toContain('aria-current={active ? "page" : undefined}');
+  expect(shellNavigationSource).toContain('aria-label="Open admin menu"');
+  expect(shellNavigationSource).toContain("size-11");
   expect(shellSource).toContain('const ADMIN_DESKTOP_MEDIA_QUERY = "(min-width: 64rem)"');
   expect(shellSource).toContain('desktopViewport.addEventListener("change", closeMobileMenuAtDesktop)');
   expect(shellSource).toContain('desktopViewport.removeEventListener("change", closeMobileMenuAtDesktop)');
-  expect(shellSource).toContain('style={{ width: "min(19rem, calc(100vw - 2rem))", maxWidth: "none" }}');
+  expect(shellSource).toContain('style={{ width: "min(19rem, calc(100vw - 1rem))", maxWidth: "none" }}');
   expect(shellSource).toContain('data-testid="admin-shell-root"');
   expect(shellSource).toContain('data-testid="admin-desktop-sidebar"');
   expect(shellSource).toContain('data-testid="admin-main-scroll"');
@@ -452,7 +460,7 @@ test("overview and shell use the approved routes, labels, motion, and accessible
   expect(shellSource).toContain("theme.adminScope");
   expect(shellSource).toContain("bg-[var(--admin-canopy-deep)]");
   expect(shellSource).toContain("bg-[var(--admin-canvas-warm)]");
-  expect(shellSource).toContain("bg-[var(--admin-surface-cream)]");
+  expect(shellNavigationSource).toContain("bg-[var(--admin-surface-cream)]");
   expect(`${shellSource}\n${overviewSource}`).not.toMatch(/\bbg-(?:white|zinc-(?:50|100|950))\b/);
   expect(overviewSource).toContain("Marketplace activity board");
   expect(overviewSource).toContain("Loading current marketplace activity");
@@ -476,6 +484,6 @@ test("overview and shell use the approved routes, labels, motion, and accessible
     /\b(?:backend|frontend|MVP|launch-control|demo|source|signal|truth|contract|environment)\b/i,
   );
   expect(shellSource).not.toMatch(/Backend session active|Privileged Session|radial-gradient|linear-gradient/);
-  expect(shellSource).not.toMatch(/Sellers CRM|Master Catalog|Order Queue|Support Hub|Access Control/);
+  expect(`${shellSource}\n${shellNavigationSource}`).not.toMatch(/Sellers CRM|Master Catalog|Order Queue|Support Hub|Access Control/);
   expect(readSource("src/services/admin/dashboard.ts")).not.toContain("skipAuthRefresh");
 });

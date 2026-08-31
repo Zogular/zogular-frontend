@@ -14,6 +14,24 @@
   color-scheme: light;
 }
 
+.shellRoot {
+  --admin-sidebar-width: 16rem;
+  display: grid;
+  grid-template-columns: 0 minmax(0, 1fr);
+}
+
+.shellRoot[data-sidebar-mode="collapsed"] {
+  --admin-sidebar-width: 4.5rem;
+}
+
+.desktopSidebar {
+  display: none;
+  min-width: 0;
+  height: 100dvh;
+  overflow: hidden;
+  border-right: 1px solid rgb(184 135 70 / 30%);
+}
+
 .tactileSurface {
   border: 1px solid color-mix(in srgb, var(--admin-copper-muted) 30%, transparent);
   box-shadow:
@@ -52,6 +70,17 @@
   will-change: transform, opacity;
 }
 
+@media (min-width: 64rem) {
+  .shellRoot {
+    grid-template-columns: var(--admin-sidebar-width) minmax(0, 1fr);
+    transition: grid-template-columns 180ms ease;
+  }
+
+  .desktopSidebar {
+    display: block;
+  }
+}
+
 :global(body):has(.mobileDrawer) :global([data-slot="sheet-overlay"]) {
   background: rgb(6 59 41 / 18%);
   backdrop-filter: none;
@@ -86,6 +115,10 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .shellRoot {
+    transition: none;
+  }
+
   .mobileDrawer,
   :global(body):has(.mobileDrawer) :global([data-slot="sheet-overlay"]) {
     animation: none !important;
