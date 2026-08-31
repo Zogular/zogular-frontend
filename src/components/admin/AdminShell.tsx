@@ -131,7 +131,7 @@ export default function AdminShell({
               />
             </SheetContent>
 
-            <main className="flex h-dvh min-w-0 flex-col overflow-hidden">
+            <main className="col-start-2 flex h-dvh min-w-0 flex-col overflow-hidden">
               <AdminHeader
                 identity={identity}
                 routeContext={routeContext}

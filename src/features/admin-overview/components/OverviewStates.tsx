@@ -19,6 +19,13 @@ const LOADING_SNAPSHOT = [
   "Open orders",
 ] as const;
 
+const LOADING_FLOWS = [
+  "Seller applications",
+  "Products created",
+  "Orders created",
+  "Support tickets",
+] as const;
+
 export function OverviewLoading() {
   return (
     <section
@@ -50,7 +57,7 @@ export function OverviewLoading() {
           <span className={theme.activityCursor} data-testid="overview-activity-cursor" />
         </div>
 
-        <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
+        <div className="mt-4 grid gap-4 xl:grid-cols-[minmax(0,1.25fr)_minmax(18rem,0.75fr)]">
           <div className={cn(theme.darkAnchor, "rounded-xl bg-[var(--admin-canopy-deep)] p-3 sm:p-4")}>
             <p className="text-xs font-bold uppercase tracking-[0.12em] text-[color:rgba(255,248,236,0.6)]">
               Needs attention
@@ -78,8 +85,8 @@ export function OverviewLoading() {
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-2.5" aria-label="Priority queues loading">
-            {LOADING_QUEUES.map((label) => (
+          <div className="grid grid-cols-2 gap-2.5" aria-label="Period comparisons loading">
+            {LOADING_FLOWS.map((label) => (
               <div key={label} className="min-h-28 rounded-xl border border-[color:rgba(184,135,70,0.22)] bg-[var(--admin-surface-mist)] p-3">
                 <p className="text-xs font-semibold leading-4 text-[var(--admin-ink-soft)]">{label}</p>
                 <p className="mt-5 text-sm font-semibold text-[var(--admin-canopy)]">Checking</p>
@@ -106,6 +113,32 @@ export function OverviewLoading() {
                 <p className="text-xs font-semibold text-[var(--admin-ink-soft)]">{label}</p>
                 <p className="mt-2 text-sm font-semibold text-[var(--admin-canopy)]">Checking</p>
               </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-4 overflow-hidden rounded-xl border border-[color:rgba(184,135,70,0.22)] bg-[var(--admin-surface-mist)]">
+          <div className="border-b border-[var(--admin-canvas-depth)] px-4 py-3">
+            <p className="text-sm font-semibold text-[var(--admin-ink)]">
+              Operational activity
+            </p>
+            <p className="mt-1 text-xs text-[var(--admin-ink-soft)]">
+              Preparing current and previous-period activity
+            </p>
+          </div>
+          <div className="flex h-64 items-end gap-2 px-4 pb-4 pt-8" aria-hidden="true">
+            {[42, 68, 54, 82, 62, 74, 48].map((height, index) => (
+              <span
+                key={height + index}
+                className={cn(
+                  "flex-1 rounded-t-md",
+                  index % 4 === 0 && "bg-[var(--admin-canopy)]",
+                  index % 4 === 1 && "bg-[var(--admin-ember)]",
+                  index % 4 === 2 && "bg-[var(--admin-escalation)]",
+                  index % 4 === 3 && "bg-[var(--admin-copper-muted)]",
+                )}
+                style={{ height: `${height}%` }}
+              />
             ))}
           </div>
         </div>
@@ -167,16 +200,20 @@ export function RefreshFailureBanner({
   error: AdminOverviewSafeError;
   onRetry: () => void;
 }) {
+  const failClosed = shouldHideOverviewAfterRefreshError(error);
   const canRetry = error.kind !== "forbidden" && error.kind !== "unauthenticated";
   return (
     <div
       className="flex flex-col gap-3 rounded-xl border border-[color:rgba(217,106,31,0.32)] bg-[var(--admin-surface-cream)] p-3 shadow-[inset_4px_0_0_var(--admin-ember)] sm:flex-row sm:items-center sm:justify-between"
       data-testid="overview-refresh-error"
+      data-fail-closed={failClosed ? "true" : undefined}
     >
       <div className="flex min-w-0 items-start gap-2.5">
         <AlertTriangle className="mt-0.5 size-4 shrink-0 text-[var(--admin-escalation)]" aria-hidden="true" />
         <p className="text-sm text-[var(--admin-ink)]">
-          {error.message} The last updated values remain visible.
+          {failClosed
+            ? "Your access to this overview has changed. Protected values have been hidden."
+            : `${error.message} The last updated values remain visible.`}
         </p>
       </div>
       {canRetry ? (
@@ -202,10 +239,18 @@ export function RefreshFailureBanner({
   );
 }
 
+export function shouldHideOverviewAfterRefreshError(
+  error: AdminOverviewSafeError,
+): boolean {
+  return error.kind === "forbidden";
+}
+
 export function OverviewEmptyNotice() {
   return (
     <div className="rounded-xl border border-[color:rgba(7,91,54,0.2)] bg-[var(--admin-surface-mist)] px-4 py-3" data-testid="overview-empty">
-      <p className="text-sm font-medium text-[var(--admin-ink)]">No marketplace activity is listed yet.</p>
+      <p className="text-sm font-medium text-[var(--admin-ink)]">
+        No marketplace records or waiting work were found for this view.
+      </p>
     </div>
   );
 }

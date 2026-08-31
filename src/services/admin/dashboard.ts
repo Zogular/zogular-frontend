@@ -1,63 +1,41 @@
-import { apiClient, ApiError } from "@/services/api";
+import { apiClient } from "@/services/api";
 import {
-  AdminDashboardSummaryContractError,
-  parseAdminDashboardSummaryResponse,
-} from "@/features/admin-overview/lib/dashboard-summary";
-import type { AdminDashboardSummary } from "@/features/admin-overview/types/dashboard-summary";
+  parseAdminDashboardOverviewResponse,
+  serializeAdminDashboardOverviewQuery,
+} from "@/features/admin-overview/lib/dashboard-overview-contract";
+import {
+  toSafeAdminFetchError,
+  type SafeAdminError,
+} from "@/features/admin-platform";
+import type {
+  AdminDashboardOverview,
+  AdminDashboardOverviewQueryInput,
+} from "@/features/admin-overview/types/dashboard-overview";
 
-const ADMIN_DASHBOARD_SUMMARY_ENDPOINT = "/admin/dashboard/summary";
+const ADMIN_DASHBOARD_OVERVIEW_ENDPOINT = "/admin/dashboard/overview";
 
-export type AdminOverviewErrorKind =
-  | "unauthenticated"
-  | "forbidden"
-  | "timeout"
-  | "unavailable"
-  | "malformed";
+export type AdminOverviewErrorKind = SafeAdminError["kind"];
+export type AdminOverviewSafeError = SafeAdminError;
 
-export interface AdminOverviewSafeError {
-  kind: AdminOverviewErrorKind;
-  message: string;
+export interface FetchAdminDashboardOverviewOptions
+  extends AdminDashboardOverviewQueryInput {
+  readonly signal?: AbortSignal;
 }
 
-export async function fetchAdminDashboardSummary(): Promise<AdminDashboardSummary> {
-  const payload = await apiClient<unknown>(ADMIN_DASHBOARD_SUMMARY_ENDPOINT, {
+export async function fetchAdminDashboardOverview(
+  options: FetchAdminDashboardOverviewOptions = {},
+): Promise<AdminDashboardOverview> {
+  const { signal, ...queryInput } = options;
+  const payload = await apiClient<unknown>(ADMIN_DASHBOARD_OVERVIEW_ENDPOINT, {
     method: "GET",
     cache: "no-store",
+    query: serializeAdminDashboardOverviewQuery(queryInput),
+    signal,
   });
-  return parseAdminDashboardSummaryResponse(payload);
+
+  return parseAdminDashboardOverviewResponse(payload);
 }
 
 export function getAdminOverviewSafeError(error: unknown): AdminOverviewSafeError {
-  if (error instanceof AdminDashboardSummaryContractError) {
-    return {
-      kind: "malformed",
-      message: "The overview could not be verified. Try again.",
-    };
-  }
-
-  if (error instanceof ApiError) {
-    if (error.status === 401) {
-      return {
-        kind: "unauthenticated",
-        message: "Your admin access could not be confirmed. Sign in again.",
-      };
-    }
-    if (error.status === 403) {
-      return {
-        kind: "forbidden",
-        message: "You do not have access to this overview.",
-      };
-    }
-    if (error.status === 408) {
-      return {
-        kind: "timeout",
-        message: "The overview is taking too long to load. Try again.",
-      };
-    }
-  }
-
-  return {
-    kind: "unavailable",
-    message: "The overview is temporarily unavailable. Try again.",
-  };
+  return toSafeAdminFetchError(error);
 }
