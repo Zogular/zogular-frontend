@@ -50,7 +50,7 @@ export function AdminOverview({ nowIso }: { nowIso: string }) {
         data.operationalActivity.availability,
       ])
     : null;
-  const executiveComposition = identity?.claims.role === "executive_admin";
+  const executiveComposition = identity?.claims.role === "EXECUTIVE";
 
   const queuePanel = data && identity ? (
     <motion.div {...motionProps} className="min-w-0">

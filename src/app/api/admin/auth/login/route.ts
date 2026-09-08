@@ -14,7 +14,9 @@ import {
   getBackendCsrfHeaders,
   getBackendMessage,
   parseBackendResponse,
+  validateAdminSessionToken,
 } from "@/services/admin/backend-session";
+
 import { sanitizeAdminNextPath } from "@/services/admin/verification-recovery";
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -130,12 +132,21 @@ export async function POST(request: Request) {
     );
   }
 
+  const validatedIdentity = await validateAdminSessionToken(token);
+  if (!validatedIdentity) {
+    return NextResponse.json(
+      { message: "This account is not authorized for the Zogular admin panel." },
+      { status: 403 },
+    );
+  }
+
   const response = NextResponse.json({
     success: true,
     message: "Admin session established.",
     nextPath: nextPath ?? ADMIN_DASHBOARD_PATH,
-    identity,
+    identity: validatedIdentity,
   });
+
 
   response.cookies.set(ADMIN_SESSION_COOKIE, token, {
     httpOnly: true,

@@ -50,9 +50,10 @@ export function useSellersList() {
   const requestIdRef = useRef(0);
 
   const identity = useAdminIdentity()!;
-  const canApprove = adminIdentityHasPermission(identity, "approve_sellers");
-  const canSuspend = adminIdentityHasPermission(identity, "suspend_sellers");
+  const canApprove = adminIdentityHasPermission(identity, "manage_seller_status");
+  const canSuspend = adminIdentityHasPermission(identity, "manage_seller_status");
   const canExport = adminIdentityHasPermission(identity, "export_reports");
+
 
   const writeUrl = useCallback((
     updates: Partial<Record<keyof typeof query, string>>,

@@ -233,12 +233,12 @@ const fullIdentity: AdminIdentity = {
   name: "Admin One",
   email: "admin@example.test",
   claims: {
-    role: "super_admin",
+    role: "SUPER_ADMIN",
     permissions: [
-      "view_dashboard",
-      "view_sellers",
-      "view_products",
-      "view_orders",
+      "access_admin_panel",
+      "review_sellers",
+      "view_all_products",
+      "view_all_orders",
       "view_support_tickets",
     ],
     authStrength: "password",
@@ -246,6 +246,7 @@ const fullIdentity: AdminIdentity = {
   },
   sessionStatus: "authenticated",
 };
+
 
 test("parses the strict F2 envelope and preserves comparison bucket ranges", () => {
   const result = parseAdminDashboardOverviewResponse(envelope());
@@ -427,9 +428,10 @@ test("preserves available queue counts when drill-through permission is absent",
     ...fullIdentity,
     claims: {
       ...fullIdentity.claims,
-      permissions: ["view_dashboard", "view_orders"],
+      permissions: ["access_admin_panel", "view_all_orders"],
     },
   };
+
   const items = getNeedsAttentionItems(overview, limitedIdentity);
   expect(items.map((item) => item.key)).toEqual([
     "sellerReviews",
@@ -532,7 +534,7 @@ test("composition keeps operator and executive ordering presentation-only", () =
   const source = readSource(
     "src/features/admin-overview/components/AdminOverview.tsx",
   );
-  expect(source).toContain('identity?.claims.role === "executive_admin"');
+  expect(source).toContain('identity?.claims.role === "EXECUTIVE"');
   expect(source).toContain("<NeedsAttention");
   expect(source).toContain("<MarketplacePulse");
   expect(source).toContain("<MarketplaceSnapshot");

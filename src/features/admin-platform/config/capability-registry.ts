@@ -43,7 +43,7 @@ const registry = [
     purpose: "See verified marketplace activity and the work that needs attention.",
     currentRoute: "/admin/dashboard",
     routeEvidence: "The protected dashboard route renders the current backend dashboard summary.",
-    frontendPermissionHints: ["view_dashboard"],
+    frontendPermissionHints: ["access_admin_panel"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["access_admin_panel"],
@@ -69,12 +69,13 @@ const registry = [
     purpose: "Review alerts and work assigned to an operator or team.",
     currentRoute: null,
     routeEvidence: "No current route provides backend-owned alerts or assignments.",
-    frontendPermissionHints: ["view_dashboard"],
+    frontendPermissionHints: ["access_admin_panel"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
       note: "Assignment, alert, and team-scoping permissions are not contracted.",
     },
+
     completionLevel: "contract_gated",
     navigationEligible: false,
     frontendPackage: "F1",
@@ -95,7 +96,7 @@ const registry = [
     purpose: "Review governed marketplace analysis and reports with clear definitions.",
     currentRoute: "/admin/reports",
     routeEvidence: "A protected reports route exists but remains hidden and presents an unavailable notice.",
-    frontendPermissionHints: ["view_financial_reports", "export_reports"],
+    frontendPermissionHints: ["view_all_reports", "export_reports"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["view_all_reports", "view_sales_reports", "view_revenue_reports", "export_reports"],
@@ -121,7 +122,7 @@ const registry = [
     purpose: "Review seller applications, evidence, status, and permitted actions.",
     currentRoute: "/admin/sellers",
     routeEvidence: "Protected seller list and review routes use real seller application services.",
-    frontendPermissionHints: ["view_sellers"],
+    frontendPermissionHints: ["review_sellers"],
     backendPermissionEvidence: {
       state: "verified",
       permissions: ["review_sellers", "manage_seller_status"],
@@ -147,7 +148,7 @@ const registry = [
     purpose: "Find customers and review the minimum permitted account context.",
     currentRoute: "/admin/buyers",
     routeEvidence: "The protected customer route uses the current admin user foundation.",
-    frontendPermissionHints: ["view_buyers"],
+    frontendPermissionHints: ["view_all_users"],
     backendPermissionEvidence: {
       state: "verified",
       permissions: ["view_all_users"],
@@ -173,7 +174,7 @@ const registry = [
     purpose: "Review product submissions and make reasoned moderation decisions.",
     currentRoute: "/admin/products",
     routeEvidence: "Protected product collection and detail routes use real moderation services.",
-    frontendPermissionHints: ["view_products", "moderate_products"],
+    frontendPermissionHints: ["view_all_products", "approve_products"],
     backendPermissionEvidence: {
       state: "verified",
       permissions: ["view_all_products", "approve_products"],
@@ -199,7 +200,7 @@ const registry = [
     purpose: "Manage the marketplace taxonomy and approved product attributes.",
     currentRoute: "/admin/categories",
     routeEvidence: "The protected categories route uses current category and initial attribute operations.",
-    frontendPermissionHints: ["manage_content"],
+    frontendPermissionHints: ["manage_categories"],
     backendPermissionEvidence: {
       state: "verified",
       permissions: ["manage_categories"],
@@ -208,6 +209,7 @@ const registry = [
     completionLevel: "operational",
     navigationEligible: true,
     frontendPackage: "F7",
+
     backendDependency: {
       state: "available",
       owner: "backend",
@@ -225,7 +227,7 @@ const registry = [
     purpose: "Review stock accuracy and inventory conditions across permitted sellers.",
     currentRoute: null,
     routeEvidence: "No dedicated inventory-oversight route or complete backend collection exists.",
-    frontendPermissionHints: ["view_products"],
+    frontendPermissionHints: ["view_all_products"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -251,7 +253,7 @@ const registry = [
     purpose: "Moderate customer reviews and rating abuse using verified evidence.",
     currentRoute: null,
     routeEvidence: "No dedicated review-moderation route exists.",
-    frontendPermissionHints: ["moderate_products"],
+    frontendPermissionHints: ["approve_products"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -277,7 +279,7 @@ const registry = [
     purpose: "Review orders and perform permitted fulfillment actions against current order state.",
     currentRoute: "/admin/orders",
     routeEvidence: "The protected orders route uses real order and fulfillment services.",
-    frontendPermissionHints: ["view_orders", "override_orders"],
+    frontendPermissionHints: ["view_all_orders", "manage_order_fulfillment"],
     backendPermissionEvidence: {
       state: "verified",
       permissions: ["view_all_orders", "manage_order_fulfillment"],
@@ -303,7 +305,7 @@ const registry = [
     purpose: "Coordinate delivery work, exceptions, and proof of delivery.",
     currentRoute: null,
     routeEvidence: "No dedicated delivery-operations route exists.",
-    frontendPermissionHints: ["view_orders", "override_orders"],
+    frontendPermissionHints: ["view_all_orders", "manage_order_fulfillment"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -329,7 +331,7 @@ const registry = [
     purpose: "Review remedy requests and execute approved outcomes through backend authority.",
     currentRoute: null,
     routeEvidence: "No complete returns, refunds, and exchanges route exists.",
-    frontendPermissionHints: ["manage_refunds"],
+    frontendPermissionHints: ["process_refunds"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["process_refunds", "issue_refunds"],
@@ -355,12 +357,13 @@ const registry = [
     purpose: "Investigate claims, review evidence, and record authorized decisions.",
     currentRoute: "/admin/disputes",
     routeEvidence: "A protected disputes route exists but remains hidden and unavailable.",
-    frontendPermissionHints: ["manage_disputes"],
+    frontendPermissionHints: ["manage_support_tickets"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
       note: "The complete dispute-case authority and permission model is absent.",
     },
+
     completionLevel: "contract_gated",
     navigationEligible: false,
     frontendPackage: "F10",
@@ -407,7 +410,8 @@ const registry = [
     purpose: "Investigate marketplace risk signals using permission-filtered evidence.",
     currentRoute: null,
     routeEvidence: "No dedicated risk and trust route exists.",
-    frontendPermissionHints: ["view_sellers", "view_orders"],
+    frontendPermissionHints: ["review_sellers", "view_all_orders"],
+
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -563,7 +567,7 @@ const registry = [
     purpose: "Review approved marketplace finance summaries from ledger-backed sources.",
     currentRoute: "/admin/finance",
     routeEvidence: "A protected finance route exists but remains hidden and unavailable.",
-    frontendPermissionHints: ["view_treasury"],
+    frontendPermissionHints: ["view_all_payouts"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["view_all_payouts"],
@@ -589,7 +593,7 @@ const registry = [
     purpose: "Inspect authorized immutable money records and their linked events.",
     currentRoute: null,
     routeEvidence: "No transaction and ledger operations route exists.",
-    frontendPermissionHints: ["view_treasury"],
+    frontendPermissionHints: ["view_all_payouts"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -615,7 +619,7 @@ const registry = [
     purpose: "Compare authorized financial records and resolve verified differences.",
     currentRoute: null,
     routeEvidence: "No reconciliation operations route exists.",
-    frontendPermissionHints: ["view_treasury"],
+    frontendPermissionHints: ["view_all_payouts"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -641,7 +645,7 @@ const registry = [
     purpose: "Review and process seller payouts only through authorized backend workflows.",
     currentRoute: null,
     routeEvidence: "No operational seller payout route exists.",
-    frontendPermissionHints: ["view_treasury", "approve_payouts"],
+    frontendPermissionHints: ["view_all_payouts", "process_payouts"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["view_all_payouts", "process_payouts"],
@@ -667,7 +671,7 @@ const registry = [
     purpose: "Review and govern approved seller commission rules and their history.",
     currentRoute: null,
     routeEvidence: "No dedicated commission governance route exists.",
-    frontendPermissionHints: ["edit_commission"],
+    frontendPermissionHints: ["manage_commissions"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -693,10 +697,10 @@ const registry = [
     purpose: "Manage permitted administrator access and review current role context.",
     currentRoute: "/admin/access",
     routeEvidence: "The protected access route provides selected real administrator operations.",
-    frontendPermissionHints: ["manage_admins"],
+    frontendPermissionHints: ["manage_roles"],
     backendPermissionEvidence: {
       state: "partial",
-      permissions: ["manage_admins"],
+      permissions: ["manage_roles"],
       note: "Selected administrator operations exist; teams, durable grants, and effective-permission authority remain incomplete.",
     },
     completionLevel: "operational",
@@ -719,7 +723,7 @@ const registry = [
     purpose: "Review permission-filtered evidence of sensitive administrative actions.",
     currentRoute: null,
     routeEvidence: "Selected domain audit events exist, but no central audit-search route exists.",
-    frontendPermissionHints: ["view_system_logs"],
+    frontendPermissionHints: ["view_logs"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["view_logs"],
@@ -745,7 +749,7 @@ const registry = [
     purpose: "Review approved integration health and background work without exposing secrets.",
     currentRoute: null,
     routeEvidence: "No dedicated integration-health and jobs route exists.",
-    frontendPermissionHints: ["view_system_logs"],
+    frontendPermissionHints: ["view_logs"],
     backendPermissionEvidence: {
       state: "missing",
       permissions: [],
@@ -771,7 +775,7 @@ const registry = [
     purpose: "Manage approved domain settings with reason, confirmation, and audit evidence.",
     currentRoute: "/admin/system",
     routeEvidence: "A protected system route exists but remains hidden and unavailable.",
-    frontendPermissionHints: ["configure_platform"],
+    frontendPermissionHints: ["manage_system_settings"],
     backendPermissionEvidence: {
       state: "partial",
       permissions: ["manage_system_settings", "manage_technical_settings"],

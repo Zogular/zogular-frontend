@@ -52,21 +52,21 @@ export const QUEUE_PRESENTATION: readonly QueuePresentation[] = [
     label: "Seller reviews",
     detail: "Applications waiting for review",
     href: "/admin/sellers",
-    permission: "view_sellers",
+    permission: "review_sellers",
   },
   {
     key: "productReviews",
     label: "Product reviews",
     detail: "Listings waiting for review",
     href: "/admin/products",
-    permission: "view_products",
+    permission: "view_all_products",
   },
   {
     key: "ordersNeedingAction",
     label: "Orders needing action",
     detail: "Open orders in progress",
     href: "/admin/orders",
-    permission: "view_orders",
+    permission: "view_all_orders",
   },
   {
     key: "openSupportRequests",
@@ -76,6 +76,7 @@ export const QUEUE_PRESENTATION: readonly QueuePresentation[] = [
     permission: "view_support_tickets",
   },
 ];
+
 
 export const SNAPSHOT_PRESENTATION: readonly SnapshotPresentation[] = [
   { key: "activeSellers", label: "Active sellers" },

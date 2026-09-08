@@ -8,20 +8,15 @@ import {
   type AdminCapabilityDefinition,
 } from "../types/capabilities";
 
-const ADMIN_ROLE_VALUES = [
-  "super_admin",
-  "executive_admin",
-  "ops_manager",
-  "finance_admin",
-  "support_admin",
-  "content_admin",
-  "viewer",
-] as const;
+import { ADMIN_ROLES } from "@/services/rbac";
+
+export const ADMIN_ROLE_VALUES = ADMIN_ROLES;
 
 export const AdminCapabilityIdentitySchema = z.strictObject({
   role: z.enum(ADMIN_ROLE_VALUES),
   permissions: z.array(FrontendPermissionHintSchema).max(FRONTEND_PERMISSION_HINT_VALUES.length),
 });
+
 
 export type AdminCapabilityVisibilityReason =
   | "eligible"

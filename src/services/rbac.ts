@@ -1,94 +1,95 @@
-export type AdminRole = 
-  | "super_admin"     // CTO (God Mode)
-  | "executive_admin" // CEO
-  | "ops_manager"     // Founding Members
-  | "finance_admin"   // Treasury
-  | "support_admin"   // Customer Service
-  | "content_admin"   // Marketing
-  | "viewer";         // Investor (Strictly Read-Only)
+export type AdminRole =
+  | "SUPER_ADMIN"
+  | "TECH_ADMIN"
+  | "EXECUTIVE"
+  | "OPERATIONS"
+  | "ADMIN";
 
-// Granular Permissions
+export const ADMIN_ROLES: readonly AdminRole[] = [
+  "SUPER_ADMIN",
+  "TECH_ADMIN",
+  "EXECUTIVE",
+  "OPERATIONS",
+  "ADMIN",
+] as const;
+
 export type Permission =
-  // Data & Reporting
-  | "view_dashboard" | "view_financial_reports" | "export_reports"
+  // Overview / Dashboard
+  | "access_admin_panel"
   // Sellers
-  | "view_sellers" | "approve_sellers" | "suspend_sellers" | "edit_commission"
-  // Buyers
-  | "view_buyers" | "ban_buyers"
-  // Platform
-  | "view_products" | "moderate_products"
-  | "view_orders" | "override_orders"
-  | "manage_disputes"
+  | "review_sellers"
+  | "manage_seller_status"
+  | "view_seller_sensitive_fields"
+  // Users / Buyers / Admins
+  | "view_all_users"
+  | "view_user_sensitive_fields"
+  | "create_users"
+  | "edit_users"
+  | "delete_users"
+  | "manage_roles"
+  // Products / Catalog
+  | "view_all_products"
+  | "approve_products"
+  | "delete_any_product"
+  // Orders
+  | "view_all_orders"
+  | "view_order_sensitive_fields"
+  | "manage_order_fulfillment"
+  // Support
+  | "view_support_tickets"
+  | "view_support_sensitive_fields"
+  | "reply_support_tickets"
+  | "manage_support_tickets"
+  // Categories
+  | "manage_categories"
+  // Reports
+  | "view_all_reports"
+  | "export_reports"
+  // System / Technical
+  | "view_logs"
+  | "manage_cloudinary_cleanup"
+  | "manage_technical_settings"
+  | "manage_api_keys"
+  | "manage_content"
   // Finance
-  | "view_treasury" | "approve_payouts" | "manage_refunds"
-  // Platform
-  | "view_support_tickets" | "reply_support_tickets" | "manage_support_tickets" | "manage_content"
-  // System
-  | "view_system_logs" | "configure_platform" | "manage_admins";
+  | "view_all_payouts"
+  | "process_payouts"
+  | "manage_system_settings"
+  | "manage_commissions"
+  | "process_refunds";
 
-// The Access Matrix
-export const ROLE_PERMISSIONS: Record<AdminRole, Permission[]> = {
-  super_admin: [
-    "view_dashboard", "view_financial_reports", "export_reports",
-    "view_sellers", "approve_sellers", "suspend_sellers", "edit_commission",
-    "view_buyers", "ban_buyers",
-    "view_products", "moderate_products",
-    "view_orders", "override_orders",
-    "manage_disputes",
-    "view_treasury", "approve_payouts", "manage_refunds",
-    "view_support_tickets", "reply_support_tickets", "manage_support_tickets", "manage_content",
-    "view_system_logs", "configure_platform", "manage_admins"
-  ],
-  executive_admin: [
-    "view_dashboard", "view_financial_reports", "export_reports",
-    "view_sellers", "approve_sellers", "suspend_sellers",
-    "view_buyers",
-    "view_products",
-    "view_orders", "override_orders",
-    "manage_disputes",
-    "view_treasury", "approve_payouts",
-    "view_support_tickets", "manage_content"
-  ],
-  ops_manager: [
-    "view_dashboard",
-    "view_sellers", "approve_sellers",
-    "view_buyers",
-    "view_products", "moderate_products",
-    "view_orders", "override_orders",
-    "manage_disputes",
-    "view_support_tickets", "reply_support_tickets", "manage_support_tickets", "manage_content"
-  ],
-  finance_admin: [
-    "view_dashboard", "view_financial_reports", "export_reports",
-    "view_sellers", "edit_commission",
-    "view_orders",
-    "view_treasury", "approve_payouts", "manage_refunds"
-  ],
-  support_admin: [
-    "view_dashboard",
-    "view_sellers",
-    "view_buyers",
-    "view_orders",
-    "manage_disputes",
-    "view_support_tickets", "reply_support_tickets", "manage_support_tickets"
-  ],
-  content_admin: [
-    "view_dashboard",
-    "view_products",
-    "manage_content"
-  ],
-  viewer: [ // The Investor
-    "view_dashboard", "view_financial_reports"
-  ]
-};
-
-// Helper function to check permissions safely
-export function hasPermission(role: AdminRole, permission: Permission): boolean {
-  return ROLE_PERMISSIONS[role]?.includes(permission) || false;
-}
-
-export const CURRENT_ADMIN_FALLBACK = {
-  id: "ADM-001",
-  name: "Danny Diara",
-  role: "super_admin" as AdminRole, 
-};
+export const CANONICAL_ADMIN_PERMISSIONS: readonly Permission[] = [
+  "access_admin_panel",
+  "review_sellers",
+  "manage_seller_status",
+  "view_seller_sensitive_fields",
+  "view_all_users",
+  "view_user_sensitive_fields",
+  "create_users",
+  "edit_users",
+  "delete_users",
+  "manage_roles",
+  "view_all_products",
+  "approve_products",
+  "delete_any_product",
+  "view_all_orders",
+  "view_order_sensitive_fields",
+  "manage_order_fulfillment",
+  "view_support_tickets",
+  "view_support_sensitive_fields",
+  "reply_support_tickets",
+  "manage_support_tickets",
+  "manage_categories",
+  "view_all_reports",
+  "export_reports",
+  "view_logs",
+  "manage_cloudinary_cleanup",
+  "manage_technical_settings",
+  "manage_api_keys",
+  "manage_content",
+  "view_all_payouts",
+  "process_payouts",
+  "manage_system_settings",
+  "manage_commissions",
+  "process_refunds",
+] as const;
