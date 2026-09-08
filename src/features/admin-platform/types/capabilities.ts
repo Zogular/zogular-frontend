@@ -1,7 +1,7 @@
 import { z } from "zod";
-import type { Permission } from "@/services/rbac";
 
 export const ADMIN_CAPABILITY_CONTRACT_VERSION = 1 as const;
+
 
 export const ADMIN_CAPABILITY_GROUP_IDS = [
   "home",
@@ -44,32 +44,11 @@ export const ADMIN_CAPABILITY_IDS = [
   "platform_settings",
 ] as const;
 
-export const FRONTEND_PERMISSION_HINT_VALUES = [
-  "view_dashboard",
-  "view_financial_reports",
-  "export_reports",
-  "view_sellers",
-  "approve_sellers",
-  "suspend_sellers",
-  "edit_commission",
-  "view_buyers",
-  "ban_buyers",
-  "view_products",
-  "moderate_products",
-  "view_orders",
-  "override_orders",
-  "manage_disputes",
-  "view_treasury",
-  "approve_payouts",
-  "manage_refunds",
-  "view_support_tickets",
-  "reply_support_tickets",
-  "manage_support_tickets",
-  "manage_content",
-  "view_system_logs",
-  "configure_platform",
-  "manage_admins",
-] as const satisfies readonly Permission[];
+import { CANONICAL_ADMIN_PERMISSIONS } from "@/services/rbac";
+
+export const FRONTEND_PERMISSION_HINT_VALUES = CANONICAL_ADMIN_PERMISSIONS;
+
+
 
 export const AdminCapabilityGroupIdSchema = z.enum(ADMIN_CAPABILITY_GROUP_IDS);
 export const AdminCapabilityIdSchema = z.enum(ADMIN_CAPABILITY_IDS);

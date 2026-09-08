@@ -10,6 +10,7 @@ import {
 import { adminAccessApi, AdminUserRecord } from "@/services/admin/access";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
+import { adminIdentityHasPermission } from "@/services/admin/session";
 
 export default function AdminAccessPage() {
   const identity = useAdminIdentity();
@@ -55,7 +56,9 @@ export default function AdminAccessPage() {
     }
   };
 
-  const isSuperAdmin = identity?.claims.role === "super_admin";
+  const isSuperAdmin = identity?.claims.role === "SUPER_ADMIN";
+  const canManageAccess = identity ? adminIdentityHasPermission(identity, "manage_roles") || adminIdentityHasPermission(identity, "edit_users") : false;
+
 
   return (
     <div className="mx-auto max-w-[96rem] space-y-5 pb-12">
@@ -139,7 +142,7 @@ export default function AdminAccessPage() {
               </div>
             </div>
 
-            {isSuperAdmin && identity.id !== selectedAdmin.id && selectedAdmin.role !== "super_admin" ? (
+            {isSuperAdmin && canManageAccess && identity.id !== selectedAdmin.id && selectedAdmin.role !== "SUPER_ADMIN" ? (
               <div className="rounded-3xl border border-sky-200 bg-sky-50/60 p-4">
                 <h3 className="text-sm font-black text-sky-950">Security Control</h3>
                 <div className="mt-4">
@@ -153,6 +156,7 @@ export default function AdminAccessPage() {
                 </div>
               </div>
             ) : null}
+
           </div>
         ) : (
           <AdminEmptyState title="No admin selected" description="Select an account from the directory." />

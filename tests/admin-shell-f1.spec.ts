@@ -42,7 +42,7 @@ function identity(permissions: AdminIdentity["claims"]["permissions"]): AdminIde
     name: "Admin Shell Test",
     email: "admin@example.test",
     claims: {
-      role: "super_admin",
+      role: "SUPER_ADMIN",
       permissions,
       authStrength: "password",
       issuedAt: "2026-08-31T08:00:00.000Z",
@@ -73,7 +73,7 @@ test("super admin receives exactly the eight F0 operational destinations in cano
 });
 
 test("permission-limited and unknown identities fail closed", () => {
-  const limited = buildAdminShellNavigation(identity(["view_dashboard", "view_orders"]));
+  const limited = buildAdminShellNavigation(identity(["access_admin_panel", "view_all_orders"]));
   expect(flattenAdminShellNavigation(limited).map((item) => item.id)).toEqual([
     "overview",
     "orders_and_fulfillment",
@@ -88,9 +88,10 @@ test("permission-limited and unknown identities fail closed", () => {
   } as unknown as AdminIdentity;
   expect(buildAdminShellNavigation(unknownRole)).toEqual([]);
 
-  const expired = { ...identity(["view_dashboard"]), sessionStatus: "expired" } as AdminIdentity;
+  const expired = { ...identity(["access_admin_panel"]), sessionStatus: "expired" } as AdminIdentity;
   expect(buildAdminShellNavigation(expired)).toEqual([]);
 });
+
 
 test("contract-gated and experience-ready capabilities remain absent for super admin", () => {
   const visibleIds = new Set(

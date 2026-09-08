@@ -572,32 +572,41 @@ test("only operational capabilities can be navigation eligible", () => {
 
 test("gated modules remain hidden for a super-admin-shaped identity and backend authorization stays authoritative", () => {
   const superAdmin = {
-    role: "super_admin",
+    role: "SUPER_ADMIN",
     permissions: [
-      "view_dashboard",
-      "view_financial_reports",
-      "export_reports",
-      "view_sellers",
-      "approve_sellers",
-      "suspend_sellers",
-      "edit_commission",
-      "view_buyers",
-      "ban_buyers",
-      "view_products",
-      "moderate_products",
-      "view_orders",
-      "override_orders",
-      "manage_disputes",
-      "view_treasury",
-      "approve_payouts",
-      "manage_refunds",
+      "access_admin_panel",
+      "review_sellers",
+      "manage_seller_status",
+      "view_seller_sensitive_fields",
+      "view_all_users",
+      "view_user_sensitive_fields",
+      "create_users",
+      "edit_users",
+      "delete_users",
+      "manage_roles",
+      "view_all_products",
+      "approve_products",
+      "delete_any_product",
+      "view_all_orders",
+      "view_order_sensitive_fields",
+      "manage_order_fulfillment",
       "view_support_tickets",
+      "view_support_sensitive_fields",
       "reply_support_tickets",
       "manage_support_tickets",
+      "manage_categories",
+      "view_all_reports",
+      "export_reports",
+      "view_logs",
+      "manage_cloudinary_cleanup",
+      "manage_technical_settings",
+      "manage_api_keys",
       "manage_content",
-      "view_system_logs",
-      "configure_platform",
-      "manage_admins",
+      "view_all_payouts",
+      "process_payouts",
+      "manage_system_settings",
+      "manage_commissions",
+      "process_refunds",
     ],
   } as const;
   const visible = getNavigationEligibleCapabilities(superAdmin);
@@ -620,20 +629,20 @@ test("gated modules remain hidden for a super-admin-shaped identity and backend 
 });
 
 test("unknown identities, roles, permissions, and capabilities fail closed", () => {
-  expect(getCapabilityNavigationDecision("missing_capability", { role: "super_admin", permissions: ["view_dashboard"] })).toMatchObject({
+  expect(getCapabilityNavigationDecision("missing_capability", { role: "SUPER_ADMIN", permissions: ["access_admin_panel"] })).toMatchObject({
     eligible: false,
     reason: "unknown_capability",
   });
   expect(getCapabilityNavigationDecision("overview", null)).toMatchObject({ eligible: false, reason: "unknown_identity" });
-  expect(getCapabilityNavigationDecision("overview", { role: "root", permissions: ["view_dashboard"] })).toMatchObject({
+  expect(getCapabilityNavigationDecision("overview", { role: "root", permissions: ["access_admin_panel"] })).toMatchObject({
     eligible: false,
     reason: "unknown_identity",
   });
-  expect(getCapabilityNavigationDecision("overview", { role: "super_admin", permissions: ["view_dashboard", "invented_permission"] })).toMatchObject({
+  expect(getCapabilityNavigationDecision("overview", { role: "SUPER_ADMIN", permissions: ["access_admin_panel", "invented_permission"] })).toMatchObject({
     eligible: false,
     reason: "unknown_identity",
   });
-  expect(getCapabilityNavigationDecision("overview", { role: "super_admin", permissions: [] })).toMatchObject({
+  expect(getCapabilityNavigationDecision("overview", { role: "SUPER_ADMIN", permissions: [] })).toMatchObject({
     eligible: false,
     reason: "permission_hint_not_present",
   });
@@ -642,15 +651,16 @@ test("unknown identities, roles, permissions, and capabilities fail closed", () 
 test("frontend permission hints never claim backend authority", () => {
   const overview = ADMIN_CAPABILITY_REGISTRY.find((capability) => capability.id === "overview");
   expect(overview).toBeDefined();
-  expect(evaluateCapabilityNavigation(overview, { role: "super_admin", permissions: ["view_dashboard"] })).toEqual({
+  expect(evaluateCapabilityNavigation(overview, { role: "SUPER_ADMIN", permissions: ["access_admin_panel"] })).toEqual({
     eligible: true,
     reason: "eligible",
     backendAuthorizationRequired: true,
   });
-  expect(overview?.frontendPermissionHints).toEqual(["view_dashboard"]);
+  expect(overview?.frontendPermissionHints).toEqual(["access_admin_panel"]);
   expect(overview?.backendPermissionEvidence.permissions).toEqual(["access_admin_panel"]);
   expect(overview?.authorizationAuthority).toBe("backend");
 });
+
 
 test("operator labels use the canonical vocabulary and contain no developer terminology", () => {
   expect(ADMIN_OPERATOR_TERMS).toMatchObject({ seller: "Seller", customer: "Customer", administrator: "Administrator" });
