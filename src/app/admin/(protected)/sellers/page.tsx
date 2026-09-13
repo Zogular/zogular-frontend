@@ -1,10 +1,22 @@
 "use client";
 
-import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw } from "lucide-react";
+/**
+ * @file page.tsx
+ * @description
+ * Admin Sellers review queue page orchestrator.
+ * Connects seller application listing hooks, filters, table/grid views, and pagination.
+ * Implements container-aware scroll restoration so operators navigating to /admin/sellers/:id
+ * and returning resume at their exact prior scroll position.
+ */
+
+import { useMemo } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw, List, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellersList } from "@/features/admin-sellers/hooks/use-sellers-list";
-import { SellersListFilters, SellersListTable } from "@/features/admin-sellers/sections";
+import { SellersListFilters, SellersListTable, SellersListGrid, SellerQueueFreshness } from "@/features/admin-sellers/sections";
+import { useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 
 export default function AdminSellersPage() {
   const {
@@ -12,6 +24,7 @@ export default function AdminSellersPage() {
     pagination,
     facets,
     loading,
+    isInitialLoading,
     isRefreshing,
     error,
     searchQuery,
@@ -33,11 +46,25 @@ export default function AdminSellersPage() {
     canApprove,
     canSuspend,
     canExport,
+    canViewSensitiveFields,
     loadApplications,
     openAction,
     handleActionConfirm,
     handleExport,
+    view,
+    setView,
+    dataUpdatedAt,
   } = useSellersList();
+
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentUrl = useMemo(
+    () => `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`,
+    [pathname, searchParams],
+  );
+
+  // Preserve and restore exact container scroll position upon return navigation
+  useListScrollRestoration(currentUrl, !loading && applications.length > 0);
 
   const hasActiveScope = Boolean(searchQuery.trim()) || statusFilter !== "all" || sellerTypeFilter !== "all";
   const currentPageRows = applications.length;
@@ -53,16 +80,13 @@ export default function AdminSellersPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            onClick={loadApplications}
-            disabled={isRefreshing || loading}
-            className="h-10 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_32%,transparent)] bg-[var(--admin-surface-mist)] font-black text-[var(--admin-canopy-deep)] hover:bg-[color-mix(in_srgb,var(--admin-canopy)_10%,var(--admin-surface-mist))]"
-          >
-            <RefreshCw className={`mr-2 size-4 ${isRefreshing ? "motion-safe:animate-spin" : ""}`} />
-            Refresh
-          </Button>
+          {dataUpdatedAt && (
+            <SellerQueueFreshness
+              dataUpdatedAt={dataUpdatedAt}
+              isRefreshing={isRefreshing || loading}
+              onRefresh={loadApplications}
+            />
+          )}
           {canExport ? (
             <Button
               type="button"
@@ -89,6 +113,7 @@ export default function AdminSellersPage() {
         direction={direction}
         setSort={setSort}
         facets={facets}
+        canViewSensitiveFields={canViewSensitiveFields}
       />
 
       <div aria-live="polite" className="sr-only">
@@ -99,19 +124,66 @@ export default function AdminSellersPage() {
         <RequestError message={error.message} retry={loadApplications} compact={applications.length > 0} />
       ) : null}
 
-      {loading ? (
+      {isInitialLoading ? (
         <SellerQueueLoadingBoard />
       ) : applications.length === 0 && !error ? (
         <SellerQueueEmpty hasActiveScope={hasActiveScope} />
       ) : applications.length > 0 ? (
         <>
-          <SellersListTable
-            applications={applications}
-            onOpenAction={openAction}
-            canApprove={canApprove}
-            canSuspend={canSuspend}
-            isRefreshing={isRefreshing}
-          />
+          <div className="flex items-center justify-between py-2">
+            <span className="text-sm font-semibold text-[var(--admin-ink-soft)]">
+              Showing {applications.length} of {pagination?.total ?? applications.length} applications
+            </span>
+            <div className="flex items-center rounded-md border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-mist)] p-0.5" role="group" aria-label="Toggle view mode">
+              <button
+                type="button"
+                onClick={() => setView("list")}
+                aria-pressed={view === "list"}
+                title="Table view"
+                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition-colors ${
+                  view === "list"
+                    ? "bg-[var(--admin-canopy-deep)] text-[var(--admin-surface-cream)] shadow-sm"
+                    : "text-[var(--admin-ink-soft)] hover:text-[var(--admin-canopy-deep)]"
+                }`}
+              >
+                <List className="size-3.5" />
+                <span>List</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setView("grid")}
+                aria-pressed={view === "grid"}
+                title="Grid view"
+                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition-colors ${
+                  view === "grid"
+                    ? "bg-[var(--admin-canopy-deep)] text-[var(--admin-surface-cream)] shadow-sm"
+                    : "text-[var(--admin-ink-soft)] hover:text-[var(--admin-canopy-deep)]"
+                }`}
+              >
+                <LayoutGrid className="size-3.5" />
+                <span>Grid</span>
+              </button>
+            </div>
+          </div>
+          {view === "list" ? (
+            <SellersListTable
+              applications={applications}
+              onOpenAction={openAction}
+              canApprove={canApprove}
+              canSuspend={canSuspend}
+              canViewSensitiveFields={canViewSensitiveFields}
+              isRefreshing={isRefreshing}
+            />
+          ) : (
+            <SellersListGrid
+              applications={applications}
+              onOpenAction={openAction}
+              canApprove={canApprove}
+              canSuspend={canSuspend}
+              canViewSensitiveFields={canViewSensitiveFields}
+              isRefreshing={isRefreshing}
+            />
+          )}
           {pagination ? (
             <SellerQueuePagination
               page={pagination.page}

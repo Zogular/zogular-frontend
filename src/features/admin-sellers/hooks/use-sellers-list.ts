@@ -1,8 +1,18 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
+/**
+ * @file use-sellers-list.ts
+ * @module features/admin-sellers/hooks
+ * @description
+ * Custom React hook encapsulating state management, URL query parameter synchronization,
+ * debounced search, action execution, and TanStack Query fetching for the Admin Seller Review Queue.
+ * Receives real-time cache invalidations via the Admin Realtime SSE listener.
+ */
+
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
+import { useQuery, keepPreviousData } from "@tanstack/react-query";
 import { getApplicationPrimaryName } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import type { VendorApplicationAdminAction } from "../types/admin-seller.types";
 import { adminIdentityHasPermission } from "@/services/admin/session";
@@ -21,9 +31,7 @@ import {
 import {
   applySellerListUrlUpdates,
   getSellerListSafeError,
-  INITIAL_SELLER_LIST_REQUEST_STATE,
   parseSellerListQuery,
-  reduceSellerListRequestState,
   sellerListQueryKey,
 } from "@/features/admin-sellers/lib/seller-list-state";
 import type { SellerApplicationStatus, SellerType, VendorApplication } from "@/types/seller";
@@ -39,21 +47,22 @@ export function useSellersList() {
   );
   const queryKey = sellerListQueryKey(query);
   const [searchQuery, setSearchQuery] = useState(query.search);
-  const [requestState, dispatch] = useReducer(
-    reduceSellerListRequestState,
-    INITIAL_SELLER_LIST_REQUEST_STATE,
-  );
+  const [prevUrlSearch, setPrevUrlSearch] = useState(query.search);
+
+  if (query.search !== prevUrlSearch) {
+    setPrevUrlSearch(query.search);
+    setSearchQuery(query.search);
+  }
+
   const [activeAction, setActiveAction] = useState<VendorApplicationAdminAction | null>(null);
   const [activeApplication, setActiveApplication] = useState<VendorApplication | null>(null);
   const [isActionSubmitting, setIsActionSubmitting] = useState(false);
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const requestIdRef = useRef(0);
 
   const identity = useAdminIdentity()!;
   const canApprove = adminIdentityHasPermission(identity, "manage_seller_status");
   const canSuspend = adminIdentityHasPermission(identity, "manage_seller_status");
   const canExport = adminIdentityHasPermission(identity, "export_reports");
-
+  const canViewSensitiveFields = adminIdentityHasPermission(identity, "view_seller_sensitive_fields");
 
   const writeUrl = useCallback((
     updates: Partial<Record<keyof typeof query, string>>,
@@ -67,51 +76,38 @@ export function useSellersList() {
   }, [pathname, router]);
 
   useEffect(() => {
-    setSearchQuery(query.search);
-  }, [query.search]);
-
-  useEffect(() => {
     const normalized = searchQuery.trim().slice(0, 120);
     if (normalized === query.search) return;
     const timeout = window.setTimeout(() => {
+      setPrevUrlSearch(normalized);
       writeUrl({ search: normalized, page: "" }, "replace");
     }, 300);
     return () => window.clearTimeout(timeout);
   }, [query.search, searchQuery, writeUrl]);
 
-  useEffect(() => {
-    const controller = new AbortController();
-    const requestId = ++requestIdRef.current;
-    dispatch({ type: "request-started", requestId, queryKey });
-
-    void getVendorApplications({
-      page: query.page,
-      limit: query.limit,
-      search: query.search || undefined,
-      status: query.status,
-      sellerType: query.sellerType,
-      sort: query.sort,
-      direction: query.direction,
-      signal: controller.signal,
-    }).then((data) => {
-      dispatch({ type: "request-succeeded", requestId, queryKey, data });
-    }).catch((error: unknown) => {
-      if (controller.signal.aborted) return;
-      dispatch({
-        type: "request-failed",
-        requestId,
-        queryKey,
-        error: getSellerListSafeError(error),
-      });
-    });
-
-    return () => controller.abort();
-  }, [query.direction, query.limit, query.page, query.search, query.sellerType, query.sort, query.status, queryKey, refreshVersion]);
-
-  const data = requestState.dataQueryKey === queryKey ? requestState.data : null;
-  const error = requestState.requestedQueryKey === queryKey ? requestState.error : null;
-  const loading = !data && !error;
-  const isRefreshing = Boolean(data && requestState.isRefreshing);
+  const { data, error, isLoading: loading, isFetching: isRefreshing, refetch, dataUpdatedAt } = useQuery({
+    queryKey: ['seller-list', queryKey],
+    queryFn: async ({ signal }) => {
+      try {
+        return await getVendorApplications({
+          page: query.page,
+          limit: query.limit,
+          search: query.search || undefined,
+          status: query.status,
+          sellerType: query.sellerType,
+          sort: query.sort,
+          direction: query.direction,
+          signal,
+        });
+      } catch (err) {
+        throw getSellerListSafeError(err);
+      }
+    },
+    placeholderData: keepPreviousData,
+    // Architectural Note: Real-time SSE listener in AdminShell automatically invalidates ["seller-list"]
+    // on "admin:seller:created" / "admin:seller:updated". Polling is relaxed to 60s as a fallback safety net.
+    refetchInterval: 60000,
+  });
 
   const setFilter = useCallback((updates: Partial<Record<keyof typeof query, string>>) => {
     writeUrl({ ...updates, page: "" });
@@ -136,8 +132,8 @@ export function useSellersList() {
   }, [setFilter]);
 
   const loadApplications = useCallback(() => {
-    setRefreshVersion((version) => version + 1);
-  }, []);
+    refetch();
+  }, [refetch]);
 
   function openAction(action: VendorApplicationAdminAction, application: VendorApplication) {
     setActiveAction(action);
@@ -184,15 +180,17 @@ export function useSellersList() {
 
   function handleExport() {
     if (!data) return;
-    const header = ["id", "store_name", "owner_full_name", "seller_type", "status", "phone", "email", "district", "submitted_at", "reviewed_at"];
+    const header = ["id", "store_name", "owner_full_name", "seller_type", "status", ...(canViewSensitiveFields ? ["phone", "email"] : []), "district", "submitted_at", "reviewed_at"];
     const rows = data.applications.map((application) => [
       application.id,
       getApplicationPrimaryName(application),
       application.ownerFullName,
       application.sellerType,
       application.status,
-      application.businessPhone || application.user?.telephone || "",
-      application.businessEmail || application.user?.email || "",
+      ...(canViewSensitiveFields ? [
+        application.businessPhone || application.user?.telephone || "",
+        application.businessEmail || application.user?.email || ""
+      ] : []),
       application.district,
       application.submittedAt || "",
       application.reviewedAt || "",
@@ -214,8 +212,10 @@ export function useSellersList() {
     pagination: data?.pagination ?? null,
     facets: data?.facets.byStatus ?? null,
     loading,
+    isInitialLoading: loading && !data,
     isRefreshing,
-    error,
+    error: error as ReturnType<typeof getSellerListSafeError> | null,
+    dataUpdatedAt,
     searchQuery,
     setSearchQuery,
     statusFilter: query.status,
@@ -225,6 +225,8 @@ export function useSellersList() {
     sort: query.sort,
     direction: query.direction,
     setSort,
+    view: query.view,
+    setView: (view: "list" | "grid") => setFilter({ view: view === "list" ? "" : view }),
     setPage: (page: number) => writeUrl({ page: page <= 1 ? "" : String(page) }),
     setLimit: (limit: number) => setFilter({ limit: limit === 20 ? "" : String(limit) }),
     activeAction,
@@ -235,6 +237,7 @@ export function useSellersList() {
     canApprove,
     canSuspend,
     canExport,
+    canViewSensitiveFields,
     loadApplications,
     openAction,
     handleActionConfirm,

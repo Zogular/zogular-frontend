@@ -560,7 +560,7 @@ test("only operational capabilities can be navigation eligible", () => {
     if (capability.navigationEligible) expect(capability.completionLevel).toBe("operational");
     if (capability.completionLevel !== "operational") expect(capability.navigationEligible).toBe(false);
   }
-  const gated = ADMIN_CAPABILITY_REGISTRY.find((capability) => capability.id === "finance_overview");
+  const gated = ADMIN_CAPABILITY_REGISTRY.find((capability) => capability.id === "transactions_and_ledger");
   expect(gated).toBeDefined();
   expect(() => AdminCapabilityDefinitionSchema.parse({ ...gated, navigationEligible: true })).toThrow();
   expect(() => AdminCapabilityDefinitionSchema.parse({
@@ -620,7 +620,17 @@ test("gated modules remain hidden for a super-admin-shaped identity and backend 
     "support",
     "admins_teams_and_roles",
   ]);
+  expect(getCapabilityNavigationDecision("transactions_and_ledger", superAdmin)).toMatchObject({
+    eligible: false,
+    reason: "not_operational",
+    backendAuthorizationRequired: true,
+  });
   expect(getCapabilityNavigationDecision("finance_overview", superAdmin)).toMatchObject({
+    eligible: false,
+    reason: "not_operational",
+    backendAuthorizationRequired: true,
+  });
+  expect(getCapabilityNavigationDecision("disputes_and_claims", superAdmin)).toMatchObject({
     eligible: false,
     reason: "not_operational",
     backendAuthorizationRequired: true,

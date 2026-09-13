@@ -44,6 +44,7 @@ interface SellersListFiltersProps {
   direction: AdminVendorApplicationSortDirection;
   setSort: (sort: AdminVendorApplicationSort, direction: AdminVendorApplicationSortDirection) => void;
   facets: AdminVendorApplicationStatusFacets | null;
+  canViewSensitiveFields: boolean;
 }
 
 export function SellersListFilters({
@@ -57,6 +58,7 @@ export function SellersListFilters({
   direction,
   setSort,
   facets,
+  canViewSensitiveFields,
 }: SellersListFiltersProps) {
   const allCount = facets
     ? SELLER_LIST_STATUSES.reduce((total, status) => total + facets[status], 0)
@@ -68,10 +70,12 @@ export function SellersListFilters({
       className="overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-cream)] shadow-[0_14px_30px_rgb(6_59_41_/_7%)]"
     >
       <div className="p-3 sm:p-4">
-        <label htmlFor="seller-queue-search" className="text-[11px] font-black uppercase text-[var(--admin-ink-soft)]">
-          Search seller queue
-        </label>
-        <div className="relative mt-2">
+        <div className="mb-2">
+          <label htmlFor="seller-queue-search" className="text-[11px] font-black uppercase text-[var(--admin-ink-soft)]">
+            Search seller queue
+          </label>
+        </div>
+        <div className="relative">
           <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-[var(--admin-ink-soft)]" />
           <Input
             id="seller-queue-search"
@@ -97,7 +101,7 @@ export function SellersListFilters({
           ) : null}
         </div>
         <p id="seller-queue-search-scope" className="mt-2 text-xs font-semibold leading-5 text-[var(--admin-ink-soft)]">
-          Store, owner, email, phone, or application ID.
+          Store, owner, {canViewSensitiveFields ? "email, phone, " : ""}or application ID.
         </p>
       </div>
 

@@ -26,6 +26,7 @@ export const ADMIN_BACKEND_ENDPOINTS = {
   logout: ADMIN_LOGOUT_ENDPOINT,
   session: ADMIN_SESSION_ENDPOINT,
   changeTemporaryPassword: CHANGE_TEMPORARY_PASSWORD_ENDPOINT,
+  setupAccount: "/auth/setup-account",
 } as const;
 
 const CANONICAL_PERMISSIONS_SET: ReadonlySet<string> = new Set(CANONICAL_ADMIN_PERMISSIONS);

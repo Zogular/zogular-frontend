@@ -39,6 +39,7 @@ const AUTH_ENDPOINTS = {
   resendVerification: "/auth/resend-verification",
   verifyCode: "/auth/verify-code",
   resetPassword: "/auth/reset-password",
+  setupAccount: "/auth/setup-account",
   updateMe: "/user/update-me",
   changePassword: "/user/change-password",
   sendPhoneOtp: "/auth/phone/send-otp",
@@ -53,6 +54,19 @@ const ROLE_REDIRECTS: Record<AuthRole, string> = {
 };
 
 const DEFAULT_BUYER_REDIRECT = "/account";
+
+export interface CustomerSetupAccountInput {
+  token: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface AccountSetupResult {
+  success: true;
+  message: string;
+  accountClass: "STAFF" | "CUSTOMER";
+}
 
 let localLogoutPending = false;
 
@@ -69,6 +83,14 @@ function asNonEmptyString(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const normalized = value.trim();
   return normalized.length > 0 ? normalized : undefined;
+}
+
+function readAccountSetupClass(payload: unknown): AccountSetupResult["accountClass"] {
+  const root = asRecord(payload);
+  const data = asRecord(root?.data);
+  const accountClass = data?.accountClass;
+  if (accountClass === "STAFF" || accountClass === "CUSTOMER") return accountClass;
+  throw new ApiError("Account activation could not be confirmed. Please request a new invitation.", 502);
 }
 
 function asNullableIsoString(value: unknown): string | null | undefined {
@@ -652,6 +674,33 @@ export async function resetPassword(
     success: true,
     message: extractActionMessage(payload, "Password updated successfully."),
     nextPath: appendSafeNext(loginPath, nextPath),
+  };
+}
+
+/**
+ * Consumer activation uses the same backend invitation endpoint as staff
+ * activation. The server-derived account class is returned only to select the
+ * correct client sign-in route after the one-time token has been consumed.
+ */
+export async function setupCustomerAccount(
+  input: CustomerSetupAccountInput,
+): Promise<AccountSetupResult> {
+  const payload = await apiClient<unknown>(AUTH_ENDPOINTS.setupAccount, {
+    method: "POST",
+    authMode: "omit",
+    csrf: true,
+    body: JSON.stringify({
+      token: input.token,
+      email: input.email.trim().toLowerCase(),
+      password: input.password,
+      confirmPassword: input.confirmPassword,
+    }),
+  });
+
+  return {
+    success: true,
+    message: extractActionMessage(payload, "Account setup completed successfully."),
+    accountClass: readAccountSetupClass(payload),
   };
 }
 

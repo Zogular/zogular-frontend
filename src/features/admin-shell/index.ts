@@ -6,3 +6,4 @@ export * from "./components/AdminSidebar";
 export * from "./config/admin-shell-icons";
 export * from "./lib/admin-shell-model";
 export * from "./lib/admin-shell-preference";
+export * from "./hooks/useAdminRealtime";

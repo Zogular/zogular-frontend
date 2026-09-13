@@ -37,6 +37,7 @@ export interface SellerListQueryState {
   sellerType: SellerType | "all";
   sort: AdminVendorApplicationSort;
   direction: AdminVendorApplicationSortDirection;
+  view: "list" | "grid";
 }
 
 export interface SellerListSafeError {
@@ -90,6 +91,7 @@ export function parseSellerListQuery(params: URLSearchParams): SellerListQuerySt
   const requestedSellerType = params.get("sellerType") as SellerType | null;
   const requestedSort = params.get("sort") as AdminVendorApplicationSort | null;
   const requestedDirection = params.get("direction") as AdminVendorApplicationSortDirection | null;
+  const requestedView = params.get("view") === "grid" ? "grid" : "list";
 
   return {
     page: positiveInteger(params.get("page"), 1),
@@ -107,6 +109,7 @@ export function parseSellerListQuery(params: URLSearchParams): SellerListQuerySt
       ? requestedSort
       : "submittedAt",
     direction: requestedDirection === "asc" ? "asc" : "desc",
+    view: requestedView,
   };
 }
 

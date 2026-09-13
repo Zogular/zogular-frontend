@@ -25,6 +25,7 @@ export interface ProductModerationState extends ProductModerationSignals {
   submittedAt?: string | null;
   reviewedAt?: string | null;
   reviewedBy?: string | null;
+  reasonCode?: string | null;
 }
 
 export function getProductModerationStatusLabel(status: ProductModerationStatus): string {

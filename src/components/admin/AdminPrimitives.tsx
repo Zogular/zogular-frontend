@@ -167,6 +167,7 @@ export function AdminDetailSheet({
   onOpenChange,
   title,
   description,
+  actions,
   contentClassName,
   bodyClassName,
   children,
@@ -175,6 +176,7 @@ export function AdminDetailSheet({
   onOpenChange: (open: boolean) => void;
   title: string;
   description: string;
+  actions?: ReactNode;
   contentClassName?: string;
   bodyClassName?: string;
   children: ReactNode;
@@ -183,8 +185,13 @@ export function AdminDetailSheet({
     <Sheet open={open} onOpenChange={onOpenChange}>
       <SheetContent className={cn("w-full border-l border-white/40 bg-white/95 p-0 shadow-2xl shadow-zinc-950/20 backdrop-blur-2xl sm:max-w-xl", contentClassName)}>
         <SheetHeader className="border-b border-zinc-100 bg-zinc-950 px-6 py-5 text-white">
-          <SheetTitle className="text-lg font-black text-white">{title}</SheetTitle>
-          <SheetDescription className="text-xs font-bold text-zinc-400">{description}</SheetDescription>
+          <div className="flex items-center justify-between gap-3 pr-8">
+            <div className="min-w-0 flex-1">
+              <SheetTitle className="text-lg font-black text-white truncate">{title}</SheetTitle>
+              <SheetDescription className="text-xs font-bold text-zinc-400 truncate">{description}</SheetDescription>
+            </div>
+            {actions ? <div className="flex items-center gap-2 shrink-0">{actions}</div> : null}
+          </div>
         </SheetHeader>
         <div className={cn("flex-1 overflow-y-auto p-6", bodyClassName)}>{children}</div>
       </SheetContent>
