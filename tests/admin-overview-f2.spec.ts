@@ -418,7 +418,7 @@ test("treats a zero comparison base neutrally", () => {
     percentageChange: null,
   });
   expect(formatPercentageChange(null)).toBe(
-    "Percentage unavailable because the previous period was zero",
+    "No percentage because previous was zero",
   );
 });
 

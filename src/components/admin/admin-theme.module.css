@@ -122,6 +122,8 @@
   .mobileDrawer,
   :global(body):has(.mobileDrawer) :global([data-slot="sheet-overlay"]) {
     animation: none !important;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
     transition: none !important;
     will-change: auto;
   }

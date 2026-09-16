@@ -80,7 +80,7 @@ function ActivityTooltip({
   return (
     <div className="max-w-64 rounded-lg border border-[color:rgba(184,135,70,0.36)] bg-[var(--admin-surface-cream)] p-3 shadow-lg">
       <p className="text-xs font-semibold text-[var(--admin-ink)]">
-        Current bucket: {payload[0]?.payload?.currentRange ?? label}
+        Current range: {payload[0]?.payload?.currentRange ?? label}
       </p>
       <dl className="mt-2 space-y-2">
         {payload.map((entry) => {
@@ -298,9 +298,9 @@ export function OperationalActivity({
               </p>
             </div>
           ) : (
-            <div className="mt-4 h-80 min-h-80 w-full min-w-0" data-testid="activity-chart">
+            <div className="mt-4 h-64 min-h-64 w-full min-w-0 md:h-72 md:min-h-72" data-testid="activity-chart">
               <p className="sr-only">
-                Current-period operational activity. Recharts provides the interactive chart accessibility layer; the complete current and previous-period values and date ranges are also available in the table below.
+                Operational activity for the selected period. The complete current and previous values are available in the table below.
               </p>
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart
@@ -354,11 +354,11 @@ export function OperationalActivity({
             <div className="overflow-x-auto border-t border-[color:rgba(184,135,70,0.24)]">
               <table className="w-full min-w-max border-collapse text-left text-xs">
                 <caption className="sr-only">
-                  Current and previous-period operational activity values and bucket date ranges for every available series
+                  Current and previous operational activity values and date ranges for every available series
                 </caption>
                 <thead>
                   <tr className="bg-[var(--admin-canvas-depth)] text-[var(--admin-ink)]">
-                    <th scope="col" className="px-3 py-3 font-semibold">Current bucket</th>
+                    <th scope="col" className="px-3 py-3 font-semibold">Current range</th>
                     {availableSeries.map((item) => (
                       <th key={item.key} scope="colgroup" colSpan={3} className="border-l border-[color:rgba(184,135,70,0.24)] px-3 py-3 text-center font-semibold">
                         {item.shortLabel}
@@ -369,7 +369,7 @@ export function OperationalActivity({
                     <th scope="col" className="px-3 py-2 font-medium">Start and end</th>
                     {availableSeries.flatMap((item) => [
                       <th key={`${item.key}-current`} scope="col" className="border-l border-[color:rgba(184,135,70,0.2)] px-3 py-2 text-right font-medium">Current</th>,
-                      <th key={`${item.key}-comparison-range`} scope="col" className="px-3 py-2 font-medium">Previous bucket</th>,
+                      <th key={`${item.key}-comparison-range`} scope="col" className="px-3 py-2 font-medium">Previous range</th>,
                       <th key={`${item.key}-comparison`} scope="col" className="px-3 py-2 text-right font-medium">Previous</th>,
                     ])}
                   </tr>

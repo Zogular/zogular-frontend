@@ -55,14 +55,14 @@ export function MarketplacePulse({
         ) : null}
       </div>
 
-      <dl className="grid gap-px bg-[var(--admin-canvas-depth)] sm:grid-cols-2 xl:grid-cols-4">
+      <dl className="grid gap-px bg-[var(--admin-canvas-depth)] sm:grid-cols-2">
         {FLOW_PRESENTATION.map((item) => {
           const metric = overview.periodFlows[item.key];
           if (metric.availability !== "AVAILABLE") {
             return (
               <div
                 key={item.key}
-                className="min-h-40 bg-[var(--admin-surface-mist)] px-4 py-4 sm:px-5"
+                className="min-h-32 bg-[var(--admin-surface-mist)] px-4 py-4 sm:px-5"
                 data-testid={`pulse-${item.key}`}
               >
                 <dt className="text-xs font-semibold leading-5 text-[var(--admin-ink-soft)]">
@@ -85,7 +85,7 @@ export function MarketplacePulse({
           return (
             <div
               key={item.key}
-              className="min-h-40 bg-[var(--admin-surface-mist)] px-4 py-4 sm:px-5"
+              className="min-h-32 bg-[var(--admin-surface-mist)] px-4 py-4 sm:px-5"
               data-testid={`pulse-${item.key}`}
             >
               <dt className="text-xs font-semibold leading-5 text-[var(--admin-ink-soft)]">
@@ -100,7 +100,7 @@ export function MarketplacePulse({
                     previous {metric.comparisonValue.toLocaleString("en-ZM")}
                   </span>
                 </div>
-                <p className="mt-3 flex items-start gap-1.5 text-xs font-semibold leading-5 text-[var(--admin-ink)]">
+                <p className="mt-3 flex items-center gap-1.5 text-xs font-semibold leading-5 text-[var(--admin-ink)]">
                   <DirectionIcon
                     className="mt-0.5 size-4 shrink-0 text-[var(--admin-copper-muted)]"
                     aria-hidden="true"
