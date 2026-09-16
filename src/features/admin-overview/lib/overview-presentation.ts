@@ -222,14 +222,12 @@ export function getSectionUnavailableCopy(
 export function formatSignedCount(value: number): string {
   if (value === 0) return "No change";
   const amount = Math.abs(value).toLocaleString("en-ZM");
-  return value > 0
-    ? `${amount} more than the previous period`
-    : `${amount} fewer than the previous period`;
+  return value > 0 ? `${amount} more` : `${amount} fewer`;
 }
 
 export function formatPercentageChange(value: number | null): string {
   if (value === null) {
-    return "Percentage unavailable because the previous period was zero";
+    return "No percentage because previous was zero";
   }
   if (value === 0) return "0% change";
   return `${Math.abs(value).toLocaleString("en-ZM", {
