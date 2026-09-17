@@ -3,7 +3,6 @@
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellerDetail } from "@/features/admin-sellers/hooks/use-seller-detail";
 import {
   ADMIN_SELLER_QUEUE_PATH,
@@ -18,6 +17,7 @@ import {
   PayoutDetailsSection,
   SellerActionPanel,
   SellerOverviewSection,
+  SellerReviewActionDialog,
   SellerReviewErrorState,
   SellerReviewInlineNotice,
   SellerReviewLoadingState,
@@ -59,7 +59,7 @@ export default function AdminSellerReviewPage() {
   );
 
   return (
-    <div className="mx-auto max-w-[96rem] space-y-4 pb-24 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 xl:pb-8">
+    <div className="mx-auto max-w-[96rem] space-y-4 pb-36 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 xl:pb-8">
       <Button type="button" variant="outline" onClick={returnToSellerQueue} className="min-h-11 border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-surface-cream)] text-[var(--admin-ink)] hover:bg-[var(--admin-surface-mist)]">
         <ArrowLeft />Seller applications
       </Button>

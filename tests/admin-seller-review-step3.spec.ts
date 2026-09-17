@@ -6,7 +6,11 @@ import {
   approveVendorApplication,
   getSellerReviewSafeError,
   getVendorApplicationById,
+  rejectVendorApplication,
+  requestVendorApplicationInfo,
+  restrictVendorApplication,
   shouldRetrySellerReviewQuery,
+  suspendVendorApplication,
 } from "../src/services/admin/vendor-applications";
 import {
   SellerReviewContractError,
@@ -236,4 +240,219 @@ test("Step 2 list mutations include concurrency state and preserve the queue UI"
   expect(hook).toContain("expectedUpdatedAt, adminNotes");
   expect(hook).toContain('safeError.kind === "conflict"');
   expect(hook).toContain("loadApplications()");
+});
+
+test("SellerReviewActionDialog and ActionMenu provide distinct visual cues, auto-closing, and separated destructive actions", () => {
+  const actionMenuSource = readSource("src/components/ui/action-menu.tsx");
+  const dialogSource = readSource("src/features/admin-sellers/sections/SellerReviewActionDialog.tsx");
+  const tableSource = readSource("src/features/admin-sellers/sections/SellersListTable.tsx");
+  const gridSource = readSource("src/features/admin-sellers/sections/SellersListGrid.tsx");
+  const panelSource = readSource("src/features/admin-sellers/sections/SellerActionPanel.tsx");
+  const detailHookSource = readSource("src/features/admin-sellers/hooks/use-seller-detail.ts");
+  const listHookSource = readSource("src/features/admin-sellers/hooks/use-sellers-list.ts");
+
+  // ActionMenu auto-close on selection
+  expect(actionMenuSource).toContain("menu?.setOpen(false)");
+  expect(actionMenuSource).toContain("useActionMenu");
+
+  // Distinct banners and theme styling
+  expect(dialogSource).toContain('bannerTone === "amber"');
+  expect(dialogSource).toContain('bannerTone === "rose"');
+  expect(dialogSource).toContain('bannerTone === "emerald"');
+  expect(dialogSource).toContain('bannerTone === "sky"');
+
+  // Plain operator language guidance in SellerReviewActionDialog
+  expect(dialogSource).toContain("This records your request and moves the application to Needs Info.");
+  expect(dialogSource).toContain("This records the decision and moves the application to Rejected. Selling access remains unavailable.");
+
+  // Strict negative delivery and technical jargon constraints on SellerReviewActionDialog
+  for (const forbidden of ["notification", "email", "dispatch", "external", "configured", "queue", "resubmit", "will be notified"]) {
+    expect(dialogSource).not.toContain(forbidden);
+  }
+
+  // Canonical dialog titles and confirm buttons
+  expect(dialogSource).toContain('title: "Approve seller"');
+  expect(dialogSource).toContain('confirmLabel: "Approve seller"');
+  expect(dialogSource).toContain('title: "Grant provisional access"');
+  expect(dialogSource).toContain('confirmLabel: "Grant provisional access"');
+  expect(dialogSource).toContain('title: "Request information"');
+  expect(dialogSource).toContain('confirmLabel: "Request information"');
+  expect(dialogSource).toContain('title: "Decline application"');
+  expect(dialogSource).toContain('confirmLabel: "Decline application"');
+  expect(dialogSource).toContain('title: "Restrict account"');
+  expect(dialogSource).toContain('confirmLabel: "Restrict account"');
+  expect(dialogSource).toContain('title: "Suspend account"');
+  expect(dialogSource).toContain('confirmLabel: "Suspend account"');
+
+  // Scoped ActionMenuItem portal-safe literal semantic colors in Table and Grid
+  for (const source of [tableSource, gridSource]) {
+    const actionMenuItemMatches = source.match(/<ActionMenuItem[\s\S]*?<\/ActionMenuItem>/g) || [];
+    expect(actionMenuItemMatches.length).toBeGreaterThan(0);
+    for (const itemBlock of actionMenuItemMatches) {
+      expect(itemBlock).not.toContain("var(--admin-");
+    }
+    expect(source).toContain("text-emerald-700");
+    expect(source).toContain("text-sky-700");
+    expect(source).toContain("text-amber-700");
+    expect(source).toContain("text-rose-700");
+
+    // Canonical list menu action labels
+    expect(source).toContain("Approve seller");
+    expect(source).toContain("Grant provisional access");
+    expect(source).toContain("Request information");
+    expect(source).toContain("Decline application");
+    expect(source).toContain("Restrict account");
+    expect(source).toContain("Suspend account");
+
+    // Prohibited list menu action labels
+    expect(source).not.toContain("Full approval");
+    expect(source).not.toContain("Provisional access");
+  }
+
+  // Canonical detail action panel button labels
+  expect(panelSource).toContain('label: "Approve seller"');
+  expect(panelSource).toContain('label: "Grant provisional access"');
+  expect(panelSource).toContain('label: "Request information"');
+  expect(panelSource).toContain('label: "Decline application"');
+  expect(panelSource).toContain('label: "Restrict account"');
+  expect(panelSource).toContain('label: "Suspend account"');
+  expect(panelSource).not.toContain('label: "Reject application"');
+  expect(panelSource).not.toContain('label: "Restrict seller"');
+  expect(panelSource).not.toContain('label: "Suspend seller"');
+
+  // Canonical mutation success toasts across detail and list hooks
+  for (const hookSource of [detailHookSource, listHookSource]) {
+    expect(hookSource).toContain("Seller approved.");
+    expect(hookSource).toContain("Provisional access granted.");
+    expect(hookSource).toContain("Clarification request recorded.");
+    expect(hookSource).toContain("Seller application declined.");
+    expect(hookSource).toContain("Seller account restricted.");
+    expect(hookSource).toContain("Seller account suspended.");
+
+    // Prohibited competing toast strings
+    expect(hookSource).not.toContain("Needs-info request sent.");
+    expect(hookSource).not.toContain("Information request sent.");
+    expect(hookSource).not.toContain("Seller application rejected.");
+    expect(hookSource).not.toContain("Seller restricted.");
+    expect(hookSource).not.toContain("Seller suspended.");
+  }
+});
+
+test("requestVendorApplicationInfo and rejectVendorApplication send exact payload contracts", async () => {
+  const requests: Array<{ url: URL; body: Record<string, unknown> | null }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    const body = init?.body ? JSON.parse(String(init.body)) : null;
+    requests.push({ url, body });
+    if (url.pathname.endsWith("/auth/csrf-token")) {
+      return new Response(JSON.stringify({ status: "success", data: { csrfToken: "fixture-csrf" } }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    }
+    return new Response(JSON.stringify(reviewPayload()), {
+      status: 200,
+      headers: { "content-type": "application/json" },
+    });
+  }) as typeof fetch;
+
+  await requestVendorApplicationInfo("seller-1", {
+    reason: "Please provide a clearer shop photo",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Internal note for request info",
+  });
+
+  const needsInfoReq = requests.find((r) => r.url.pathname.endsWith("/needs-info"))!;
+  expect(needsInfoReq).toBeDefined();
+  expect(needsInfoReq.body).toEqual({
+    needsInfoReason: "Please provide a clearer shop photo",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Internal note for request info",
+  });
+  expect(needsInfoReq.body.reason).toBeUndefined();
+
+  await rejectVendorApplication("seller-1", {
+    reason: "Invalid business registration documentation",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Internal note for reject",
+  });
+
+  const rejectReq = requests.find((r) => r.url.pathname.endsWith("/reject"))!;
+  expect(rejectReq).toBeDefined();
+  expect(rejectReq.body).toEqual({
+    rejectionReason: "Invalid business registration documentation",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Internal note for reject",
+  });
+  expect(rejectReq.body.reason).toBeUndefined();
+
+  await restrictVendorApplication("seller-1", {
+    reason: "Store policy violations detected",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Internal compliance review note",
+  });
+
+  const restrictReq = requests.find((r) => r.url.pathname.endsWith("/restrict"))!;
+  expect(restrictReq).toBeDefined();
+  expect(restrictReq.body).toEqual({
+    reason: "Store policy violations detected",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Internal compliance review note",
+  });
+  expect(restrictReq.body.reason).toBe("Store policy violations detected");
+  expect(restrictReq.body.reason).not.toBe("");
+  expect(restrictReq.body.reason).not.toBe(restrictReq.body.adminNotes);
+
+  await suspendVendorApplication("seller-1", {
+    reason: "Repeated non-fulfillment of customer orders",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Escalated case #991",
+  });
+
+  const suspendReq = requests.find((r) => r.url.pathname.endsWith("/suspend"))!;
+  expect(suspendReq).toBeDefined();
+  expect(suspendReq.body).toEqual({
+    reason: "Repeated non-fulfillment of customer orders",
+    expectedUpdatedAt: "2026-08-29T09:00:00.000Z",
+    adminNotes: "Escalated case #991",
+  });
+  expect(suspendReq.body.reason).toBe("Repeated non-fulfillment of customer orders");
+  expect(suspendReq.body.reason).not.toBe("");
+  expect(suspendReq.body.reason).not.toBe(suspendReq.body.adminNotes);
+
+  const dialogSource = readSource("src/features/admin-sellers/sections/SellerReviewActionDialog.tsx");
+  expect(dialogSource).toContain('reasonLabel: "Reason for restriction (visible to seller)"');
+  expect(dialogSource).toContain('reasonLabel: "Reason for suspension (visible to seller)"');
+  expect(dialogSource).toContain('noteLabel: "Internal admin notes (private)"');
+  expect(dialogSource).toContain('noteLabel: "Internal compliance notes (private)"');
+});
+
+test("ActionMenu is portal-safe and does not leak admin CSS tokens", () => {
+  const actionMenuSource = readSource("src/components/ui/action-menu.tsx");
+  expect(actionMenuSource).not.toContain("var(--admin-");
+  expect(actionMenuSource).toContain("bg-white");
+  expect(actionMenuSource).toContain("border-zinc-200");
+});
+
+test("seller queue fail-closed 401 handling unmounts data and purges query cache", () => {
+  const hookSource = readSource("src/features/admin-sellers/hooks/use-sellers-list.ts");
+  const pageSource = readSource("src/app/admin/(protected)/sellers/page.tsx");
+
+  expect(hookSource).toContain('queryClient.removeQueries({ queryKey: ["seller-list"] })');
+  expect(hookSource).toContain('isUnauthenticated ? [] : data?.applications ?? []');
+  expect(pageSource).toContain('error?.kind === "unauthenticated"');
+  expect(pageSource).toContain("Session Expired");
+  expect(pageSource).toContain("/admin/login");
+});
+
+test("VendorApplicationReviewUI retains no compatibility re-exports or dead action code", () => {
+  const legacySource = readSource("src/components/admin/sellers/VendorApplicationReviewUI.tsx");
+  expect(legacySource).not.toContain("SellerReviewActionDialog");
+  expect(legacySource).not.toContain("ACTION_COPY");
+  expect(legacySource).not.toContain("AdminSellerActionButtons");
+  expect(legacySource).not.toContain("export { formatAdminDate");
+  expect(legacySource).not.toContain("export { getStatusMeta");
+  expect(legacySource).not.toContain("export { StatusBadge");
+  expect(legacySource).not.toContain("export { getApplicationPrimaryName");
+  expect(legacySource).not.toContain("export {\n  getStatusMeta");
 });

@@ -1,5 +1,5 @@
 import { History } from "lucide-react";
-import { formatAdminDate } from "@/components/admin/sellers/VendorApplicationReviewUI";
+import { formatAdminDate } from "@/lib/admin-format";
 import type { SellerReviewHistoryEntry } from "../types/seller-review.types";
 import { SectionCard } from "./TrustChecksSection";
 

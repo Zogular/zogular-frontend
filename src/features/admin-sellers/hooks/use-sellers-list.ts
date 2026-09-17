@@ -12,8 +12,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { useQuery, keepPreviousData } from "@tanstack/react-query";
-import { getApplicationPrimaryName } from "@/components/admin/sellers/VendorApplicationReviewUI";
+import { useQuery, keepPreviousData, useQueryClient } from "@tanstack/react-query";
+import { getApplicationPrimaryName } from "../lib/seller-formatters";
 import type { VendorApplicationAdminAction } from "../types/admin-seller.types";
 import { adminIdentityHasPermission } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
@@ -38,6 +38,7 @@ import type { SellerApplicationStatus, SellerType, VendorApplication } from "@/t
 
 export function useSellersList() {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchParamsKey = searchParams.toString();
@@ -103,11 +104,28 @@ export function useSellersList() {
         throw getSellerListSafeError(err);
       }
     },
-    placeholderData: keepPreviousData,
+    placeholderData: (previousData, previousQuery) => {
+      if (previousQuery?.state.error) return undefined;
+      return keepPreviousData(previousData);
+    },
+    retry: (failureCount, err) => {
+      const safe = err as unknown as ReturnType<typeof getSellerListSafeError>;
+      if (safe?.kind === "unauthenticated") return false;
+      return failureCount < 2;
+    },
     // Architectural Note: Real-time SSE listener in AdminShell automatically invalidates ["seller-list"]
     // on "admin:seller:created" / "admin:seller:updated". Polling is relaxed to 60s as a fallback safety net.
     refetchInterval: 60000,
   });
+
+  const safeError = error as ReturnType<typeof getSellerListSafeError> | null;
+  const isUnauthenticated = safeError?.kind === "unauthenticated";
+
+  useEffect(() => {
+    if (isUnauthenticated) {
+      queryClient.removeQueries({ queryKey: ["seller-list"] });
+    }
+  }, [isUnauthenticated, queryClient]);
 
   const setFilter = useCallback((updates: Partial<Record<keyof typeof query, string>>) => {
     writeUrl({ ...updates, page: "" });
@@ -151,19 +169,27 @@ export function useSellersList() {
         toast.success("Seller approved.");
       } else if (activeAction === "approve-provisional") {
         await approveVendorApplication(activeApplication.id, { status: "PROVISIONAL", expectedUpdatedAt, adminNotes: payload.adminNotes });
-        toast.success("Seller approved as provisional.");
+        toast.success("Provisional access granted.");
       } else if (activeAction === "needs-info") {
         await requestVendorApplicationInfo(activeApplication.id, { reason: payload.reason ?? "", expectedUpdatedAt, adminNotes: payload.adminNotes });
-        toast.success("Needs-info request sent.");
+        toast.success("Clarification request recorded.");
       } else if (activeAction === "reject") {
         await rejectVendorApplication(activeApplication.id, { reason: payload.reason ?? "", expectedUpdatedAt, adminNotes: payload.adminNotes });
-        toast.success("Seller application rejected.");
+        toast.success("Seller application declined.");
       } else if (activeAction === "restrict") {
-        await restrictVendorApplication(activeApplication.id, { adminNotes: payload.adminNotes ?? "", expectedUpdatedAt });
-        toast.success("Seller restricted.");
+        await restrictVendorApplication(activeApplication.id, {
+          reason: payload.reason ?? "",
+          expectedUpdatedAt,
+          adminNotes: payload.adminNotes,
+        });
+        toast.success("Seller account restricted.");
       } else if (activeAction === "suspend") {
-        await suspendVendorApplication(activeApplication.id, { adminNotes: payload.adminNotes ?? "", expectedUpdatedAt });
-        toast.success("Seller suspended.");
+        await suspendVendorApplication(activeApplication.id, {
+          reason: payload.reason ?? "",
+          expectedUpdatedAt,
+          adminNotes: payload.adminNotes,
+        });
+        toast.success("Seller account suspended.");
       }
 
       setActiveAction(null);
@@ -208,13 +234,13 @@ export function useSellersList() {
   }
 
   return {
-    applications: data?.applications ?? [],
-    pagination: data?.pagination ?? null,
-    facets: data?.facets.byStatus ?? null,
+    applications: isUnauthenticated ? [] : data?.applications ?? [],
+    pagination: isUnauthenticated ? null : data?.pagination ?? null,
+    facets: isUnauthenticated ? null : data?.facets.byStatus ?? null,
     loading,
     isInitialLoading: loading && !data,
     isRefreshing,
-    error: error as ReturnType<typeof getSellerListSafeError> | null,
+    error: safeError,
     dataUpdatedAt,
     searchQuery,
     setSearchQuery,

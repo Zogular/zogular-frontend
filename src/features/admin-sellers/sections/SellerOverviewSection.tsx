@@ -1,12 +1,12 @@
 import { CalendarClock, MapPin, RefreshCw, Store } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { formatAdminDate } from "@/lib/admin-format";
 import {
   SellerTypeBadge,
   StatusBadge,
-  formatAdminDate,
-  getApplicationPrimaryName,
   getStatusMeta,
-} from "@/components/admin/sellers/VendorApplicationReviewUI";
+} from "../components/StatusBadge";
+import { getApplicationPrimaryName } from "../lib/seller-formatters";
 import type { SellerReviewApplication } from "../types/seller-review.types";
 
 export function SellerOverviewSection({

@@ -1,5 +1,5 @@
 import { Building2, Mail, MapPin, Phone, Store, Tag, UserRound } from "lucide-react";
-import { getSellerTypeLabel } from "@/components/admin/sellers/VendorApplicationReviewUI";
+import { getSellerTypeLabel } from "../lib/seller-formatters";
 import type { SellerReviewApplication } from "../types/seller-review.types";
 import { SectionCard } from "./TrustChecksSection";
 

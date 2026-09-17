@@ -8,14 +8,22 @@
  */
 
 import Link from "next/link";
-import { Store, MoreHorizontal } from "lucide-react";
 import {
-  StatusBadge,
-  formatAdminDate,
+  Ban,
+  CheckCheck,
+  MessageSquareWarning,
+  MoreHorizontal,
+  ShieldAlert,
+  ShieldCheck,
+  Store,
+} from "lucide-react";
+import { formatAdminDate } from "@/lib/admin-format";
+import { StatusBadge } from "../components/StatusBadge";
+import {
   getApplicationLocation,
   getApplicationPrimaryName,
   getSellerTypeLabel,
-} from "@/components/admin/sellers/VendorApplicationReviewUI";
+} from "../lib/seller-formatters";
 import type { VendorApplicationAdminAction } from "@/features/admin-sellers/types/admin-seller.types";
 import { getAvailableVendorActions } from "@/features/admin-sellers/lib/vendor-action-availability";
 import {
@@ -192,26 +200,92 @@ function SellerActionMenu({
 }) {
   const actions = getAvailableVendorActions(application, canApprove, canSuspend);
   if (actions.length === 0) return null;
-  const reviewActions = actions.filter((action) => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(action));
-  const statusActions = actions.filter((action) => ["restrict", "suspend"].includes(action));
 
   return (
     <ActionMenu>
       <ActionMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Manage ${getApplicationPrimaryName(application)}`} className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]">
+        <Button
+          variant="ghost"
+          size="icon"
+          aria-label={`Manage ${getApplicationPrimaryName(application)}`}
+          className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]"
+        >
           <MoreHorizontal className="size-4" />
         </Button>
       </ActionMenuTrigger>
-      <ActionMenuContent>
-        <ActionMenuNote>Manage seller</ActionMenuNote>
+      <ActionMenuContent className="w-56">
+        <ActionMenuNote>Manage application</ActionMenuNote>
         <ActionMenuSeparator />
-        {actions.includes("approve-approved") ? <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem> : null}
-        {actions.includes("approve-provisional") ? <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve provisional</ActionMenuItem> : null}
-        {actions.includes("needs-info") ? <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs info</ActionMenuItem> : null}
-        {actions.includes("reject") ? <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-700">Reject</ActionMenuItem> : null}
-        {reviewActions.length > 0 && statusActions.length > 0 ? <ActionMenuSeparator /> : null}
-        {actions.includes("restrict") ? <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-800">Restrict</ActionMenuItem> : null}
-        {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-700">Suspend</ActionMenuItem> : null}
+
+        {/* Approvals */}
+        {actions.includes("approve-approved") ? (
+          <ActionMenuItem
+            onClick={() => onOpenAction("approve-approved", application)}
+            className="text-emerald-700 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/40"
+          >
+            <CheckCheck className="size-4 shrink-0 text-emerald-700 dark:text-emerald-400" />
+            <span>Approve seller</span>
+          </ActionMenuItem>
+        ) : null}
+        {actions.includes("approve-provisional") ? (
+          <ActionMenuItem
+            onClick={() => onOpenAction("approve-provisional", application)}
+            className="text-sky-700 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/40"
+          >
+            <ShieldCheck className="size-4 shrink-0 text-sky-700 dark:text-sky-400" />
+            <span>Grant provisional access</span>
+          </ActionMenuItem>
+        ) : null}
+
+        {/* Information Requests */}
+        {actions.includes("needs-info") ? (
+          <ActionMenuItem
+            onClick={() => onOpenAction("needs-info", application)}
+            className="text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+          >
+            <MessageSquareWarning className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+            <span>Request information</span>
+          </ActionMenuItem>
+        ) : null}
+
+        {/* Destructive Decline Action (Separated) */}
+        {actions.includes("reject") ? (
+          <>
+            <ActionMenuSeparator />
+            <ActionMenuItem
+              onClick={() => onOpenAction("reject", application)}
+              className="text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+            >
+              <Ban className="size-4 shrink-0 text-rose-700 dark:text-rose-400" />
+              <span>Decline application</span>
+            </ActionMenuItem>
+          </>
+        ) : null}
+
+        {/* Account Lifecycle Actions */}
+        {(actions.includes("restrict") || actions.includes("suspend")) ? (
+          <>
+            <ActionMenuSeparator />
+            {actions.includes("restrict") ? (
+              <ActionMenuItem
+                onClick={() => onOpenAction("restrict", application)}
+                className="text-amber-700 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/40"
+              >
+                <ShieldAlert className="size-4 shrink-0 text-amber-700 dark:text-amber-400" />
+                <span>Restrict account</span>
+              </ActionMenuItem>
+            ) : null}
+            {actions.includes("suspend") ? (
+              <ActionMenuItem
+                onClick={() => onOpenAction("suspend", application)}
+                className="text-rose-700 hover:bg-rose-50 dark:text-rose-400 dark:hover:bg-rose-950/40"
+              >
+                <Ban className="size-4 shrink-0 text-rose-700 dark:text-rose-400" />
+                <span>Suspend account</span>
+              </ActionMenuItem>
+            ) : null}
+          </>
+        ) : null}
       </ActionMenuContent>
     </ActionMenu>
   );

@@ -1,7 +1,7 @@
 import { Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getSellerTypeLabel } from "@/components/admin/sellers/VendorApplicationReviewUI";
+import { getSellerTypeLabel } from "../lib/seller-formatters";
 import type {
   AdminVendorApplicationSort,
   AdminVendorApplicationSortDirection,
@@ -106,7 +106,11 @@ export function SellersListFilters({
       </div>
 
       <div className="border-y border-[color-mix(in_srgb,var(--admin-copper-muted)_28%,transparent)] bg-[var(--admin-surface-mist)] px-2 py-2">
-        <div className="flex gap-1 overflow-x-auto" role="group" aria-label="Filter seller queue by status">
+        <div
+          className="flex gap-1.5 overflow-x-auto overscroll-x-contain pb-0.5 scrollbar-none [-ms-overflow-style:none] [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          role="group"
+          aria-label="Filter seller queue by status"
+        >
           <StatusFilterButton
             active={statusFilter === "all"}
             label="All"
@@ -124,6 +128,7 @@ export function SellersListFilters({
           ))}
         </div>
       </div>
+
 
       <div className="grid gap-2 p-3 sm:grid-cols-2 sm:p-4">
         <label className="grid gap-1 text-[10px] font-black uppercase text-[var(--admin-ink-soft)]">

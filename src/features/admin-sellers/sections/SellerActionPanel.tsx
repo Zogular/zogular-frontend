@@ -9,9 +9,9 @@ const ACTION_UI: Record<VendorApplicationAdminAction, { label: string; icon: Rea
   "approve-approved": { label: "Approve seller", icon: CheckCheck, className: "bg-[var(--admin-canopy)] text-white hover:bg-[var(--admin-canopy-deep)]" },
   "approve-provisional": { label: "Grant provisional access", icon: ShieldCheck, className: "border-[color:rgba(7,91,54,0.26)] bg-[color:rgba(7,91,54,0.07)] text-[var(--admin-canopy)] hover:bg-[color:rgba(7,91,54,0.12)]" },
   "needs-info": { label: "Request information", icon: MessageSquareWarning, className: "border-[color:rgba(217,106,31,0.3)] bg-[color:rgba(217,106,31,0.08)] text-[var(--admin-ember)] hover:bg-[color:rgba(217,106,31,0.14)]" },
-  reject: { label: "Reject application", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
-  restrict: { label: "Restrict seller", icon: ShieldAlert, className: "border-[color:rgba(217,106,31,0.3)] bg-[color:rgba(217,106,31,0.08)] text-[var(--admin-ember)] hover:bg-[color:rgba(217,106,31,0.14)]" },
-  suspend: { label: "Suspend seller", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
+  reject: { label: "Decline application", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
+  restrict: { label: "Restrict account", icon: ShieldAlert, className: "border-[color:rgba(217,106,31,0.3)] bg-[color:rgba(217,106,31,0.08)] text-[var(--admin-ember)] hover:bg-[color:rgba(217,106,31,0.14)]" },
+  suspend: { label: "Suspend account", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
 };
 
 export function SellerActionPanel({ capabilities, disabled, compact = false, onAction }: { capabilities: SellerReviewCapabilities; disabled: boolean; compact?: boolean; onAction: (action: VendorApplicationAdminAction) => void }) {

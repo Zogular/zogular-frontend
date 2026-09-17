@@ -13,9 +13,14 @@ import { useMemo } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw, List, LayoutGrid } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellersList } from "@/features/admin-sellers/hooks/use-sellers-list";
-import { SellersListFilters, SellersListTable, SellersListGrid, SellerQueueFreshness } from "@/features/admin-sellers/sections";
+import {
+  SellerReviewActionDialog,
+  SellersListFilters,
+  SellersListTable,
+  SellersListGrid,
+  SellerQueueFreshness,
+} from "@/features/admin-sellers/sections";
 import { useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 
 export default function AdminSellersPage() {
@@ -68,6 +73,32 @@ export default function AdminSellersPage() {
 
   const hasActiveScope = Boolean(searchQuery.trim()) || statusFilter !== "all" || sellerTypeFilter !== "all";
   const currentPageRows = applications.length;
+
+  if (error?.kind === "unauthenticated") {
+    return (
+      <div className="mx-auto max-w-2xl py-16 text-center">
+        <div className="rounded-2xl border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-cream)] p-8 shadow-sm">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-rose-100 text-rose-700">
+            <RotateCcw className="size-6" />
+          </div>
+          <h2 className="mt-4 text-xl font-black text-[var(--admin-canopy-deep)]">
+            Session Expired
+          </h2>
+          <p className="mt-2 text-sm font-medium text-[var(--admin-ink-soft)]">
+            Your admin access could not be confirmed. Sign in again to continue managing sellers.
+          </p>
+          <div className="mt-6">
+            <Button
+              asChild
+              className="h-10 rounded-md bg-[var(--admin-canopy-deep)] font-black text-[var(--admin-surface-cream)] hover:bg-[var(--admin-canopy)]"
+            >
+              <a href="/admin/login">Sign In Again</a>
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto max-w-[92rem] space-y-4 pb-10">
@@ -140,7 +171,7 @@ export default function AdminSellersPage() {
                 onClick={() => setView("list")}
                 aria-pressed={view === "list"}
                 title="Table view"
-                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition-colors ${
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition-colors ${
                   view === "list"
                     ? "bg-[var(--admin-canopy-deep)] text-[var(--admin-surface-cream)] shadow-sm"
                     : "text-[var(--admin-ink-soft)] hover:text-[var(--admin-canopy-deep)]"
@@ -154,7 +185,7 @@ export default function AdminSellersPage() {
                 onClick={() => setView("grid")}
                 aria-pressed={view === "grid"}
                 title="Grid view"
-                className={`inline-flex items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition-colors ${
+                className={`inline-flex min-h-11 items-center gap-1.5 rounded px-2.5 py-1 text-xs font-bold transition-colors ${
                   view === "grid"
                     ? "bg-[var(--admin-canopy-deep)] text-[var(--admin-surface-cream)] shadow-sm"
                     : "text-[var(--admin-ink-soft)] hover:text-[var(--admin-canopy-deep)]"

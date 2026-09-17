@@ -76,13 +76,13 @@ export async function performSellerReviewAction(
       });
     case "restrict":
       return restrictVendorApplication(input.applicationId, {
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        adminNotes: input.adminNotes ?? "",
+        ...shared,
+        reason: input.reason ?? "",
       });
     case "suspend":
       return suspendVendorApplication(input.applicationId, {
-        expectedUpdatedAt: input.expectedUpdatedAt,
-        adminNotes: input.adminNotes ?? "",
+        ...shared,
+        reason: input.reason ?? "",
       });
   }
 }
@@ -90,10 +90,10 @@ export async function performSellerReviewAction(
 const ACTION_SUCCESS_COPY: Record<VendorApplicationAdminAction, string> = {
   "approve-approved": "Seller approved.",
   "approve-provisional": "Provisional access granted.",
-  "needs-info": "Information request sent.",
-  reject: "Seller application rejected.",
-  restrict: "Seller restricted.",
-  suspend: "Seller suspended.",
+  "needs-info": "Clarification request recorded.",
+  reject: "Seller application declined.",
+  restrict: "Seller account restricted.",
+  suspend: "Seller account suspended.",
 };
 
 export function useSellerDetail() {

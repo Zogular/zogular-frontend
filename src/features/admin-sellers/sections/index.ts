@@ -10,4 +10,5 @@ export { DocumentsSection } from "./DocumentsSection";
 export { PayoutDetailsSection } from "./PayoutDetailsSection";
 export { DecisionHistorySection } from "./TimelineSection";
 export { SellerActionPanel } from "./SellerActionPanel";
+export { SellerReviewActionDialog } from "./SellerReviewActionDialog";
 export { SellerReviewErrorState, SellerReviewInlineNotice, SellerReviewLoadingState } from "./SellerReviewStates";
