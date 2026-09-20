@@ -154,6 +154,9 @@ export type CreateSellerProductInput = Omit<
   SellerProductListing,
   "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem" | "backendCategory"
 > & {
+  categoryId?: string | null;
+  categoryLeafSlug?: string;
+  categorySelectionKind?: "backend" | "manual" | "none";
   seller?: Partial<SellerProductListing["seller"]>;
 };
 
@@ -162,7 +165,11 @@ export type UpdateSellerProductInput = Partial<
     SellerProductListing,
     "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem" | "backendCategory"
   >
->;
+> & {
+  categoryId?: string | null;
+  categoryLeafSlug?: string;
+  categorySelectionKind?: "backend" | "manual" | "none";
+};
 
 export interface SellerProductModerationInput extends ProductModerationState {
   action?: ProductModerationAction;
@@ -649,7 +656,7 @@ export async function createSellerCatalogProduct(
 ): Promise<SellerProductListing> {
   const response = await apiClient<BackendDetailResponse>("/vendor/products", {
     method: "POST",
-    body: JSON.stringify(buildBackendProductPayload(input, "create")),
+    body: JSON.stringify(buildSellerProductRequest(input, "create")),
     csrf: true,
   });
 
@@ -704,7 +711,7 @@ export async function updateSellerCatalogProduct(
   const persistStatus = resolvePersistStatus(input.status ?? currentProduct.status);
   const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}`, {
     method: "PATCH",
-    body: JSON.stringify(buildBackendProductPayload({ ...currentProduct, ...input, status: persistStatus }, "update")),
+    body: JSON.stringify(buildSellerProductRequest({ ...currentProduct, ...input, status: persistStatus }, "update")),
     csrf: true,
   });
 
@@ -1160,10 +1167,18 @@ function extractSpecificationValue(
   return match?.value ?? "";
 }
 
-function buildBackendProductPayload(
+export function buildSellerProductRequest(
   input: CreateSellerProductInput | UpdateSellerProductInput,
   mode: "create" | "update",
 ) {
+  const clearsCategory = mode === "update" && (
+    input.categorySelectionKind === "manual" || input.categorySelectionKind === "none"
+  );
+  const hasCompatibilityCategory = Boolean(
+    input.categorySelectionKind !== "manual" &&
+      input.categorySelectionKind !== "none" &&
+      (input.categoryName?.trim() || input.categorySlug?.trim() || input.subcategorySlug?.trim()),
+  );
   const condition = mapFrontendConditionToBackend(input.condition);
   const normalizedCategoryName =
     input.categoryName && input.categoryName.trim()
@@ -1177,6 +1192,9 @@ function buildBackendProductPayload(
     input.subcategorySlug && input.subcategorySlug.trim()
       ? input.subcategorySlug.trim()
       : normalizedCategorySlug;
+  const authoritativeCategorySlug = input.categorySelectionKind === "backend" && input.categoryId
+    ? input.categoryLeafSlug?.trim() || input.subcategorySlug?.trim() || undefined
+    : normalizedCategorySlug;
   const normalizedAttributes = (input.attributes ?? [])
     .filter((attribute) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attribute.attributeId))
     .map((attribute) => ({
@@ -1196,8 +1214,9 @@ function buildBackendProductPayload(
     images: normalizePayloadImages(input.images),
     condition,
     category: mapLegacyCategory(normalizedCategoryName, normalizedCategorySlug, normalizedSubcategorySlug),
-    categorySlug: normalizedCategorySlug,
-    subcategorySlug: normalizedSubcategorySlug,
+    categoryId: clearsCategory ? null : input.categoryId ?? undefined,
+    categorySlug: clearsCategory ? null : hasCompatibilityCategory ? authoritativeCategorySlug : undefined,
+    subcategorySlug: clearsCategory ? null : hasCompatibilityCategory ? normalizedSubcategorySlug : undefined,
     status: mode === "create" ? "DRAFT" : mapFrontendStatusToBackend(resolvePersistStatus(input.status)),
     sku: input.sku,
     stock: input.stock,

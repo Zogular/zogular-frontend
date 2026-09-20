@@ -42,9 +42,9 @@ export const GlassSection = ({
   </section>
 );
 
-export const fieldError = (msg?: string) =>
+export const fieldError = (msg?: string, id?: string) =>
   msg ? (
-    <p className="mt-1 flex items-center gap-1 text-xs font-semibold text-rose-600">
+    <p id={id} role="alert" className="mt-1 flex items-center gap-1 text-xs font-semibold text-rose-600">
       <AlertCircle className="h-3.5 w-3.5" />
       {msg}
     </p>
