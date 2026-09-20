@@ -749,6 +749,7 @@ export async function updateSellerProductModeration(
     method: "PATCH",
     body: JSON.stringify({
       reason: input.moderationNotes?.trim() || "Admin requested changes before approval.",
+      reasonCode: input.reasonCode || (input.action === "request_changes" ? "REQUEST_CHANGES" : "PRODUCT_REJECTED"),
     }),
     csrf: true,
   });

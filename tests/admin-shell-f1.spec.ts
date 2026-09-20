@@ -51,7 +51,7 @@ function identity(permissions: AdminIdentity["claims"]["permissions"]): AdminIde
   };
 }
 
-test("super admin receives exactly the eight F0 operational destinations in canonical order", () => {
+test("super admin receives exactly the operational destinations in canonical order", () => {
   const groups = buildAdminShellNavigation(identity([...FRONTEND_PERMISSION_HINT_VALUES]));
   const actual = groups.flatMap((group) =>
     group.destinations.map((destination) => [
@@ -107,7 +107,7 @@ test("contract-gated and experience-ready capabilities remain absent for super a
   expect(gatedIds.every((id) => !visibleIds.has(id))).toBe(true);
   expect(visibleIds).not.toContain("alerts_and_assigned_work");
   expect(visibleIds).not.toContain("analytics_and_reports");
-  expect(visibleIds).not.toContain("finance_overview");
+  expect(visibleIds).not.toContain("transactions_and_ledger");
 });
 
 test("every visible operational destination has an explicit icon", () => {
@@ -132,7 +132,14 @@ test("longest route matching gives nested pages canonical parent context", () =>
     groupLabel: "Marketplace",
     capabilityLabel: "Sellers",
   });
+  expect(resolveAdminShellRouteContext(groups, "/admin/orders/ord-123")).toMatchObject({
+    groupLabel: "Orders and Service",
+    capabilityLabel: "Orders and Fulfillment",
+    destination: { href: "/admin/orders" },
+  });
   expect(resolveAdminShellRouteContext(groups, "/admin/finance")).toBeNull();
+  expect(resolveAdminShellRouteContext(groups, "/admin/disputes")).toBeNull();
+  expect(resolveAdminShellRouteContext(groups, "/admin/unregistered-route")).toBeNull();
 });
 
 test("sidebar preference defaults safely and serializes one scoped cookie", () => {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Menu, Search } from "lucide-react";
+import { Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SheetTrigger } from "@/components/ui/sheet";
 import type { AdminIdentity } from "@/services/admin/session";
@@ -32,7 +32,21 @@ export function AdminHeader({
             aria-controls="admin-mobile-navigation"
             data-testid="admin-menu-button"
           >
-            <Menu />
+            <svg
+              width="20"
+              height="20"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className="size-5 transition-transform duration-200"
+              aria-hidden="true"
+            >
+              <line x1="4" y1="7" x2="20" y2="7" />
+              <line x1="4" y1="15" x2="14" y2="15" />
+            </svg>
           </Button>
         </SheetTrigger>
         <div className="min-w-0">

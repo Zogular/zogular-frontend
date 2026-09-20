@@ -28,6 +28,7 @@ import {
 } from "@/features/admin-shell";
 import { cn } from "@/lib/utils";
 import type { AdminIdentity } from "@/services/admin/session";
+import { AdminRealtimeProvider } from "@/features/admin-shell";
 import theme from "@/components/admin/admin-theme.module.css";
 
 export const AdminIdentityContext = createContext<AdminIdentity | null>(null);
@@ -82,78 +83,86 @@ export default function AdminShell({
 
   return (
     <AdminIdentityContext.Provider value={identity}>
-      <TooltipProvider>
-        <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
-          <div
-            className={cn(
-              theme.adminScope,
-              theme.shellRoot,
-              "h-dvh min-w-0 overflow-hidden bg-[var(--admin-canvas-warm)]",
-            )}
-            data-sidebar-mode={sidebarMode}
-            data-testid="admin-shell-root"
-          >
-            <aside
-              id="admin-desktop-sidebar"
-              className={theme.desktopSidebar}
-              data-testid="admin-desktop-sidebar"
-            >
-              <AdminSidebar
-                groups={navigationGroups}
-                pathname={pathname}
-                mode={sidebarMode}
-                onModeChange={toggleSidebar}
-              />
-            </aside>
-
-            <SheetContent
-              id="admin-mobile-navigation"
-              side="left"
-              showCloseButton={false}
+      {/*
+        Architectural Note: AdminRealtimeProvider establishes a persistent SSE connection
+        to /api/backend/admin/events/stream across the entire admin shell workspace,
+        automatically invalidating TanStack Query caches whenever domain events are received.
+      */}
+      <AdminRealtimeProvider>
+        <TooltipProvider>
+          <Sheet open={isMobileMenuOpen} onOpenChange={setIsMobileMenuOpen}>
+            <div
               className={cn(
                 theme.adminScope,
-                theme.mobileDrawer,
-                "gap-0 border-r border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-canopy-deep)] p-0 motion-reduce:transition-none",
+                theme.shellRoot,
+                "h-dvh min-w-0 overflow-hidden bg-[var(--admin-canvas-warm)]",
               )}
-              style={{ width: "min(19rem, calc(100vw - 1rem))", maxWidth: "none" }}
-              data-testid="admin-mobile-drawer"
+              data-sidebar-mode={sidebarMode}
+              data-testid="admin-shell-root"
             >
-              <SheetHeader className="sr-only">
-                <SheetTitle>Admin navigation</SheetTitle>
-                <SheetDescription>Open an admin workspace page.</SheetDescription>
-              </SheetHeader>
-              <AdminSidebar
-                groups={navigationGroups}
-                pathname={pathname}
-                mode="expanded"
-                onNavigate={() => setIsMobileMenuOpen(false)}
-                mobile
-              />
-            </SheetContent>
-
-            <main className="col-start-2 flex h-dvh min-w-0 flex-col overflow-hidden">
-              <AdminHeader
-                identity={identity}
-                routeContext={routeContext}
-                mobileMenuOpen={isMobileMenuOpen}
-                onCommandOpen={() => setIsCommandOpen(true)}
-              />
-              <div
-                className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-[var(--admin-canvas-warm)] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7"
-                data-testid="admin-main-scroll"
+              <aside
+                id="admin-desktop-sidebar"
+                className={theme.desktopSidebar}
+                data-testid="admin-desktop-sidebar"
               >
-                {children}
-              </div>
-            </main>
-          </div>
-        </Sheet>
+                <AdminSidebar
+                  groups={navigationGroups}
+                  pathname={pathname}
+                  mode={sidebarMode}
+                  onModeChange={toggleSidebar}
+                />
+              </aside>
 
-        <AdminCommandMenu
-          groups={navigationGroups}
-          open={isCommandOpen}
-          onOpenChange={setIsCommandOpen}
-        />
-      </TooltipProvider>
+              <SheetContent
+                id="admin-mobile-navigation"
+                side="left"
+                showCloseButton={false}
+                className={cn(
+                  theme.adminScope,
+                  theme.mobileDrawer,
+                  "gap-0 border-r border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-canopy-deep)] p-0 motion-reduce:transition-none",
+                )}
+                style={{ width: "min(19rem, calc(100vw - 1rem))", maxWidth: "none" }}
+                data-testid="admin-mobile-drawer"
+              >
+                <SheetHeader className="sr-only">
+                  <SheetTitle>Admin navigation</SheetTitle>
+                  <SheetDescription>Open an admin workspace page.</SheetDescription>
+                </SheetHeader>
+                <AdminSidebar
+                  groups={navigationGroups}
+                  pathname={pathname}
+                  mode="expanded"
+                  onNavigate={() => setIsMobileMenuOpen(false)}
+                  mobile
+                />
+              </SheetContent>
+
+              <main className="col-start-2 flex h-dvh min-w-0 flex-col overflow-hidden">
+                <AdminHeader
+                  identity={identity}
+                  routeContext={routeContext}
+                  mobileMenuOpen={isMobileMenuOpen}
+                  onCommandOpen={() => setIsCommandOpen(true)}
+                />
+                <div
+                  className="min-h-0 min-w-0 flex-1 overflow-y-auto overflow-x-hidden overscroll-contain bg-[var(--admin-canvas-warm)] px-4 py-5 sm:px-6 sm:py-6 lg:px-8 lg:py-7"
+                  data-testid="admin-main-scroll"
+                  data-scroll-container="admin"
+                >
+                  {children}
+                </div>
+              </main>
+            </div>
+          </Sheet>
+
+          <AdminCommandMenu
+            groups={navigationGroups}
+            open={isCommandOpen}
+            onOpenChange={setIsCommandOpen}
+          />
+        </TooltipProvider>
+      </AdminRealtimeProvider>
     </AdminIdentityContext.Provider>
   );
 }

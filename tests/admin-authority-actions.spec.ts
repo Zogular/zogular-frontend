@@ -21,7 +21,7 @@ test("QUEUE_PRESENTATION maps to exact canonical backend permissions", () => {
   }
 });
 
-test("all protected layouts use canonical backend permissions and disputes layout fails closed", () => {
+test("all protected layouts use canonical backend permissions", () => {
   const dashboardLayout = readSource("src/app/admin/(protected)/dashboard/layout.tsx");
   const sellersLayout = readSource("src/app/admin/(protected)/sellers/layout.tsx");
   const buyersLayout = readSource("src/app/admin/(protected)/buyers/layout.tsx");
@@ -45,30 +45,30 @@ test("all protected layouts use canonical backend permissions and disputes layou
   expect(supportLayout).toContain('requireAdminPermission("view_support_tickets")');
   expect(accessLayout).toContain('requireAdminPermission("manage_roles")');
   expect(contentLayout).toContain('requireAdminPermission("manage_content")');
-  expect(disputesLayout).toContain("notFound()");
+  expect(disputesLayout).toContain('requireAdminPermission("view_all_orders")');
   expect(financeLayout).toContain('requireAdminPermission("view_all_payouts")');
   expect(reportsLayout).toContain('requireAdminPermission("view_all_reports")');
   expect(systemLayout).toContain('requireAdminPermission("manage_system_settings")');
 });
 
 test("admin pages and hooks enforce direct canonical permissions and remove fake audit logs", () => {
-  const ordersPage = readSource("src/app/admin/(protected)/orders/page.tsx");
+  const ordersWorkspace = readSource("src/features/admin-orders/components/AdminOrdersWorkspace.tsx");
   const productsPage = readSource("src/app/admin/(protected)/products/page.tsx");
   const productDetailPage = readSource("src/app/admin/(protected)/products/[id]/page.tsx");
-  const supportPage = readSource("src/app/admin/(protected)/support/page.tsx");
-  const accessPage = readSource("src/app/admin/(protected)/access/page.tsx");
+  const supportWorkspace = readSource("src/features/admin-support/components/AdminSupportWorkspace.tsx");
+  const accessSheet = readSource("src/features/admin-access/components/AdminUserDetailSheet.tsx");
   const sellersHook = readSource("src/features/admin-sellers/hooks/use-sellers-list.ts");
 
-  expect(ordersPage).toContain('adminIdentityHasPermission(identity, "view_all_orders")');
-  expect(ordersPage).toContain('adminIdentityHasPermission(identity, "manage_order_fulfillment")');
+  expect(ordersWorkspace).toContain('adminIdentityHasPermission(identity, "view_all_orders")');
+  expect(ordersWorkspace).toContain('adminIdentityHasPermission(identity, "manage_order_fulfillment")');
   expect(productsPage).toContain('adminIdentityHasPermission(identity, "approve_products")');
   expect(productDetailPage).toContain('adminIdentityHasPermission(identity, "approve_products")');
   expect(productDetailPage).not.toContain("recordAdminAudit");
-  expect(supportPage).toContain('adminIdentityHasPermission(identity, "view_support_tickets")');
-  expect(supportPage).toContain('adminIdentityHasPermission(identity, "reply_support_tickets")');
-  expect(supportPage).toContain('adminIdentityHasPermission(identity, "manage_support_tickets")');
-  expect(accessPage).toContain('identity?.claims.role === "SUPER_ADMIN"');
-  expect(accessPage).toContain('adminIdentityHasPermission(identity, "manage_roles")');
+  expect(supportWorkspace).toContain('adminIdentityHasPermission(identity, "view_support_tickets")');
+  expect(supportWorkspace).toContain('adminIdentityHasPermission(identity, "reply_support_tickets")');
+  expect(supportWorkspace).toContain('adminIdentityHasPermission(identity, "manage_support_tickets")');
+  expect(accessSheet).toContain('identity?.claims.role === "SUPER_ADMIN"');
+  expect(accessSheet).toContain('adminIdentityHasPermission(identity, "manage_roles")');
   expect(sellersHook).toContain('adminIdentityHasPermission(identity, "manage_seller_status")');
   expect(sellersHook).toContain('adminIdentityHasPermission(identity, "export_reports")');
 });

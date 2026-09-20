@@ -1,161 +1,293 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+/**
+ * @file page.tsx
+ * @description
+ * Admin Buyers CRM entry page orchestrator.
+ * Connects the custom hooks and modular presentation sections for customer account management
+ * using the Zogular warm admin aesthetic palette.
+ * Integrates container-aware scroll restoration so operators navigating back or returning to
+ * the customer directory resume at their exact prior scroll position.
+ */
+
+import { useMemo, useState } from "react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
+import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { adminBuyersApi } from "@/services/admin/buyers";
+import { useBuyersList } from "@/features/admin-buyers/hooks/use-buyers-list";
+import { useBuyerDetail } from "@/features/admin-buyers/hooks/use-buyer-detail";
 import {
-  AdminPageHeader,
-  AdminDetailSheet,
-  AdminEmptyState,
-  AdminStatusBadge,
-} from "@/components/admin/AdminPrimitives";
-import { adminBuyersApi, AdminBuyerRecord } from "@/services/admin/buyers";
-import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+  BuyersListFilters,
+  BuyersListTable,
+  BuyersListGrid,
+  BuyerDetailSheet,
+  BuyerStatusDialog,
+  BuyerQueueFreshness,
+} from "@/features/admin-buyers/sections";
+import type {
+  AdminBuyerRecord,
+  BuyerStatusDialogState,
+} from "@/features/admin-buyers/types/admin-buyer.types";
+import { useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 
 export default function AdminBuyersPage() {
-  const [buyers, setBuyers] = useState<AdminBuyerRecord[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const queryClient = useQueryClient();
+  const {
+    buyers,
+    pagination,
+    isInitialLoading,
+    isFetching,
+    error,
+    searchQuery,
+    setSearchQuery,
+    statusFilter,
+    setStatusFilter,
+    page,
+    setPage,
+    view,
+    setView,
+    refetch,
+    dataUpdatedAt,
+  } = useBuyersList();
 
-  const [page, setPage] = useState(1);
-  const [totalPages, setTotalPages] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const currentUrl = useMemo(
+    () => `${pathname}${searchParams?.toString() ? `?${searchParams.toString()}` : ""}`,
+    [pathname, searchParams],
+  );
+
+  // Preserve and restore exact container scroll position upon return navigation
+  useListScrollRestoration(currentUrl, !isInitialLoading && buyers.length > 0);
 
   const [selectedBuyer, setSelectedBuyer] = useState<AdminBuyerRecord | null>(null);
+  const [statusDialogState, setStatusDialogState] = useState<BuyerStatusDialogState>({
+    isOpen: false,
+    buyer: null,
+    nextStatus: false,
+  });
 
-  const fetchBuyersList = useCallback(async (targetPage: number) => {
+  // Query single buyer detail with linked context when sheet opens
+  const { data: buyerDetailData, isLoading: isLoadingDetail } = useBuyerDetail(selectedBuyer?.id ?? null);
+
+  const handleOpenStatusDialog = (buyer: AdminBuyerRecord, nextStatus: boolean) => {
+    setStatusDialogState({
+      isOpen: true,
+      buyer,
+      nextStatus,
+    });
+  };
+
+  const handleCloseStatusDialog = () => {
+    setStatusDialogState({
+      isOpen: false,
+      buyer: null,
+      nextStatus: false,
+    });
+  };
+
+  const [isExporting, setIsExporting] = useState(false);
+
+  const handleExportCsv = async () => {
     try {
-      setLoading(true);
-      setError(null);
-      const result = await adminBuyersApi.fetchBuyers(targetPage, 20);
-      setBuyers(result.buyers);
-      setTotalPages(result.pagination.pages);
-      setTotalCount(result.pagination.total);
-      setPage(result.pagination.page);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load buyers.");
+      setIsExporting(true);
+      const blob = await adminBuyersApi.exportCustomersCsv();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      const timestamp = new Date().toISOString().slice(0, 10);
+      a.download = `zogular-customers-${timestamp}.csv`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      toast.success("Customer records exported to CSV successfully.");
+    } catch (err: unknown) {
+      const message =
+        err instanceof Error ? err.message : "Failed to export customer records.";
+      toast.error(message);
     } finally {
-      setLoading(false);
+      setIsExporting(false);
     }
-  }, []);
+  };
 
-  useEffect(() => {
-    void fetchBuyersList(1);
-  }, [fetchBuyersList]);
+  const handleStatusMutationSuccess = () => {
+    void queryClient.invalidateQueries({ queryKey: ["admin", "buyers"] });
+    if (selectedBuyer) {
+      void queryClient.invalidateQueries({ queryKey: ["admin", "buyer", selectedBuyer.id] });
+    }
+  };
 
   return (
-    <div className="mx-auto max-w-[96rem] space-y-5 pb-12">
-      <AdminPageHeader title="Buyers CRM" description="Manage buyer accounts and view platform customers." />
+    <div className="mx-auto max-w-[96rem] space-y-4 pb-10">
+      <header className="flex flex-col justify-between gap-3 border-b border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] pb-4 md:flex-row md:items-end">
+        <div>
+          <p className="text-[10px] font-black uppercase text-[var(--admin-ember)]">Customer Operations</p>
+          <h1 className="mt-1 text-2xl font-black text-[var(--admin-canopy-deep)] md:text-3xl">Customers</h1>
+          <p className="mt-1 max-w-2xl text-sm font-semibold text-[var(--admin-ink-soft)]">
+            Buyer Directory &amp; Customer Operations · View verified accounts, purchase context, and platform lifecycle.
+          </p>
+        </div>
+        <div className="flex flex-wrap items-center gap-2">
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={handleExportCsv}
+            disabled={isExporting || isInitialLoading}
+            className="h-9 rounded-md border border-[color-mix(in_srgb,var(--admin-copper-muted)_40%,transparent)] bg-[var(--admin-surface-cream)] px-3 text-xs font-black text-[var(--admin-canopy-deep)] shadow-sm hover:bg-[var(--admin-surface-mist)] transition-colors"
+          >
+            {isExporting ? (
+              <RefreshCw className="mr-1.5 size-3.5 animate-spin" />
+            ) : (
+              <Download className="mr-1.5 size-3.5 text-[var(--admin-ember)]" />
+            )}
+            {isExporting ? "Exporting..." : "Export CSV"}
+          </Button>
+          <BuyerQueueFreshness
+            dataUpdatedAt={dataUpdatedAt}
+            isRefreshing={isFetching}
+            onRefresh={() => void refetch()}
+          />
+        </div>
+      </header>
 
       {error ? (
-        <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm font-bold text-rose-700">{error}</div>
+        <section
+          role="alert"
+          className="flex flex-col gap-3 rounded-lg border border-[color-mix(in_srgb,var(--admin-escalation)_38%,transparent)] bg-[color-mix(in_srgb,var(--admin-escalation)_7%,var(--admin-surface-cream))] p-4 text-[var(--admin-escalation)] sm:flex-row sm:items-center sm:justify-between"
+        >
+          <div>
+            <h2 className="text-sm font-black text-[var(--admin-escalation)]">Could not verify customer accounts</h2>
+            <p className="mt-1 text-sm font-semibold text-[var(--admin-ink-soft)]">{error.message}</p>
+          </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            onClick={() => void refetch()}
+            className="h-9 self-start rounded-md border border-[var(--admin-escalation)] bg-[var(--admin-surface-cream)] font-black text-[var(--admin-escalation)] hover:bg-[var(--admin-surface-mist)] sm:self-auto"
+          >
+            <RotateCcw className="mr-1.5 size-3.5" />
+            Try again
+          </Button>
+        </section>
       ) : null}
 
-      <div className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
-        <div className="overflow-x-auto">
-          <table className="min-w-[640px] w-full text-sm">
-            <thead>
-              <tr className="bg-zinc-50 text-left text-xs font-black uppercase tracking-wider text-zinc-500">
-                <th className="rounded-tl-3xl px-5 py-4">Customer</th>
-                <th className="px-5 py-4">Status</th>
-                <th className="px-5 py-4">Email</th>
-                <th className="rounded-tr-3xl px-5 py-4">Joined</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-zinc-100">
-              {loading ? (
-                Array.from({ length: 5 }).map((_, i) => (
-                  <tr key={`loading-${i}`}>
-                    <td colSpan={4} className="px-5 py-4">
-                      <div className="h-10 w-full animate-pulse rounded-xl bg-zinc-200/50" />
-                    </td>
-                  </tr>
-                ))
-              ) : buyers.length === 0 ? (
-                <tr>
-                  <td colSpan={4}>
-                    <AdminEmptyState title="No buyers found" description="No buyer accounts match the current query." />
-                  </td>
-                </tr>
-              ) : (
-                buyers.map((buyer) => (
-                  <tr
-                    key={buyer.id}
-                    onClick={() => setSelectedBuyer(buyer)}
-                    className="cursor-pointer transition-colors hover:bg-zinc-50"
-                  >
-                    <td className="px-5 py-4">
-                      <p className="font-black text-zinc-950">{buyer.firstName} {buyer.lastName}</p>
-                      <p className="text-xs font-semibold text-zinc-500">{buyer.telephone ?? "—"}</p>
-                    </td>
-                    <td className="px-5 py-4">
-                      <AdminStatusBadge tone={buyer.isActive ? "emerald" : "rose"}>
-                        {buyer.isActive ? "Active" : "Inactive"}
-                      </AdminStatusBadge>
-                    </td>
-                    <td className="px-5 py-4 text-sm font-semibold text-zinc-700">{buyer.email}</td>
-                    <td className="px-5 py-4 text-sm font-bold text-zinc-700">{formatAdminDateTime(buyer.createdAt)}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+      <BuyersListFilters
+        searchQuery={searchQuery}
+        setSearchQuery={setSearchQuery}
+        statusFilter={statusFilter}
+        setStatusFilter={setStatusFilter}
+        totalCount={pagination.total}
+        view={view}
+        setView={setView}
+        isLoading={isInitialLoading}
+      />
 
-      <div className="flex items-center justify-between">
-        <p className="text-sm font-bold text-zinc-500">Total {totalCount} buyers</p>
-        <div className="flex gap-2">
-          <button
-            disabled={page <= 1 || loading}
-            onClick={() => void fetchBuyersList(page - 1)}
-            className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold disabled:opacity-50"
-          >
-            Previous
-          </button>
-          <button
-            disabled={page >= totalPages || loading}
-            onClick={() => void fetchBuyersList(page + 1)}
-            className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-bold disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      </div>
+      {isInitialLoading ? (
+        <BuyerQueueLoadingBoard />
+      ) : view === "list" ? (
+        <BuyersListTable buyers={buyers} onSelectBuyer={setSelectedBuyer} isFetching={isFetching} />
+      ) : (
+        <BuyersListGrid buyers={buyers} onSelectBuyer={setSelectedBuyer} isFetching={isFetching} />
+      )}
 
-      <AdminDetailSheet
-        open={selectedBuyer !== null}
-        onOpenChange={(open) => { if (!open) setSelectedBuyer(null); }}
-        title={selectedBuyer ? "Buyer Context" : "Loading..."}
-        description={selectedBuyer ? `${selectedBuyer.email} · ${selectedBuyer.isActive ? "Active" : "Deactivated"}` : "Select a buyer to view details."}
-      >
-        {selectedBuyer ? (
-          <div className="space-y-4">
-            <div className="rounded-3xl border border-zinc-100 bg-white p-4">
-              <h3 className="text-sm font-black text-zinc-950">Identity Snapshot</h3>
-              <div className="mt-3 grid gap-2 text-sm text-zinc-700">
-                <p><strong>Name:</strong> {selectedBuyer.firstName} {selectedBuyer.lastName}</p>
-                <p><strong>Email:</strong> {selectedBuyer.email}</p>
-                <p><strong>Phone:</strong> {selectedBuyer.telephone ?? "Not recorded"}</p>
-                <p><strong>Joined:</strong> {formatAdminDateTime(selectedBuyer.createdAt)}</p>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-sky-200 bg-sky-50/60 p-4">
-              <h3 className="text-sm font-black text-sky-950">Account Status</h3>
-              <div className="mt-3 grid gap-2 text-sm text-zinc-700">
-                <p><strong>Role:</strong> {toTitleCase(selectedBuyer.role.replace(/_/g, " "))}</p>
-                <p><strong>Email verification:</strong> {selectedBuyer.emailVerified ? "Verified" : "Pending"}</p>
-                <p><strong>System status:</strong> {selectedBuyer.isActive ? "Active (Login allowed)" : "Suspended (Login blocked)"}</p>
-              </div>
-            </div>
-
-            <div className="rounded-3xl border border-amber-200 bg-amber-50 p-4 text-xs font-medium text-amber-900 leading-tight">
-              Detailed order history, refunds, and analytics are not managed from this view. Use the Order Queue for fulfillment resolution.
-            </div>
+      {/* Pagination Controls */}
+      {pagination.pages > 1 && (
+        <div className="flex flex-col gap-3 border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_38%,transparent)] pt-3 text-sm sm:flex-row sm:items-center sm:justify-between">
+          <p className="text-xs font-semibold text-[var(--admin-ink-soft)]">
+            Page {page} of {pagination.pages} &middot; Total {pagination.total} customers
+          </p>
+          <div className="flex gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page <= 1 || isFetching}
+              onClick={() => setPage(page - 1)}
+              className="rounded-md border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-mist)] text-xs font-bold text-[var(--admin-ink)] hover:bg-[var(--admin-surface-cream)] disabled:opacity-50"
+            >
+              <ChevronLeft className="mr-1 size-3.5" />
+              Previous
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              disabled={page >= pagination.pages || isFetching}
+              onClick={() => setPage(page + 1)}
+              className="rounded-md border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-mist)] text-xs font-bold text-[var(--admin-ink)] hover:bg-[var(--admin-surface-cream)] disabled:opacity-50"
+            >
+              Next
+              <ChevronRight className="ml-1 size-3.5" />
+            </Button>
           </div>
-        ) : (
-          <AdminEmptyState title="No buyer selected" description="Select an account from the directory." />
-        )}
-      </AdminDetailSheet>
+        </div>
+      )}
+
+      {/* Slide-Over Drawer Detail */}
+      <BuyerDetailSheet
+        buyer={buyerDetailData?.user ?? selectedBuyer}
+        context={buyerDetailData?.context}
+        isLoadingContext={isLoadingDetail}
+        isOpen={selectedBuyer !== null}
+        onOpenChange={(open) => {
+          if (!open) setSelectedBuyer(null);
+        }}
+        onOpenStatusDialog={handleOpenStatusDialog}
+      />
+
+      {/* Governance Confirmation Modal */}
+      <BuyerStatusDialog
+        dialogState={statusDialogState}
+        onClose={handleCloseStatusDialog}
+        onSuccess={handleStatusMutationSuccess}
+      />
     </div>
+  );
+}
+
+function BuyerQueueLoadingBoard() {
+  return (
+    <section
+      aria-busy="true"
+      aria-label="Loading customer directory"
+      className="overflow-hidden rounded-lg border border-[color-mix(in_srgb,var(--admin-copper-muted)_34%,transparent)] bg-[var(--admin-surface-cream)]"
+    >
+      <div className="flex items-center justify-between bg-[var(--admin-canopy-deep)] px-4 py-3 text-[var(--admin-surface-cream)]">
+        <div>
+          <h2 className="text-sm font-black">Customer Directory</h2>
+          <p className="mt-0.5 text-xs font-semibold text-[var(--admin-surface-mist)]">Loading customer accounts...</p>
+        </div>
+        <RefreshCw className="size-4 motion-safe:animate-spin" aria-hidden="true" />
+      </div>
+      <div className="hidden grid-cols-[2fr_1.5fr_1.2fr_1fr_1fr_1fr] gap-3 border-b border-[color-mix(in_srgb,var(--admin-copper-muted)_28%,transparent)] bg-[var(--admin-surface-mist)] px-4 py-3 text-[9px] font-black uppercase text-[var(--admin-ink-soft)] md:grid">
+        <span>Customer</span>
+        <span>Email</span>
+        <span>Verifications</span>
+        <span>Status</span>
+        <span>Joined</span>
+        <span className="text-right">Action</span>
+      </div>
+      <div className="divide-y divide-[color-mix(in_srgb,var(--admin-copper-muted)_22%,transparent)]">
+        {Array.from({ length: 5 }).map((_, index) => (
+          <div
+            key={index}
+            className="grid min-h-14 grid-cols-1 items-center gap-3 px-4 py-3 md:grid-cols-[2fr_1.5fr_1.2fr_1fr_1fr_1fr]"
+          >
+            <span className="h-3 w-32 rounded-full bg-[color-mix(in_srgb,var(--admin-canopy)_20%,transparent)]" />
+            <span className="h-3 w-28 rounded-full bg-[color-mix(in_srgb,var(--admin-copper-muted)_28%,transparent)]" />
+            <span className="h-3 w-20 rounded-full bg-[color-mix(in_srgb,var(--admin-copper-muted)_28%,transparent)]" />
+            <span className="h-5 w-16 rounded-md border border-[color-mix(in_srgb,var(--admin-canopy)_24%,transparent)] bg-[color-mix(in_srgb,var(--admin-canopy)_8%,transparent)]" />
+            <span className="h-3 w-16 rounded-full bg-[color-mix(in_srgb,var(--admin-copper-muted)_28%,transparent)]" />
+            <span className="h-8 w-20 justify-self-end rounded-md bg-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)]" />
+          </div>
+        ))}
+      </div>
+    </section>
   );
 }

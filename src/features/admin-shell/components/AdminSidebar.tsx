@@ -53,7 +53,7 @@ export function AdminSidebar({
               type="button"
               variant="ghost"
               size="icon"
-              className="size-11 text-[color:rgba(255,248,236,0.75)] hover:bg-[color:rgba(255,248,236,0.1)] hover:text-[var(--admin-surface-cream)]"
+              className="size-11 transition-all duration-200 hover:scale-105 active:scale-95 text-[color:rgba(255,248,236,0.85)] hover:bg-[color:rgba(255,248,236,0.12)] hover:text-[var(--admin-surface-cream)] rounded-xl"
               aria-label="Close admin menu"
             >
               <X />

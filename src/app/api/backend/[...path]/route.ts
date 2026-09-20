@@ -29,6 +29,7 @@ const PUBLIC_AUTH_PATHS = new Set([
   "auth/resend-verification",
   "auth/verify-code",
   "auth/reset-password",
+  "auth/setup-account",
   "auth/csrf-token",
 ]);
 
@@ -131,13 +132,19 @@ function copyRequestHeaders(request: Request): Headers {
   return headers;
 }
 
-function buildResponseHeaders(backendResponse: Response): Headers {
+function buildResponseHeaders(backendResponse: Response, routePath: string): Headers {
   const headers = new Headers();
   const contentType = backendResponse.headers.get("content-type");
   if (contentType) headers.set("Content-Type", contentType);
 
   for (const cookie of getSetCookieHeaders(backendResponse.headers)) {
     headers.append("Set-Cookie", cookie);
+  }
+
+  if (routePath === "auth/setup-account") {
+    headers.set("Cache-Control", "no-store, private, max-age=0");
+    headers.set("Referrer-Policy", "no-referrer");
+    headers.set("X-Robots-Tag", "noindex, nofollow, noarchive");
   }
 
   return headers;
@@ -217,7 +224,7 @@ async function handler(request: Request, context: RouteContext) {
   return new NextResponse(backendResponse.body, {
     status: backendResponse.status,
     statusText: backendResponse.statusText,
-    headers: buildResponseHeaders(backendResponse),
+    headers: buildResponseHeaders(backendResponse, routePath),
   });
 }
 

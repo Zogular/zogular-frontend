@@ -36,6 +36,7 @@ export interface AdminProductRecord extends ProductModerationSignals {
 export interface AdminProductReviewInput {
   action: ProductModerationAction;
   note?: string;
+  reasonCode?: string;
 }
 
 interface AdminBulkModerationResult {
@@ -74,6 +75,7 @@ export const adminProductsApi = {
       status: "pending_review",
       moderationNotes: input.note?.trim() || null,
       reviewedBy: "admin",
+      reasonCode: input.reasonCode,
     });
 
     return toAdminProductRecord(updated);
@@ -110,7 +112,11 @@ export const adminProductsApi = {
 
     const response = await apiClient<{ data?: { count?: number } }>("/admin/products/bulk-reject", {
       method: "POST",
-      body: JSON.stringify({ productIds, reason }),
+      body: JSON.stringify({
+        productIds,
+        reason,
+        reasonCode: input.reasonCode || (input.action === "request_changes" ? "REQUEST_CHANGES" : "PRODUCT_REJECTED"),
+      }),
       csrf: true,
     });
 

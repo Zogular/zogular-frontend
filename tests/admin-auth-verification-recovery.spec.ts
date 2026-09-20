@@ -4,6 +4,8 @@ import path from "node:path";
 import { NextRequest } from "next/server";
 import { POST as adminChangeTemporaryPasswordPost } from "../src/app/api/admin/auth/change-temporary-password/route";
 import { POST as adminLoginPost } from "../src/app/api/admin/auth/login/route";
+import { POST as adminSetupAccountPost } from "../src/app/api/admin/auth/setup-account/route";
+import { POST as backendProxyPost } from "../src/app/api/backend/[...path]/route";
 import { proxy } from "../src/proxy";
 import { resetApiClientSecurityStateForTests } from "../src/services/api";
 import { resetPassword } from "../src/services/auth";
@@ -486,6 +488,87 @@ test("admin password recovery uses shared reset flow with admin-safe return", ()
   expect(resetSource).toContain('intent.nextPath?.startsWith("/admin") ? "/admin/login"');
   expect(authSource).toContain('nextPath?.startsWith("/admin")');
   expect(`${loginSource}\n${forgotSource}\n${resetSource}`).not.toMatch(/email=\$\{|userId=|Temporary123!/);
+});
+
+test("account activation keeps customer and staff routes distinct, private, and backend-directed", async () => {
+  const rawToken = "a".repeat(64);
+  const sharedFormSource = readSource("src/components/auth/AccountSetupContent.tsx");
+  const customerPageSource = readSource("src/app/(consumer)/auth/setup-account/page.tsx");
+  const adminPageSource = readSource("src/app/admin/setup-account/page.tsx");
+  const proxySource = readSource("src/proxy.ts");
+  const customerCreationSource = readSource("../zogular-backend/src/controllers/users/adminController.ts");
+
+  expect(customerCreationSource).toContain("/auth/setup-account#token=${rawToken}");
+  expect(customerCreationSource).toContain("/admin/setup-account#token=${rawInviteToken}");
+  expect(sharedFormSource).toContain("window.history.replaceState(null, document.title, window.location.pathname)");
+  expect(sharedFormSource).not.toContain("window.location.search");
+  expect(sharedFormSource).toContain('destinationFor(result.accountClass)');
+  expect(customerPageSource).toContain('robots: { index: false, follow: false }');
+  expect(customerPageSource).toContain('referrer: "no-referrer"');
+  expect(adminPageSource).toContain('robots: { index: false, follow: false }');
+  expect(adminPageSource).toContain('referrer: "no-referrer"');
+  expect(proxySource).toContain('"/auth/setup-account"');
+  expect(proxySource).toContain('"Cache-Control", "no-store, private, max-age=0"');
+
+  let backendAccountClass: "STAFF" | "CUSTOMER" = "STAFF";
+  const fetchMock = installFetchMock((url) => {
+    if (url.pathname.endsWith("/auth/csrf-token")) {
+      return jsonResponse(
+        { status: "success", data: { csrfToken: "csrf" } },
+        200,
+        { "Set-Cookie": "_csrf=csrf; Path=/; HttpOnly; SameSite=Lax" },
+      );
+    }
+    if (url.pathname.endsWith("/auth/setup-account")) {
+      return jsonResponse({
+        status: "success",
+        message: "Account setup completed successfully.",
+        data: { accountClass: backendAccountClass },
+      });
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  });
+
+  try {
+    const adminResponse = await adminSetupAccountPost(new Request("http://frontend.test/api/admin/auth/setup-account", {
+      method: "POST",
+      body: JSON.stringify({ token: rawToken, email: "staff@example.test", password: "Private123!", confirmPassword: "Private123!" }),
+    }));
+    expect(adminResponse.status).toBe(200);
+    expect(adminResponse.headers.get("cache-control")).toContain("no-store");
+    expect(adminResponse.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(adminResponse.headers.get("x-robots-tag")).toContain("noindex");
+    const adminPayload = await adminResponse.text();
+    expect(adminPayload).toContain('"accountClass":"STAFF"');
+    expect(adminPayload).not.toContain(rawToken);
+
+    backendAccountClass = "CUSTOMER";
+    const customerResponse = await backendProxyPost(
+      new Request("http://frontend.test/api/backend/auth/setup-account", {
+        method: "POST",
+        body: JSON.stringify({ token: rawToken, email: "customer@example.test", password: "Private123!", confirmPassword: "Private123!" }),
+      }),
+      { params: Promise.resolve({ path: ["auth", "setup-account"] }) },
+    );
+    expect(customerResponse.status).toBe(200);
+    expect(customerResponse.headers.get("cache-control")).toContain("no-store");
+    expect(customerResponse.headers.get("referrer-policy")).toBe("no-referrer");
+    expect(customerResponse.headers.get("x-robots-tag")).toContain("noindex");
+    const customerPayload = await customerResponse.text();
+    expect(customerPayload).toContain('"accountClass":"CUSTOMER"');
+    expect(customerPayload).not.toContain(rawToken);
+
+    const adminPageResponse = await proxy(new NextRequest("http://frontend.test/admin/setup-account"));
+    const customerPageResponse = await proxy(new NextRequest("http://frontend.test/auth/setup-account"));
+    for (const response of [adminPageResponse, customerPageResponse]) {
+      expect(response.status).toBe(200);
+      expect(response.headers.get("cache-control")).toContain("no-store");
+      expect(response.headers.get("referrer-policy")).toBe("no-referrer");
+      expect(response.headers.get("x-robots-tag")).toContain("noindex");
+    }
+  } finally {
+    fetchMock.restore();
+  }
 });
 
 test("password reset service returns admin, seller, and buyer login destinations from sanitized intent", async () => {

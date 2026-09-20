@@ -1,5 +1,14 @@
+/**
+ * @file SellersListTable.tsx
+ * @description
+ * Tabular and responsive card-list presentation for the Admin Seller Review Queue.
+ * Renders seller applicant rows, identity/contact details, and review actions.
+ * Integrates container-aware scroll restoration via rememberListScroll on review navigation links
+ * so returning operators land immediately back on the row they were reviewing.
+ */
+
 import Link from "next/link";
-import { MoreHorizontal } from "lucide-react";
+import { Store, MoreHorizontal } from "lucide-react";
 import {
   StatusBadge,
   formatAdminDate,
@@ -19,12 +28,14 @@ import {
 } from "@/components/ui/action-menu";
 import type { VendorApplication } from "@/types/seller";
 import { Button } from "@/components/ui/button";
+import { rememberListScroll } from "@/hooks/use-list-scroll-restoration";
 
 interface SellersListTableProps {
   applications: VendorApplication[];
   onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
   canApprove: boolean;
   canSuspend: boolean;
+  canViewSensitiveFields: boolean;
   isRefreshing: boolean;
 }
 
@@ -33,8 +44,21 @@ export function SellersListTable({
   onOpenAction,
   canApprove,
   canSuspend,
+  canViewSensitiveFields,
   isRefreshing,
 }: SellersListTableProps) {
+  if (applications.length === 0) {
+    return (
+      <div className="flex h-[320px] flex-col items-center justify-center rounded-lg border border-dashed border-[color-mix(in_srgb,var(--admin-copper-muted)_40%,transparent)] bg-[var(--admin-surface-cream)] p-6 text-center shadow-[inset_0_2px_12px_rgb(6_59_41_/_2%)]">
+        <Store className="mb-4 size-10 text-[var(--admin-copper-muted)]" />
+        <h3 className="text-sm font-black text-[var(--admin-ink)]">No seller applications match this view</h3>
+        <p className="mt-1 text-sm font-semibold text-[var(--admin-ink-soft)] max-w-sm">
+          Try clearing your search or adjusting the status and type filters.
+        </p>
+      </div>
+    );
+  }
+
   return (
     <section
       aria-label="Seller applications"
@@ -67,6 +91,7 @@ export function SellersListTable({
                   <Link
                     href={`/admin/sellers/${application.id}`}
                     prefetch={false}
+                    onClick={() => rememberListScroll(window.location.pathname + window.location.search)}
                     className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
                   >
                     {getApplicationPrimaryName(application)}
@@ -77,8 +102,14 @@ export function SellersListTable({
                 </td>
                 <td className="px-4 py-3 font-bold">{getSellerTypeLabel(application.sellerType)}</td>
                 <td className="max-w-60 px-4 py-3">
-                  <span className="block truncate font-bold">{application.businessPhone || application.user?.telephone || "No phone"}</span>
-                  <span className="mt-0.5 block truncate text-[var(--admin-ink-soft)]">{application.businessEmail || application.user?.email || "No email"}</span>
+                  {canViewSensitiveFields ? (
+                    <>
+                      <span className="block truncate font-bold">{application.businessPhone || application.user?.telephone || "No phone"}</span>
+                      <span className="mt-0.5 block truncate text-[var(--admin-ink-soft)]">{application.businessEmail || application.user?.email || "No email"}</span>
+                    </>
+                  ) : (
+                    <span className="block truncate text-[var(--admin-ink-soft)] italic">Hidden</span>
+                  )}
                 </td>
                 <td className="max-w-52 px-4 py-3">
                   <span className="block truncate">{getApplicationLocation(application) || "Not provided"}</span>
@@ -90,7 +121,13 @@ export function SellersListTable({
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)] hover:bg-[color-mix(in_srgb,var(--admin-canopy)_10%,var(--admin-surface-mist))]">
-                      <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review</Link>
+                      <Link
+                        href={`/admin/sellers/${application.id}`}
+                        prefetch={false}
+                        onClick={() => rememberListScroll(window.location.pathname + window.location.search)}
+                      >
+                        Review
+                      </Link>
                     </Button>
                     <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
                   </div>
@@ -109,27 +146,29 @@ export function SellersListTable({
                 <Link
                   href={`/admin/sellers/${application.id}`}
                   prefetch={false}
+                  onClick={() => rememberListScroll(window.location.pathname + window.location.search)}
                   className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
                 >
                   {getApplicationPrimaryName(application)}
                 </Link>
-                <p className="mt-0.5 truncate text-xs font-semibold text-[var(--admin-ink-soft)]">
-                  {application.ownerFullName || "Owner not provided"}
-                </p>
+                <div className="mt-0.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[var(--admin-ink-soft)]">
+                  <span className="truncate font-semibold">{application.ownerFullName || "Owner not provided"}</span>
+                  <span aria-hidden="true" className="hidden sm:inline">&middot;</span>
+                  <span className="shrink-0" suppressHydrationWarning>Submitted: {formatAdminDate(application.submittedAt || application.createdAt)}</span>
+                </div>
               </div>
               <StatusBadge status={application.status} />
             </div>
 
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
-              <MobileField label="Type" value={application.sellerType === "REGISTERED_BUSINESS" ? "Registered business" : "Individual"} />
-              <MobileField label="Submitted" value={formatAdminDate(application.submittedAt || application.createdAt)} />
-              <MobileField label="Phone" value={application.businessPhone || application.user?.telephone || "No phone"} />
-              <MobileField label="Location" value={getApplicationLocation(application) || "Not provided"} />
-            </dl>
-
             <div className="mt-3 flex items-center justify-between border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)] pt-2.5">
-              <Button asChild variant="outline" size="sm" className="h-9 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)]">
-                <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review application</Link>
+              <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)]">
+                <Link
+                  href={`/admin/sellers/${application.id}`}
+                  prefetch={false}
+                  onClick={() => rememberListScroll(window.location.pathname + window.location.search)}
+                >
+                  Review
+                </Link>
               </Button>
               <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
             </div>
@@ -175,14 +214,5 @@ function SellerActionMenu({
         {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-700">Suspend</ActionMenuItem> : null}
       </ActionMenuContent>
     </ActionMenu>
-  );
-}
-
-function MobileField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="min-w-0">
-      <dt className="text-[9px] font-black uppercase text-[var(--admin-ink-soft)]">{label}</dt>
-      <dd className="mt-0.5 truncate font-bold text-[var(--admin-ink)]" suppressHydrationWarning>{value}</dd>
-    </div>
   );
 }

@@ -37,6 +37,19 @@ export interface AdminChangeTemporaryPasswordResult {
   message: string;
 }
 
+export interface AdminSetupAccountInput {
+  token: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+}
+
+export interface AdminSetupAccountResult {
+  success: true;
+  message: string;
+  accountClass: "STAFF" | "CUSTOMER";
+}
+
 async function parseAuthResponse(response: Response): Promise<unknown> {
   const contentType = response.headers.get("content-type");
   if (contentType?.includes("application/json")) return response.json();
@@ -53,7 +66,7 @@ function extractAuthMessage(payload: unknown, fallback: string): string {
 }
 
 async function requestAdminAuth<T>(
-  endpoint: "login" | "logout" | "change-temporary-password",
+  endpoint: "login" | "logout" | "change-temporary-password" | "setup-account",
   init: RequestInit,
 ): Promise<T> {
   const response = await fetch(`/api/admin/auth/${endpoint}`, {
@@ -105,5 +118,14 @@ export function changeAdminTemporaryPassword(
       newPassword: input.newPassword,
       confirmPassword: input.confirmPassword,
     }),
+  });
+}
+
+export function setupAdminAccount(
+  input: AdminSetupAccountInput,
+): Promise<AdminSetupAccountResult> {
+  return requestAdminAuth<AdminSetupAccountResult>("setup-account", {
+    method: "POST",
+    body: JSON.stringify(input),
   });
 }

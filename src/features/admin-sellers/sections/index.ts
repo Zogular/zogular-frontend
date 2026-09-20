@@ -1,4 +1,6 @@
 export { SellersListTable } from "./SellersListTable";
+export { SellersListGrid } from "./SellersListGrid";
+export { SellerQueueFreshness } from "./SellerQueueFreshness";
 export { SellersListFilters } from "./SellersListFilters";
 export { SellerOverviewSection } from "./SellerOverviewSection";
 export { AdminFeedbackBanner } from "./AdminFeedbackBanner";

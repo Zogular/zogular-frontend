@@ -83,7 +83,7 @@ export function AdminNavigation({
       id={navigationId}
       aria-label="Admin navigation"
       className={cn(
-        "min-h-0 flex-1 overflow-y-auto py-4",
+        "min-h-0 flex-1 overflow-y-auto py-4 scrollbar-none [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden",
         collapsed ? "px-2" : "px-3",
       )}
     >
