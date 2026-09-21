@@ -7,10 +7,11 @@
  * Primary orchestrator for Category and Product Field Studio (F7).
  * Thin layout coordinator decomposing responsibilities across CategoryTreePanel,
  * AttributeStudioPanel, LiveSellerFormPreview, AttributeBuilderDrawer,
- * and IndustryTemplateLibraryModal with return scroll restoration and tactile styling.
+ * and IndustryTemplateLibraryModal with return scroll restoration, tactile styling,
+ * permission gating, and accessible confirmation dialogs.
  */
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Eye,
   Filter,
@@ -35,6 +36,8 @@ import {
   updateCategoryAttribute,
 } from "../api/admin-categories";
 import { useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
+import { useAdminIdentity } from "@/components/admin/AdminShell";
+import { adminIdentityHasPermission } from "@/services/admin/session";
 import { CategoryTreePanel } from "./CategoryTreePanel";
 import { AttributeStudioPanel } from "./AttributeStudioPanel";
 import { AttributeBuilderDrawer } from "./AttributeBuilderDrawer";
@@ -42,6 +45,7 @@ import { LiveSellerFormPreview } from "./LiveSellerFormPreview";
 import { BuyerFilterPreview } from "./BuyerFilterPreview";
 import { IndustryTemplateLibraryModal } from "./IndustryTemplateLibraryModal";
 import { CategoryEditModal } from "./CategoryEditModal";
+import { DeleteAttributeConfirmationDialog } from "./DeleteAttributeConfirmationDialog";
 import type {
   AdminCategoryPayload,
   AdminCategoryRecord,
@@ -54,37 +58,48 @@ import type {
 const SELECTED_CATEGORY_STORAGE_KEY = "zogular:admin:selected-category-id";
 
 export function AdminCategoriesWorkspace() {
+  const identity = useAdminIdentity();
+  const canManageCategories = adminIdentityHasPermission(identity, "manage_categories");
+
   // Category data state
   const [categories, setCategories] = useState<AdminCategoryRecord[]>([]);
   const [tree, setTree] = useState<AdminCategoryTreeNode[]>([]);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
+  // The first taxonomy request is still meaningful loading work. Keeping this
+  // true prevents an empty tree or premature scroll restoration before it settles.
   const [isCategoriesLoading, setIsCategoriesLoading] = useState(true);
 
-  // Attributes data state for selected category
+  // Selected Category Attributes state
   const [directAttributes, setDirectAttributes] = useState<CategoryAttributeRecord[]>([]);
   const [inheritedAttributes, setInheritedAttributes] = useState<CategoryAttributeRecord[]>([]);
   const [isAttributesLoading, setIsAttributesLoading] = useState(false);
   const [attributeLoadError, setAttributeLoadError] = useState<string | null>(null);
 
-  // View Mode: "studio" | "simulator" | "buyer_filters"
-  type ViewMode = "studio" | "simulator" | "buyer_filters";
-  const [viewMode, setViewMode] = useState<ViewMode>("studio");
+  // Active workspace right-panel view mode
+  const [viewMode, setViewMode] = useState<"studio" | "simulator" | "buyer_filters">("studio");
 
-  // Modal / Drawer states
-  const [isAttributeDrawerOpen, setIsAttributeDrawerOpen] = useState(false);
-  const [editingAttribute, setEditingAttribute] = useState<CategoryAttributeRecord | null>(null);
-  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
-
-  // Category Edit / Create Modal state
-  const [categoryModalMode, setCategoryModalMode] = useState<"create" | "edit">("create");
+  // Category Edit/Create modal state
   const [isCategoryModalOpen, setIsCategoryModalOpen] = useState(false);
+  const [categoryModalMode, setCategoryModalMode] = useState<"create" | "edit">("create");
   const [categoryModalParentId, setCategoryModalParentId] = useState<string | null>(null);
   const [categoryToEdit, setCategoryToEdit] = useState<AdminCategoryRecord | null>(null);
+  const categoryModalTriggerRef = useRef<HTMLElement | null>(null);
 
-  // Return navigation scroll position restoration
+  // Attribute Builder Drawer state
+  const [isAttributeDrawerOpen, setIsAttributeDrawerOpen] = useState(false);
+  const [editingAttribute, setEditingAttribute] = useState<CategoryAttributeRecord | null>(null);
+
+  // Attribute Delete Confirmation Dialog state
+  const [attributeToDelete, setAttributeToDelete] = useState<CategoryAttributeRecord | null>(null);
+  const [isDeletingAttribute, setIsDeletingAttribute] = useState(false);
+
+  // Template Library modal state
+  const [isTemplateModalOpen, setIsTemplateModalOpen] = useState(false);
+
+  // Restore scroll positions across navigation once categories have loaded.
+  // The ready gate becomes true only after the first category request settles.
   useListScrollRestoration("/admin/categories", !isCategoriesLoading);
 
-  // Derive selected category object
   const selectedCategory = useMemo(
     () => categories.find((c) => c.id === selectedCategoryId) ?? null,
     [categories, selectedCategoryId]
@@ -183,6 +198,11 @@ export function AdminCategoriesWorkspace() {
 
   // Category creation / edit dialog handlers
   const handleOpenCreateRoot = () => {
+    if (!canManageCategories) {
+      toast.error("Requires category management permission.");
+      return;
+    }
+    categoryModalTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setCategoryModalMode("create");
     setCategoryModalParentId(null);
     setCategoryToEdit(null);
@@ -190,6 +210,11 @@ export function AdminCategoriesWorkspace() {
   };
 
   const handleOpenCreateChild = (parentId: string) => {
+    if (!canManageCategories) {
+      toast.error("Requires category management permission.");
+      return;
+    }
+    categoryModalTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setCategoryModalMode("create");
     setCategoryModalParentId(parentId);
     setCategoryToEdit(null);
@@ -197,9 +222,21 @@ export function AdminCategoriesWorkspace() {
   };
 
   const handleOpenEditCategory = (cat: AdminCategoryRecord) => {
+    if (!canManageCategories) {
+      toast.error("Requires category management permission.");
+      return;
+    }
+    categoryModalTriggerRef.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     setCategoryModalMode("edit");
     setCategoryToEdit(cat);
     setIsCategoryModalOpen(true);
+  };
+
+  const handleCloseCategoryModal = () => {
+    setIsCategoryModalOpen(false);
+    // The editor is opened by contextual tree controls rather than a Radix
+    // DialogTrigger. Restore the exact initiating control after the portal closes.
+    window.requestAnimationFrame(() => categoryModalTriggerRef.current?.focus());
   };
 
   const handleSaveCategory = async (payload: Partial<AdminCategoryPayload>, categoryId?: string) => {
@@ -230,11 +267,19 @@ export function AdminCategoriesWorkspace() {
 
   // Attribute builder drawer handlers
   const handleOpenAddAttribute = () => {
+    if (!canManageCategories) {
+      toast.error("Requires category management permission.");
+      return;
+    }
     setEditingAttribute(null);
     setIsAttributeDrawerOpen(true);
   };
 
   const handleOpenEditAttribute = (attr: CategoryAttributeRecord) => {
+    if (!canManageCategories) {
+      toast.error("Requires category management permission.");
+      return;
+    }
     setEditingAttribute(attr);
     setIsAttributeDrawerOpen(true);
   };
@@ -259,29 +304,28 @@ export function AdminCategoriesWorkspace() {
     }
 
     await loadCategoryAttributes(selectedCategoryId);
-    // Refresh category attribute counts
-    void refreshCategories(selectedCategoryId);
+    await refreshCategories(selectedCategoryId);
   };
 
-  const handleDeleteAttribute = async (attr: CategoryAttributeRecord) => {
+  const handleConfirmDeleteAttribute = async (attr: CategoryAttributeRecord) => {
     if (!selectedCategoryId) return;
-    const confirmed = window.confirm(
-      `Are you sure you want to delete "${attr.name}"? Existing products in this category may retain archived values.`
-    );
-    if (!confirmed) return;
 
     try {
+      setIsDeletingAttribute(true);
       await deleteCategoryAttribute(selectedCategoryId, attr.id);
       toast.success(`Attribute "${attr.name}" deleted.`);
+      setAttributeToDelete(null);
       await loadCategoryAttributes(selectedCategoryId);
-      void refreshCategories(selectedCategoryId);
+      await refreshCategories(selectedCategoryId);
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to delete attribute.");
+    } finally {
+      setIsDeletingAttribute(false);
     }
   };
 
   const handleReorderAttribute = async (attributeId: string, direction: "up" | "down") => {
-    if (!selectedCategoryId) return;
+    if (!selectedCategoryId || !canManageCategories) return;
     const index = directAttributes.findIndex((a) => a.id === attributeId);
     if (index === -1) return;
 
@@ -321,12 +365,10 @@ export function AdminCategoriesWorkspace() {
       throw new Error("Select a category before applying a template.");
     }
     const outcome = await applyCategoryTemplate(selectedCategoryId, templateKey, selectedSlugs);
-    // Do not announce an apply outcome until both previews have the current
-    // server-authoritative direct and inherited schema.
     const refreshedAttributes = await getCategoryAttributes(selectedCategoryId);
     setDirectAttributes(refreshedAttributes.directAttributes);
     setInheritedAttributes(refreshedAttributes.inheritedAttributes);
-    void refreshCategories(selectedCategoryId);
+    await refreshCategories(selectedCategoryId);
     return outcome;
   };
 
@@ -334,14 +376,14 @@ export function AdminCategoriesWorkspace() {
   const rootCount = categories.filter((c) => !c.parentId).length;
   const subcategoryCount = Math.max(categories.length - rootCount, 0);
   const totalAttributesConfigured = categories.reduce(
-    (acc, c) => acc + c._count.attributes,
+    (acc, c) => acc + (c._count?.attributes ?? 0),
     0
   );
 
   return (
     <div className="mx-auto max-w-[96rem] space-y-4">
       {/* Top Metrics Row */}
-      <section className="grid grid-cols-2 gap-3 md:grid-cols-4">
+      <section className="grid grid-cols-2 gap-2 p-0.5 sm:gap-3 md:grid-cols-4">
         <KpiMetricCard
           label="Categories"
           value={categories.length}
@@ -349,29 +391,29 @@ export function AdminCategoriesWorkspace() {
           helper="All category levels"
         />
         <KpiMetricCard
-          label="Main categories"
+          label="Main Departments"
           value={rootCount}
-          icon={<Layers className="size-4 text-stone-700" />}
-          helper="Top-level choices"
+          icon={<Layers className="size-4 text-emerald-600" />}
+          helper="Top-level taxonomy"
         />
         <KpiMetricCard
           label="Subcategories"
           value={subcategoryCount}
           icon={<Sliders className="size-4 text-amber-600" />}
-          helper="Nested choices"
+          helper="Specialized branches"
         />
         <KpiMetricCard
-          label="Product fields"
+          label="Configured Fields"
           value={totalAttributesConfigured}
           icon={<SlidersHorizontal className="size-4 text-blue-600" />}
-          helper="Category field rules"
+          helper="Total attribute schemas"
         />
       </section>
 
-      {/* Main Two-Column Studio Workspace */}
-      <section className="grid grid-cols-1 gap-4 lg:h-[calc(100vh-14rem)] lg:min-h-[640px] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
-        {/* Left Column: Category Hierarchy Tree */}
-        <div className="min-h-0 lg:h-full">
+      {/* Main Workspace Bento Grid */}
+      <section className="grid grid-cols-1 items-start gap-4 lg:h-[calc(100vh-13.5rem)] lg:min-h-[700px] lg:grid-cols-[minmax(320px,380px)_minmax(0,1fr)]">
+        {/* Left Column: Interactive Taxonomy Tree */}
+        <div className="flex min-h-0 flex-col overflow-visible lg:h-full lg:overflow-hidden">
           <CategoryTreePanel
             tree={tree}
             categories={categories}
@@ -382,6 +424,7 @@ export function AdminCategoriesWorkspace() {
             onEditCategory={handleOpenEditCategory}
             onDeleteCategory={handleDeleteCategory}
             isLoading={isCategoriesLoading}
+            canManageCategories={canManageCategories}
           />
         </div>
 
@@ -460,11 +503,18 @@ export function AdminCategoriesWorkspace() {
                     directAttributes={directAttributes}
                     inheritedAttributes={inheritedAttributes}
                     onAddAttribute={handleOpenAddAttribute}
-                    onApplyTemplate={() => setIsTemplateModalOpen(true)}
+                    onApplyTemplate={() => {
+                      if (!canManageCategories) {
+                        toast.error("Requires category management permission.");
+                        return;
+                      }
+                      setIsTemplateModalOpen(true);
+                    }}
                     onEditAttribute={handleOpenEditAttribute}
-                    onDeleteAttribute={handleDeleteAttribute}
+                    onDeleteAttribute={(attr) => setAttributeToDelete(attr)}
                     onReorderAttribute={handleReorderAttribute}
                     isLoading={isAttributesLoading}
+                    canManageCategories={canManageCategories}
                   />
                 ) : viewMode === "simulator" ? (
                   <LiveSellerFormPreview
@@ -490,14 +540,16 @@ export function AdminCategoriesWorkspace() {
               <p className="mt-1 max-w-md text-xs text-stone-500">
                 Choose a category from the list, or create a main category to begin defining product fields.
               </p>
-              <Button
-                type="button"
-                onClick={handleOpenCreateRoot}
-                className="mt-4 rounded-xl bg-[#075b36] px-5 text-xs font-black uppercase tracking-[0.1em] text-[#fff8ec] hover:bg-[#063b29]"
-              >
-                <Plus className="mr-1.5 size-3.5" />
-                Create Main Category
-              </Button>
+              {canManageCategories && (
+                <Button
+                  type="button"
+                  onClick={handleOpenCreateRoot}
+                  className="mt-4 rounded-xl bg-[#075b36] px-5 text-xs font-black uppercase tracking-[0.1em] text-[#fff8ec] hover:bg-[#063b29]"
+                >
+                  <Plus className="mr-1.5 size-3.5" />
+                  Create Main Category
+                </Button>
+              )}
             </div>
           )}
         </div>
@@ -525,13 +577,22 @@ export function AdminCategoriesWorkspace() {
       {/* Category Create / Edit Modal */}
       <CategoryEditModal
         isOpen={isCategoryModalOpen}
-        onClose={() => setIsCategoryModalOpen(false)}
+        onClose={handleCloseCategoryModal}
         mode={categoryModalMode}
         initialParentId={categoryModalParentId}
         categoryToEdit={categoryToEdit}
         allCategories={categories}
         onSave={handleSaveCategory}
         onDelete={handleDeleteCategory}
+      />
+
+      {/* Attribute Delete Confirmation Dialog */}
+      <DeleteAttributeConfirmationDialog
+        isOpen={Boolean(attributeToDelete)}
+        attribute={attributeToDelete}
+        onClose={() => setAttributeToDelete(null)}
+        onConfirm={handleConfirmDeleteAttribute}
+        isDeleting={isDeletingAttribute}
       />
     </div>
   );
@@ -549,19 +610,19 @@ function KpiMetricCard({
   helper: string;
 }) {
   return (
-    <div className="rounded-[1.4rem] border border-[color-mix(in_srgb,var(--admin-copper-muted)_24%,transparent)] bg-[linear-gradient(180deg,#fffdfa_0%,#faf4ea_100%)] p-3.5 shadow-sm transition-all hover:shadow-md">
+    <div className="rounded-[1.4rem] border border-[color-mix(in_srgb,var(--admin-copper-muted)_24%,transparent)] bg-[linear-gradient(180deg,#fffdfa_0%,#faf4ea_100%)] p-2.5 sm:p-3.5 shadow-sm transition-all hover:shadow-md">
       <div className="flex items-center justify-between">
-        <span className="text-[10px] font-black uppercase tracking-[0.16em] text-stone-500">
+        <span className="truncate text-[9px] sm:text-[10px] font-black uppercase tracking-[0.14em] text-stone-500">
           {label}
         </span>
-        <div className="flex size-7 items-center justify-center rounded-xl bg-[#fff8ec] shadow-inner ring-1 ring-stone-200">
+        <div className="flex size-6 sm:size-7 items-center justify-center rounded-xl bg-[#fff8ec] shadow-inner ring-1 ring-stone-200 shrink-0">
           {icon}
         </div>
       </div>
-      <p className="mt-1 text-2xl font-black tracking-tight text-[var(--admin-canopy-deep)]">
+      <p className="mt-1 text-xl sm:text-2xl font-black tracking-tight text-[var(--admin-canopy-deep)]">
         {value}
       </p>
-      <p className="mt-0.5 text-[10px] font-medium text-stone-500">{helper}</p>
+      <p className="mt-0.5 truncate text-[9px] sm:text-[10px] font-medium text-stone-500">{helper}</p>
     </div>
   );
 }
