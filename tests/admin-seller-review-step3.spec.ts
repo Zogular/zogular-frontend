@@ -4,6 +4,8 @@ import path from "node:path";
 import { ApiError, resetApiClientSecurityStateForTests } from "../src/services/api";
 import {
   approveVendorApplication,
+  restrictVendorApplication,
+  suspendVendorApplication,
   getSellerReviewSafeError,
   getVendorApplicationById,
   shouldRetrySellerReviewQuery,
@@ -196,6 +198,27 @@ test("decision mutations send expectedUpdatedAt with CSRF and strictly parse the
   expect(JSON.parse(String(request.init?.body))).toEqual({ status: "APPROVED", expectedUpdatedAt: "2026-08-29T09:00:00.000Z", adminNotes: "Reviewed" });
 });
 
+test("restrict and suspend send seller-facing reasons separately from private notes", async () => {
+  const requests: Array<{ url: URL; init?: RequestInit }> = [];
+  globalThis.fetch = (async (input: RequestInfo | URL, init?: RequestInit) => {
+    const url = new URL(input instanceof Request ? input.url : String(input));
+    requests.push({ url, init });
+    if (url.pathname.endsWith("/auth/csrf-token")) return new Response(JSON.stringify({ status: "success", data: { csrfToken: "fixture-csrf" } }), { status: 200, headers: { "content-type": "application/json" } });
+    return new Response(JSON.stringify(reviewPayload()), { status: 200, headers: { "content-type": "application/json" } });
+  }) as typeof fetch;
+  const payload = { reason: "Seller policy breach", adminNotes: "Internal review note", expectedUpdatedAt: "2026-08-29T09:00:00.000Z" };
+  await restrictVendorApplication("seller/app", payload);
+  await suspendVendorApplication("seller/app", payload);
+  expect(requests.filter(({ url }) => !url.pathname.endsWith("/auth/csrf-token")).map(({ url }) => url.pathname)).toEqual([
+    "/api/v1/admin/vendor-applications/seller%2Fapp/restrict",
+    "/api/v1/admin/vendor-applications/seller%2Fapp/suspend",
+  ]);
+  for (const request of requests.filter(({ url }) => !url.pathname.endsWith("/auth/csrf-token"))) {
+    expect(request.init?.method).toBe("PATCH");
+    expect(JSON.parse(String(request.init?.body))).toEqual(payload);
+  }
+});
+
 test("safe failures are distinct and retries remain bounded", () => {
   expect(getSellerReviewSafeError(new ApiError("raw", 401)).kind).toBe("unauthenticated");
   expect(getSellerReviewSafeError(new ApiError("raw", 403)).kind).toBe("forbidden");
@@ -236,4 +259,16 @@ test("Step 2 list mutations include concurrency state and preserve the queue UI"
   expect(hook).toContain("expectedUpdatedAt, adminNotes");
   expect(hook).toContain('safeError.kind === "conflict"');
   expect(hook).toContain("loadApplications()");
+  expect(hook).toContain('reason: payload.reason ?? ""');
+});
+
+test("seller queue exposes list and grid modes and restores its scroll position", () => {
+  const page = readSource("src/app/admin/(protected)/sellers/page.tsx");
+  const table = readSource("src/features/admin-sellers/sections/SellersListTable.tsx");
+  const grid = readSource("src/features/admin-sellers/sections/SellersListGrid.tsx");
+  expect(page).toContain('useListScrollRestoration("/admin/sellers", !loading)');
+  expect(page).toContain("<SellersListGrid");
+  expect(page).toContain('aria-label="Seller results view"');
+  expect(table).toContain('rememberListScroll("/admin/sellers")');
+  expect(grid).toContain('aria-label="Seller applications grid"');
 });

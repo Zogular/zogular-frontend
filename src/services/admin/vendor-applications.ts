@@ -435,7 +435,7 @@ export async function requestVendorApplicationInfo(
 
 export async function restrictVendorApplication(
   id: string,
-  payload: NotedVendorApplicationPayload,
+  payload: ReasonedVendorApplicationPayload,
 ): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/restrict`,
@@ -443,8 +443,9 @@ export async function restrictVendorApplication(
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        adminNotes: payload.adminNotes.trim(),
+        reason: payload.reason.trim(),
         expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
@@ -454,7 +455,7 @@ export async function restrictVendorApplication(
 
 export async function suspendVendorApplication(
   id: string,
-  payload: NotedVendorApplicationPayload,
+  payload: ReasonedVendorApplicationPayload,
 ): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/suspend`,
@@ -462,8 +463,9 @@ export async function suspendVendorApplication(
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        adminNotes: payload.adminNotes.trim(),
+        reason: payload.reason.trim(),
         expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );

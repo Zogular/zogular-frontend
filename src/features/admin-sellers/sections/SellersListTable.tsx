@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/action-menu";
 import type { VendorApplication } from "@/types/seller";
 import { Button } from "@/components/ui/button";
+import { rememberListScroll } from "@/hooks/use-list-scroll-restoration";
 
 interface SellersListTableProps {
   applications: VendorApplication[];
@@ -67,6 +68,7 @@ export function SellersListTable({
                   <Link
                     href={`/admin/sellers/${application.id}`}
                     prefetch={false}
+                    onClick={() => rememberListScroll("/admin/sellers")}
                     className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
                   >
                     {getApplicationPrimaryName(application)}
@@ -90,7 +92,7 @@ export function SellersListTable({
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)] hover:bg-[color-mix(in_srgb,var(--admin-canopy)_10%,var(--admin-surface-mist))]">
-                      <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review</Link>
+                      <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}>Review</Link>
                     </Button>
                     <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
                   </div>
@@ -103,12 +105,13 @@ export function SellersListTable({
 
       <div className="divide-y divide-[color-mix(in_srgb,var(--admin-copper-muted)_26%,transparent)] md:hidden">
         {applications.map((application) => (
-          <article key={application.id} className="p-3.5">
+          <article key={application.id} className="px-3 py-2.5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/admin/sellers/${application.id}`}
                   prefetch={false}
+                  onClick={() => rememberListScroll("/admin/sellers")}
                   className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
                 >
                   {getApplicationPrimaryName(application)}
@@ -120,16 +123,16 @@ export function SellersListTable({
               <StatusBadge status={application.status} />
             </div>
 
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
               <MobileField label="Type" value={application.sellerType === "REGISTERED_BUSINESS" ? "Registered business" : "Individual"} />
               <MobileField label="Submitted" value={formatAdminDate(application.submittedAt || application.createdAt)} />
               <MobileField label="Phone" value={application.businessPhone || application.user?.telephone || "No phone"} />
               <MobileField label="Location" value={getApplicationLocation(application) || "Not provided"} />
             </dl>
 
-            <div className="mt-3 flex items-center justify-between border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)] pt-2.5">
-              <Button asChild variant="outline" size="sm" className="h-9 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)]">
-                <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review application</Link>
+            <div className="mt-2 flex items-center justify-between border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)] pt-2">
+              <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-2.5 text-xs font-black text-[var(--admin-canopy-deep)]">
+                <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}>Review application</Link>
               </Button>
               <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
             </div>
@@ -140,7 +143,7 @@ export function SellersListTable({
   );
 }
 
-function SellerActionMenu({
+export function SellerActionMenu({
   application,
   onOpenAction,
   canApprove,

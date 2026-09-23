@@ -237,8 +237,7 @@ test("seller list source preserves permission actions and contains honest operat
   expect(hook).not.toContain("matchesApplicationSearch");
   expect(hook).not.toContain("visibleCount");
   expect(hook).not.toContain("limit: 100");
-  expect(hook).toContain('adminIdentityHasPermission(identity, "approve_sellers")');
-  expect(hook).toContain('adminIdentityHasPermission(identity, "suspend_sellers")');
+  expect(hook).toContain('adminIdentityHasPermission(identity, "manage_seller_status")');
   expect(page).toContain("Export current page ({currentPageRows})");
   expect(page).toContain("The seller queue is empty");
   expect(page).toContain("No seller applications match this view");

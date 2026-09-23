@@ -76,13 +76,15 @@ export async function performSellerReviewAction(
       });
     case "restrict":
       return restrictVendorApplication(input.applicationId, {
+        reason: input.reason ?? "",
         expectedUpdatedAt: input.expectedUpdatedAt,
-        adminNotes: input.adminNotes ?? "",
+        adminNotes: input.adminNotes,
       });
     case "suspend":
       return suspendVendorApplication(input.applicationId, {
+        reason: input.reason ?? "",
         expectedUpdatedAt: input.expectedUpdatedAt,
-        adminNotes: input.adminNotes ?? "",
+        adminNotes: input.adminNotes,
       });
   }
 }

@@ -167,22 +167,26 @@ const ACTION_COPY: Record<
   restrict: {
     title: "Restrict seller",
     description:
-      "Restriction keeps the seller shell available while limiting important seller capabilities. Admin note is required.",
+      "Restriction keeps the seller shell available while limiting important seller capabilities. Give the seller a clear reason; private admin notes are optional.",
     confirmLabel: "Restrict seller",
     confirmClassName: "bg-amber-600 text-white hover:bg-amber-700",
-    noteLabel: "Restriction note",
-    notePlaceholder: "Explain why the seller is being restricted",
-    requireNote: true,
+    reasonLabel: "Reason shown to seller",
+    reasonPlaceholder: "Explain why the seller is being restricted",
+    noteLabel: "Private admin notes",
+    notePlaceholder: "Optional internal note for the admin team",
+    requireReason: true,
   },
   suspend: {
     title: "Suspend seller",
     description:
-      "Suspension blocks seller actions. This is a high-impact action and requires a clear admin note.",
+      "Suspension blocks seller actions. Give the seller a clear reason; private admin notes are optional.",
     confirmLabel: "Suspend seller",
     confirmClassName: "bg-zinc-950 text-white hover:bg-zinc-800",
-    noteLabel: "Suspension note",
-    notePlaceholder: "Explain why the seller is being suspended",
-    requireNote: true,
+    reasonLabel: "Reason shown to seller",
+    reasonPlaceholder: "Explain why the seller is being suspended",
+    noteLabel: "Private admin notes",
+    notePlaceholder: "Optional internal note for the admin team",
+    requireReason: true,
   },
 };
 
