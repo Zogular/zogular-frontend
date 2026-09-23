@@ -30,6 +30,7 @@ export function AdminOverview({ nowIso }: { nowIso: string }) {
     liveMessage,
     query,
     refresh,
+    refreshPolicy,
     setGroupBy,
     setPeriod,
   } = useAdminOverview();
@@ -85,6 +86,7 @@ export function AdminOverview({ nowIso }: { nowIso: string }) {
         isRefreshing={isRefreshing}
         refreshDisabled={isInitialLoading || isRefreshing}
         onRefresh={() => void refresh()}
+        refreshPolicy={refreshPolicy}
       />
 
       <OverviewControls
