@@ -11,6 +11,10 @@ import type {
 } from "@/features/admin-overview/types/dashboard-overview";
 import { cn } from "@/lib/utils";
 import theme from "@/components/admin/admin-theme.module.css";
+import {
+  AdminRefreshSettingsPopover,
+  type AdminRefreshPolicy,
+} from "@/features/admin-shell";
 
 const DATE_FORMATTER = new Intl.DateTimeFormat("en-ZM", {
   timeZone: "Africa/Lusaka",
@@ -39,6 +43,7 @@ export function OverviewHeader({
   isRefreshing,
   refreshDisabled,
   onRefresh,
+  refreshPolicy,
 }: {
   nowIso: string;
   generatedAt: string | null;
@@ -49,6 +54,7 @@ export function OverviewHeader({
   isRefreshing: boolean;
   refreshDisabled: boolean;
   onRefresh: () => void;
+  refreshPolicy?: AdminRefreshPolicy;
 }) {
   const HealthIcon = availability === "AVAILABLE"
     ? CircleCheck
@@ -89,8 +95,11 @@ export function OverviewHeader({
         <p className="mt-1 text-xs text-[var(--admin-ink-soft)]">
           {periodLabel} / {groupBy === "DAY" ? "Daily" : "Weekly"} / Africa/Lusaka
         </p>
-        <p className="mt-1 text-xs text-[var(--admin-ink-soft)]">
-          Auto-refreshes every 60 seconds while this page is visible
+        <p
+          className="mt-1 text-xs text-[var(--admin-ink-soft)]"
+          data-testid="overview-refresh-status"
+        >
+          {refreshPolicy?.statusText ?? "Auto-refreshes every 5 minutes while this page is visible"}
         </p>
       </div>
 
@@ -122,6 +131,9 @@ export function OverviewHeader({
             </span>
           </span>
         </div>
+        {refreshPolicy && (
+          <AdminRefreshSettingsPopover policy={refreshPolicy} />
+        )}
         <div className="group relative shrink-0">
           <Button
             type="button"

@@ -20,8 +20,12 @@ import {
   fetchAdminDashboardOverview,
   getAdminOverviewSafeError,
 } from "@/services/admin/dashboard";
+import {
+  useAdminRefreshPolicy,
+  DEFAULT_ADMIN_REFRESH_SETTINGS,
+} from "@/features/admin-shell";
 
-export const ADMIN_OVERVIEW_REFETCH_INTERVAL_MS = 60_000;
+export const ADMIN_OVERVIEW_REFETCH_INTERVAL_MS = DEFAULT_ADMIN_REFRESH_SETTINGS.intervalMs;
 export const ADMIN_OVERVIEW_QUERY_KEY = "admin-dashboard-overview" as const;
 
 export type AdminOverviewFreshness = "fresh" | "stale" | "degraded";
@@ -100,6 +104,7 @@ export function useAdminOverview() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const searchParamsKey = searchParams.toString();
+  const refreshPolicy = useAdminRefreshPolicy();
   const query = useMemo(
     () => parseAdminOverviewSearchParams(new URLSearchParams(searchParamsKey)),
     [searchParamsKey],
@@ -131,10 +136,11 @@ export function useAdminOverview() {
     queryKey: adminOverviewQueryKey(query),
     queryFn: ({ signal }) => fetchAdminDashboardOverview({ ...query, signal }),
     placeholderData: keepPreviousData,
-    staleTime: ADMIN_OVERVIEW_REFETCH_INTERVAL_MS,
-    refetchInterval: ADMIN_OVERVIEW_REFETCH_INTERVAL_MS,
+    staleTime: refreshPolicy.effectiveIntervalMs ? refreshPolicy.effectiveIntervalMs : Infinity,
+    refetchInterval: refreshPolicy.effectiveIntervalMs,
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
+    refetchOnMount: refreshPolicy.settings.refreshOnNavigation,
     refetchOnReconnect: true,
     retry: false,
   });
@@ -197,6 +203,7 @@ export function useAdminOverview() {
     liveMessage,
     query,
     refresh,
+    refreshPolicy,
     setGroupBy,
     setPeriod,
   };

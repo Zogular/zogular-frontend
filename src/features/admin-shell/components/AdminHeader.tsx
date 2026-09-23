@@ -6,6 +6,7 @@ import { SheetTrigger } from "@/components/ui/sheet";
 import type { AdminIdentity } from "@/services/admin/session";
 import type { AdminShellRouteContext } from "../lib/admin-shell-model";
 import { AdminProfilePopover } from "./AdminProfilePopover";
+import { AdminNotificationControl } from "./AdminNotificationControl";
 
 export function AdminHeader({
   identity,
@@ -61,6 +62,7 @@ export function AdminHeader({
             Ctrl K
           </kbd>
         </Button>
+        <AdminNotificationControl />
         <AdminProfilePopover identity={identity} />
       </div>
     </header>
