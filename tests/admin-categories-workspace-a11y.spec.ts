@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import http, { type Server } from "node:http";
 import path from "node:path";
 import { CATEGORY_ICON_CATALOG } from "../src/features/admin-categories/components/CategoryIconPickerModal";
@@ -18,6 +19,7 @@ const browserPort = 3221;
 const backendPort = 5021;
 const browserOrigin = `http://127.0.0.1:${browserPort}`;
 const originalFetch = globalThis.fetch;
+const readSource = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
 
 let nextServer: ChildProcess | null = null;
 let backendFixture: Server | null = null;
@@ -137,7 +139,14 @@ test.beforeAll(async () => {
 
   nextServer = spawn(
     process.execPath,
-    [path.join(repoRoot, "node_modules", "next", "dist", "bin", "next"), "start", "-p", String(browserPort)],
+    [
+      fs.existsSync(path.join(repoRoot, "node_modules", "next", "dist", "bin", "next"))
+        ? path.join(repoRoot, "node_modules", "next", "dist", "bin", "next")
+        : require.resolve("next/dist/bin/next"),
+      "start",
+      "-p",
+      String(browserPort),
+    ],
     {
       cwd: repoRoot,
       env: {
@@ -218,6 +227,20 @@ test.describe("Admin Categories Workspace Usability & A11y Contract (CT-F1-A)", 
       },
     };
     expect(adminIdentityHasPermission(categoryManager, "manage_categories")).toBe(true);
+  });
+
+  test("attribute reorder uses the atomic backend contract and capability controls expose state", () => {
+    const api = readSource("src/features/admin-categories/api/admin-categories.ts");
+    const workspace = readSource("src/features/admin-categories/components/AdminCategoriesWorkspace.tsx");
+    const drawer = readSource("src/features/admin-categories/components/AttributeBuilderDrawer.tsx");
+
+    expect(api).toContain("/attributes/reorder");
+    expect(api).toContain('method: "PUT"');
+    expect(api).toContain("orderedAttributeIds");
+    expect(workspace).toContain("reorderCategoryAttributes(");
+    expect(workspace).not.toContain("await updateCategoryAttribute(selectedCategoryId, currentAttr.id");
+    expect(workspace).not.toContain("await updateCategoryAttribute(selectedCategoryId, swapAttr.id");
+    expect(drawer.match(/aria-pressed=\{is(Required|Variation|Filterable|Slicer)\}/g)?.length).toBe(4);
   });
 
   test("icon catalog search matches label, value, and keyword queries accurately", () => {

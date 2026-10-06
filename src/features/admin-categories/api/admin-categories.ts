@@ -295,6 +295,19 @@ export async function updateCategoryAttribute(
   return attribute;
 }
 
+/** Persist the complete direct-attribute permutation through the backend transaction. */
+export async function reorderCategoryAttributes(
+  categoryId: string,
+  orderedAttributeIds: string[],
+  reason?: string,
+): Promise<void> {
+  await apiClient<void>(`/admin/categories/${categoryId}/attributes/reorder`, {
+    method: "PUT",
+    body: JSON.stringify({ orderedAttributeIds, ...(reason?.trim() ? { reason: reason.trim() } : {}) }),
+    csrf: true,
+  });
+}
+
 /**
  * Delete a category attribute definition.
  */

@@ -1,5 +1,6 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import http, { type Server } from "node:http";
 import path from "node:path";
 import {
@@ -123,7 +124,14 @@ test.beforeAll(async () => {
 
   nextServer = spawn(
     process.execPath,
-    [path.join(repoRoot, "node_modules", "next", "dist", "bin", "next"), "start", "-p", String(BROWSER_PORT)],
+    [
+      fs.existsSync(path.join(repoRoot, "node_modules", "next", "dist", "bin", "next"))
+        ? path.join(repoRoot, "node_modules", "next", "dist", "bin", "next")
+        : require.resolve("next/dist/bin/next"),
+      "start",
+      "-p",
+      String(BROWSER_PORT),
+    ],
     {
       cwd: repoRoot,
       env: {
@@ -316,20 +324,18 @@ test("real category workspace renders backend templates, refreshes both previews
   await page.getByTitle("Edit Category Details").first().click({ force: true });
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toBeVisible();
   await page.getByLabel("Description").fill("Updated category note");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toHaveCount(0);
   expect(categoryPatches.at(-1)).toEqual({ id: "category-1", body: { description: "Updated category note" } });
 
   await page.getByTitle("Edit Category Details").first().click({ force: true });
-  await page.getByRole("button", { name: "Advanced details" }).click();
-  await page.getByLabel("Category URL").fill("electronics-main");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: /Advanced Taxonomy Details/i }).click();
+  await page.getByPlaceholder("solar-energy").fill("electronics-main");
+  await page.getByPlaceholder(/Explain why this category structure needs to change/i).fill("ok");
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByText("Add a reason with at least 3 characters.")).toBeVisible();
-  await page.getByLabel("Reason for structure change *").fill("ok");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Add a reason with at least 3 characters.")).toBeVisible();
-  await page.getByLabel("Reason for structure change *").fill("SEO");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByPlaceholder(/Explain why this category structure needs to change/i).fill("SEO");
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toHaveCount(0);
   expect(categoryPatches.at(-1)).toEqual({ id: "category-1", body: { slug: "electronics-main", reason: "SEO" } });
 
@@ -383,8 +389,8 @@ test("real category workspace renders backend templates, refreshes both previews
   await expect(page.getByRole("heading", { name: "Phones" })).toBeVisible();
   await page.getByTitle("Edit Category Details").last().click({ force: true });
   await page.getByLabel("Parent category").selectOption("");
-  await page.getByLabel("Reason for structure change *").fill("Root level");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByPlaceholder(/Explain why this category structure needs to change/i).fill("Root level");
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toHaveCount(0);
   expect(categoryPatches.at(-1)).toEqual({ id: "category-child", body: { parentId: null, reason: "Root level" } });
 
