@@ -163,10 +163,10 @@ export function useSellersList() {
         await rejectVendorApplication(activeApplication.id, { reason: payload.reason ?? "", expectedUpdatedAt, adminNotes: payload.adminNotes });
         toast.success("Seller application rejected.");
       } else if (activeAction === "restrict") {
-        await restrictVendorApplication(activeApplication.id, { adminNotes: payload.adminNotes ?? "", expectedUpdatedAt });
+        await restrictVendorApplication(activeApplication.id, { reason: payload.reason ?? "", adminNotes: payload.adminNotes, expectedUpdatedAt });
         toast.success("Seller restricted.");
       } else if (activeAction === "suspend") {
-        await suspendVendorApplication(activeApplication.id, { adminNotes: payload.adminNotes ?? "", expectedUpdatedAt });
+        await suspendVendorApplication(activeApplication.id, { reason: payload.reason ?? "", adminNotes: payload.adminNotes, expectedUpdatedAt });
         toast.success("Seller suspended.");
       }
 

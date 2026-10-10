@@ -1,12 +1,16 @@
 "use client";
 
+import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellersList } from "@/features/admin-sellers/hooks/use-sellers-list";
-import { SellersListFilters, SellersListTable } from "@/features/admin-sellers/sections";
+import { SellersListFilters, SellersListGrid, SellersListTable } from "@/features/admin-sellers/sections";
+import { useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 
 export default function AdminSellersPage() {
+  const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
   const {
     applications,
     pagination,
@@ -38,6 +42,17 @@ export default function AdminSellersPage() {
     handleActionConfirm,
     handleExport,
   } = useSellersList();
+
+  const handleOpenAction = (
+    action: Parameters<typeof openAction>[0],
+    application: Parameters<typeof openAction>[1],
+    triggerElement?: HTMLElement,
+  ) => {
+    lastTriggerRef.current = triggerElement ?? (typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    openAction(action, application);
+  };
+
+  useListScrollRestoration("/admin/sellers", !loading);
 
   const hasActiveScope = Boolean(searchQuery.trim()) || statusFilter !== "all" || sellerTypeFilter !== "all";
   const currentPageRows = applications.length;
@@ -91,6 +106,11 @@ export default function AdminSellersPage() {
         facets={facets}
       />
 
+      <div className="flex items-center justify-end gap-1" role="group" aria-label="Seller results view">
+        <button type="button" aria-pressed={viewMode === "list"} onClick={() => setViewMode("list")} className={`rounded-md px-3 py-2 text-xs font-black ${viewMode === "list" ? "bg-[var(--admin-canopy-deep)] text-white" : "bg-[var(--admin-surface-mist)] text-[var(--admin-ink-soft)]"}`}>List</button>
+        <button type="button" aria-pressed={viewMode === "grid"} onClick={() => setViewMode("grid")} className={`rounded-md px-3 py-2 text-xs font-black ${viewMode === "grid" ? "bg-[var(--admin-canopy-deep)] text-white" : "bg-[var(--admin-surface-mist)] text-[var(--admin-ink-soft)]"}`}>Grid</button>
+      </div>
+
       <div aria-live="polite" className="sr-only">
         {isRefreshing ? "Refreshing seller queue." : error?.message ?? ""}
       </div>
@@ -105,13 +125,11 @@ export default function AdminSellersPage() {
         <SellerQueueEmpty hasActiveScope={hasActiveScope} />
       ) : applications.length > 0 ? (
         <>
-          <SellersListTable
-            applications={applications}
-            onOpenAction={openAction}
-            canApprove={canApprove}
-            canSuspend={canSuspend}
-            isRefreshing={isRefreshing}
-          />
+          {viewMode === "list" ? (
+            <SellersListTable applications={applications} onOpenAction={handleOpenAction} canApprove={canApprove} canSuspend={canSuspend} isRefreshing={isRefreshing} />
+          ) : (
+            <SellersListGrid applications={applications} onOpenAction={handleOpenAction} canApprove={canApprove} canSuspend={canSuspend} isRefreshing={isRefreshing} />
+          )}
           {pagination ? (
             <SellerQueuePagination
               page={pagination.page}
@@ -138,6 +156,7 @@ export default function AdminSellersPage() {
         application={activeApplication}
         submitting={isActionSubmitting}
         onConfirm={handleActionConfirm}
+        returnFocusRef={lastTriggerRef}
       />
     </div>
   );

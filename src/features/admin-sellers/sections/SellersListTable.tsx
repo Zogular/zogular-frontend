@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 import {
@@ -19,10 +20,11 @@ import {
 } from "@/components/ui/action-menu";
 import type { VendorApplication } from "@/types/seller";
 import { Button } from "@/components/ui/button";
+import { rememberListScroll } from "@/hooks/use-list-scroll-restoration";
 
 interface SellersListTableProps {
   applications: VendorApplication[];
-  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
+  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication, triggerElement?: HTMLElement) => void;
   canApprove: boolean;
   canSuspend: boolean;
   isRefreshing: boolean;
@@ -67,6 +69,7 @@ export function SellersListTable({
                   <Link
                     href={`/admin/sellers/${application.id}`}
                     prefetch={false}
+                    onClick={() => rememberListScroll("/admin/sellers")}
                     className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
                   >
                     {getApplicationPrimaryName(application)}
@@ -90,9 +93,9 @@ export function SellersListTable({
                 <td className="px-4 py-3 text-right">
                   <div className="flex items-center justify-end gap-1">
                     <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)] hover:bg-[color-mix(in_srgb,var(--admin-canopy)_10%,var(--admin-surface-mist))]">
-                      <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review</Link>
+                      <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}>Review</Link>
                     </Button>
-                    <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+                    <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} variant="desktop" />
                   </div>
                 </td>
               </tr>
@@ -103,12 +106,13 @@ export function SellersListTable({
 
       <div className="divide-y divide-[color-mix(in_srgb,var(--admin-copper-muted)_26%,transparent)] md:hidden">
         {applications.map((application) => (
-          <article key={application.id} className="p-3.5">
+          <article key={application.id} className="px-3 py-2.5">
             <div className="flex items-start justify-between gap-3">
               <div className="min-w-0 flex-1">
                 <Link
                   href={`/admin/sellers/${application.id}`}
                   prefetch={false}
+                  onClick={() => rememberListScroll("/admin/sellers")}
                   className="block truncate text-sm font-black text-[var(--admin-canopy-deep)] underline-offset-4 hover:underline focus-visible:rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--admin-ember)]"
                 >
                   {getApplicationPrimaryName(application)}
@@ -120,18 +124,18 @@ export function SellersListTable({
               <StatusBadge status={application.status} />
             </div>
 
-            <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+            <dl className="mt-2 grid grid-cols-2 gap-x-3 gap-y-1.5 text-[11px]">
               <MobileField label="Type" value={application.sellerType === "REGISTERED_BUSINESS" ? "Registered business" : "Individual"} />
               <MobileField label="Submitted" value={formatAdminDate(application.submittedAt || application.createdAt)} />
               <MobileField label="Phone" value={application.businessPhone || application.user?.telephone || "No phone"} />
               <MobileField label="Location" value={getApplicationLocation(application) || "Not provided"} />
             </dl>
 
-            <div className="mt-3 flex items-center justify-between border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)] pt-2.5">
-              <Button asChild variant="outline" size="sm" className="h-9 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)]">
-                <Link href={`/admin/sellers/${application.id}`} prefetch={false}>Review application</Link>
+            <div className="mt-2 flex items-center justify-between border-t border-[color-mix(in_srgb,var(--admin-copper-muted)_20%,transparent)] pt-2">
+              <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-2.5 text-xs font-black text-[var(--admin-canopy-deep)]">
+                <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}>Review application</Link>
               </Button>
-              <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+              <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} variant="mobile" />
             </div>
           </article>
         ))}
@@ -140,39 +144,53 @@ export function SellersListTable({
   );
 }
 
-function SellerActionMenu({
+export function SellerActionMenu({
   application,
   onOpenAction,
   canApprove,
   canSuspend,
+  variant = "desktop",
 }: {
   application: VendorApplication;
-  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
+  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication, triggerElement?: HTMLElement) => void;
   canApprove: boolean;
   canSuspend: boolean;
+  variant?: "desktop" | "mobile" | "grid";
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const actions = getAvailableVendorActions(application, canApprove, canSuspend);
   if (actions.length === 0) return null;
   const reviewActions = actions.filter((action) => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(action));
   const statusActions = actions.filter((action) => ["restrict", "suspend"].includes(action));
 
+  const triggerId = `seller-manage-trigger-${variant}-${application.id}`;
+
   return (
     <ActionMenu>
       <ActionMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Manage ${getApplicationPrimaryName(application)}`} className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]">
+        <Button
+          ref={triggerRef}
+          id={triggerId}
+          data-seller-trigger={application.id}
+          data-seller-variant={variant}
+          variant="ghost"
+          size="icon"
+          aria-label={`Manage ${getApplicationPrimaryName(application)}`}
+          className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]"
+        >
           <MoreHorizontal className="size-4" />
         </Button>
       </ActionMenuTrigger>
       <ActionMenuContent>
         <ActionMenuNote>Manage seller</ActionMenuNote>
         <ActionMenuSeparator />
-        {actions.includes("approve-approved") ? <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem> : null}
-        {actions.includes("approve-provisional") ? <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve provisional</ActionMenuItem> : null}
-        {actions.includes("needs-info") ? <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs info</ActionMenuItem> : null}
-        {actions.includes("reject") ? <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-700">Reject</ActionMenuItem> : null}
+        {actions.includes("approve-approved") ? <ActionMenuItem onClick={() => onOpenAction("approve-approved", application, triggerRef.current ?? undefined)}>Approve</ActionMenuItem> : null}
+        {actions.includes("approve-provisional") ? <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application, triggerRef.current ?? undefined)}>Approve provisional</ActionMenuItem> : null}
+        {actions.includes("needs-info") ? <ActionMenuItem onClick={() => onOpenAction("needs-info", application, triggerRef.current ?? undefined)}>Needs info</ActionMenuItem> : null}
+        {actions.includes("reject") ? <ActionMenuItem onClick={() => onOpenAction("reject", application, triggerRef.current ?? undefined)} className="text-rose-700">Reject</ActionMenuItem> : null}
         {reviewActions.length > 0 && statusActions.length > 0 ? <ActionMenuSeparator /> : null}
-        {actions.includes("restrict") ? <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-800">Restrict</ActionMenuItem> : null}
-        {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-700">Suspend</ActionMenuItem> : null}
+        {actions.includes("restrict") ? <ActionMenuItem onClick={() => onOpenAction("restrict", application, triggerRef.current ?? undefined)} className="text-amber-800">Restrict</ActionMenuItem> : null}
+        {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application, triggerRef.current ?? undefined)} className="text-rose-700">Suspend</ActionMenuItem> : null}
       </ActionMenuContent>
     </ActionMenu>
   );

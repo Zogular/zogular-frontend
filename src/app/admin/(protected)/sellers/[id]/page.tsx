@@ -1,10 +1,12 @@
 "use client";
 
+import { useRef } from "react";
 import { useRouter } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
 import { useSellerDetail } from "@/features/admin-sellers/hooks/use-seller-detail";
+import type { VendorApplicationAdminAction } from "@/features/admin-sellers/types/admin-seller.types";
 import {
   ADMIN_SELLER_QUEUE_PATH,
   canReturnToAdminSellerQueue,
@@ -26,6 +28,12 @@ import {
 export default function AdminSellerReviewPage() {
   const router = useRouter();
   const review = useSellerDetail();
+  const returnFocusRef = useRef<HTMLElement | null>(null);
+
+  function handleOpenAction(action: VendorApplicationAdminAction, triggerElement?: HTMLElement) {
+    returnFocusRef.current = triggerElement ?? (document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    review.openAction(action);
+  }
 
   function returnToSellerQueue() {
     if (
@@ -54,13 +62,13 @@ export default function AdminSellerReviewPage() {
     <SellerActionPanel
       capabilities={review.detail.review.capabilities}
       disabled={review.actionsDisabled}
-      onAction={review.openAction}
+      onAction={handleOpenAction}
     />
   );
 
   return (
     <div className="mx-auto max-w-[96rem] space-y-4 pb-24 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 xl:pb-8">
-      <Button type="button" variant="outline" onClick={returnToSellerQueue} className="min-h-11 border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-surface-cream)] text-[var(--admin-ink)] hover:bg-[var(--admin-surface-mist)]">
+      <Button id="seller-review-back-button" type="button" variant="outline" onClick={returnToSellerQueue} className="min-h-11 border-[color:rgba(184,135,70,0.3)] bg-[var(--admin-surface-cream)] text-[var(--admin-ink)] hover:bg-[var(--admin-surface-mist)]">
         <ArrowLeft />Seller applications
       </Button>
 
@@ -82,7 +90,7 @@ export default function AdminSellerReviewPage() {
       </div>
 
       <div className="fixed inset-x-4 bottom-3 z-20 xl:hidden">
-        <SellerActionPanel capabilities={review.detail.review.capabilities} disabled={review.actionsDisabled} compact onAction={review.openAction} />
+        <SellerActionPanel capabilities={review.detail.review.capabilities} disabled={review.actionsDisabled} compact onAction={handleOpenAction} />
       </div>
 
       <SellerReviewActionDialog
@@ -92,6 +100,7 @@ export default function AdminSellerReviewPage() {
         application={application}
         submitting={review.isActionSubmitting}
         onConfirm={review.handleActionConfirm}
+        returnFocusRef={returnFocusRef}
       />
     </div>
   );

@@ -14,7 +14,7 @@ const ACTION_UI: Record<VendorApplicationAdminAction, { label: string; icon: Rea
   suspend: { label: "Suspend seller", icon: Ban, className: "border-[color:rgba(184,59,50,0.3)] bg-[color:rgba(184,59,50,0.07)] text-[var(--admin-escalation)] hover:bg-[color:rgba(184,59,50,0.12)]" },
 };
 
-export function SellerActionPanel({ capabilities, disabled, compact = false, onAction }: { capabilities: SellerReviewCapabilities; disabled: boolean; compact?: boolean; onAction: (action: VendorApplicationAdminAction) => void }) {
+export function SellerActionPanel({ capabilities, disabled, compact = false, onAction }: { capabilities: SellerReviewCapabilities; disabled: boolean; compact?: boolean; onAction: (action: VendorApplicationAdminAction, triggerElement?: HTMLElement) => void }) {
   const actions = toVendorApplicationAdminActions(capabilities.availableActions);
 
   if (compact && actions.length === 0) return null;
@@ -30,7 +30,7 @@ export function SellerActionPanel({ capabilities, disabled, compact = false, onA
           {actions.map((action) => {
             const meta = ACTION_UI[action];
             const Icon = meta.icon;
-            return <Button key={action} type="button" variant={action === "approve-approved" ? "default" : "outline"} disabled={disabled} onClick={() => onAction(action)} className={`min-h-11 justify-start rounded-xl text-xs font-semibold ${compact ? "shrink-0" : ""} ${meta.className}`}><Icon className="size-4" />{meta.label}</Button>;
+            return <Button key={action} type="button" variant={action === "approve-approved" ? "default" : "outline"} disabled={disabled} onClick={(e) => onAction(action, e.currentTarget)} data-action={action} className={`min-h-11 justify-start rounded-xl text-xs font-semibold ${compact ? "shrink-0" : ""} ${meta.className}`}><Icon className="size-4" />{meta.label}</Button>;
           })}
         </div>
       ) : <p className="mt-3 rounded-xl bg-[var(--admin-surface-mist)] p-3 text-sm text-[var(--admin-ink-soft)]">No actions are available for the current status.</p>}

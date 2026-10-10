@@ -167,24 +167,30 @@ const ACTION_COPY: Record<
   restrict: {
     title: "Restrict seller",
     description:
-      "Restriction keeps the seller shell available while limiting important seller capabilities. Admin note is required.",
+      "Restriction keeps the seller shell available while limiting important seller capabilities. Give the seller a clear reason; private admin notes are optional.",
     confirmLabel: "Restrict seller",
     confirmClassName: "bg-amber-600 text-white hover:bg-amber-700",
-    noteLabel: "Restriction note",
-    notePlaceholder: "Explain why the seller is being restricted",
-    requireNote: true,
+    reasonLabel: "Reason shown to seller",
+    reasonPlaceholder: "Explain why the seller is being restricted",
+    noteLabel: "Private admin notes",
+    notePlaceholder: "Optional internal note for the admin team",
+    requireReason: true,
   },
   suspend: {
     title: "Suspend seller",
     description:
-      "Suspension blocks seller actions. This is a high-impact action and requires a clear admin note.",
+      "Suspension blocks seller actions. Give the seller a clear reason; private admin notes are optional.",
     confirmLabel: "Suspend seller",
     confirmClassName: "bg-zinc-950 text-white hover:bg-zinc-800",
-    noteLabel: "Suspension note",
-    notePlaceholder: "Explain why the seller is being suspended",
-    requireNote: true,
+    reasonLabel: "Reason shown to seller",
+    reasonPlaceholder: "Explain why the seller is being suspended",
+    noteLabel: "Private admin notes",
+    notePlaceholder: "Optional internal note for the admin team",
+    requireReason: true,
   },
 };
+
+type ActionCopy = (typeof ACTION_COPY)[VendorApplicationAdminAction];
 
 export function formatAdminDate(value: string | null | undefined) {
   if (!value) return "Not yet";
@@ -358,13 +364,15 @@ export function DetailStatCard({
   );
 }
 
-interface SellerReviewActionDialogProps {
+export interface SellerReviewActionDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   action: VendorApplicationAdminAction | null;
   application: ReviewDialogApplication | null;
   submitting?: boolean;
   onConfirm: (payload: { reason?: string; adminNotes?: string }) => Promise<void> | void;
+  returnFocusRef?: React.RefObject<HTMLElement | null>;
+  triggerId?: string;
 }
 
 export function SellerReviewActionDialog({
@@ -374,24 +382,66 @@ export function SellerReviewActionDialog({
   application,
   submitting = false,
   onConfirm,
+  returnFocusRef,
+  triggerId,
 }: SellerReviewActionDialogProps) {
   const [reason, setReason] = useState("");
   const [adminNotes, setAdminNotes] = useState("");
+  const [prevOpen, setPrevOpen] = useState(false);
+  const [prevActionKey, setPrevActionKey] = useState<string | null>(null);
+
+  const currentActionKey = open && action && application ? `${application.id}:${action}` : null;
+
+  if (open && !prevOpen) {
+    setPrevOpen(true);
+    setPrevActionKey(currentActionKey);
+    setReason("");
+    setAdminNotes("");
+  } else if (!open && prevOpen) {
+    setPrevOpen(false);
+    setPrevActionKey(null);
+    setReason("");
+    setAdminNotes("");
+  } else if (open && currentActionKey !== prevActionKey) {
+    setPrevActionKey(currentActionKey);
+    setReason("");
+    setAdminNotes("");
+  }
 
   const copy = useMemo(() => (action ? ACTION_COPY[action] : null), [action]);
 
-  if (!copy || !application) return null;
-  const actionCopy = copy;
-  const reasonId = `seller-review-${application.id}-reason`;
-  const noteId = `seller-review-${application.id}-note`;
+  const [cachedCopy, setCachedCopy] = useState<ActionCopy | null>(null);
+  const [cachedApp, setCachedApp] = useState<ReviewDialogApplication | null>(null);
+  const [cachedTriggerId, setCachedTriggerId] = useState<string | undefined>(triggerId);
+
+  if (copy && copy !== cachedCopy) {
+    setCachedCopy(copy);
+  }
+  if (application && application !== cachedApp) {
+    setCachedApp(application);
+  }
+  if (triggerId && triggerId !== cachedTriggerId) {
+    setCachedTriggerId(triggerId);
+  }
+
+  const activeCopy = copy ?? cachedCopy;
+  const activeApp = application ?? cachedApp;
+  const activeTriggerId = triggerId ?? cachedTriggerId ?? (activeApp ? `seller-manage-trigger-${activeApp.id}` : undefined);
+
+  if (!activeCopy || !activeApp) return null;
+  const actionCopy = activeCopy;
+  const reasonId = `seller-review-${activeApp.id}-reason`;
+  const noteId = `seller-review-${activeApp.id}-note`;
 
   async function handleConfirm() {
+    if (submitting) return;
     if (actionCopy.requireReason && reason.trim().length < 5) return;
     if (actionCopy.requireNote && adminNotes.trim().length < 5) return;
     await onConfirm({ reason: reason.trim(), adminNotes: adminNotes.trim() });
   }
 
   function handleOpenChange(nextOpen: boolean) {
+    if (submitting) return;
     if (!nextOpen) {
       setReason("");
       setAdminNotes("");
@@ -399,9 +449,63 @@ export function SellerReviewActionDialog({
     onOpenChange(nextOpen);
   }
 
+function tryRestoreFocus(target: HTMLElement | null): boolean {
+  if (!target || !document.body.contains(target)) return false;
+  if (target.hasAttribute("disabled") || target.getAttribute("aria-disabled") === "true") return false;
+  const style = window.getComputedStyle(target);
+  if (style.display === "none" || style.visibility === "hidden") return false;
+  if (target.offsetParent === null && target.getClientRects().length === 0) return false;
+
+  target.focus();
+  return document.activeElement === target;
+}
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="max-w-2xl rounded-[1.9rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-0 shadow-[0_28px_80px_rgba(15,23,42,0.22)] backdrop-blur-2xl">
+      <DialogContent
+        onPointerDownOutside={(event) => {
+          if (submitting) event.preventDefault();
+        }}
+        onEscapeKeyDown={(event) => {
+          if (submitting) event.preventDefault();
+        }}
+        onCloseAutoFocus={(event) => {
+          if (tryRestoreFocus(returnFocusRef?.current ?? null)) {
+            event.preventDefault();
+            return;
+          }
+          if (activeTriggerId) {
+            const triggerEl = document.getElementById(activeTriggerId);
+            if (tryRestoreFocus(triggerEl)) {
+              event.preventDefault();
+              return;
+            }
+          }
+          if (action) {
+            const fallbackBtn = document.querySelector<HTMLElement>(`button[data-action="${action}"]:not([disabled])`);
+            if (tryRestoreFocus(fallbackBtn)) {
+              event.preventDefault();
+              return;
+            }
+          }
+          const detailBackBtn = document.getElementById("seller-review-back-button");
+          if (tryRestoreFocus(detailBackBtn)) {
+            event.preventDefault();
+            return;
+          }
+          const queueSearch = document.getElementById("seller-queue-search");
+          if (tryRestoreFocus(queueSearch)) {
+            event.preventDefault();
+            return;
+          }
+          const backLink = document.querySelector<HTMLElement>('a[href="/admin/sellers"]');
+          if (tryRestoreFocus(backLink)) {
+            event.preventDefault();
+            return;
+          }
+        }}
+        className="max-w-2xl rounded-[1.9rem] border border-white/70 bg-[linear-gradient(180deg,rgba(255,255,255,0.97),rgba(248,250,252,0.94))] p-0 shadow-[0_28px_80px_rgba(15,23,42,0.22)] backdrop-blur-2xl"
+      >
         <DialogHeader className="border-b border-zinc-100 bg-zinc-950 px-6 py-5 text-white">
           <DialogTitle className="text-xl font-black text-white">{actionCopy.title}</DialogTitle>
           <DialogDescription className="text-sm font-semibold text-zinc-400">
@@ -412,13 +516,13 @@ export function SellerReviewActionDialog({
         <div className="space-y-5 px-6 py-6">
           <div className="rounded-[1.45rem] border border-emerald-200/60 bg-[linear-gradient(135deg,rgba(236,253,245,0.95),rgba(255,255,255,0.85))] p-4">
             <div className="flex flex-wrap items-center gap-2">
-              <StatusBadge status={application.status} />
-              <SellerTypeBadge sellerType={application.sellerType} />
+              <StatusBadge status={activeApp.status} />
+              <SellerTypeBadge sellerType={activeApp.sellerType} />
             </div>
             <p className="mt-3 text-lg font-black tracking-[-0.03em] text-zinc-950">
-              {getApplicationPrimaryName(application)}
+              {getApplicationPrimaryName(activeApp)}
             </p>
-            <p className="mt-1 text-sm font-bold text-zinc-500">{application.ownerFullName}</p>
+            <p className="mt-1 text-sm font-bold text-zinc-500">{activeApp.ownerFullName}</p>
           </div>
 
           {actionCopy.reasonLabel ? (
@@ -463,7 +567,7 @@ export function SellerReviewActionDialog({
         </div>
 
         <DialogFooter className="gap-3 border-t border-zinc-100 px-6 py-5 sm:justify-between">
-          <Button variant="outline" onClick={() => handleOpenChange(false)} className="min-h-11 rounded-xl border-zinc-200 font-black">
+          <Button variant="outline" disabled={submitting} onClick={() => handleOpenChange(false)} className="min-h-11 rounded-xl border-zinc-200 font-black">
             Cancel
           </Button>
           <Button
