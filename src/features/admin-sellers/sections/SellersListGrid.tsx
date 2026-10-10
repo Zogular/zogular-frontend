@@ -15,7 +15,7 @@ import { SellerActionMenu } from "./SellersListTable";
 
 interface SellersListGridProps {
   applications: VendorApplication[];
-  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
+  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication, triggerElement?: HTMLElement) => void;
   canApprove: boolean;
   canSuspend: boolean;
   isRefreshing: boolean;
@@ -45,7 +45,7 @@ export function SellersListGrid({ applications, onOpenAction, canApprove, canSus
             <Button asChild variant="outline" size="sm" className="h-9 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] font-black text-[var(--admin-canopy-deep)]">
               <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}><Eye className="mr-2 size-4" />Review</Link>
             </Button>
-            <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+            <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} variant="grid" />
           </div>
         </article>
       ))}

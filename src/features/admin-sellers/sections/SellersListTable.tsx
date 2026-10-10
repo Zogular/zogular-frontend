@@ -1,3 +1,4 @@
+import { useRef } from "react";
 import Link from "next/link";
 import { MoreHorizontal } from "lucide-react";
 import {
@@ -23,7 +24,7 @@ import { rememberListScroll } from "@/hooks/use-list-scroll-restoration";
 
 interface SellersListTableProps {
   applications: VendorApplication[];
-  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
+  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication, triggerElement?: HTMLElement) => void;
   canApprove: boolean;
   canSuspend: boolean;
   isRefreshing: boolean;
@@ -94,7 +95,7 @@ export function SellersListTable({
                     <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-3 font-black text-[var(--admin-canopy-deep)] hover:bg-[color-mix(in_srgb,var(--admin-canopy)_10%,var(--admin-surface-mist))]">
                       <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}>Review</Link>
                     </Button>
-                    <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+                    <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} variant="desktop" />
                   </div>
                 </td>
               </tr>
@@ -134,7 +135,7 @@ export function SellersListTable({
               <Button asChild variant="outline" size="sm" className="h-8 rounded-md border-[color-mix(in_srgb,var(--admin-canopy)_30%,transparent)] bg-[var(--admin-surface-mist)] px-2.5 text-xs font-black text-[var(--admin-canopy-deep)]">
                 <Link href={`/admin/sellers/${application.id}`} prefetch={false} onClick={() => rememberListScroll("/admin/sellers")}>Review application</Link>
               </Button>
-              <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} />
+              <SellerActionMenu application={application} onOpenAction={onOpenAction} canApprove={canApprove} canSuspend={canSuspend} variant="mobile" />
             </div>
           </article>
         ))}
@@ -148,34 +149,48 @@ export function SellerActionMenu({
   onOpenAction,
   canApprove,
   canSuspend,
+  variant = "desktop",
 }: {
   application: VendorApplication;
-  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication) => void;
+  onOpenAction: (action: VendorApplicationAdminAction, application: VendorApplication, triggerElement?: HTMLElement) => void;
   canApprove: boolean;
   canSuspend: boolean;
+  variant?: "desktop" | "mobile" | "grid";
 }) {
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const actions = getAvailableVendorActions(application, canApprove, canSuspend);
   if (actions.length === 0) return null;
   const reviewActions = actions.filter((action) => ["approve-approved", "approve-provisional", "needs-info", "reject"].includes(action));
   const statusActions = actions.filter((action) => ["restrict", "suspend"].includes(action));
 
+  const triggerId = `seller-manage-trigger-${variant}-${application.id}`;
+
   return (
     <ActionMenu>
       <ActionMenuTrigger asChild>
-        <Button variant="ghost" size="icon" aria-label={`Manage ${getApplicationPrimaryName(application)}`} className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]">
+        <Button
+          ref={triggerRef}
+          id={triggerId}
+          data-seller-trigger={application.id}
+          data-seller-variant={variant}
+          variant="ghost"
+          size="icon"
+          aria-label={`Manage ${getApplicationPrimaryName(application)}`}
+          className="size-9 rounded-md text-[var(--admin-ink-soft)] hover:bg-[var(--admin-surface-mist)] hover:text-[var(--admin-canopy-deep)]"
+        >
           <MoreHorizontal className="size-4" />
         </Button>
       </ActionMenuTrigger>
       <ActionMenuContent>
         <ActionMenuNote>Manage seller</ActionMenuNote>
         <ActionMenuSeparator />
-        {actions.includes("approve-approved") ? <ActionMenuItem onClick={() => onOpenAction("approve-approved", application)}>Approve</ActionMenuItem> : null}
-        {actions.includes("approve-provisional") ? <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application)}>Approve provisional</ActionMenuItem> : null}
-        {actions.includes("needs-info") ? <ActionMenuItem onClick={() => onOpenAction("needs-info", application)}>Needs info</ActionMenuItem> : null}
-        {actions.includes("reject") ? <ActionMenuItem onClick={() => onOpenAction("reject", application)} className="text-rose-700">Reject</ActionMenuItem> : null}
+        {actions.includes("approve-approved") ? <ActionMenuItem onClick={() => onOpenAction("approve-approved", application, triggerRef.current ?? undefined)}>Approve</ActionMenuItem> : null}
+        {actions.includes("approve-provisional") ? <ActionMenuItem onClick={() => onOpenAction("approve-provisional", application, triggerRef.current ?? undefined)}>Approve provisional</ActionMenuItem> : null}
+        {actions.includes("needs-info") ? <ActionMenuItem onClick={() => onOpenAction("needs-info", application, triggerRef.current ?? undefined)}>Needs info</ActionMenuItem> : null}
+        {actions.includes("reject") ? <ActionMenuItem onClick={() => onOpenAction("reject", application, triggerRef.current ?? undefined)} className="text-rose-700">Reject</ActionMenuItem> : null}
         {reviewActions.length > 0 && statusActions.length > 0 ? <ActionMenuSeparator /> : null}
-        {actions.includes("restrict") ? <ActionMenuItem onClick={() => onOpenAction("restrict", application)} className="text-amber-800">Restrict</ActionMenuItem> : null}
-        {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application)} className="text-rose-700">Suspend</ActionMenuItem> : null}
+        {actions.includes("restrict") ? <ActionMenuItem onClick={() => onOpenAction("restrict", application, triggerRef.current ?? undefined)} className="text-amber-800">Restrict</ActionMenuItem> : null}
+        {actions.includes("suspend") ? <ActionMenuItem onClick={() => onOpenAction("suspend", application, triggerRef.current ?? undefined)} className="text-rose-700">Suspend</ActionMenuItem> : null}
       </ActionMenuContent>
     </ActionMenu>
   );

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronLeft, ChevronRight, Download, RefreshCw, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { SellerReviewActionDialog } from "@/components/admin/sellers/VendorApplicationReviewUI";
@@ -10,6 +10,7 @@ import { useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 
 export default function AdminSellersPage() {
   const [viewMode, setViewMode] = useState<"list" | "grid">("list");
+  const lastTriggerRef = useRef<HTMLElement | null>(null);
   const {
     applications,
     pagination,
@@ -41,6 +42,15 @@ export default function AdminSellersPage() {
     handleActionConfirm,
     handleExport,
   } = useSellersList();
+
+  const handleOpenAction = (
+    action: Parameters<typeof openAction>[0],
+    application: Parameters<typeof openAction>[1],
+    triggerElement?: HTMLElement,
+  ) => {
+    lastTriggerRef.current = triggerElement ?? (typeof document !== "undefined" && document.activeElement instanceof HTMLElement ? document.activeElement : null);
+    openAction(action, application);
+  };
 
   useListScrollRestoration("/admin/sellers", !loading);
 
@@ -116,9 +126,9 @@ export default function AdminSellersPage() {
       ) : applications.length > 0 ? (
         <>
           {viewMode === "list" ? (
-            <SellersListTable applications={applications} onOpenAction={openAction} canApprove={canApprove} canSuspend={canSuspend} isRefreshing={isRefreshing} />
+            <SellersListTable applications={applications} onOpenAction={handleOpenAction} canApprove={canApprove} canSuspend={canSuspend} isRefreshing={isRefreshing} />
           ) : (
-            <SellersListGrid applications={applications} onOpenAction={openAction} canApprove={canApprove} canSuspend={canSuspend} isRefreshing={isRefreshing} />
+            <SellersListGrid applications={applications} onOpenAction={handleOpenAction} canApprove={canApprove} canSuspend={canSuspend} isRefreshing={isRefreshing} />
           )}
           {pagination ? (
             <SellerQueuePagination
@@ -146,6 +156,7 @@ export default function AdminSellersPage() {
         application={activeApplication}
         submitting={isActionSubmitting}
         onConfirm={handleActionConfirm}
+        returnFocusRef={lastTriggerRef}
       />
     </div>
   );
