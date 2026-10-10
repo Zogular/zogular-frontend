@@ -32,6 +32,7 @@ import {
   deleteCategoryAttribute,
   getAdminCategories,
   getCategoryAttributes,
+  reorderCategoryAttributes,
   updateAdminCategory,
   updateCategoryAttribute,
 } from "../api/admin-categories";
@@ -342,12 +343,10 @@ export function AdminCategoriesWorkspace() {
     setDirectAttributes(reordered);
 
     try {
-      await updateCategoryAttribute(selectedCategoryId, currentAttr.id, {
-        sortOrder: swapAttr.sortOrder,
-      });
-      await updateCategoryAttribute(selectedCategoryId, swapAttr.id, {
-        sortOrder: currentAttr.sortOrder,
-      });
+      await reorderCategoryAttributes(
+        selectedCategoryId,
+        reordered.map((attribute) => attribute.id),
+      );
       await loadCategoryAttributes(selectedCategoryId);
     } catch {
       // Revert if failed

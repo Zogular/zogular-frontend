@@ -1,5 +1,6 @@
-import { expect, test, type Page, type Route } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page, type Route } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
+import fs from "node:fs";
 import http, { type Server } from "node:http";
 import path from "node:path";
 import {
@@ -123,7 +124,14 @@ test.beforeAll(async () => {
 
   nextServer = spawn(
     process.execPath,
-    [path.join(repoRoot, "node_modules", "next", "dist", "bin", "next"), "start", "-p", String(BROWSER_PORT)],
+    [
+      fs.existsSync(path.join(repoRoot, "node_modules", "next", "dist", "bin", "next"))
+        ? path.join(repoRoot, "node_modules", "next", "dist", "bin", "next")
+        : require.resolve("next/dist/bin/next"),
+      "start",
+      "-p",
+      String(BROWSER_PORT),
+    ],
     {
       cwd: repoRoot,
       env: {
@@ -147,7 +155,7 @@ type CategoryPatchRecord = { id: string; body: Record<string, unknown> };
 
 async function installCategoryRoutes(
   page: Page,
-  mode: { current: BrowserMode },
+  mode: { current: BrowserMode; holdApply?: Promise<void> },
   direct: { current: ReturnType<typeof categoryAttribute>[] },
   categoryPatches: CategoryPatchRecord[] = [],
 ) {
@@ -182,6 +190,7 @@ async function installCategoryRoutes(
     }
     if (pathname === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture-csrf" } } });
     if (pathname === "/admin/categories/category-1/apply-template") {
+      if (mode.holdApply) await mode.holdApply;
       if (mode.current === "422") return route.fulfill({ status: 422, json: { message: "Invalid selection" } });
       if (mode.current === "403") return route.fulfill({ status: 403, json: { message: "Forbidden" } });
       if (mode.current === "unavailable") return route.fulfill({ status: 503, json: { message: "Unavailable" } });
@@ -192,6 +201,40 @@ async function installCategoryRoutes(
     }
     return route.fulfill({ status: 404, json: { status: "fail", message: "Fixture route missing" } });
   });
+}
+
+async function installNetworkContainment(context: BrowserContext) {
+  const violations: string[] = [];
+
+  await context.route("**/*", async (route) => {
+    const url = new URL(route.request().url());
+    if (["data:", "blob:", "about:", "chrome-extension:"].includes(url.protocol)) {
+      return route.continue();
+    }
+    if (url.hostname === "127.0.0.1" || url.hostname === "localhost") {
+      return route.fallback();
+    }
+    violations.push(url.href);
+    return route.abort();
+  });
+
+  await context.routeWebSocket("**/*", (ws) => {
+    try {
+      const url = new URL(ws.url());
+      if (url.hostname !== "127.0.0.1" && url.hostname !== "localhost") {
+        violations.push(ws.url());
+        ws.close();
+        return;
+      }
+    } catch {
+      violations.push(ws.url());
+      ws.close();
+      return;
+    }
+    ws.connectToServer();
+  });
+
+  return violations;
 }
 
 test.afterEach(() => {
@@ -306,7 +349,8 @@ test("real category workspace renders backend templates, refreshes both previews
   const direct = { current: [] as ReturnType<typeof categoryAttribute>[] };
   const categoryPatches: CategoryPatchRecord[] = [];
   const diagnostics: string[] = [];
-  const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
+  const context = await browser.newContext({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
+  const violations = await installNetworkContainment(context);
   const page = await context.newPage();
   page.on("pageerror", (error) => diagnostics.push(error.message));
   await installCategoryRoutes(page, mode, direct, categoryPatches);
@@ -316,20 +360,29 @@ test("real category workspace renders backend templates, refreshes both previews
   await page.getByTitle("Edit Category Details").first().click({ force: true });
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toBeVisible();
   await page.getByLabel("Description").fill("Updated category note");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toHaveCount(0);
   expect(categoryPatches.at(-1)).toEqual({ id: "category-1", body: { description: "Updated category note" } });
 
   await page.getByTitle("Edit Category Details").first().click({ force: true });
-  await page.getByRole("button", { name: "Advanced details" }).click();
-  await page.getByLabel("Category URL").fill("electronics-main");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByRole("button", { name: /Advanced Taxonomy Details/i }).click();
+  await page.getByPlaceholder("solar-energy").fill("electronics-main");
+
+  // Omitted / blank structural-change reason blocks submission and sends no PATCH
+  const patchesBeforeAttempt = categoryPatches.length;
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
+  await expect(page.getByRole("dialog", { name: "Edit Category" })).toBeVisible();
+  expect(categoryPatches.length).toBe(patchesBeforeAttempt);
+
+  // Two-character reason blocks submission, triggers validation toast, and sends no PATCH
+  await page.getByPlaceholder(/Explain why this category structure needs to change/i).fill("ok");
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByText("Add a reason with at least 3 characters.")).toBeVisible();
-  await page.getByLabel("Reason for structure change *").fill("ok");
-  await page.getByRole("button", { name: "Save changes" }).click();
-  await expect(page.getByText("Add a reason with at least 3 characters.")).toBeVisible();
-  await page.getByLabel("Reason for structure change *").fill("SEO");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  expect(categoryPatches.length).toBe(patchesBeforeAttempt);
+
+  // Valid reason sends the expected minimal patch
+  await page.getByPlaceholder(/Explain why this category structure needs to change/i).fill("SEO");
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toHaveCount(0);
   expect(categoryPatches.at(-1)).toEqual({ id: "category-1", body: { slug: "electronics-main", reason: "SEO" } });
 
@@ -345,6 +398,7 @@ test("real category workspace renders backend templates, refreshes both previews
   for (const key of TEMPLATE_KEYS) await expect(dialog.getByRole("button", { name: `${key} template` })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+  await expect(applyTemplate).toBeFocused();
 
   await applyTemplate.click();
   await dialog.getByRole("button", { name: "solar-inverters template" }).click();
@@ -383,30 +437,71 @@ test("real category workspace renders backend templates, refreshes both previews
   await expect(page.getByRole("heading", { name: "Phones" })).toBeVisible();
   await page.getByTitle("Edit Category Details").last().click({ force: true });
   await page.getByLabel("Parent category").selectOption("");
-  await page.getByLabel("Reason for structure change *").fill("Root level");
-  await page.getByRole("button", { name: "Save changes" }).click();
+  await page.getByPlaceholder(/Explain why this category structure needs to change/i).fill("Root level");
+  await page.getByRole("button", { name: "Save Category Changes" }).click();
   await expect(page.getByRole("dialog", { name: "Edit Category" })).toHaveCount(0);
   expect(categoryPatches.at(-1)).toEqual({ id: "category-child", body: { parentId: null, reason: "Root level" } });
 
   await page.screenshot({ path: testInfo.outputPath("category-templates-1440.png"), fullPage: true });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
   expect(diagnostics).toEqual([]);
+  expect(violations).toEqual([]);
   await context.close();
 });
 
 test("category template modal remains contained across approved viewport widths", async ({ browser }, testInfo) => {
+  test.setTimeout(90_000);
   for (const width of [320, 375, 390, 430, 768, 1024, 1280, 1440]) {
     const mode = { current: "success" as BrowserMode };
     const direct = { current: [categoryAttribute("filter-choice"), numberAttribute("filter-number")] as ReturnType<typeof categoryAttribute>[] };
-    const context = await browser.newContext({ viewport: { width, height: 900 } });
+    const context = await browser.newContext({ serviceWorkers: "block", viewport: { width, height: 900 } });
+    const violations = await installNetworkContainment(context);
     const page = await context.newPage();
     await installCategoryRoutes(page, mode, direct);
     await context.addCookies([{ name: "zogular_admin_session", value: "fixture-token", domain: "127.0.0.1", path: "/" }]);
     await page.goto(`${BROWSER_ORIGIN}/admin/categories`, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Apply Template" }).first().click();
-    await expect(page.getByRole("dialog", { name: "Category template library" })).toBeVisible();
+    const applyBtn = page.getByRole("button", { name: "Apply Template" }).first();
+    await applyBtn.click();
+    const dialog = page.getByRole("dialog", { name: "Category template library" });
+    await expect(dialog).toBeVisible();
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-    await page.getByRole("button", { name: "Close category template library" }).click();
+
+    const bbox = await dialog.boundingBox();
+    expect(bbox).toBeTruthy();
+    expect(bbox!.x).toBeGreaterThanOrEqual(0);
+    expect(bbox!.x + bbox!.width).toBeLessThanOrEqual(width);
+    expect(bbox!.y).toBeGreaterThanOrEqual(0);
+    expect(bbox!.y + bbox!.height).toBeLessThanOrEqual(900);
+    expect(bbox!.height).toBeGreaterThan(0);
+    expect(await dialog.evaluate((el) => el.contains(document.activeElement))).toBe(true);
+    await expect(dialog.getByRole("button", { name: "Close category template library" })).toBeVisible();
+
+    // Forward wrapping from final focusable control and reverse wrapping from first
+    const focusables = dialog.locator('button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])').filter({ visible: true });
+    const firstControl = focusables.first();
+    const lastControl = focusables.last();
+
+    await lastControl.focus();
+    await page.keyboard.press("Tab");
+    expect(await firstControl.evaluate((el) => el === document.activeElement)).toBe(true);
+
+    await firstControl.focus();
+    await page.keyboard.press("Shift+Tab");
+    expect(await lastControl.evaluate((el) => el === document.activeElement)).toBe(true);
+
+    await page.screenshot({ path: testInfo.outputPath(`template-modal-open-${width}.png`), fullPage: true });
+
+    await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
+    await expect(applyBtn).toBeFocused();
+
+    // Repeated open/close and close button dismissal with focus return
+    await applyBtn.click();
+    await expect(dialog).toBeVisible();
+    await dialog.getByRole("button", { name: "Close category template library" }).click();
+    await expect(dialog).toBeHidden();
+    await expect(applyBtn).toBeFocused();
+
     await page.getByRole("button", { name: "Buyer Filters" }).click();
     await expect(page.getByRole("heading", { name: "Buyer filter preview" })).toBeVisible();
     await expect(page.getByRole("checkbox", { name: "One" }).first()).toBeVisible();
@@ -426,6 +521,141 @@ test("category template modal remains contained across approved viewport widths"
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath(`category-templates-${width}.png`), fullPage: true });
+    expect(violations).toEqual([]);
     await context.close();
   }
+});
+
+test("category template library falls back to taxonomy search when initiating trigger is hidden or removed", async ({ browser }) => {
+  const mode = { current: "success" as BrowserMode };
+  const direct = { current: [] as ReturnType<typeof categoryAttribute>[] };
+  const context = await browser.newContext({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
+  const violations = await installNetworkContainment(context);
+  const page = await context.newPage();
+  await installCategoryRoutes(page, mode, direct);
+  await context.addCookies([{ name: "zogular_admin_session", value: "fixture-token", domain: "127.0.0.1", path: "/" }]);
+  await page.goto(`${BROWSER_ORIGIN}/admin/categories`, { waitUntil: "networkidle" });
+
+  const applyBtn = page.getByRole("button", { name: "Apply Template" }).first();
+  await expect(applyBtn).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Category template library" });
+
+  // 1. Hidden trigger fallback
+  await applyBtn.click();
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => {
+    const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.includes("Apply Template"));
+    if (btn) btn.style.display = "none";
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  const fallbackInput = page.getByPlaceholder("Search taxonomy (press Esc to clear)...");
+  await expect(fallbackInput).toBeFocused();
+
+  // Restore trigger visibility
+  await page.evaluate(() => {
+    const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.includes("Apply Template"));
+    if (btn) btn.style.display = "";
+  });
+  await expect(applyBtn).toBeVisible();
+
+  // 2. Removed trigger fallback
+  await applyBtn.click();
+  await expect(dialog).toBeVisible();
+  await page.evaluate(() => {
+    const btn = Array.from(document.querySelectorAll("button")).find((b) => b.textContent?.includes("Apply Template"));
+    if (btn) btn.remove();
+  });
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(fallbackInput).toBeFocused();
+
+  expect(violations).toEqual([]);
+  await context.close();
+});
+
+test("category template library blocks dismissal while applying and recovers properly on failure and success", async ({ browser }) => {
+  const mode = { current: "success" as BrowserMode, holdApply: undefined as Promise<void> | undefined };
+  const direct = { current: [] as ReturnType<typeof categoryAttribute>[] };
+  const context = await browser.newContext({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
+  const violations = await installNetworkContainment(context);
+  const page = await context.newPage();
+  await installCategoryRoutes(page, mode, direct);
+  await context.addCookies([{ name: "zogular_admin_session", value: "fixture-token", domain: "127.0.0.1", path: "/" }]);
+  await page.goto(`${BROWSER_ORIGIN}/admin/categories`, { waitUntil: "networkidle" });
+
+  const applyBtn = page.getByRole("button", { name: "Apply Template" }).first();
+  await expect(applyBtn).toBeVisible();
+  const dialog = page.getByRole("dialog", { name: "Category template library" });
+
+  // 1. Failure case: held request blocks dismissal, retains error on failure, and permits dismissal
+  await applyBtn.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "solar-inverters template" }).click();
+
+  let releaseFailure: (() => void) | null = null;
+  const holdFailure = new Promise<void>((resolve) => { releaseFailure = resolve; });
+  mode.holdApply = holdFailure;
+  mode.current = "422";
+
+  await dialog.getByRole("button", { name: "Apply selected" }).click();
+
+  const closeBtn = dialog.getByRole("button", { name: "Close category template library" });
+  const cancelBtn = dialog.getByRole("button", { name: "Cancel" });
+  await expect(closeBtn).toBeDisabled();
+  await expect(cancelBtn).toBeDisabled();
+  await expect(dialog.getByRole("button", { name: "Applying…" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Applying…" })).toBeDisabled();
+
+  // Escape and backdrop dismissal are blocked while applying
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+  await page.mouse.click(10, 10);
+  await expect(dialog).toBeVisible();
+
+  // Release failure response
+  releaseFailure!();
+
+  // Truthful error is displayed and controls are re-enabled
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(dialog.getByRole("alert")).toContainText("Choose at least one available attribute and try again.");
+  await expect(closeBtn).toBeEnabled();
+  await expect(cancelBtn).toBeEnabled();
+
+  // Dismissal works after failure settles and returns focus to trigger
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(applyBtn).toBeFocused();
+
+  // 2. Success case: held request blocks dismissal, closes modal on release, refreshes attributes, and returns focus
+  await applyBtn.click();
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole("button", { name: "solar-inverters template" }).click();
+
+  let releaseSuccess: (() => void) | null = null;
+  const holdSuccess = new Promise<void>((resolve) => { releaseSuccess = resolve; });
+  mode.holdApply = holdSuccess;
+  mode.current = "success";
+
+  await dialog.getByRole("button", { name: "Apply selected" }).click();
+
+  await expect(closeBtn).toBeDisabled();
+  await expect(cancelBtn).toBeDisabled();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeVisible();
+
+  // Release success response
+  releaseSuccess!();
+
+  // Dialog closes upon success
+  await expect(dialog).toBeHidden();
+
+  // Refreshed attributes appear in workspace
+  await expect(page.getByText("server-model").first()).toBeVisible();
+
+  // Initiating trigger receives focus return
+  await expect(applyBtn).toBeFocused();
+
+  expect(violations).toEqual([]);
+  await context.close();
 });

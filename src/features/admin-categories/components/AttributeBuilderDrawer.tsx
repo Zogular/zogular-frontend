@@ -453,9 +453,11 @@ export function AttributeBuilderDrawer({
 
               <div className="space-y-2">
                 {/* Required Toggle */}
-                <div
+                <button
+                  type="button"
+                  aria-pressed={isRequired}
                   onClick={() => setIsRequired(!isRequired)}
-                  className="flex items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 cursor-pointer hover:border-stone-300 transition-all"
+                  className="flex w-full items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 text-left cursor-pointer hover:border-stone-300 transition-all"
                 >
                   <div className="pr-3">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
@@ -475,12 +477,14 @@ export function AttributeBuilderDrawer({
                   >
                     {isRequired && <Check className="size-3.5" />}
                   </div>
-                </div>
+                </button>
 
                 {/* Variation toggle */}
-                <div
+                <button
+                  type="button"
+                  aria-pressed={isVariation}
                   onClick={() => setIsVariation(!isVariation)}
-                  className="flex items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 cursor-pointer hover:border-stone-300 transition-all"
+                  className="flex w-full items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 text-left cursor-pointer hover:border-stone-300 transition-all"
                 >
                   <div className="pr-3">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
@@ -501,12 +505,14 @@ export function AttributeBuilderDrawer({
                   >
                     {isVariation && <Check className="size-3.5" />}
                   </div>
-                </div>
+                </button>
 
                 {/* Buyer filter toggle */}
-                <div
+                <button
+                  type="button"
+                  aria-pressed={isFilterable}
                   onClick={() => setIsFilterable(!isFilterable)}
-                  className="flex items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 cursor-pointer hover:border-stone-300 transition-all"
+                  className="flex w-full items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 text-left cursor-pointer hover:border-stone-300 transition-all"
                 >
                   <div className="pr-3">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
@@ -527,12 +533,14 @@ export function AttributeBuilderDrawer({
                   >
                     {isFilterable && <Check className="size-3.5" />}
                   </div>
-                </div>
+                </button>
 
                 {/* Quick choice toggle */}
-                <div
+                <button
+                  type="button"
+                  aria-pressed={isSlicer}
                   onClick={() => setIsSlicer(!isSlicer)}
-                  className="flex items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 cursor-pointer hover:border-stone-300 transition-all"
+                  className="flex w-full items-start justify-between rounded-xl border border-stone-200 bg-[#fffdfa] p-3 text-left cursor-pointer hover:border-stone-300 transition-all"
                 >
                   <div className="pr-3">
                     <div className="flex items-center gap-1.5 text-xs font-bold text-stone-900">
@@ -553,7 +561,7 @@ export function AttributeBuilderDrawer({
                   >
                     {isSlicer && <Check className="size-3.5" />}
                   </div>
-                </div>
+                </button>
               </div>
             </div>
 
