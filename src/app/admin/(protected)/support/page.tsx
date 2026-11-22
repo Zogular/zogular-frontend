@@ -197,9 +197,9 @@ export default function AdminSupportPage() {
               ))}
             </div>
           ) : tickets.length === 0 ? <AdminEmptyState title="No support tickets match this view" description="Change filters or search terms to widen the inbox." /> : tickets.map((ticket) => (
-            <article key={ticket.id} className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-              <div className="flex items-start justify-between gap-3"><div className="min-w-0"><p className="truncate font-black text-zinc-950">{ticket.subject}</p><p className="mt-1 text-xs font-semibold text-zinc-500">{ticket.seller.displayName}</p></div><AdminStatusBadge tone={statusTone[ticket.status]}>{toTitleCase(ticket.status.replace('-', ' '))}</AdminStatusBadge></div>
-              <div className="mt-3 flex items-center justify-between gap-3"><p className="text-xs font-medium text-zinc-500">Updated {formatAdminDateTime(ticket.updatedAt)}</p><Button variant="outline" onClick={() => openTicket(ticket.id)} className="h-9 rounded-xl text-xs font-black">Open</Button></div>
+            <article key={ticket.id} className="min-w-0 rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+              <div className="flex items-start justify-between gap-3"><div className="min-w-0 flex-1"><p className="truncate font-black text-zinc-950">{ticket.subject}</p><p className="mt-1 truncate text-xs font-semibold text-zinc-500">{ticket.seller.displayName}</p></div><AdminStatusBadge tone={statusTone[ticket.status]} className="shrink-0">{toTitleCase(ticket.status.replace('-', ' '))}</AdminStatusBadge></div>
+              <div className="mt-3 flex items-center justify-between gap-3"><p className="min-w-0 text-xs font-medium text-zinc-500">Updated {formatAdminDateTime(ticket.updatedAt)}</p><Button variant="outline" onClick={() => openTicket(ticket.id)} className="h-9 shrink-0 rounded-xl text-xs font-black">Open</Button></div>
             </article>
           ))}
         </div>
@@ -278,6 +278,7 @@ export default function AdminSupportPage() {
       </section>
 
       <AdminDetailSheet
+        contained
         open={Boolean(selectedTicketId)}
         onOpenChange={(open) => {
           if (!open) {
@@ -289,8 +290,8 @@ export default function AdminSupportPage() {
         description={selectedTicketDetail ? `${selectedTicketDetail.id} · ${selectedTicketDetail.seller.storeName || selectedTicketDetail.seller.displayName}` : "Support ticket details"}
       >
         {detailLoading ? (
-          <div className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-2">
+          <div className="min-w-0 space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2">
               <div className="h-24 animate-pulse rounded-3xl bg-zinc-100" />
               <div className="h-24 animate-pulse rounded-3xl bg-zinc-100" />
             </div>
@@ -298,56 +299,56 @@ export default function AdminSupportPage() {
             <div className="h-32 animate-pulse rounded-3xl bg-zinc-100" />
           </div>
         ) : selectedTicketDetail ? (
-          <div className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-2">
-              <div className="rounded-2xl bg-indigo-50 p-4">
+          <div className="min-w-0 space-y-6">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="min-w-0 rounded-2xl bg-indigo-50 p-4">
                 <p className="text-[10px] font-black uppercase text-indigo-700">Category</p>
-                <p className="text-lg font-black text-zinc-950">{toTitleCase(selectedTicketDetail.category)}</p>
+                <p className="break-words [overflow-wrap:anywhere] text-lg font-black text-zinc-950">{toTitleCase(selectedTicketDetail.category)}</p>
               </div>
-              <div className="rounded-2xl bg-amber-50 p-4">
+              <div className="min-w-0 rounded-2xl bg-amber-50 p-4">
                 <p className="text-[10px] font-black uppercase text-amber-700">Priority</p>
                 <div className="mt-2"><AdminStatusBadge tone={priorityTone[selectedTicketDetail.priority]}>{toTitleCase(selectedTicketDetail.priority)}</AdminStatusBadge></div>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-zinc-100 bg-white p-4">
+            <div className="min-w-0 rounded-3xl border border-zinc-100 bg-white p-4">
               <h3 className="text-sm font-black text-zinc-950">Seller Context</h3>
-              <div className="mt-3 grid gap-2 text-sm text-zinc-700">
-                <p><strong>Name:</strong> {selectedTicketDetail.seller.displayName}</p>
-                <p><strong>Email:</strong> {selectedTicketDetail.seller.email}</p>
-                <p><strong>Store:</strong> {selectedTicketDetail.seller.storeName || "N/A"}</p>
-                <p><strong>Status:</strong> {selectedTicketDetail.seller.applicationStatus}</p>
+              <div className="mt-3 grid min-w-0 gap-2 text-sm text-zinc-700">
+                <p className="min-w-0 break-words [overflow-wrap:anywhere]"><strong>Name:</strong> {selectedTicketDetail.seller.displayName}</p>
+                <p className="min-w-0 break-words [overflow-wrap:anywhere]"><strong>Email:</strong> {selectedTicketDetail.seller.email}</p>
+                <p className="min-w-0 break-words [overflow-wrap:anywhere]"><strong>Store:</strong> {selectedTicketDetail.seller.storeName || "N/A"}</p>
+                <p className="min-w-0 break-words [overflow-wrap:anywhere]"><strong>Status:</strong> {selectedTicketDetail.seller.applicationStatus}</p>
               </div>
             </div>
 
-            <div className="rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
+            <div className="min-w-0 rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
               <h3 className="text-sm font-black text-zinc-950">Reply</h3>
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport} className="mt-3 min-h-28 rounded-2xl border-zinc-200 bg-white" />
-              <Button onClick={sendReply} disabled={!reply.trim() || isMutating || !canReplySupport} className="mt-3 rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
-                <Send className="mr-2 h-4 w-4" /> Send Reply
+              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport} className="mt-3 min-h-28 w-full min-w-0 rounded-2xl border-zinc-200 bg-white" />
+              <Button onClick={sendReply} disabled={!reply.trim() || isMutating || !canReplySupport} className="mt-3 w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700 sm:w-auto">
+                <Send className="mr-2 h-4 w-4 shrink-0" /> Send Reply
               </Button>
             </div>
 
-            <div className="grid gap-2 md:grid-cols-3">
-              <Button disabled={isMutating || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="rounded-xl font-black">
-                <MessageCircle className="mr-2 h-4 w-4" /> Mark Waiting Support
+            <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
+              <Button disabled={isMutating || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl py-2 text-center leading-snug font-black sm:w-auto sm:flex-1">
+                <MessageCircle className="mr-2 h-4 w-4 shrink-0" /> Mark Waiting Support
               </Button>
-              <Button disabled={isMutating || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700">
-                <TicketCheck className="mr-2 h-4 w-4" /> Mark Resolved
+              <Button disabled={isMutating || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-emerald-600 py-2 text-center leading-snug font-black text-white hover:bg-emerald-700 sm:w-auto sm:flex-1">
+                <TicketCheck className="mr-2 h-4 w-4 shrink-0" /> Mark Resolved
               </Button>
-              <Button disabled={isMutating || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="rounded-xl bg-zinc-950 font-black text-white hover:bg-zinc-800">
+              <Button disabled={isMutating || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-zinc-950 py-2 text-center leading-snug font-black text-white hover:bg-zinc-800 sm:w-auto sm:flex-1">
                 Close Ticket
               </Button>
             </div>
 
-            <div>
+            <div className="min-w-0">
               <h3 className="text-sm font-black text-zinc-950">Conversation</h3>
-              <div className="mt-3 space-y-3">
+              <div className="mt-3 min-w-0 space-y-3">
                 {selectedTicketDetail.messages?.map((message) => (
-                  <div key={message.id} className="rounded-2xl border border-zinc-100 bg-white p-3">
-                    <p className="text-sm font-black text-zinc-950">{message.senderName}</p>
-                    <p className="text-xs font-bold text-zinc-500">{toTitleCase(message.senderType)} · {formatAdminDateTime(message.createdAt)}</p>
-                    <p className="mt-2 text-sm text-zinc-600 whitespace-pre-wrap">{message.body}</p>
+                  <div key={message.id} className="min-w-0 rounded-2xl border border-zinc-100 bg-white p-3">
+                    <p className="min-w-0 break-words [overflow-wrap:anywhere] text-sm font-black text-zinc-950">{message.senderName}</p>
+                    <p className="min-w-0 break-words [overflow-wrap:anywhere] text-xs font-bold text-zinc-500">{toTitleCase(message.senderType)} · {formatAdminDateTime(message.createdAt)}</p>
+                    <p className="mt-2 min-w-0 break-words [overflow-wrap:anywhere] whitespace-pre-wrap text-sm text-zinc-600">{message.body}</p>
                   </div>
                 ))}
               </div>
