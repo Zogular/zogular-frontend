@@ -237,6 +237,7 @@ export function AdminProductModerationView({
   isSubmitting,
   contentPolicyIssues,
   hasSnapshotConflict,
+  backHref = "/admin/products",
 }: {
   product: SellerProductListing;
   moderationNote: string;
@@ -245,6 +246,7 @@ export function AdminProductModerationView({
   isSubmitting: boolean;
   contentPolicyIssues: readonly ProductContentPolicyIssue[];
   hasSnapshotConflict: boolean;
+  backHref?: string;
 }) {
   const [actionDialog, setActionDialog] = useState<{ isOpen: boolean; action: ProductModerationAction | null }>({
     isOpen: false,
@@ -279,7 +281,7 @@ export function AdminProductModerationView({
       {/* 1. Header Area */}
       <div className="flex flex-col gap-4 rounded-3xl border border-white/70 bg-[#f4fbf6]/90 p-5 shadow-[0_18px_50px_rgba(15,23,42,0.06)] backdrop-blur-2xl md:flex-row md:items-center md:justify-between md:p-6">
         <div className="flex min-w-0 items-center gap-3 md:gap-4">
-          <Link href="/admin/products">
+          <Link href={backHref}>
             <Button aria-label="Back to products" type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-2xl border border-white/70 bg-white/80 shadow-sm transition-all hover:bg-white hover:shadow-md md:h-10 md:w-10">
               <ArrowLeft className="h-4 w-4 md:h-4 md:w-4" />
             </Button>

@@ -13,6 +13,12 @@ import {
 
 const APP_BASE_URL = process.env.PACKAGE_2B_BASE_URL;
 const FIXTURE_API_URL = process.env.PACKAGE_2B_FIXTURE_API_URL ?? "http://127.0.0.1:47823/api/v1";
+
+if (process.env.PLAYWRIGHT_CHANNEL) {
+  test.use({
+    channel: process.env.PLAYWRIGHT_CHANNEL,
+  });
+}
 const FIXTURE_ORIGIN = new URL(FIXTURE_API_URL).origin;
 const FIXTURE_PORT = Number(new URL(FIXTURE_API_URL).port);
 const SELLER_PRODUCT_ID = "11111111-1111-4111-8111-111111111111";
@@ -54,6 +60,14 @@ const fixtureState: FixtureState = createFixtureState();
 test.describe.configure({ mode: "serial" });
 
 test.beforeAll(async () => {
+  for (const value of [FIXTURE_API_URL, APP_BASE_URL]) {
+    if (!value) continue;
+    const url = new URL(value);
+    if (url.protocol !== "http:" || !["127.0.0.1", "localhost"].includes(url.hostname) ||
+      url.username || url.password) {
+      throw new Error("Product policy browser fixtures require a local HTTP URL.");
+    }
+  }
   if (!Number.isInteger(FIXTURE_PORT) || FIXTURE_PORT <= 0) {
     throw new Error("PACKAGE_2B_FIXTURE_API_URL must include an explicit local port.");
   }
@@ -250,14 +264,43 @@ test("create-and-submit source creates one draft and submits that exact ID", () 
 test.describe("controlled fixture seller and admin recovery", () => {
   test.describe.configure({ timeout: 60_000 });
   test.skip(!APP_BASE_URL, "PACKAGE_2B_BASE_URL is required for controlled browser QA.");
+  test.use({ serviceWorkers: "block" });
 
-  test.beforeEach(async ({ page }) => {
-    await page.route("https://va.vercel-scripts.com/**", async (route) => {
-      await route.fulfill({
-        status: 204,
-        contentType: "application/javascript",
-        body: "",
-      });
+  test.beforeEach(async ({ context }) => {
+    const appOrigin = APP_BASE_URL ? new URL(APP_BASE_URL).origin : "";
+    // Avoid booting the PWA registry in this fixture without allowing a worker.
+    await context.addInitScript(() => {
+      Reflect.deleteProperty(Navigator.prototype, "serviceWorker");
+    });
+    await context.route("**/*", async (route) => {
+      const url = route.request().url();
+      if (url.startsWith("data:") || url.startsWith("blob:")) {
+        await route.continue();
+        return;
+      }
+      const { origin, pathname } = new URL(url);
+      if (origin === "https://va.vercel-scripts.com" ||
+        (origin === appOrigin && pathname.startsWith("/_vercel/"))) {
+        await route.fulfill({
+          status: 204,
+          contentType: "application/javascript",
+          body: "",
+        });
+        return;
+      }
+      if ((appOrigin && origin === appOrigin) || origin === FIXTURE_ORIGIN) {
+        await route.continue();
+        return;
+      }
+      await route.abort("blockedbyclient");
+    });
+    await context.routeWebSocket("**/*", (route) => {
+      const origin = new URL(route.url().replace(/^ws/, "http")).origin;
+      if (origin === appOrigin || origin === FIXTURE_ORIGIN) {
+        route.connectToServer();
+      } else {
+        void route.close({ code: 1008, reason: "Non-loopback WebSocket blocked" });
+      }
     });
   });
 
@@ -716,6 +759,7 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
   }
 
   if (route === "/auth/csrf-token" && method === "GET") {
+    response.setHeader("Set-Cookie", "_csrf=fixture-csrf-token; Path=/; HttpOnly; SameSite=Lax");
     response.setHeader("X-CSRF-Token", "fixture-csrf-token");
     writeJson(response, 200, { status: "success", data: { csrfToken: "fixture-csrf-token" } });
     return;
@@ -733,7 +777,7 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
               lastName: "Admin",
               email: "admin@fixture.invalid",
               role: "SUPER_ADMIN",
-              permissions: ["view_products", "moderate_products"],
+              permissions: ["access_admin_panel", "view_all_products", "approve_products"],
               authStrength: "mfa",
             }
           : {
@@ -937,8 +981,21 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
   }
 
   if (route === "/admin/products" && method === "GET") {
-    const products = Array.from(fixtureState.adminProducts.values());
-    writeJson(response, 200, { status: "success", results: products.length, data: { products } });
+    const excludeDrafts = url.searchParams.get("excludeDrafts") === "true";
+    const allProducts = Array.from(fixtureState.adminProducts.values()).filter((p) =>
+      excludeDrafts ? p.status !== "DRAFT" : true,
+    );
+    const page = Math.max(1, Number(url.searchParams.get("page") ?? 1));
+    const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") ?? 20)));
+    const products = allProducts.slice((page - 1) * limit, page * limit);
+    const total = allProducts.length;
+    const pages = total === 0 ? 0 : Math.ceil(total / limit);
+    writeJson(response, 200, {
+      status: "success",
+      results: products.length,
+      pagination: { total, page, limit, pages },
+      data: { products },
+    });
     return;
   }
 

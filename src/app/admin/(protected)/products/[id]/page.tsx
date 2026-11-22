@@ -1,6 +1,6 @@
 "use client";
 
-import { useParams } from "next/navigation";
+import { useParams, useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { ShieldAlert } from "lucide-react";
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { AdminProductModerationView } from "./_components/AdminProductModerationView";
 import { adminProductsApi } from "@/services/admin/products";
 import { adminIdentityHasPermission } from "@/services/admin/session";
+import { validateAdminProductsReturnTarget } from "@/features/admin-products/lib/product-list-state";
 
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 import type { SellerProductListing } from "@/services/seller-catalog";
@@ -21,7 +22,9 @@ import {
 
 export default function AdminProductModerationPage() {
   const params = useParams<{ id: string }>();
+  const searchParams = useSearchParams();
   const productId = decodeURIComponent(params.id);
+  const backHref = validateAdminProductsReturnTarget(searchParams.get("returnTo"));
   const [product, setProduct] = useState<SellerProductListing | null>(null);
   const [loading, setLoading] = useState(true);
   const [moderationNote, setModerationNote] = useState("");
@@ -128,7 +131,7 @@ export default function AdminProductModerationPage() {
       <div className="mx-auto max-w-xl rounded-3xl border border-red-100 bg-red-50 p-6 text-center shadow-[0_18px_50px_rgba(15,23,42,0.08)]">
         <ShieldAlert className="mx-auto mb-3 h-9 w-9 text-red-500" />
         <h1 className="text-xl font-black text-red-900">Product not found</h1>
-        <Link href="/admin/products">
+        <Link href={backHref}>
           <Button className="mt-5 h-11 rounded-xl bg-red-600 font-bold text-white hover:bg-red-700">Back to Moderation Queue</Button>
         </Link>
       </div>
@@ -145,6 +148,7 @@ export default function AdminProductModerationPage() {
         isSubmitting={isSubmitting}
         contentPolicyIssues={contentPolicyIssues}
         hasSnapshotConflict={hasSnapshotConflict}
+        backHref={backHref}
       />
     </div>
   );

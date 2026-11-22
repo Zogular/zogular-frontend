@@ -11,6 +11,13 @@ import {
   type ProductModerationSignals,
   type ProductModerationStatus,
 } from "@/services/product-moderation";
+import { parseAdminProductListResponse } from "@/features/admin-products/lib/product-list-contract";
+import type {
+  AdminProductListResponse,
+  AdminProductQueueStatusFilter,
+  AdminProductSortBy,
+  AdminProductSortOrder,
+} from "@/features/admin-products/types/admin-product-list.types";
 
 export type AdminProductStatus = ProductModerationStatus;
 
@@ -42,7 +49,57 @@ interface AdminBulkModerationResult {
   count: number;
 }
 
+export interface FetchAdminProductsPageInput {
+  page?: number;
+  limit?: number;
+  search?: string;
+  status?: AdminProductQueueStatusFilter;
+  sortBy?: AdminProductSortBy;
+  sortOrder?: AdminProductSortOrder;
+}
+
 export const adminProductsApi = {
+  /**
+   * Fetches a single bounded server page from `/admin/products` matching PR #80.
+   * Uses `excludeDrafts=true`, `statusMode=exact` when an explicit status is set,
+   * and strict Zod response validation without reading or writing seller-local enrichment.
+   */
+  async fetchProductsPage(
+    params: FetchAdminProductsPageInput = {},
+    options: { signal?: AbortSignal } = {},
+  ): Promise<AdminProductListResponse> {
+    const page = Number.isInteger(params.page) && (params.page ?? 0) > 0 ? params.page! : 1;
+    const rawLimit = Number.isInteger(params.limit) ? params.limit! : 20;
+    const limit = Math.min(100, Math.max(1, rawLimit));
+    const trimmedSearch = params.search?.trim().slice(0, 120);
+
+    const query: Record<string, string | number | boolean | undefined> = {
+      page,
+      limit,
+      excludeDrafts: "true",
+      sortBy: params.sortBy ?? "createdAt",
+      sortOrder: params.sortOrder ?? "desc",
+    };
+
+    if (params.status && params.status !== "all") {
+      query.status = params.status;
+      query.statusMode = "exact";
+    }
+
+    if (trimmedSearch) {
+      query.search = trimmedSearch;
+    }
+
+    const response = await apiClient<unknown>("/admin/products", {
+      method: "GET",
+      query,
+      cache: "no-store",
+      signal: options.signal,
+    });
+
+    return parseAdminProductListResponse(response, { excludeDrafts: true });
+  },
+
   async fetchProducts(): Promise<AdminProductRecord[]> {
     const products = await fetchAdminCatalogProducts();
     return products
@@ -54,7 +111,7 @@ export const adminProductsApi = {
   async fetchProductsCount(): Promise<number> {
     const response = await apiClient<{ pagination?: { total: number } }>("/admin/products", {
       method: "GET",
-      query: { page: 1, limit: 1 },
+      query: { page: 1, limit: 1, excludeDrafts: "true" },
       cache: "no-store",
     });
     return response.pagination?.total ?? 0;
