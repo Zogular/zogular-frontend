@@ -1,4 +1,4 @@
-import { apiClient } from "@/services/api";
+import { ApiError, apiClient } from "@/services/api";
 import { type ProductAttributeInput } from "@/services/categories-api";
 import {
   type ProductModerationAction,
@@ -268,12 +268,7 @@ type BackendVendorProduct = {
 type BackendListResponse = {
   status: string;
   results: number;
-  pagination?: {
-    total: number;
-    page: number;
-    limit: number;
-    pages: number;
-  };
+  pagination: SellerProductPagination;
   data: {
     products: BackendVendorProduct[];
   };
@@ -316,6 +311,8 @@ const SELLER_PRODUCT_ENRICHMENT_STORAGE_KEY = "zogular-seller-product-enrichment
 const DEFAULT_SELLER = { name: "Zogular Store", slug: "zogular-official", verified: true };
 const SELLER_PRODUCTS_QUERY_LIMIT = 100;
 const SELLER_PRODUCTS_MAX_METRICS_PAGES = 100;
+const ADMIN_PRODUCTS_PAGE_LIMIT = 100;
+const ADMIN_PRODUCTS_LEGACY_CAP = 500;
 
 export type SellerCatalogCollectionErrorCode =
   | "malformed-pagination"
@@ -613,13 +610,65 @@ function assertCompleteCatalogPage(
 }
 
 export async function fetchAdminCatalogProducts(): Promise<SellerProductListing[]> {
-  const response = await apiClient<BackendListResponse>("/admin/products", {
-    method: "GET",
-    query: { page: 1, limit: 500 },
-    cache: "no-store",
-  });
+  const products: BackendVendorProduct[] = [];
+  const seenIds = new Set<string>();
+  let expectedCount: number | undefined;
 
-  return response.data.products.map(normalizeBackendSellerProduct);
+  // Preserve the legacy queue's first 500 rows in server order.
+  for (let offset = 0; offset < ADMIN_PRODUCTS_LEGACY_CAP; offset += ADMIN_PRODUCTS_PAGE_LIMIT) {
+    const page = offset / ADMIN_PRODUCTS_PAGE_LIMIT + 1;
+    const response = await apiClient<BackendListResponse>("/admin/products", {
+      method: "GET",
+      query: { page, limit: ADMIN_PRODUCTS_PAGE_LIMIT },
+      cache: "no-store",
+    });
+    const pagination = response?.pagination;
+    const rows = response?.data?.products;
+
+    if (
+      response?.status !== "success" ||
+      !pagination ||
+      pagination.page !== page ||
+      pagination.limit !== ADMIN_PRODUCTS_PAGE_LIMIT ||
+      !Number.isSafeInteger(pagination.total) ||
+      pagination.total < offset ||
+      pagination.pages !== Math.ceil(pagination.total / ADMIN_PRODUCTS_PAGE_LIMIT) ||
+      !Array.isArray(rows) ||
+      response.results !== rows.length ||
+      rows.length !== Math.min(ADMIN_PRODUCTS_PAGE_LIMIT, pagination.total - offset)
+    ) {
+      throw new ApiError("The product queue returned inconsistent pagination. Try again.", 502);
+    }
+
+    // Count changes beyond the cap do not change the promised window size.
+    const cappedCount = Math.min(pagination.total, ADMIN_PRODUCTS_LEGACY_CAP);
+    expectedCount ??= cappedCount;
+    if (cappedCount !== expectedCount) {
+      throw new ApiError("The product queue changed while loading. Try again.", 502);
+    }
+
+    for (const row of rows) {
+      if (
+        typeof row?.id !== "string" || !row.id.trim() ||
+        typeof row.slug !== "string" || !row.slug.trim() ||
+        typeof row.title !== "string" ||
+        !Number.isFinite(row.price) ||
+        typeof row.updatedAt !== "string" || !Number.isFinite(Date.parse(row.updatedAt)) ||
+        (row.status !== "DRAFT" && normalizeBackendStatus(row.status) === "draft")
+      ) {
+        throw new ApiError("The product queue returned an invalid row. Try again.", 502);
+      }
+      if (seenIds.has(row.id)) {
+        throw new ApiError("The product queue returned repeated rows. Try again.", 502);
+      }
+      seenIds.add(row.id);
+      products.push(row);
+    }
+
+    if (page >= pagination.pages) break;
+  }
+
+  return products.map(normalizeBackendSellerProduct);
 }
 
 export async function fetchSellerCatalogProductById(
