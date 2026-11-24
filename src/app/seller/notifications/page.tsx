@@ -3,8 +3,11 @@
 import Link from "next/link";
 import { Bell, Inbox, LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useSellerCapability } from "@/components/seller/SellerApplicationContext";
 
 export default function SellerNotificationsPage() {
+  const canReceiveOrders = useSellerCapability("canReceiveOrders");
+
   return (
     <div className="mx-auto flex min-w-0 max-w-250 animate-in flex-col gap-6 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:pb-12">
       <div>
@@ -36,12 +39,14 @@ export default function SellerNotificationsPage() {
               Contact support
             </Link>
           </Button>
-          <Button asChild variant="outline" className="h-11 rounded-xl border-zinc-200 bg-white px-5 text-sm font-bold text-zinc-700 hover:bg-zinc-50">
-            <Link href="/seller/orders">
-              <Bell className="mr-2 h-4 w-4" />
-              View orders
-            </Link>
-          </Button>
+          {canReceiveOrders ? (
+            <Button asChild variant="outline" className="h-11 rounded-xl border-zinc-200 bg-white px-5 text-sm font-bold text-zinc-700 hover:bg-zinc-50">
+              <Link href="/seller/orders">
+                <Bell className="mr-2 h-4 w-4" />
+                View orders
+              </Link>
+            </Button>
+          ) : null}
         </div>
       </section>
     </div>
