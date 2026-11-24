@@ -466,7 +466,6 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           </Link>
           <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex h-8 w-8 items-center justify-center rounded-full text-[#80b898] transition-colors hover:bg-white/5 hover:text-white">
             <Bell className="h-5 w-5" />
-            <span className="absolute right-1.5 top-1 h-2 w-2 rounded-full bg-[#FF6B00] border-2 border-[#0A1A10]" />
           </Link>
         </div>
       </header>
@@ -523,15 +522,15 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         <div className={cn("space-y-2 border-t border-[#143320] p-4", sidebarCollapsed && "px-3")}>
           <Link
             href="/"
-            aria-label="View public store"
-            title={sidebarCollapsed ? "View Public Store" : undefined}
+            aria-label="Visit marketplace"
+            title={sidebarCollapsed ? "Visit marketplace" : undefined}
             className={cn(
               "flex h-10 w-full items-center justify-center rounded-xl bg-[#112E1C] text-xs font-bold text-[#80b898] transition-colors hover:bg-[#183d26] hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 focus-visible:ring-offset-[#0A1A10]",
               sidebarCollapsed ? "gap-0 px-0" : "gap-2 px-3",
             )}
           >
-            <Store className="h-4 w-4" />
-            <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", sidebarCollapsed ? "w-0 opacity-0" : "w-28 opacity-100")}>View Public Store</span>
+            <Store aria-hidden="true" className="h-4 w-4" />
+            <span className={cn("overflow-hidden whitespace-nowrap transition-all duration-300", sidebarCollapsed ? "w-0 opacity-0" : "w-32 opacity-100")}>Visit marketplace</span>
           </Link>
           <button
             type="button"
@@ -588,7 +587,6 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
             <Link href="/seller/notifications" aria-label="Open notifications" title="Notifications" className="relative flex h-11 w-11 items-center justify-center rounded-full border border-zinc-200 bg-white text-zinc-500 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900">
               <Bell className="h-4 w-4" />
-              <span className="absolute right-2 top-2 h-2 w-2 rounded-full border-2 border-white bg-[#FF6B00]" />
             </Link>
 
             {/* Seller Identity Dropdown Trigger */}
