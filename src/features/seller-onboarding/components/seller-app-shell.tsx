@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useForm } from "react-hook-form";
 import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, PanelLeftClose, RefreshCw, Store } from "lucide-react";
@@ -63,9 +63,21 @@ function getApplicationResetKey(viewModel?: SellerOnboardingViewModel | null) {
   return [id, status, updatedAt ?? ""].join(":");
 }
 
+// Keep this query aligned with Tailwind's lg breakpoint used by the onboarding layouts.
+const DESKTOP_ONBOARDING_QUERY = "(min-width: 64rem)";
+
+function subscribeToDesktopViewport(onChange: () => void) {
+  const viewport = window.matchMedia(DESKTOP_ONBOARDING_QUERY);
+  viewport.addEventListener("change", onChange);
+  return () => viewport.removeEventListener("change", onChange);
+}
+
+const isDesktopViewport = () => window.matchMedia(DESKTOP_ONBOARDING_QUERY).matches;
+const isDesktopViewportOnServer = () => false;
 
 export function SellerAppShell() {
   const router = useRouter();
+  const isDesktop = useSyncExternalStore(subscribeToDesktopViewport, isDesktopViewport, isDesktopViewportOnServer);
   const onboardingQuery = useSellerOnboarding();
   const saveMutation = useSaveSellerOnboarding();
   const startMutation = useStartSellerOnboarding();
@@ -104,7 +116,7 @@ export function SellerAppShell() {
   }, [form, onboardingQuery.data]);
 
   useEffect(() => {
-    if (!mobileSidebarOpen) return;
+    if (isDesktop || !mobileSidebarOpen) return;
 
     const previousOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -112,7 +124,7 @@ export function SellerAppShell() {
     return () => {
       document.body.style.overflow = previousOverflow;
     };
-  }, [mobileSidebarOpen]);
+  }, [isDesktop, mobileSidebarOpen]);
 
   const watchedFormValues = form.watch();
 
@@ -147,7 +159,7 @@ export function SellerAppShell() {
     scrollToSection();
   };
 
-  const scrollToSection = (sectionId?: string) => {
+  const scrollToSection = (sectionId?: string, fieldName?: string) => {
     const target = sectionId ?? viewModel?.firstIncompleteSectionId ?? "identity";
     setOpenSection(target === "submit" ? "" : target);
     setMobileSidebarOpen(false);
@@ -167,6 +179,20 @@ export function SellerAppShell() {
         const rect = element.getBoundingClientRect();
         return styles.display !== "none" && styles.visibility !== "hidden" && rect.width > 0 && rect.height > 0;
       });
+      const invalidControl = fieldName && Array.from(
+        visibleTarget?.querySelectorAll<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>(
+          "input:not([type=hidden]), textarea, select",
+        ) ?? [],
+      ).find((control) =>
+        control.name === fieldName && !control.disabled && control.getClientRects().length > 0,
+      );
+      if (invalidControl) {
+        invalidControl.focus({ preventScroll: true });
+        if (document.activeElement === invalidControl) {
+          invalidControl.scrollIntoView({ block: "center" });
+          return;
+        }
+      }
       visibleTarget?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   };
@@ -203,7 +229,10 @@ export function SellerAppShell() {
       const invalidSection = typeof invalidField === "string"
         ? FIELD_SECTION[invalidField as keyof SellerOnboardingFormValues]
         : undefined;
-      scrollToSection(invalidSection ?? viewModel?.firstIncompleteSectionId);
+      scrollToSection(
+        invalidSection ?? viewModel?.firstIncompleteSectionId,
+        typeof invalidField === "string" ? invalidField : undefined,
+      );
       return;
     }
 
@@ -328,11 +357,11 @@ export function SellerAppShell() {
   }
 
   if (viewModel?.hasApplication) {
+    // CSS hiding alone leaves both sets of fields registered to the same form.
+    if (isDesktop) return <div className="text-[#1F1A14]">{shellContent}</div>;
+
     return (
       <>
-        <div className="hidden text-[#1F1A14] lg:block">
-          {shellContent}
-        </div>
         <MobileSidebarDrawer
           open={mobileSidebarOpen}
           onClose={() => setMobileSidebarOpen(false)}
