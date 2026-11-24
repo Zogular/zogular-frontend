@@ -28,6 +28,7 @@ import {
 } from "@/components/ui/action-menu";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { invalidateSellerStockQueries } from "@/features/seller-inventory/hooks/useInventory";
 import { rememberListScroll, useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 import {
   sellerOrderQueryKeys,
@@ -44,9 +45,6 @@ import {
   SELLER_ORDER_STATUSES,
 } from "../order-ui";
 import { OrderCancellationDialog } from "./order-cancellation-dialog";
-
-const SELLER_PRODUCTS_QUERY_KEY = ["seller", "products"] as const;
-const SELLER_INVENTORY_QUERY_KEY = ["seller", "inventory"] as const;
 
 function escapeCsv(value: string | number) {
   const text = String(value);
@@ -277,8 +275,7 @@ export function SellerOrdersCollection() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sellerOrderQueryKeys.lists() }),
         queryClient.invalidateQueries({ queryKey: sellerOrderQueryKeys.detail(updated.id) }),
-        queryClient.invalidateQueries({ queryKey: SELLER_PRODUCTS_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: SELLER_INVENTORY_QUERY_KEY }),
+        updated.status === "cancelled" ? invalidateSellerStockQueries(queryClient) : undefined,
       ]);
       toast.success(`Order ${updated.orderNumber} cancelled.`);
     },

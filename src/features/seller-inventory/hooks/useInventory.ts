@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { keepPreviousData, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { keepPreviousData, useQuery, useQueryClient, type QueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { inventoryApi, type InventoryListQuery } from "@/services/inventory";
 import { useCollectionQueryState } from "@/hooks/use-collection-query-state";
@@ -10,6 +10,14 @@ import type { InventoryStatus, SortOption } from "../types/inventory-types";
 
 const INVENTORY_QUERY_KEY = ["seller", "inventory", "products"] as const;
 const SELLER_PRODUCTS_QUERY_KEY = ["seller", "catalog", "products"] as const;
+
+// Inventory and Products cache separate projections of the same server stock.
+export async function invalidateSellerStockQueries(queryClient: QueryClient) {
+  await Promise.all([
+    queryClient.invalidateQueries({ queryKey: INVENTORY_QUERY_KEY }),
+    queryClient.invalidateQueries({ queryKey: SELLER_PRODUCTS_QUERY_KEY }),
+  ]);
+}
 
 type InventoryFilter = InventoryStatus | "all";
 
@@ -86,6 +94,7 @@ export function useInventory() {
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [editingStock, setEditingStock] = useState<Record<string, string>>({});
   const [isSaving, setIsSaving] = useState<Record<string, boolean>>({});
+  const pendingStockIds = useRef(new Set<string>());
   const [bulkStockValue, setBulkStockValue] = useState("");
   const [isBulkSaving, setIsBulkSaving] = useState(false);
 
@@ -158,39 +167,37 @@ export function useInventory() {
     setEditingStock((current) => ({ ...current, [id]: value }));
   };
 
-  const clearEditingStock = (id: string) => {
+  const clearSavedDraft = (id: string, submittedDraft: string) => {
     setEditingStock((current) => {
+      if (current[id] !== submittedDraft) return current;
       const next = { ...current };
       delete next[id];
       return next;
     });
   };
 
-  const invalidateInventoryTruth = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: INVENTORY_QUERY_KEY }),
-      queryClient.invalidateQueries({ queryKey: SELLER_PRODUCTS_QUERY_KEY }),
-    ]);
-  }, [queryClient]);
-
   const handleInlineStockSave = async (id: string, overrideValue?: number) => {
-    const rawValue = overrideValue !== undefined ? String(overrideValue) : editingStock[id];
-    const parsedValue = parseStockInput(rawValue ?? "");
+    if (pendingStockIds.current.has(id)) return;
+    const rawValue = overrideValue !== undefined ? String(overrideValue) : editingStock[id] ?? "";
+    const parsedValue = parseStockInput(rawValue);
     if (parsedValue === null) {
       toast.error("Enter a valid whole stock number.");
       return;
     }
 
+    pendingStockIds.current.add(id);
+    // Menu actions also create a draft so a failed write can be retried inline.
+    if (overrideValue !== undefined) updateEditingStock(id, rawValue);
     setIsSaving((current) => ({ ...current, [id]: true }));
     try {
       await inventoryApi.updateStock(id, parsedValue);
-      clearEditingStock(id);
-      await invalidateInventoryTruth();
+      await invalidateSellerStockQueries(queryClient);
+      clearSavedDraft(id, rawValue);
       toast.success("Stock updated successfully.");
     } catch (error) {
-      clearEditingStock(id);
       toast.error(error instanceof Error ? error.message : "Stock could not be updated.");
     } finally {
+      pendingStockIds.current.delete(id);
       setIsSaving((current) => ({ ...current, [id]: false }));
     }
   };
@@ -220,7 +227,7 @@ export function useInventory() {
       const updated = await inventoryApi.bulkUpdateStock(ids, parsedBulkStock);
       setSelectedIds(new Set());
       setBulkStockValue("");
-      await invalidateInventoryTruth();
+      await invalidateSellerStockQueries(queryClient);
       toast.success(`Updated ${updated.length} item${updated.length === 1 ? "" : "s"}.`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Selected stock could not be updated.");
