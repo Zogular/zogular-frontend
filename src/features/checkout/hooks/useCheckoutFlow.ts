@@ -9,6 +9,7 @@ import { getSavedAddresses } from "@/services/account";
 import {
   CheckoutContractError,
   CheckoutOrderOutcomeUnknownError,
+  CheckoutQuoteChangedError,
   createCheckoutOrder,
   quoteCheckoutOrder,
   type CheckoutQuote,
@@ -29,7 +30,6 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     identityResolved,
     items,
     itemCount,
-    totalAmount,
     checkoutOutcomeOwnerId,
     clearConfirmedCart,
     markCheckoutOutcomeUnknown,
@@ -48,6 +48,8 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
   const [orderQuote, setOrderQuote] = React.useState<CheckoutQuote | null>(null);
   const [quotedCartKey, setQuotedCartKey] = React.useState<string | null>(null);
+  const [quotedAddress, setQuotedAddress] = React.useState<Address | null>(null);
+  const [quoteRefreshVersion, refreshQuote] = React.useReducer((value: number) => value + 1, 0);
   const [isLoadingQuote, setIsLoadingQuote] = React.useState(false);
   const [quoteError, setQuoteError] = React.useState<string | null>(null);
 
@@ -61,6 +63,10 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     () => savedAddresses.find((address) => address.id === selectedAddressId),
     [savedAddresses, selectedAddressId],
   );
+  const currentAddressRef = React.useRef(selectedAddress);
+  React.useLayoutEffect(() => {
+    currentAddressRef.current = selectedAddress;
+  }, [selectedAddress]);
   const isCurrentIdentity = React.useCallback((expectedOwnerId: string, epoch: number) => (
     identityRef.current.active
     && identityRef.current.ownerId === expectedOwnerId
@@ -127,6 +133,8 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     ) {
       setOrderQuote(null);
       setQuotedCartKey(null);
+      setQuotedAddress(null);
+      setIsLoadingQuote(false);
       return;
     }
 
@@ -139,6 +147,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       setQuoteError(null);
       setOrderQuote(null);
       setQuotedCartKey(null);
+      setQuotedAddress(null);
       try {
         const quote = await quoteCheckoutOrder({
           items,
@@ -158,6 +167,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
         if (active && isCurrentIdentity(expectedOwnerId, epoch)) {
           setOrderQuote(quote);
           setQuotedCartKey(requestCartKey);
+          setQuotedAddress(selectedAddress);
         }
       } catch (error) {
         if (active && isCurrentIdentity(expectedOwnerId, epoch)) {
@@ -181,6 +191,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     identityResolved,
     isCurrentIdentity,
     items,
+    quoteRefreshVersion,
     selectedAddress,
   ]);
 
@@ -197,6 +208,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     && !isLoadingQuote
     && Boolean(orderQuote)
     && quotedCartKey === currentCartKey
+    && quotedAddress === selectedAddress
     && !quoteError;
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -213,7 +225,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       setSubmitError("Check your orders before trying checkout again.");
       return;
     }
-    if (!canSubmit) {
+    if (!canSubmit || !orderQuote) {
       setCheckoutStage("details");
       setSubmitError("Please select a delivery address before placing the order.");
       return;
@@ -236,8 +248,11 @@ export function useCheckoutFlow(auth: ClientAuthState) {
         return;
       }
       const confirmedItems = currentCart.items;
-      if (buildCartRequestKey(confirmedItems) !== currentCartKey) {
-        setSubmitError("Your cart changed. Review the updated totals before placing your order.");
+      if (
+        buildCartRequestKey(confirmedItems) !== currentCartKey
+        || currentAddressRef.current !== selected
+      ) {
+        setSubmitError("Your checkout details changed. Review the updated totals before placing your order.");
         return;
       }
       const order = await createCheckoutOrder({
@@ -254,13 +269,19 @@ export function useCheckoutFlow(auth: ClientAuthState) {
           instructions: selected.deliveryInstructions?.trim(),
         },
         paymentMethod: "cash_on_delivery",
-      });
+      }, orderQuote);
       if (!isCurrentIdentity(expectedOwnerId, epoch)) return;
       clearConfirmedCart(expectedOwnerId);
       router.push(`/success?orderId=${encodeURIComponent(order.id)}`);
     } catch (error) {
       if (!isCurrentIdentity(expectedOwnerId, epoch)) return;
-      if (error instanceof CheckoutOrderOutcomeUnknownError) {
+      if (error instanceof CheckoutQuoteChangedError) {
+        setSubmitError(error.message);
+        setOrderQuote(null);
+        setQuotedCartKey(null);
+        setQuotedAddress(null);
+        refreshQuote();
+      } else if (error instanceof CheckoutOrderOutcomeUnknownError) {
         markCheckoutOutcomeUnknown(expectedOwnerId);
         setSubmitError("Order outcome not confirmed. Check your orders before trying again.");
       } else {
@@ -278,7 +299,6 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     identityResolved,
     items,
     itemCount,
-    totalAmount,
     ownerId,
     savedAddresses,
     isLoadingAddresses,
@@ -293,6 +313,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     orderQuote,
     isLoadingQuote,
     quoteError,
+    retryQuote: refreshQuote,
     hasUnknownOutcome,
     detailsComplete,
     canSubmit,

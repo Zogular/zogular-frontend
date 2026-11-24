@@ -12,7 +12,7 @@ interface OrderSummaryProps {
   stage: CheckoutStage;
   items: CartItem[];
   itemCount: number;
-  displayedSubtotal: number;
+  displayedSubtotal?: number;
   deliveryFee?: number;
   total?: number;
   cashDue?: number;
@@ -23,6 +23,7 @@ interface OrderSummaryProps {
   canSubmit: boolean;
   submitting: boolean;
   onBack: () => void;
+  onRetryQuote: () => void;
 }
 
 export function OrderSummary({
@@ -40,6 +41,7 @@ export function OrderSummary({
   canSubmit,
   submitting,
   onBack,
+  onRetryQuote,
 }: OrderSummaryProps) {
   return (
     <div className={`${stage === "review" ? "block" : "hidden"} w-full shrink-0 md:block lg:w-100 xl:w-112.5`}>
@@ -57,7 +59,6 @@ export function OrderSummary({
               <div className="flex flex-1 flex-col justify-center">
                 <h4 className="line-clamp-2 text-xs font-bold leading-tight text-zinc-800">{item.name}</h4>
                 {item.variant ? <span className="mt-1 text-[11px] font-medium text-zinc-500">{item.variant}</span> : null}
-                <span className="mt-1 text-sm font-black text-zinc-900">{formatCheckoutCurrency(item.price)}</span>
               </div>
             </div>
           ))}
@@ -66,12 +67,19 @@ export function OrderSummary({
         <div className="mb-8 space-y-3">
           <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
             <span>Subtotal ({itemCount} items)</span>
-            <span className="font-bold text-zinc-900">{formatCheckoutCurrency(displayedSubtotal)}</span>
+            <span className="font-bold text-zinc-900">
+              {displayedSubtotal === undefined ? "Pending" : formatCheckoutCurrency(displayedSubtotal)}
+            </span>
           </div>
           {quoteError ? (
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
-              <div>{quoteError}</div>
+              <div>
+                <p role="alert">{quoteError}</p>
+                <Button type="button" variant="outline" className="mt-2 min-h-11" onClick={onRetryQuote}>
+                  Refresh order total
+                </Button>
+              </div>
             </div>
           ) : (
             <div className="flex items-center justify-between font-medium">
@@ -113,7 +121,7 @@ export function OrderSummary({
             )}
           </div>
         </div>
-        {submitError ? <p className="mb-3 text-sm font-semibold text-red-600">{submitError}</p> : null}
+        {submitError ? <p role="alert" className="mb-3 text-sm font-semibold text-red-600">{submitError}</p> : null}
         <Button type="button" variant="outline" onClick={onBack} className="mb-3 h-11 w-full rounded-xl border-zinc-200 font-bold md:hidden">
           {isGuest ? "Back to Sign In" : "Back to Payment"}
         </Button>
@@ -127,9 +135,11 @@ export function OrderSummary({
           </Button>
         )}
         <div className="mt-6 flex flex-col items-center gap-3">
-          <div className="flex items-center gap-1.5 rounded-lg bg-[#009E49]/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#009E49]">
-            <ShieldCheck className="h-4 w-4" /> Confirmed order totals
-          </div>
+          {total === undefined ? null : (
+            <div className="flex items-center gap-1.5 rounded-lg bg-[#009E49]/10 px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#009E49]">
+              <ShieldCheck className="h-4 w-4" /> Current order quote
+            </div>
+          )}
           <p className="max-w-62.5 text-center text-[10px] font-medium leading-relaxed text-zinc-400">
             By placing your order, you agree to Zogular&apos;s Terms of Service and Privacy Policy.
           </p>

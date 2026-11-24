@@ -31,6 +31,8 @@ export interface CheckoutQuote {
   commitmentFeeStatus: typeof COMMITMENT_FEE_STATUS;
 }
 
+type AcceptedQuote = Pick<CheckoutQuote, "itemSubtotal" | "deliveryFeeAmount" | "grandTotalAmount">;
+
 export interface CreateCheckoutOrderInput {
   items: CartItem[];
   contact: CheckoutContact;
@@ -52,6 +54,13 @@ export class CheckoutOrderOutcomeUnknownError extends Error {
     super("Your order outcome could not be confirmed.");
     this.name = "CheckoutOrderOutcomeUnknownError";
     this.cause = cause;
+  }
+}
+
+export class CheckoutQuoteChangedError extends Error {
+  constructor() {
+    super("Your order total changed. Review the updated amounts before placing your order.");
+    this.name = "CheckoutQuoteChangedError";
   }
 }
 
@@ -177,6 +186,7 @@ export function parseCheckoutQuoteResponse(payload: unknown): CheckoutQuote {
 export function parseCreatedOrderResponse(
   payload: unknown,
   expectedItems: Array<{ productId: string; quantity: number }>,
+  expectedQuote?: AcceptedQuote,
 ): { id: string; orderNumber: string } {
   if (!isRecord(payload) || payload.status !== "success" || !isRecord(payload.data)) {
     throw new CheckoutContractError("Order response is malformed.");
@@ -233,6 +243,13 @@ export function parseCreatedOrderResponse(
   ) {
     throw new CheckoutContractError("Order totals are inconsistent.");
   }
+  if (expectedQuote && (
+    !nearlyEqual(totalAmount, expectedQuote.itemSubtotal)
+    || !nearlyEqual(deliveryFeeAmount, expectedQuote.deliveryFeeAmount)
+    || !nearlyEqual(grandTotalAmount, expectedQuote.grandTotalAmount)
+  )) {
+    throw new CheckoutContractError("Order totals do not match the confirmed quote.");
+  }
 
   return { id, orderNumber };
 }
@@ -249,16 +266,30 @@ export async function quoteCheckoutOrder(input: CreateCheckoutOrderInput): Promi
 
 export async function createCheckoutOrder(
   input: CreateCheckoutOrderInput,
+  acceptedQuote: AcceptedQuote,
 ): Promise<{ id: string; orderNumber: string }> {
   const request = buildRequest(input, true);
+  const expectedQuote: AcceptedQuote = {
+    itemSubtotal: acceptedQuote.itemSubtotal,
+    deliveryFeeAmount: acceptedQuote.deliveryFeeAmount,
+    grandTotalAmount: acceptedQuote.grandTotalAmount,
+  };
   let response: unknown;
   try {
     response = await apiClient<unknown>("/orders", {
       method: "POST",
       csrf: true,
-      body: JSON.stringify(request),
+      body: JSON.stringify({ ...request, expectedQuote }),
     });
   } catch (error) {
+    if (
+      error instanceof ApiError
+      && error.status === 409
+      && isRecord(error.details)
+      && error.details.code === "CHECKOUT_QUOTE_CHANGED"
+    ) {
+      throw new CheckoutQuoteChangedError();
+    }
     if (error instanceof ApiError && (error.status === 408 || error.status >= 500)) {
       throw new CheckoutOrderOutcomeUnknownError(error);
     }
@@ -266,7 +297,7 @@ export async function createCheckoutOrder(
   }
 
   try {
-    return parseCreatedOrderResponse(response, request.items);
+    return parseCreatedOrderResponse(response, request.items, expectedQuote);
   } catch (error) {
     throw new CheckoutOrderOutcomeUnknownError(error);
   }

@@ -111,6 +111,8 @@ function quotePayload(overrides: Record<string, unknown> = {}) {
   };
 }
 
+const acceptedQuote = { itemSubtotal: 500, deliveryFeeAmount: 50, grandTotalAmount: 550 };
+
 function createdOrderPayload(overrides: Record<string, unknown> = {}) {
   return {
     status: "success",
@@ -252,7 +254,7 @@ test("ambiguous create failure performs exactly one POST and never fabricates co
     throw new Error(`Unexpected fetch ${init?.method ?? "GET"} ${url}`);
   }) as typeof fetch;
   try {
-    await expect(createCheckoutOrder(checkoutInput)).rejects.toBeInstanceOf(CheckoutOrderOutcomeUnknownError);
+    await expect(createCheckoutOrder(checkoutInput, acceptedQuote)).rejects.toBeInstanceOf(CheckoutOrderOutcomeUnknownError);
     expect(orderPosts).toBe(1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -272,7 +274,7 @@ test("malformed apparent create success is indeterminate and cannot be treated a
     throw new Error(`Unexpected fetch ${init?.method ?? "GET"} ${url}`);
   }) as typeof fetch;
   try {
-    await expect(createCheckoutOrder(checkoutInput)).rejects.toBeInstanceOf(CheckoutOrderOutcomeUnknownError);
+    await expect(createCheckoutOrder(checkoutInput, acceptedQuote)).rejects.toBeInstanceOf(CheckoutOrderOutcomeUnknownError);
     expect(orderPosts).toBe(1);
   } finally {
     globalThis.fetch = originalFetch;
@@ -874,8 +876,13 @@ test("diagnostics accept only the exact same-origin Next prefetch cancellation",
 
 test.describe("consumer cart and checkout production-route acceptance", () => {
   test.skip(!baseUrl, "CONSUMER_CART_CHECKOUT_BASE_URL is required for fixture-based visual QA.");
+  test.use({ serviceWorkers: "block" });
 
-  test.beforeEach(async ({ page }) => fulfillStaticDependencies(page));
+  test.beforeEach(async ({ page }) => {
+    // Test pages must never register a worker that could intercept checkout fixtures.
+    await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
+    await fulfillStaticDependencies(page);
+  });
 
   for (const viewport of viewports) {
     test(`${viewport.name} guest checkout and confirmation issue zero protected requests`, async ({ page }) => {
@@ -1005,6 +1012,77 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     await advanceMobileCheckoutToReview(page);
     await expect(page.getByText("Samsung Galaxy A55 5G", { exact: true })).toBeVisible();
     expect(orderPosts).toBe(1);
+  });
+
+  test("changed quote refreshes checkout and waits for a second deliberate submission", async ({ page, context }) => {
+    if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) {
+      throw new Error("Checkout fixture requires an IPv4 loopback origin.");
+    }
+    await context.route("**/*", (route) =>
+      new URL(route.request().url()).origin === baseUrl ? route.continue() : route.abort(),
+    );
+    await context.routeWebSocket("**/*", (socket) => socket.close());
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      }));
+    });
+    const requests: unknown[] = [];
+    let refreshedQuoteAttempts = 0;
+    const latestQuote = { ...acceptedQuote, itemSubtotal: 600, grandTotalAmount: 650 };
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const url = new URL(request.url());
+      const reply = (json: unknown, status = 200) => route.fulfill({ status, json });
+      if (url.pathname.endsWith("/user/me")) return reply(userPayload());
+      if (url.pathname.endsWith("/cart") && request.method() === "GET") return reply(cartPayload());
+      if (url.pathname.endsWith("/user/addresses")) return reply(addressPayload());
+      if (url.pathname.endsWith("/orders/quote")) {
+        if (requests.length && ++refreshedQuoteAttempts === 1) {
+          return reply({ status: "error", message: "Service temporarily unavailable" }, 503);
+        }
+        return reply(quotePayload(requests.length ? { ...latestQuote, cashDueOnDelivery: 600 } : {}));
+      }
+      if (url.pathname.endsWith("/auth/csrf-token")) return reply({ data: { csrfToken: "fixture-csrf" } });
+      if (url.pathname.endsWith("/orders") && request.method() === "POST") {
+        requests.push(request.postDataJSON().expectedQuote);
+        if (requests.length === 1) return reply({ status: "fail", code: "CHECKOUT_QUOTE_CHANGED" }, 409);
+        return reply(createdOrderPayload({
+          totalAmount: 600,
+          cashDueOnDelivery: 600,
+          grandTotalAmount: 650,
+          items: [{ productId: IDS.product, quantity: 2, price: 300 }],
+        }));
+      }
+      if (url.pathname.endsWith(`/orders/${IDS.order}`)) {
+        return reply({ status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") } });
+      }
+      return reply({ status: "success", data: { categories: [] } });
+    });
+
+    await page.goto(`${baseUrl}/checkout`, { waitUntil: "domcontentloaded" });
+    await page.getByRole("button", { name: "Continue to order review" }).click();
+    await page.getByRole("button", { name: "Review Order" }).click();
+    const placeOrder = page.getByRole("button", { name: "Place Order Now" });
+    await placeOrder.click();
+    await expect(page.getByText("Your order total changed. Review the updated amounts before placing your order.")).toBeVisible();
+    await expect(placeOrder).toBeDisabled();
+    await page.getByRole("button", { name: "Refresh order total" }).click();
+    await expect(page.getByText("K650", { exact: true })).toBeVisible();
+    await expect(page.getByText("K250", { exact: true })).toHaveCount(0);
+    await expect(placeOrder).toBeEnabled();
+    await expect(page).toHaveURL(/\/checkout$/);
+    expect(requests).toEqual([acceptedQuote]);
+    await page.screenshot({
+      path: path.resolve("output/playwright/consumer-cart-checkout-integrity/reconfirm-390x844.png"),
+      fullPage: true,
+    });
+
+    await placeOrder.click();
+    await expect(page).toHaveURL(new RegExp(`/success\\?orderId=${IDS.order}$`));
+    expect(requests).toEqual([acceptedQuote, latestQuote]);
   });
 
   test("validated create posts once, clears current cart, and navigates to verified confirmation once", async ({ page }) => {
