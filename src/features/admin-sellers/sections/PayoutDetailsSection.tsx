@@ -1,84 +1,67 @@
-import { HandCoins } from "lucide-react";
-import { normalizePayoutDestination } from "@/lib/payout-destination";
-import type { VendorApplication } from "@/types/seller";
+import { EyeOff, HandCoins } from "lucide-react";
+import type { SellerReviewDetail } from "../types/seller-review.types";
 import { SectionCard } from "./TrustChecksSection";
 
-export function PayoutDetailsSection({
-  application,
-}: {
-  application: VendorApplication;
-}) {
-  const payout = normalizePayoutDestination(application);
-  const mode = payout.mode;
+export function PayoutDetailsSection({ detail }: { detail: SellerReviewDetail }) {
+  const { application } = detail;
+  const { canViewSensitiveFields } = detail.review.capabilities;
 
-  const showMomo = mode === "MOBILE_MONEY" || mode === "BOTH";
+  if (!canViewSensitiveFields) {
+    return (
+      <SectionCard title="Payout details" description="Restricted financial information." icon={HandCoins}>
+        <div className="flex items-start gap-3 rounded-xl border border-[color:rgba(184,135,70,0.25)] bg-[var(--admin-surface-mist)] p-4">
+          <EyeOff className="mt-0.5 size-4 shrink-0 text-[var(--admin-copper-muted)]" />
+          <p className="text-sm leading-6 text-[var(--admin-ink-soft)]">Your role does not include access to payout details.</p>
+        </div>
+      </SectionCard>
+    );
+  }
+
+  const mode = application.payoutMode;
+  const showMobile = mode === "MOBILE_MONEY" || mode === "BOTH";
   const showBank = mode === "BANK_ACCOUNT" || mode === "BOTH";
 
   return (
-    <SectionCard
-      title="Payout details"
-      description="Seller's saved payout destinations."
-      icon={HandCoins}
-    >
-      <div className="overflow-hidden rounded-2xl border border-stone-200/60 bg-white/50 space-y-3 p-2">
-        <div className="flex items-center justify-between px-3 pt-2">
-          <span className="text-xs font-semibold uppercase tracking-wider text-stone-500">Payout Mode</span>
-          <span className="rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-bold text-amber-900">
-            {mode === "BOTH" ? "Mobile Money and Bank" : mode === "BANK_ACCOUNT" ? "Bank Account" : mode === "MOBILE_MONEY" ? "Mobile Money" : "Unavailable"}
-          </span>
+    <SectionCard title="Payout details" description="Masked destination information supplied for seller review." icon={HandCoins}>
+      {!detail.review.evidence.payoutDestinationAvailable ? (
+        <p className="rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-mist)] p-4 text-sm text-[var(--admin-ink-soft)]">No payout destination is available.</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {showMobile ? (
+            <PayoutGroup title="Mobile money" rows={[
+              ["Provider", application.momoProvider || "Not provided"],
+              ["Phone", maskValue(application.momoPhone, 3)],
+              ["Account name", application.momoAccountName || "Not provided"],
+            ]} />
+          ) : null}
+          {showBank ? (
+            <PayoutGroup title="Bank account" rows={[
+              ["Bank", application.bankName || "Not provided"],
+              ["Account", maskValue(application.bankAccountNumber, 4)],
+              ["Account name", application.bankAccountName || "Not provided"],
+              ["Branch", application.bankBranch || "Not provided"],
+            ]} />
+          ) : null}
         </div>
-
-        {showMomo && (
-          <div className="rounded-xl border border-stone-200/50 bg-white p-3">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-600">Mobile Money</div>
-            <dl className="divide-y divide-stone-100 text-xs">
-              <PayoutRow label="Network / Provider" value={payout.momoProvider || "Unavailable"} />
-              <PayoutRow label="Phone Number" value={maskValue(payout.momoPhone, 3)} />
-              <PayoutRow label="Account Name" value={payout.momoAccountName || "Unavailable"} />
-            </dl>
-          </div>
-        )}
-
-        {showBank && (
-          <div className="rounded-xl border border-stone-200/50 bg-white p-3">
-            <div className="mb-2 text-xs font-bold uppercase tracking-wider text-stone-600">Bank Account</div>
-            <dl className="divide-y divide-stone-100 text-xs">
-              <PayoutRow label="Bank Name" value={payout.bankName || "Unavailable"} />
-              <PayoutRow label="Account Number" value={maskValue(payout.bankAccountNumber, 4)} />
-              <PayoutRow label="Account Holder" value={payout.bankAccountName || "Unavailable"} />
-              <PayoutRow label="Branch" value={payout.bankBranch || "Not provided"} />
-            </dl>
-          </div>
-        )}
-
-        {!mode ? (
-          <p className="px-3 pb-2 text-xs font-medium text-stone-600">
-            No recognized payout destination is available for this application.
-          </p>
-        ) : null}
-
-        {application.tpin ? (
-          <div className="px-3 pb-2">
-            <PayoutRow label="TPIN" value={application.tpin} />
-          </div>
-        ) : null}
-      </div>
+      )}
     </SectionCard>
   );
 }
 
-function maskValue(value: string, visibleDigits: number) {
-  if (!value) return "Unavailable";
-  const compact = value.replace(/\s+/g, "");
-  if (compact.length <= visibleDigits) return compact;
-  return `${"•".repeat(Math.min(6, compact.length - visibleDigits))}${compact.slice(-visibleDigits)}`;
-}
-
-function PayoutRow({ label, value }: { label: string; value: string }) {
+function PayoutGroup({ title, rows }: { title: string; rows: ReadonlyArray<readonly [string, string]> }) {
   return (
-    <div className="flex items-start justify-between gap-4 py-2 transition-colors hover:bg-stone-50/50 sm:items-center">
-      <dt className="shrink-0 text-xs font-bold text-stone-600">{label}</dt>
-      <dd className="break-words text-right text-xs font-black text-stone-950">{value}</dd>
+    <div className="rounded-xl border border-[color:rgba(184,135,70,0.24)] bg-[var(--admin-surface-mist)] p-3">
+      <h3 className="text-xs font-semibold uppercase tracking-[0.12em] text-[var(--admin-canopy)]">{title}</h3>
+      <dl className="mt-2 divide-y divide-[color:rgba(184,135,70,0.18)]">
+        {rows.map(([label, value]) => <div key={label} className="flex items-start justify-between gap-3 py-2 text-xs"><dt className="text-[var(--admin-ink-soft)]">{label}</dt><dd className="break-words text-right font-semibold text-[var(--admin-ink)]">{value}</dd></div>)}
+      </dl>
     </div>
   );
+}
+
+function maskValue(value: string | null, visible: number) {
+  if (!value) return "Not provided";
+  const compact = value.replace(/\s+/g, "");
+  if (compact.length <= visible) return "••••";
+  return `••••${compact.slice(-visible)}`;
 }

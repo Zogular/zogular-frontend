@@ -1,6 +1,6 @@
 import { requireAdminPermission } from "@/services/admin/require-admin-permission";
 
 export default async function OrdersLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminPermission("view_orders");
+  await requireAdminPermission("view_all_orders");
   return children;
 }

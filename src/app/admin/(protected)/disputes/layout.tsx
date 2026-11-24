@@ -1,6 +1,5 @@
-import { requireAdminPermission } from "@/services/admin/require-admin-permission";
+import { notFound } from "next/navigation";
 
-export default async function DisputesLayout({ children }: { children: React.ReactNode }) {
-  await requireAdminPermission("manage_disputes");
-  return children;
+export default async function DisputesLayout() {
+  notFound();
 }

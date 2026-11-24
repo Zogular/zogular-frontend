@@ -170,7 +170,7 @@ test("admin login API returns safe next for verified admin and rejects non-admin
     if (url.pathname.endsWith("/auth/csrf-token")) {
       return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
     }
-    if (url.pathname.endsWith("/auth/login")) {
+    if (url.pathname.endsWith("/auth/login") || url.pathname.endsWith("/user/me")) {
       return jsonResponse({
         status: "success",
         data: {
@@ -180,6 +180,7 @@ test("admin login API returns safe next for verified admin and rejects non-admin
             firstName: "Admin",
             lastName: "One",
             role: mode === "admin" ? "ADMIN" : "CUSTOMER",
+            permissions: mode === "admin" ? ["access_admin_panel", "view_all_products"] : [],
           },
           accessToken: "fixture-admin-token",
         },
@@ -187,6 +188,7 @@ test("admin login API returns safe next for verified admin and rejects non-admin
     }
     throw new Error(`Unexpected request ${url.pathname}`);
   });
+
 
   try {
     const successResponse = await adminLoginPost(new Request("http://frontend.test/api/admin/auth/login", {
@@ -206,6 +208,105 @@ test("admin login API returns safe next for verified admin and rejects non-admin
     await expect(deniedResponse.json()).resolves.toEqual({
       message: "This account is not authorized for the Zogular admin panel.",
     });
+    expect(deniedResponse.headers.get("set-cookie")).toBeNull();
+  } finally {
+    fetchMock.restore();
+  }
+});
+
+test("admin login API fails closed (403 and no cookie) when /user/me validation fails, rejects, or has malformed permissions", async () => {
+  let userMeMode: "401" | "error" | "malformed-perms" | "unknown-role" = "401";
+  const fetchMock = installFetchMock((url) => {
+    if (url.pathname.endsWith("/auth/csrf-token")) {
+      return jsonResponse({ status: "success", data: { csrfToken: "csrf" } });
+    }
+    if (url.pathname.endsWith("/auth/login")) {
+      return jsonResponse({
+        status: "success",
+        data: {
+          user: {
+            id: "admin-1",
+            email: "admin@example.test",
+            role: "SUPER_ADMIN",
+            permissions: ["access_admin_panel"],
+          },
+          accessToken: "fixture-admin-token",
+        },
+      });
+    }
+    if (url.pathname.endsWith("/user/me")) {
+      if (userMeMode === "401") {
+        return jsonResponse({ message: "Invalid session" }, 401);
+      }
+      if (userMeMode === "error") {
+        throw new Error("Backend network error during validation");
+      }
+      if (userMeMode === "malformed-perms") {
+        return jsonResponse({
+          status: "success",
+          data: {
+            user: {
+              id: "admin-1",
+              email: "admin@example.test",
+              role: "SUPER_ADMIN",
+              permissions: ["access_admin_panel", "bogus_unrecognized_perm"],
+            },
+          },
+        });
+      }
+      if (userMeMode === "unknown-role") {
+        return jsonResponse({
+          status: "success",
+          data: {
+            user: {
+              id: "admin-1",
+              email: "admin@example.test",
+              role: "NOT_AN_ADMIN_ROLE",
+              permissions: ["access_admin_panel"],
+            },
+          },
+        });
+      }
+    }
+    throw new Error(`Unexpected request ${url.pathname}`);
+  });
+
+  try {
+    // Sub-case 1: /user/me returns 401
+    userMeMode = "401";
+    let res = await adminLoginPost(new Request("http://frontend.test/api/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "admin@example.test", password: "Password123!" }),
+    }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+
+    // Sub-case 2: /user/me throws network error
+    userMeMode = "error";
+    res = await adminLoginPost(new Request("http://frontend.test/api/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "admin@example.test", password: "Password123!" }),
+    }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+
+    // Sub-case 3: /user/me returns malformed/unknown permissions
+    userMeMode = "malformed-perms";
+    res = await adminLoginPost(new Request("http://frontend.test/api/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "admin@example.test", password: "Password123!" }),
+    }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
+
+    // Sub-case 4: /user/me returns invalid/unknown role
+    userMeMode = "unknown-role";
+    res = await adminLoginPost(new Request("http://frontend.test/api/admin/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ email: "admin@example.test", password: "Password123!" }),
+    }));
+    expect(res.status).toBe(403);
+    expect(res.headers.get("set-cookie")).toBeNull();
   } finally {
     fetchMock.restore();
   }

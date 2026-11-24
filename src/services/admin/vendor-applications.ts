@@ -13,6 +13,14 @@ import {
   type SellerDocumentAccess,
 } from "@/services/seller-document-uploads";
 import type { SellerDocumentType } from "@/types/seller";
+import {
+  SellerReviewContractError,
+  parseSellerReviewResponse,
+} from "@/features/admin-sellers/types/seller-review.contract";
+import type {
+  SellerReviewDetail,
+  SellerReviewSafeError,
+} from "@/features/admin-sellers/types/seller-review.types";
 
 const ADMIN_VENDOR_APPLICATIONS_ENDPOINT = "/admin/vendor-applications";
 
@@ -22,7 +30,31 @@ export interface AdminVendorApplicationListParams {
   search?: string;
   status?: SellerApplicationStatus | "all";
   sellerType?: SellerType | "all";
+  sort?: AdminVendorApplicationSort;
+  direction?: AdminVendorApplicationSortDirection;
+  signal?: AbortSignal;
 }
+
+export type AdminVendorApplicationSort =
+  | "submittedAt"
+  | "createdAt"
+  | "updatedAt"
+  | "storeName";
+
+export type AdminVendorApplicationSortDirection = "asc" | "desc";
+
+export const SELLER_APPLICATION_STATUSES: readonly SellerApplicationStatus[] = [
+  "DRAFT",
+  "SUBMITTED",
+  "NEEDS_INFO",
+  "PROVISIONAL",
+  "APPROVED",
+  "RESTRICTED",
+  "SUSPENDED",
+  "REJECTED",
+];
+
+export type AdminVendorApplicationStatusFacets = Record<SellerApplicationStatus, number>;
 
 export interface AdminVendorApplicationListResponse {
   applications: VendorApplication[];
@@ -32,11 +64,33 @@ export interface AdminVendorApplicationListResponse {
     limit: number;
     pages: number;
   };
+  facets: {
+    byStatus: AdminVendorApplicationStatusFacets;
+  };
+}
+
+export class AdminVendorApplicationListContractError extends Error {
+  constructor() {
+    super("Seller application list response did not match the expected contract.");
+    this.name = "AdminVendorApplicationListContractError";
+  }
 }
 
 export interface ApproveVendorApplicationPayload {
-  status?: "PROVISIONAL" | "APPROVED";
+  status: "PROVISIONAL" | "APPROVED";
+  expectedUpdatedAt: string;
   adminNotes?: string;
+}
+
+export interface ReasonedVendorApplicationPayload {
+  reason: string;
+  expectedUpdatedAt: string;
+  adminNotes?: string;
+}
+
+export interface NotedVendorApplicationPayload {
+  adminNotes: string;
+  expectedUpdatedAt: string;
 }
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -102,34 +156,6 @@ function normalizeUser(value: unknown): VendorApplication["user"] {
     phoneVerifiedAt: asNullableString(record.phoneVerifiedAt),
     isActive: Boolean(record.isActive),
   };
-}
-
-function findApplicationRecord(payload: unknown): Record<string, unknown> | null {
-  const root = asRecord(payload);
-  if (!root) return null;
-
-  const data = asRecord(root.data);
-  const candidates: unknown[] = [
-    data?.application,
-    data?.vendorApplication,
-    root.application,
-    root.vendorApplication,
-    data,
-    root,
-  ];
-
-  for (const candidate of candidates) {
-    const record = asRecord(candidate);
-    // Ignore `status` for duck-typing because the API response root has `{ status: "success" }`
-    if (record && (record.id || record.sellerType || record.storeName || record.ownerFullName)) {
-      // Ensure we don't accidentally match the root wrapper by verifying it has typical application fields
-      if (record.id || record.sellerType || record.storeName) {
-        return record;
-      }
-    }
-  }
-
-  return null;
 }
 
 function normalizeVendorApplicationRecord(record: Record<string, unknown>): VendorApplication {
@@ -201,44 +227,104 @@ function normalizeVendorApplicationRecord(record: Record<string, unknown>): Vend
   };
 }
 
-function normalizeVendorApplication(payload: unknown): VendorApplication {
-  const record = findApplicationRecord(payload);
-  if (!record) {
-    throw new ApiError("Vendor application response was not recognized.", 500, payload);
-  }
-
-  return normalizeVendorApplicationRecord(record);
+function isNonNegativeInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value >= 0;
 }
 
-function normalizeListPayload(payload: unknown): AdminVendorApplicationListResponse {
+function isPositiveInteger(value: unknown): value is number {
+  return typeof value === "number" && Number.isInteger(value) && value > 0;
+}
+
+function isValidDateString(value: unknown): value is string {
+  return typeof value === "string" && value.length > 0 && !Number.isNaN(Date.parse(value));
+}
+
+function assertListApplicationRecord(value: unknown): Record<string, unknown> {
+  const record = asRecord(value);
+  if (
+    !record ||
+    typeof record.id !== "string" ||
+    !record.id.trim() ||
+    !SELLER_APPLICATION_STATUSES.includes(record.status as SellerApplicationStatus) ||
+    (record.sellerType !== "INDIVIDUAL" && record.sellerType !== "REGISTERED_BUSINESS") ||
+    !isValidDateString(record.createdAt) ||
+    !isValidDateString(record.updatedAt)
+  ) {
+    throw new AdminVendorApplicationListContractError();
+  }
+
+  for (const field of ["submittedAt", "reviewedAt"] as const) {
+    if (record[field] !== null && record[field] !== undefined && !isValidDateString(record[field])) {
+      throw new AdminVendorApplicationListContractError();
+    }
+  }
+
+  return record;
+}
+
+export function parseAdminVendorApplicationListResponse(
+  payload: unknown,
+): AdminVendorApplicationListResponse {
   const root = asRecord(payload);
   const data = asRecord(root?.data);
-  const rawApplications = Array.isArray(data?.applications) ? data?.applications : [];
+  const rawApplications = data?.applications;
   const pagination = asRecord(root?.pagination);
+  const facets = asRecord(root?.facets);
+  const byStatus = asRecord(facets?.byStatus);
+
+  if (
+    root?.status !== "success" ||
+    !Array.isArray(rawApplications) ||
+    !pagination ||
+    !isNonNegativeInteger(pagination.total) ||
+    !isPositiveInteger(pagination.page) ||
+    !isPositiveInteger(pagination.limit) ||
+    !isNonNegativeInteger(pagination.pages) ||
+    pagination.pages !== Math.ceil(pagination.total / pagination.limit) ||
+    rawApplications.length > pagination.limit ||
+    !facets ||
+    !byStatus
+  ) {
+    throw new AdminVendorApplicationListContractError();
+  }
+
+  const parsedFacets = {} as AdminVendorApplicationStatusFacets;
+  for (const status of SELLER_APPLICATION_STATUSES) {
+    const count = byStatus[status];
+    if (!isNonNegativeInteger(count)) {
+      throw new AdminVendorApplicationListContractError();
+    }
+    parsedFacets[status] = count;
+  }
+
+  if (Object.keys(byStatus).some((status) => !SELLER_APPLICATION_STATUSES.includes(status as SellerApplicationStatus))) {
+    throw new AdminVendorApplicationListContractError();
+  }
 
   return {
-    applications: rawApplications
-      .map((item) => asRecord(item))
-      .filter((item): item is Record<string, unknown> => Boolean(item))
-      .map(normalizeVendorApplicationRecord),
+    applications: rawApplications.map(assertListApplicationRecord).map(normalizeVendorApplicationRecord),
     pagination: {
-      total:
-        typeof pagination?.total === "number" ? pagination.total : rawApplications.length,
-      page: typeof pagination?.page === "number" ? pagination.page : 1,
-      limit: typeof pagination?.limit === "number" ? pagination.limit : rawApplications.length,
-      pages: typeof pagination?.pages === "number" ? pagination.pages : 1,
+      total: pagination.total,
+      page: pagination.page,
+      limit: pagination.limit,
+      pages: pagination.pages,
     },
+    facets: { byStatus: parsedFacets },
   };
 }
 
-function buildListQuery(params: AdminVendorApplicationListParams = {}) {
+export function buildAdminVendorApplicationListQuery(
+  params: AdminVendorApplicationListParams = {},
+) {
   return {
     page: params.page ?? 1,
-    limit: params.limit ?? 100,
+    limit: params.limit ?? 20,
     search: params.search?.trim() || undefined,
     status: params.status && params.status !== "all" ? params.status : undefined,
     sellerType:
       params.sellerType && params.sellerType !== "all" ? params.sellerType : undefined,
+    sort: params.sort ?? "submittedAt",
+    direction: params.direction ?? "desc",
   };
 }
 
@@ -247,21 +333,28 @@ export async function getVendorApplications(
 ): Promise<AdminVendorApplicationListResponse> {
   const payload = await apiClient<unknown>(ADMIN_VENDOR_APPLICATIONS_ENDPOINT, {
     method: "GET",
-    query: buildListQuery(params),
+    cache: "no-store",
+    query: buildAdminVendorApplicationListQuery(params),
+    signal: params.signal,
   });
 
-  return normalizeListPayload(payload);
+  return parseAdminVendorApplicationListResponse(payload);
 }
 
-export async function getVendorApplicationById(id: string): Promise<VendorApplication> {
+export async function getVendorApplicationById(
+  id: string,
+  signal?: AbortSignal,
+): Promise<SellerReviewDetail> {
   const payload = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}`,
     {
       method: "GET",
+      cache: "no-store",
+      signal,
     },
   );
 
-  return normalizeVendorApplication(payload);
+  return parseSellerReviewResponse(payload);
 }
 
 export async function getAdminSellerDocumentAccess(
@@ -282,95 +375,164 @@ export async function getAdminSellerDocumentAccess(
 
 export async function approveVendorApplication(
   id: string,
-  payload: ApproveVendorApplicationPayload = {},
-): Promise<VendorApplication> {
+  payload: ApproveVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/approve`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        status: payload.status ?? "APPROVED",
+        status: payload.status,
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
         adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function rejectVendorApplication(
   id: string,
-  rejectionReason: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: ReasonedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/reject`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        rejectionReason: rejectionReason.trim(),
-        adminNotes: adminNotes?.trim() || undefined,
+        rejectionReason: payload.reason.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function requestVendorApplicationInfo(
   id: string,
-  needsInfoReason: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: ReasonedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/needs-info`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        needsInfoReason: needsInfoReason.trim(),
-        adminNotes: adminNotes?.trim() || undefined,
+        needsInfoReason: payload.reason.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function restrictVendorApplication(
   id: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: ReasonedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/restrict`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        adminNotes: adminNotes?.trim() || "",
+        reason: payload.reason.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
 }
 
 export async function suspendVendorApplication(
   id: string,
-  adminNotes?: string,
-): Promise<VendorApplication> {
+  payload: ReasonedVendorApplicationPayload,
+): Promise<SellerReviewDetail> {
   const response = await apiClient<unknown>(
     `${ADMIN_VENDOR_APPLICATIONS_ENDPOINT}/${encodeURIComponent(id)}/suspend`,
     {
       method: "PATCH",
       csrf: true,
       body: JSON.stringify({
-        adminNotes: adminNotes?.trim() || "",
+        reason: payload.reason.trim(),
+        expectedUpdatedAt: assertExpectedUpdatedAt(payload.expectedUpdatedAt),
+        adminNotes: payload.adminNotes?.trim() || undefined,
       }),
     },
   );
 
-  return normalizeVendorApplication(response);
+  return parseSellerReviewResponse(response);
+}
+
+function assertExpectedUpdatedAt(value: string): string {
+  const normalized = value.trim();
+  if (!normalized || !normalized.includes("T") || Number.isNaN(Date.parse(normalized))) {
+    throw new SellerReviewContractError();
+  }
+  return normalized;
+}
+
+export function getSellerReviewSafeError(error: unknown): SellerReviewSafeError {
+  if (error instanceof SellerReviewContractError) {
+    return {
+      kind: "malformed",
+      message: "This seller review could not be verified. Try again.",
+    };
+  }
+
+  if (error instanceof ApiError) {
+    if (error.status === 401) {
+      return {
+        kind: "unauthenticated",
+        message: "Your admin access could not be confirmed. Sign in again.",
+      };
+    }
+    if (error.status === 403) {
+      return {
+        kind: "forbidden",
+        message: "You do not have permission to review this seller application.",
+      };
+    }
+    if (error.status === 404) {
+      return {
+        kind: "not-found",
+        message: "This seller application is no longer available.",
+      };
+    }
+    if (error.status === 409) {
+      return {
+        kind: "conflict",
+        message: "Another reviewer changed this application. Refresh before taking another action.",
+      };
+    }
+    if (error.status === 408) {
+      return {
+        kind: "timeout",
+        message: "The seller review is taking too long to load. Try again.",
+      };
+    }
+  }
+
+  return {
+    kind: "unavailable",
+    message: "The seller review is temporarily unavailable. Try again.",
+  };
+}
+
+export function shouldRetrySellerReviewQuery(
+  failureCount: number,
+  error: unknown,
+): boolean {
+  if (failureCount >= 1) return false;
+  const kind = getSellerReviewSafeError(error).kind;
+  return kind === "timeout" || kind === "unavailable";
 }

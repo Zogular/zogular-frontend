@@ -63,7 +63,8 @@ export default function AdminProductsPage() {
   const [hasSnapshotConflict, setHasSnapshotConflict] = useState(false);
 
   const identity = useAdminIdentity()!;
-  const canModerate = adminIdentityHasPermission(identity, "moderate_products");
+  const canModerate = adminIdentityHasPermission(identity, "approve_products");
+
 
   useEffect(() => {
     let ignore = false;

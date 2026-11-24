@@ -48,8 +48,9 @@ function getStatusLabel(status: AdminOrderStatus) {
 
 export default function AdminOrdersPage() {
   const identity = useAdminIdentity();
-  const canViewOrders = identity ? adminIdentityHasPermission(identity, "view_orders") : false;
-  const canManageFulfillment = identity ? adminIdentityHasPermission(identity, "override_orders") : false;
+  const canViewOrders = identity ? adminIdentityHasPermission(identity, "view_all_orders") : false;
+  const canManageFulfillment = identity ? adminIdentityHasPermission(identity, "manage_order_fulfillment") : false;
+
 
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
