@@ -96,11 +96,11 @@ function LoginContent() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40"></div>
       <div className="auth-panel relative z-10 flex flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Link href="/">
-          <Button data-auth-back aria-label="Go back" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
+        <Button asChild data-auth-back variant="ghost" size="icon" className="absolute z-20 h-11 w-11 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
+          <Link href="/" aria-label="Go back">
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
+          </Link>
+        </Button>
 
         <div className="mx-auto w-full max-w-90">
           <div className="mb-8 space-y-4 text-center lg:text-left">
@@ -120,43 +120,53 @@ function LoginContent() {
 
           <form className="space-y-4" onSubmit={handleSubmit}>
             <div className="space-y-1">
-              <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Email Address</label>
+              <label htmlFor="login-email" className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Email Address</label>
               <Input
+                id="login-email"
+                name="email"
                 type="email"
+                autoComplete="email"
+                inputMode="email"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={email}
                 onChange={(event) => setEmail(event.target.value)}
                 placeholder="banda@example.com"
-                className="h-10 rounded-xl border-white/10 bg-white/5 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
+                className="h-11 rounded-xl border-white/10 bg-white/5 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
               />
             </div>
 
             <div className="space-y-1">
               <div className="flex items-center justify-between">
-                <label className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Password</label>
+                <label htmlFor="login-password" className="text-[11px] font-semibold uppercase tracking-wider text-zinc-300">Password</label>
                 <Link href={appendNextPath("/auth/forgot-password", nextPath)} className="text-[11px] font-bold text-[#FF6B00] transition-all hover:text-[#e66000] hover:underline">
                   Forgot password?
                 </Link>
               </div>
               <div className="relative">
                 <Input
+                  id="login-password"
+                  name="password"
                   type={showPassword ? "text" : "password"}
+                  autoComplete="current-password"
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
                   placeholder="••••••••"
-                  className="h-10 rounded-xl border-white/10 bg-white/5 pr-10 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
+                  className="h-11 rounded-xl border-white/10 bg-white/5 pr-12 text-base text-white placeholder:text-white/40 backdrop-blur-md transition-all focus-visible:bg-white/10 focus-visible:ring-[#009E49] md:text-sm"
                 />
                 <button
                   type="button"
                   aria-label={showPassword ? "Hide password" : "Show password"}
+                  aria-pressed={showPassword}
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/20 text-zinc-200 transition-colors hover:bg-black/35 hover:text-white"
+                  className="absolute right-0 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-xl text-zinc-200 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
                 >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  {showPassword ? <EyeOff aria-hidden="true" className="h-4 w-4" /> : <Eye aria-hidden="true" className="h-4 w-4" />}
                 </button>
               </div>
             </div>
 
-            {error ? <p className="text-xs font-medium text-red-300">{error}</p> : null}
+            {error ? <p role="alert" className="text-xs font-medium text-red-300">{error}</p> : null}
             {shouldSignInAgain && !error ? (
               <p className="text-xs font-medium text-amber-200">Please sign in again to continue.</p>
             ) : null}
@@ -195,11 +205,11 @@ function LoginContent() {
       </div>
 
       <div className="relative z-10 hidden flex-col justify-end p-16 lg:flex xl:p-24">
-        <Link href="/">
-          <Button aria-label="Close login page" variant="ghost" size="icon" className="absolute right-6 top-6 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
-            <X className="h-5 w-5" />
-          </Button>
-        </Link>
+        <Button asChild variant="ghost" size="icon" className="absolute right-6 top-6 h-11 w-11 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
+          <Link href="/" aria-label="Close login page">
+            <X aria-hidden="true" className="h-5 w-5" />
+          </Link>
+        </Button>
 
         <div className="max-w-lg">
           <h2 className="mb-4 text-4xl font-extrabold leading-tight tracking-tighter text-white drop-shadow-lg xl:text-5xl">
