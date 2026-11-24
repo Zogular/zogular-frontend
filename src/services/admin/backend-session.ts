@@ -1,6 +1,11 @@
 import type { AdminAuthStrength, AdminIdentity } from "@/services/admin/session";
 import { ADMIN_SESSION_COOKIE } from "@/services/admin/session-cookie";
-import type { AdminRole, Permission } from "@/services/rbac";
+import {
+  ADMIN_ROLES,
+  CANONICAL_ADMIN_PERMISSIONS,
+  type AdminRole,
+  type Permission,
+} from "@/services/rbac";
 
 const BACKEND_BASE_URL =
   process.env.ADMIN_API_URL ??
@@ -16,30 +21,15 @@ const ADMIN_SESSION_ENDPOINT =
 const CSRF_ENDPOINT = "/auth/csrf-token";
 const CHANGE_TEMPORARY_PASSWORD_ENDPOINT = "/user/change-temporary-password";
 
-const BACKEND_ADMIN_ROLE_TO_UI_ROLE: Record<string, AdminRole> = {
-  SUPER_ADMIN: "super_admin",
-  TECH_ADMIN: "super_admin",
-  EXECUTIVE: "executive_admin",
-  OPERATIONS: "ops_manager",
-  ADMIN: "ops_manager",
-};
-
-const LOCAL_ADMIN_ROLES: readonly AdminRole[] = [
-  "super_admin",
-  "executive_admin",
-  "ops_manager",
-  "finance_admin",
-  "support_admin",
-  "content_admin",
-  "viewer",
-];
-
 export const ADMIN_BACKEND_ENDPOINTS = {
   login: ADMIN_LOGIN_ENDPOINT,
   logout: ADMIN_LOGOUT_ENDPOINT,
   session: ADMIN_SESSION_ENDPOINT,
   changeTemporaryPassword: CHANGE_TEMPORARY_PASSWORD_ENDPOINT,
 } as const;
+
+const CANONICAL_PERMISSIONS_SET: ReadonlySet<string> = new Set(CANONICAL_ADMIN_PERMISSIONS);
+const CANONICAL_ROLES_SET: ReadonlySet<string> = new Set(ADMIN_ROLES);
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   if (!value || typeof value !== "object" || Array.isArray(value)) return null;
@@ -86,44 +76,19 @@ function getStringByKeys(
   return undefined;
 }
 
-const VALID_PERMISSIONS: ReadonlySet<Permission> = new Set([
-  "view_dashboard", "view_financial_reports", "export_reports",
-  "view_sellers", "approve_sellers", "suspend_sellers", "edit_commission",
-  "view_buyers", "ban_buyers",
-  "view_products", "moderate_products",
-  "view_orders", "override_orders",
-  "manage_disputes",
-  "view_treasury", "approve_payouts", "manage_refunds",
-  "view_support_tickets", "reply_support_tickets", "manage_support_tickets", "manage_content",
-  "view_system_logs", "configure_platform", "manage_admins"
-]);
-
-function normalizeBackendPermissions(backendPerms: unknown[]): Permission[] {
-  const result = new Set<Permission>();
+function normalizeBackendPermissions(backendPerms: unknown[]): Permission[] | undefined {
+  const result: Permission[] = [];
   for (const raw of backendPerms) {
-    if (typeof raw !== "string") continue;
-    const norm = raw.trim().toLowerCase();
-
-    if (norm === "access_admin_panel") result.add("view_dashboard");
-    else if (norm === "review_sellers") result.add("view_sellers");
-    else if (norm === "manage_seller_status") { result.add("approve_sellers"); result.add("suspend_sellers"); }
-    else if (norm === "view_all_users") result.add("view_buyers");
-    else if (norm === "view_all_products") result.add("view_products");
-    else if (norm === "approve_products") result.add("moderate_products");
-    else if (norm === "view_all_orders" || norm === "view_orders") result.add("view_orders");
-    else if (norm === "manage_order_fulfillment") result.add("override_orders");
-    else if (norm === "manage_content") result.add("manage_content");
-    else if (norm === "view_all_reports" || norm === "view_sales_reports" || norm === "view_revenue_reports") result.add("view_financial_reports");
-    else if (norm === "export_reports") result.add("export_reports");
-    else if (norm === "view_all_payouts") result.add("view_treasury");
-    else if (norm === "process_payouts") result.add("approve_payouts");
-    else if (norm === "process_refunds" || norm === "issue_refunds") result.add("manage_refunds");
-    else if (norm === "view_logs") result.add("view_system_logs");
-    else if (norm === "manage_system_settings" || norm === "manage_technical_settings") result.add("configure_platform");
-    else if (norm === "manage_admins") result.add("manage_admins");
-    else if (VALID_PERMISSIONS.has(norm as Permission)) result.add(norm as Permission);
+    if (typeof raw !== "string") return undefined;
+    const trimmed = raw.trim();
+    if (!trimmed || !CANONICAL_PERMISSIONS_SET.has(trimmed)) {
+      return undefined;
+    }
+    if (!result.includes(trimmed as Permission)) {
+      result.push(trimmed as Permission);
+    }
   }
-  return Array.from(result);
+  return result;
 }
 
 function getPermissions(records: Record<string, unknown>[]): Permission[] | undefined {
@@ -132,6 +97,7 @@ function getPermissions(records: Record<string, unknown>[]): Permission[] | unde
     if (Array.isArray(record.permissions)) {
       return normalizeBackendPermissions(record.permissions);
     }
+    return undefined;
   }
 
   return undefined;
@@ -139,13 +105,8 @@ function getPermissions(records: Record<string, unknown>[]): Permission[] | unde
 
 function normalizeAdminRole(rawRole: string | undefined): AdminRole | undefined {
   if (!rawRole) return undefined;
-
-  const backendRole = rawRole.trim().toUpperCase().replaceAll("-", "_");
-  const mappedRole = BACKEND_ADMIN_ROLE_TO_UI_ROLE[backendRole];
-  if (mappedRole) return mappedRole;
-
-  const localRole = rawRole.trim().toLowerCase().replaceAll("-", "_") as AdminRole;
-  return LOCAL_ADMIN_ROLES.includes(localRole) ? localRole : undefined;
+  const trimmed = rawRole.trim().toUpperCase().replaceAll("-", "_");
+  return CANONICAL_ROLES_SET.has(trimmed) ? (trimmed as AdminRole) : undefined;
 }
 
 function normalizeAuthStrength(value: string | undefined): AdminAuthStrength {
@@ -165,6 +126,7 @@ function getDisplayName(records: Record<string, unknown>[], email: string): stri
   const combinedName = [firstName, lastName].filter(Boolean).join(" ").trim();
   return combinedName || email.split("@")[0] || "Admin";
 }
+
 
 export function buildBackendUrl(endpoint: string): string {
   if (/^https?:\/\//i.test(endpoint)) return endpoint;
@@ -280,6 +242,9 @@ export function buildAdminIdentity(payload: unknown, fallbackEmail?: string): Ad
   const role = normalizeAdminRole(getStringByKeys(records, ["role", "adminRole"]));
   if (!role) return undefined;
 
+  const permissions = getPermissions(records);
+  if (!permissions) return undefined;
+
   const email =
     getStringByKeys(records, ["email", "mail"]) ??
     asNonEmptyString(fallbackEmail);
@@ -291,7 +256,7 @@ export function buildAdminIdentity(payload: unknown, fallbackEmail?: string): Ad
     email,
     claims: {
       role,
-      permissions: getPermissions(records),
+      permissions,
       authStrength: normalizeAuthStrength(
         getStringByKeys(records, ["authStrength", "assuranceLevel"]),
       ),
@@ -300,6 +265,7 @@ export function buildAdminIdentity(payload: unknown, fallbackEmail?: string): Ad
     sessionStatus: "authenticated",
   };
 }
+
 
 export async function validateAdminSessionToken(token: string | undefined): Promise<AdminIdentity | null> {
   if (!token?.trim()) return null;

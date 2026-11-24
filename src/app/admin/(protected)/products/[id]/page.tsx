@@ -8,8 +8,8 @@ import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { AdminProductModerationView } from "./_components/AdminProductModerationView";
 import { adminProductsApi } from "@/services/admin/products";
-import { recordAdminAudit } from "@/services/admin/audit";
 import { adminIdentityHasPermission } from "@/services/admin/session";
+
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 import type { SellerProductListing } from "@/services/seller-catalog";
 import type { ProductModerationAction } from "@/services/product-moderation";
@@ -30,7 +30,7 @@ export default function AdminProductModerationPage() {
   const [hasSnapshotConflict, setHasSnapshotConflict] = useState(false);
 
   const identity = useAdminIdentity()!;
-  const canModerate = adminIdentityHasPermission(identity, "moderate_products");
+  const canModerate = adminIdentityHasPermission(identity, "approve_products");
 
   useEffect(() => {
     let mounted = true;
@@ -65,15 +65,9 @@ export default function AdminProductModerationPage() {
         action,
         note,
       });
-      await recordAdminAudit({
-        actorId: identity.id,
-        action: `product_${action}`,
-        target: product.id,
-        severity: action === "approve" ? "info" : "warning",
-        note,
-      });
 
       // The backend reviewProduct returns an AdminProductRecord, but we need SellerProductListing
+
       // For now, we update the local product state with the returned status and notes
       setProduct((current) => current ? {
         ...current,
