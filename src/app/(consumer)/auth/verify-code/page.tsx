@@ -55,12 +55,64 @@ function VerifyCodeContent() {
     );
   }
 
-  const handleChange = (index: number, value: string) => {
-    if (!/^\d*$/.test(value)) return;
+  const applyDigits = (startIndex: number, rawValue: string, mode: "paste" | "change") => {
+    const digits = rawValue.replace(/\D/g, "");
+    if (!digits) return;
+
     const nextOtp = [...otp];
-    nextOtp[index] = value.slice(-1);
+
+    if (digits.length >= 6) {
+      const sixDigits = digits.slice(0, 6).split("");
+      setOtp(sixDigits);
+      setError(null);
+      inputRefs.current[5]?.focus();
+      return;
+    }
+
+    if (mode === "change" && digits.length === 2 && otp[startIndex]) {
+      const replacement = digits[0] === otp[startIndex] ? digits[1] : digits[0];
+      nextOtp[startIndex] = replacement;
+      setOtp(nextOtp);
+      setError(null);
+      if (startIndex < 5) inputRefs.current[startIndex + 1]?.focus();
+      return;
+    }
+
+    if (digits.length > 1) {
+      let cursor = startIndex;
+      for (const digit of digits) {
+        if (cursor > 5) break;
+        nextOtp[cursor] = digit;
+        cursor += 1;
+      }
+      setOtp(nextOtp);
+      setError(null);
+      inputRefs.current[Math.min(cursor, 5)]?.focus();
+      return;
+    }
+
+    nextOtp[startIndex] = digits;
     setOtp(nextOtp);
-    if (value && index < 5) inputRefs.current[index + 1]?.focus();
+    setError(null);
+    if (startIndex < 5) inputRefs.current[startIndex + 1]?.focus();
+  };
+
+  const handleChange = (index: number, value: string) => {
+    if (value === "") {
+      const nextOtp = [...otp];
+      nextOtp[index] = "";
+      setOtp(nextOtp);
+      setError(null);
+      return;
+    }
+
+    applyDigits(index, value, "change");
+  };
+
+  const handlePaste = (index: number, event: React.ClipboardEvent<HTMLInputElement>) => {
+    event.preventDefault();
+    const pastedText = event.clipboardData.getData("text");
+    applyDigits(index, pastedText, "paste");
   };
 
   const handleKeyDown = (index: number, event: React.KeyboardEvent<HTMLInputElement>) => {
@@ -95,9 +147,9 @@ function VerifyCodeContent() {
     >
       <div className="absolute inset-0 z-0 bg-black/60 lg:bg-black/40" />
       <div className="auth-panel relative z-10 flex flex-col justify-center border-r border-white/10 bg-black/30 px-6 shadow-[0_0_50px_rgba(0,0,0,0.3)] backdrop-blur-2xl supports-backdrop-filter:bg-black/20 lg:px-12">
-        <Button asChild data-auth-back aria-label="Restart password recovery" variant="ghost" size="icon" className="absolute z-20 h-8 w-8 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
+        <Button asChild data-auth-back aria-label="Restart password recovery" variant="ghost" size="icon" className="absolute z-20 h-11 w-11 rounded-full bg-white/10 text-white transition-colors hover:bg-white/20">
           <Link href={restartHref} onClick={clearPasswordRecoveryState}>
-            <ArrowLeft className="h-4 w-4" />
+            <ArrowLeft aria-hidden="true" className="h-4 w-4" />
           </Link>
         </Button>
 
@@ -125,9 +177,9 @@ function VerifyCodeContent() {
                   autoComplete={index === 0 ? "one-time-code" : "off"}
                   type="text"
                   inputMode="numeric"
-                  maxLength={1}
                   value={digit}
                   onChange={(event) => handleChange(index, event.target.value)}
+                  onPaste={(event) => handlePaste(index, event)}
                   onKeyDown={(event) => handleKeyDown(index, event)}
                   className="h-12 min-w-0 w-full rounded-xl border border-white/10 bg-white/5 text-center text-xl font-bold text-white shadow-inner backdrop-blur-md transition-all focus:bg-white/10 focus:outline-none focus:ring-2 focus:ring-[#009E49] sm:h-14"
                 />
@@ -152,9 +204,9 @@ function VerifyCodeContent() {
       </div>
 
       <div className="relative z-10 hidden flex-col justify-end p-16 lg:flex xl:p-24">
-        <Button asChild aria-label="Close verification page" variant="ghost" size="icon" className="absolute right-6 top-6 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
+        <Button asChild aria-label="Close verification page" variant="ghost" size="icon" className="absolute right-6 top-6 h-11 w-11 rounded-full border border-white/10 bg-black/20 text-white backdrop-blur-md transition-colors hover:bg-black/40">
           <Link href={nextPath ?? "/"}>
-            <X className="h-5 w-5" />
+            <X aria-hidden="true" className="h-5 w-5" />
           </Link>
         </Button>
         <div className="max-w-lg">
