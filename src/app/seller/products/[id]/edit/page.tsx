@@ -117,7 +117,9 @@ export default function EditSellerProductPage() {
         canSubmitForReview={canSubmitProductForReview}
         submitLabel="Submit for Review"
         onPersist={async (payload: CreateSellerProductInput) => {
-          const updated = await updateSellerCatalogProduct(product.id, payload);
+          const updated = await updateSellerCatalogProduct(product.id, payload, {
+            editSnapshot: product,
+          });
           setProduct(updated);
         }}
       />

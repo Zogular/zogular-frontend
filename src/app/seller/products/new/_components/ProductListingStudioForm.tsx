@@ -4,11 +4,13 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Barcode, Box, Building2, CheckCircle2, ChevronDown, ChevronUp, DollarSign, Info, ListPlus, Palette, Percent, PlusCircle, Settings2, ShieldAlert, Sparkles, Trash2, Truck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { ProductContentPolicyFeedback } from "@/components/shared/ProductContentPolicyFeedback";
 import { fetchCategoryAttributes, fetchCategoryTree, type CategoryAttributeOption, type CategoryNode } from "@/services/categories-api";
 import { Toaster, toast } from "sonner";
 import { createSellerCatalogProduct, submitSellerProductForReview, type CreateSellerProductInput, type ProductCondition, type SellerProductListing, type SellerProductStatus } from "@/services/seller-catalog";
+import { isSellerProductBuyerVisibleStatus } from "@/services/product-moderation";
 import {
   focusProductContentPolicyIssue,
   getLegacyProductContentTargetId,
@@ -122,6 +124,9 @@ export function ProductListingStudioForm({
   const searchParams = useSearchParams();
   const { application } = useSellerApplication();
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const submittingRef = useRef(false);
+  const [confirmPublicEdit, setConfirmPublicEdit] = useState(false);
+  const publicEditTrigger = useRef<HTMLElement | null>(null);
   const [errors, setErrors] = useState<ValidationErrors>({});
   const [contentPolicyIssues, setContentPolicyIssues] = useState<readonly ProductContentPolicyIssue[]>([]);
   const [hasSnapshotConflict, setHasSnapshotConflict] = useState(false);
@@ -130,6 +135,8 @@ export function ProductListingStudioForm({
   >(null);
 
   const isEditMode = mode === "edit";
+  const isPublicEdit = isEditMode && !!initialProduct &&
+    isSellerProductBuyerVisibleStatus(initialProduct.status);
   const initialCategory = categorySelectionFromProduct(initialProduct);
   const initialVariantOptions = variantOptionsFromProduct(initialProduct);
   const initialDimensions = splitStoredDimensions(initialProduct?.logistics.dimensions);
@@ -493,8 +500,11 @@ export function ProductListingStudioForm({
     return Object.keys(nextErrors).length === 0;
   };
 
-  const handleSave = async (e: React.FormEvent | React.MouseEvent, status: ProductStatus) => {
+  const handleSave = (e: React.FormEvent | React.MouseEvent, requestedStatus: ProductStatus) => {
     e.preventDefault();
+    if (submittingRef.current || confirmPublicEdit) return;
+
+    const status = isPublicEdit ? "pending_review" : requestedStatus;
     if (status === "pending_review" && !canSubmitForReview) {
       toast.error("Seller approval is required before products can be submitted for review.");
       return;
@@ -503,7 +513,19 @@ export function ProductListingStudioForm({
       toast.error("Please fix the highlighted fields.");
       return;
     }
+    if (isPublicEdit) {
+      publicEditTrigger.current = document.activeElement instanceof HTMLElement
+        ? document.activeElement
+        : null;
+      setConfirmPublicEdit(true);
+      return;
+    }
+    void persistListing(status);
+  };
 
+  const persistListing = async (status: ProductStatus) => {
+    if (submittingRef.current) return;
+    submittingRef.current = true;
     setContentPolicyIssues([]);
     setHasSnapshotConflict(false);
     setSubmissionRecoveryFallback(null);
@@ -620,7 +642,9 @@ export function ProductListingStudioForm({
         description: isEditMode
           ? status === "draft"
             ? "Your listing updates are stored in the seller catalog."
-            : "Your edited product is waiting for admin moderation."
+            : isPublicEdit
+              ? "Buyers cannot see this listing while it is waiting for review."
+              : "Your edited product is waiting for admin moderation."
           : status === "draft"
             ? "Your draft is ready for editing later."
             : "Your product is waiting for admin moderation.",
@@ -674,6 +698,7 @@ export function ProductListingStudioForm({
           : "Unable to save this product. Try again.",
       );
     } finally {
+      submittingRef.current = false;
       setIsSubmitting(false);
     }
   };
@@ -1038,6 +1063,40 @@ export function ProductListingStudioForm({
         canSubmitForReview={canSubmitForReview}
         submitLabel={submitLabel}
       />
+      <Dialog open={confirmPublicEdit} onOpenChange={setConfirmPublicEdit}>
+        <DialogContent
+          showCloseButton={false}
+          onCloseAutoFocus={(event) => {
+            const trigger = publicEditTrigger.current;
+            if (!trigger?.isConnected) return;
+            trigger.focus();
+            if (document.activeElement === trigger) event.preventDefault();
+          }}
+        >
+          <DialogHeader>
+            <DialogTitle>Take this listing offline for review?</DialogTitle>
+            <DialogDescription>
+              Your listing stays live if you cancel. If you confirm, we will save your
+              changes and buyers will not see the listing until it is approved again.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button type="button" variant="outline" className="min-h-11" onClick={() => setConfirmPublicEdit(false)}>
+              Keep editing
+            </Button>
+            <Button
+              type="button"
+              className="min-h-11"
+              onClick={() => {
+                setConfirmPublicEdit(false);
+                void persistListing("pending_review");
+              }}
+            >
+              Save and submit for review
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
