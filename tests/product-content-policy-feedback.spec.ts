@@ -52,6 +52,7 @@ type FixtureState = {
 const fixtureState: FixtureState = createFixtureState();
 
 test.describe.configure({ mode: "serial" });
+test.use({ channel: process.env.PACKAGE_2B_BROWSER_CHANNEL, serviceWorkers: "block" });
 
 test.beforeAll(async () => {
   if (!Number.isInteger(FIXTURE_PORT) || FIXTURE_PORT <= 0) {
@@ -252,6 +253,19 @@ test.describe("controlled fixture seller and admin recovery", () => {
   test.skip(!APP_BASE_URL, "PACKAGE_2B_BASE_URL is required for controlled browser QA.");
 
   test.beforeEach(async ({ page }) => {
+    const appOrigin = new URL(APP_BASE_URL!).origin;
+    // Keep PWA registration out of the product fixture while workers remain blocked.
+    await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
+    for (const pathname of ["/_vercel/insights/script.js", "/_vercel/speed-insights/script.js"]) {
+      await page.route(`${appOrigin}${pathname}`, async (route) => {
+        const request = route.request();
+        if (request.method() !== "GET" || request.resourceType() !== "script") {
+          await route.continue();
+          return;
+        }
+        await route.fulfill({ status: 200, contentType: "application/javascript", body: "" });
+      });
+    }
     await page.route("https://va.vercel-scripts.com/**", async (route) => {
       await route.fulfill({
         status: 204,
@@ -275,6 +289,65 @@ test.describe("controlled fixture seller and admin recovery", () => {
     )).toBe(true);
     assertDiagnosticsClean(diagnostics);
   });
+
+  for (const [width, saveLabel] of [[320, "Save"], [1440, "Save Changes"]] as const) {
+    test(`public edit at ${width}px stays live until confirmed and saves directly into review`, async ({ page, context }, testInfo) => {
+      const appUrl = new URL(APP_BASE_URL!);
+      expect(appUrl.hostname).toBe("127.0.0.1");
+      expect(new URL(FIXTURE_ORIGIN).hostname).toBe("127.0.0.1");
+      const appOrigin = appUrl.origin;
+      const allowedOrigins = new Set([appOrigin, FIXTURE_ORIGIN]);
+      await context.route("**/*", async (route) => {
+        if (allowedOrigins.has(new URL(route.request().url()).origin)) await route.continue();
+        else await route.abort();
+      });
+      await context.routeWebSocket("**/*", (socket) => socket.close());
+      await page.setViewportSize({ width, height: 900 });
+      const original = makeProduct(SELLER_PRODUCT_ID, "Public Fixture Listing", width === 320 ? "PUBLISHED" : "APPROVED");
+      fixtureState.sellerProducts.set(SELLER_PRODUCT_ID, original);
+      await openSellerPage(page, `/seller/products/${SELLER_PRODUCT_ID}/edit`);
+      await page.locator("#product-title").fill("Edited fixture listing");
+
+      const save = page.getByRole("button", { name: saveLabel, exact: true });
+      const dialog = page.getByRole("dialog", { name: "Take this listing offline for review?" });
+      const confirm = dialog.getByRole("button", { name: "Save and submit for review" });
+      await save.click();
+      await expect(dialog).toBeVisible();
+      const bounds = await dialog.boundingBox();
+      expect(bounds?.x).toBeGreaterThanOrEqual(0);
+      expect((bounds?.x ?? width) + (bounds?.width ?? 1)).toBeLessThanOrEqual(width);
+      const cancel = dialog.getByRole("button", { name: "Keep editing" });
+      await expect.poll(async () => (await confirm.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await expect.poll(async () => (await cancel.boundingBox())?.height ?? 0).toBeGreaterThanOrEqual(44);
+      await page.screenshot({ path: testInfo.outputPath(`public-edit-confirm-${width}.png`) });
+      await expect(cancel).toBeFocused();
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await expect(save).toBeFocused();
+      expect(fixtureState.updateCount).toBe(0);
+      expect(fixtureState.sellerProducts.get(SELLER_PRODUCT_ID)).toEqual(original);
+
+      fixtureState.sellerMode = "policy";
+      fixtureState.sellerPolicyFields = ["title"];
+      await save.click();
+      await confirm.click();
+      await expect(visiblePolicyFeedback(page)).toContainText(DIRECT_GUIDANCE);
+      await expect(page.locator("#product-title")).toHaveValue("Edited fixture listing");
+      expect(fixtureState.updateCount).toBe(1);
+      expect(fixtureState.sellerProducts.get(SELLER_PRODUCT_ID)).toEqual(original);
+
+      fixtureState.sellerMode = "success";
+      await save.click();
+      await confirm.click();
+      await expect(page).toHaveURL(new RegExp(`/seller/products/${SELLER_PRODUCT_ID}$`));
+      expect(fixtureState.updateCount).toBe(2);
+      expect(fixtureState.submitCount).toBe(0);
+      expect(fixtureState.sellerProducts.get(SELLER_PRODUCT_ID)).toMatchObject({
+        title: "Edited fixture listing",
+        status: "PENDING_REVIEW",
+      });
+    });
+  }
 
   test("create rejection keeps one draft, transfers safe issues, and retries without duplication", async ({ page }) => {
     fixtureState.sellerMode = "policy";
@@ -717,6 +790,7 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
 
   if (route === "/auth/csrf-token" && method === "GET") {
     response.setHeader("X-CSRF-Token", "fixture-csrf-token");
+    response.setHeader("Set-Cookie", "_csrf=fixture-csrf-cookie; Path=/; HttpOnly; SameSite=Lax");
     writeJson(response, 200, { status: "success", data: { csrfToken: "fixture-csrf-token" } });
     return;
   }
@@ -732,9 +806,9 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
               firstName: "Fixture",
               lastName: "Admin",
               email: "admin@fixture.invalid",
-              role: "SUPER_ADMIN",
-              permissions: ["view_products", "moderate_products"],
-              authStrength: "mfa",
+              role: "OPERATIONS",
+              permissions: ["access_admin_panel", "view_all_products", "approve_products"],
+              authStrength: "password",
             }
           : {
               id: "seller-fixture-user",
@@ -937,8 +1011,20 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
   }
 
   if (route === "/admin/products" && method === "GET") {
-    const products = Array.from(fixtureState.adminProducts.values());
-    writeJson(response, 200, { status: "success", results: products.length, data: { products } });
+    const page = Number(url.searchParams.get("page") ?? 1);
+    const limit = Number(url.searchParams.get("limit") ?? 20);
+    if (!Number.isSafeInteger(page) || page < 1 || !Number.isSafeInteger(limit) || limit < 1 || limit > 100) {
+      writeJson(response, 400, { status: "fail", message: "Invalid fixture pagination." });
+      return;
+    }
+    const allProducts = Array.from(fixtureState.adminProducts.values());
+    const products = allProducts.slice((page - 1) * limit, page * limit);
+    writeJson(response, 200, {
+      status: "success",
+      results: products.length,
+      pagination: { page, limit, total: allProducts.length, pages: Math.ceil(allProducts.length / limit) },
+      data: { products },
+    });
     return;
   }
 

@@ -1,6 +1,7 @@
 import { ApiError, apiClient } from "@/services/api";
 import { type ProductAttributeInput } from "@/services/categories-api";
 import {
+  isSellerProductBuyerVisibleStatus,
   type ProductModerationAction,
   type ProductModerationState,
   type ProductModerationStatus,
@@ -748,14 +749,35 @@ export async function updateSellerProductStatus(
 export async function updateSellerCatalogProduct(
   productId: string,
   input: UpdateSellerProductInput,
+  options?: { editSnapshot: Pick<SellerProductListing, "status" | "updatedAt"> },
 ): Promise<SellerProductListing> {
   const currentProduct = await fetchSellerCatalogProductById(productId);
+  const editSnapshot = options?.editSnapshot;
+  const submitPublicEdit = !!editSnapshot && isSellerProductBuyerVisibleStatus(editSnapshot.status);
+  if (
+    editSnapshot &&
+    (submitPublicEdit || isSellerProductBuyerVisibleStatus(currentProduct.status)) &&
+    (editSnapshot.status !== currentProduct.status || editSnapshot.updatedAt !== currentProduct.updatedAt)
+  ) {
+    throw new ApiError("This listing changed while you were editing. Reopen it before saving.", 409);
+  }
+
+  if (submitPublicEdit && input.status !== "pending_review") {
+    throw new Error("Confirm that this listing will go offline before saving your changes.");
+  }
   const persistStatus = resolvePersistStatus(input.status ?? currentProduct.status);
+  const payload = buildBackendProductPayload({ ...currentProduct, ...input, status: persistStatus }, "update");
   const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}`, {
     method: "PATCH",
-    body: JSON.stringify(buildBackendProductPayload({ ...currentProduct, ...input, status: persistStatus }, "update")),
+    // Apply public edits and enter review together, without an intermediate offline draft.
+    body: JSON.stringify(submitPublicEdit ? { ...payload, status: "PENDING_REVIEW" } : payload),
     csrf: true,
   });
+
+  let product = normalizeBackendSellerProduct(response.data.product);
+  if (submitPublicEdit && product.status !== "pending_review") {
+    throw new Error("We could not confirm that this listing entered review. Reopen the listing to check its status.");
+  }
 
   persistSellerProductEnrichment(
     productId,
@@ -765,9 +787,7 @@ export async function updateSellerCatalogProduct(
     ),
   );
 
-  let product = normalizeBackendSellerProduct(response.data.product);
-
-  if (input.status === "pending_review") {
+  if (input.status === "pending_review" && !submitPublicEdit) {
     product = await submitSellerProductForReview(product.id);
   }
 
