@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import {
   LifeBuoy, Search, Filter, MessageSquare, Clock, CheckCircle2,
   AlertCircle, ArrowLeft, AlertTriangle, Info, ShieldAlert,
@@ -43,12 +43,12 @@ const PRIORITY_UI: Record<TicketPriority, { icon: React.ComponentType<{ classNam
 // ============================================================================
 function StatCard({ title, value, icon: Icon, colorClass }: { title: string; value: number | string; icon: React.ComponentType<{ className?: string }>; colorClass: string }) {
   return (
-    <div className={cn("rounded-3xl border p-5 shadow-sm transition-all hover:shadow-md", colorClass)}>
-      <div className="mb-3 flex items-center justify-between opacity-80">
-        <p className="text-[10px] font-bold uppercase tracking-wider">{title}</p>
-        <Icon className="h-4 w-4" />
+    <div className={cn("min-w-0 rounded-3xl border p-4 shadow-sm transition-all hover:shadow-md sm:p-5", colorClass)}>
+      <div className="mb-3 flex items-center justify-between gap-2 opacity-80">
+        <p className="min-w-0 text-[10px] font-bold uppercase tracking-wider">{title}</p>
+        <Icon className="h-4 w-4 shrink-0" />
       </div>
-      <h3 className="text-2xl font-black">{value}</h3>
+      <h3 className="break-words text-base font-black sm:text-2xl">{value}</h3>
     </div>
   );
 }
@@ -61,37 +61,106 @@ export default function SellerSupportPage() {
   const [tickets, setTickets] = useState<SupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [detailError, setDetailError] = useState<string | null>(null);
 
   // Filters
   const [searchQuery, setSearchQuery] = useState("");
   const [statusFilter, setStatusFilter] = useState<TicketStatus | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<TicketPriority | "all">("all");
 
-  // Thread & Modal State
+  // Thread & Modal State (keyed by ticket ID so background completions never clobber another ticket)
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [isContactModalOpen, setIsContactModalOpen] = useState(false);
-  const [selectedTicketData, setSelectedTicketData] = useState<SupportTicket | null>(null);
-  const [loadingTicket, setLoadingTicket] = useState(false);
-  const [replyText, setReplyText] = useState("");
-  const [replying, setReplying] = useState(false);
-  const [resolving, setResolving] = useState(false);
+  const [ticketDetailsById, setTicketDetailsById] = useState<Record<string, SupportTicket>>({});
+  const [loadingTicketsById, setLoadingTicketsById] = useState<Record<string, boolean>>({});
+  const [loadErrorsByTicket, setLoadErrorsByTicket] = useState<Record<string, string | null>>({});
+  const [actionErrorsByTicket, setActionErrorsByTicket] = useState<Record<string, string | null>>({});
+  const [replyDraftsByTicket, setReplyDraftsByTicket] = useState<Record<string, string>>({});
+  const [replyingByTicket, setReplyingByTicket] = useState<Record<string, boolean>>({});
+  const [resolvingByTicket, setResolvingByTicket] = useState<Record<string, boolean>>({});
+
+  const isMountedRef = useRef(true);
+  const listRequestSeqRef = useRef(0);
+  const detailRequestSeqRef = useRef<Record<string, number>>({});
+  const pendingReplyIdsRef = useRef<Set<string>>(new Set());
+  const pendingResolveIdsRef = useRef<Set<string>>(new Set());
+  const replyDraftsRef = useRef<Record<string, string>>({});
+
+  useEffect(() => {
+    isMountedRef.current = true;
+    return () => {
+      isMountedRef.current = false;
+    };
+  }, []);
 
   // --- 1. DATA FETCHING ---
   const loadTickets = useCallback(async (silent = false) => {
+    const requestSeq = ++listRequestSeqRef.current;
     try {
-      if (!silent) setLoading(true);
-      if (!silent) setError(null);
+      if (!silent) {
+        setLoading(true);
+        setError(null);
+      }
       const data = await supportApi.fetchTickets();
+      if (!isMountedRef.current || requestSeq !== listRequestSeqRef.current) return;
       setTickets(data);
     } catch (err) {
+      if (!isMountedRef.current || requestSeq !== listRequestSeqRef.current) return;
       if (!silent) setError(getSellerSafeErrorMessage(err, "support-list"));
     } finally {
-      if (!silent) setLoading(false);
+      if (isMountedRef.current && requestSeq === listRequestSeqRef.current) {
+        setLoading(false);
+      }
     }
   }, []);
 
-  useEffect(() => { loadTickets(); }, [loadTickets]);
+  useEffect(() => {
+    void loadTickets();
+  }, [loadTickets]);
+
+  const fetchTicketDetail = useCallback(
+    async (ticketId: string, options: { silent?: boolean } = {}): Promise<SupportTicket | null> => {
+      const nextSeq = (detailRequestSeqRef.current[ticketId] ?? 0) + 1;
+      detailRequestSeqRef.current[ticketId] = nextSeq;
+
+      if (!options.silent) {
+        setLoadingTicketsById((prev) => ({ ...prev, [ticketId]: true }));
+        setLoadErrorsByTicket((prev) => ({ ...prev, [ticketId]: null }));
+      }
+
+      try {
+        const detail = await supportApi.getTicket(ticketId);
+        if (!isMountedRef.current || detailRequestSeqRef.current[ticketId] !== nextSeq) {
+          return null;
+        }
+        setTicketDetailsById((prev) => ({ ...prev, [ticketId]: detail }));
+        setLoadErrorsByTicket((prev) => ({ ...prev, [ticketId]: null }));
+        setTickets((prev) =>
+          prev.map((ticket) =>
+            ticket.id === ticketId
+              ? { ...ticket, status: detail.status, updatedAt: detail.updatedAt }
+              : ticket,
+          ),
+        );
+        return detail;
+      } catch (err) {
+        if (!isMountedRef.current || detailRequestSeqRef.current[ticketId] !== nextSeq) {
+          return null;
+        }
+        const message = getSellerSafeErrorMessage(err, "support-detail");
+        if (options.silent) {
+          setActionErrorsByTicket((prev) => ({ ...prev, [ticketId]: message }));
+        } else {
+          setLoadErrorsByTicket((prev) => ({ ...prev, [ticketId]: message }));
+        }
+        return null;
+      } finally {
+        if (isMountedRef.current && detailRequestSeqRef.current[ticketId] === nextSeq) {
+          setLoadingTicketsById((prev) => (prev[ticketId] ? { ...prev, [ticketId]: false } : prev));
+        }
+      }
+    },
+    [],
+  );
 
   // --- 2. DERIVED STATE ---
   const filteredTickets = useMemo(() => {
@@ -111,65 +180,116 @@ export default function SellerSupportPage() {
   }, [tickets]);
 
   useEffect(() => {
-    if (!selectedTicketId) {
-      setSelectedTicketData(null);
-      setDetailError(null);
-      setReplyText("");
-      return;
-    }
-    let isMounted = true;
-    const fetchDetail = async () => {
-      setLoadingTicket(true);
-      setDetailError(null);
-      try {
-        const detail = await supportApi.getTicket(selectedTicketId);
-        if (isMounted) setSelectedTicketData(detail);
-      } catch (err) {
-        if (isMounted) setDetailError(getSellerSafeErrorMessage(err, "support-detail"));
-      } finally {
-        if (isMounted) setLoadingTicket(false);
-      }
-    };
-    fetchDetail();
-    return () => { isMounted = false; };
-  }, [selectedTicketId]);
+    if (!selectedTicketId) return;
+    void fetchTicketDetail(selectedTicketId);
+  }, [selectedTicketId, fetchTicketDetail]);
+
+  const selectedTicketData = selectedTicketId ? (ticketDetailsById[selectedTicketId] ?? null) : null;
+  const loadingTicket = selectedTicketId
+    ? Boolean(loadingTicketsById[selectedTicketId]) && !selectedTicketData
+    : false;
+  const activeLoadError = selectedTicketId ? (loadErrorsByTicket[selectedTicketId] ?? null) : null;
+  const activeActionError = selectedTicketId ? (actionErrorsByTicket[selectedTicketId] ?? null) : null;
+  const replyText = selectedTicketId ? (replyDraftsByTicket[selectedTicketId] ?? "") : "";
+  const replying = selectedTicketId ? Boolean(replyingByTicket[selectedTicketId]) : false;
+  const resolving = selectedTicketId ? Boolean(resolvingByTicket[selectedTicketId]) : false;
 
   const canReplyToTicket =
     selectedTicketData?.status !== "resolved" &&
     selectedTicketData?.status !== "closed";
 
+  const updateReplyDraft = (ticketId: string, nextValue: string) => {
+    replyDraftsRef.current[ticketId] = nextValue;
+    setReplyDraftsByTicket((prev) => ({ ...prev, [ticketId]: nextValue }));
+  };
+
   const handleReply = async () => {
-    if (!selectedTicketId || !replyText.trim()) return;
+    const targetTicketId = selectedTicketId;
+    if (!targetTicketId) return;
+
+    const rawDraft = replyDraftsRef.current[targetTicketId] ?? "";
+    const trimmedMessage = rawDraft.trim();
+    if (!trimmedMessage) return;
+    if (pendingReplyIdsRef.current.has(targetTicketId) || pendingResolveIdsRef.current.has(targetTicketId)) {
+      return;
+    }
+
+    pendingReplyIdsRef.current.add(targetTicketId);
+    setReplyingByTicket((prev) => ({ ...prev, [targetTicketId]: true }));
+    setActionErrorsByTicket((prev) => ({ ...prev, [targetTicketId]: null }));
 
     try {
-      setReplying(true);
-      setDetailError(null);
-      await supportApi.replyToTicket(selectedTicketId, replyText.trim());
-      setReplyText("");
-      const updatedTicket = await supportApi.getTicket(selectedTicketId);
-      setSelectedTicketData(updatedTicket);
-      loadTickets(true);
+      const sentMessage = await supportApi.replyToTicket(targetTicketId, trimmedMessage);
+      if (!isMountedRef.current) return;
+
+      // Clear only if the seller did not edit this ticket's draft while the reply was in-flight.
+      if ((replyDraftsRef.current[targetTicketId] ?? "") === rawDraft) {
+        replyDraftsRef.current[targetTicketId] = "";
+        setReplyDraftsByTicket((prev) => {
+          const next = { ...prev };
+          delete next[targetTicketId];
+          return next;
+        });
+      }
+
+      // Immediately record the sent message on the target ticket, then reconcile with server truth.
+      setTicketDetailsById((prev) => {
+        const existing = prev[targetTicketId];
+        if (!existing || existing.messages.some((msg) => msg.id === sentMessage.id)) return prev;
+        return {
+          ...prev,
+          [targetTicketId]: {
+            ...existing,
+            updatedAt: sentMessage.createdAt,
+            messages: [...existing.messages, sentMessage],
+          },
+        };
+      });
+
+      await fetchTicketDetail(targetTicketId, { silent: true });
+      void loadTickets(true);
     } catch (replyError) {
-      setDetailError(getSellerSafeErrorMessage(replyError, "support-reply"));
+      if (!isMountedRef.current) return;
+      setActionErrorsByTicket((prev) => ({
+        ...prev,
+        [targetTicketId]: getSellerSafeErrorMessage(replyError, "support-reply"),
+      }));
     } finally {
-      setReplying(false);
+      pendingReplyIdsRef.current.delete(targetTicketId);
+      if (isMountedRef.current) {
+        setReplyingByTicket((prev) => ({ ...prev, [targetTicketId]: false }));
+      }
     }
   };
 
   const handleResolve = async () => {
-    if (!selectedTicketId) return;
+    const targetTicketId = selectedTicketId;
+    if (!targetTicketId) return;
+    if (pendingResolveIdsRef.current.has(targetTicketId) || pendingReplyIdsRef.current.has(targetTicketId)) {
+      return;
+    }
+
+    pendingResolveIdsRef.current.add(targetTicketId);
+    setResolvingByTicket((prev) => ({ ...prev, [targetTicketId]: true }));
+    setActionErrorsByTicket((prev) => ({ ...prev, [targetTicketId]: null }));
 
     try {
-      setResolving(true);
-      setDetailError(null);
-      await supportApi.resolveTicket(selectedTicketId);
-      const updatedTicket = await supportApi.getTicket(selectedTicketId);
-      setSelectedTicketData(updatedTicket);
-      loadTickets(true);
+      await supportApi.resolveTicket(targetTicketId);
+      if (!isMountedRef.current) return;
+
+      await fetchTicketDetail(targetTicketId, { silent: true });
+      void loadTickets(true);
     } catch (resolveError) {
-      setDetailError(getSellerSafeErrorMessage(resolveError, "support-resolve"));
+      if (!isMountedRef.current) return;
+      setActionErrorsByTicket((prev) => ({
+        ...prev,
+        [targetTicketId]: getSellerSafeErrorMessage(resolveError, "support-resolve"),
+      }));
     } finally {
-      setResolving(false);
+      pendingResolveIdsRef.current.delete(targetTicketId);
+      if (isMountedRef.current) {
+        setResolvingByTicket((prev) => ({ ...prev, [targetTicketId]: false }));
+      }
     }
   };
 
@@ -219,7 +339,7 @@ export default function SellerSupportPage() {
             </div>
             <a
               href={`mailto:${supportEmail}?subject=Seller%20support%20request`}
-              className="inline-flex h-11 items-center justify-center rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
+              className="inline-flex h-11 max-w-full items-center justify-center break-all rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-center text-sm font-bold text-zinc-900 shadow-sm transition-colors hover:bg-white"
             >
               {supportEmail}
             </a>
@@ -241,10 +361,10 @@ export default function SellerSupportPage() {
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400" />
           <Input value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search ticket ID or subject..." className="h-11 w-full rounded-xl border-zinc-200 bg-zinc-50 pl-9 text-sm font-medium focus-visible:ring-zinc-900 shadow-inner" />
         </div>
-        <div className="flex gap-3">
-          <div className="relative">
+        <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
+          <div className="relative min-w-0 sm:flex-none">
             <Filter className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-            <select aria-label="Filter by Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as TicketStatus | "all")} className="h-11 appearance-none rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-8 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer">
+            <select aria-label="Filter by Status" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value as TicketStatus | "all")} className="h-11 w-full appearance-none rounded-xl border border-zinc-200 bg-zinc-50 pl-9 pr-8 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer sm:w-auto">
               <option value="all">All Status</option>
               <option value="open">Open</option>
               <option value="waiting-seller">Action Needed</option>
@@ -252,7 +372,7 @@ export default function SellerSupportPage() {
               <option value="resolved">Resolved</option>
             </select>
           </div>
-          <select aria-label="Filter by Priority" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as TicketPriority | "all")} className="h-11 appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer">
+          <select aria-label="Filter by Priority" value={priorityFilter} onChange={(e) => setPriorityFilter(e.target.value as TicketPriority | "all")} className="h-11 w-full min-w-0 appearance-none rounded-xl border border-zinc-200 bg-zinc-50 px-4 text-sm font-bold text-zinc-700 shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900 cursor-pointer sm:w-auto sm:flex-none">
             <option value="all">All Priority</option>
             <option value="urgent">Urgent</option>
             <option value="high">High</option>
@@ -314,11 +434,21 @@ export default function SellerSupportPage() {
             <div className="flex flex-col items-center justify-center p-8 h-full">
                <div className="h-8 w-8 animate-spin rounded-full border-4 border-zinc-200 border-t-zinc-900" />
             </div>
-          ) : detailError ? (
+          ) : activeLoadError && !selectedTicketData ? (
             <div className="flex flex-col items-center justify-center p-8 h-full text-center">
               <AlertCircle className="mb-3 h-8 w-8 text-red-500" />
               <h3 className="text-sm font-bold text-red-900">Failed to load ticket</h3>
-              <p className="mt-1 text-xs text-red-700">{detailError}</p>
+              <p role="alert" className="mt-1 text-xs text-red-700">{activeLoadError}</p>
+              {selectedTicketId ? (
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={() => void fetchTicketDetail(selectedTicketId)}
+                  className="mt-4 h-10 rounded-xl border-red-200 text-xs font-bold text-red-700 hover:bg-red-50"
+                >
+                  Try Again
+                </Button>
+              ) : null}
             </div>
           ) : !selectedTicketData ? (
             <div className="text-center p-8">
@@ -343,8 +473,8 @@ export default function SellerSupportPage() {
                 <Button variant="ghost" size="sm" className="mb-3 h-8 -ml-2 text-xs font-bold text-zinc-500 md:hidden" onClick={() => setSelectedTicketId(null)}>
                   <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to list
                 </Button>
-                <div className="flex items-start justify-between gap-4">
-                  <div>
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0 flex-1">
                     <h2 className="text-base font-black text-zinc-900 md:text-lg leading-tight">{selectedTicketData.subject}</h2>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{selectedTicketData.id}</span>
@@ -354,11 +484,12 @@ export default function SellerSupportPage() {
                   </div>
                   {canReplyToTicket ? (
                     <Button
+                      type="button"
                       variant="outline"
                       size="sm"
                       onClick={handleResolve}
-                      disabled={resolving}
-                      className="rounded-xl border-zinc-200 bg-zinc-50 text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-100 hover:text-zinc-900"
+                      disabled={resolving || replying}
+                      className="shrink-0 rounded-xl border-zinc-200 bg-zinc-50 text-xs font-bold text-zinc-700 shadow-sm hover:bg-zinc-100 hover:text-zinc-900"
                     >
                       {resolving ? "Resolving..." : "Mark as Resolved"}
                     </Button>
@@ -394,24 +525,41 @@ export default function SellerSupportPage() {
                 })}
               </div>
 
+              {activeActionError ? (
+                <div data-testid="support-action-error" role="alert" className="border-t border-red-100 bg-red-50 px-4 py-2.5 text-xs font-semibold text-red-700 md:px-6">
+                  {activeActionError}
+                </div>
+              ) : null}
+
               {canReplyToTicket ? (
-                <div className="border-t border-zinc-100 bg-white p-4 md:p-6 shrink-0">
-                  <div className="flex items-end gap-3">
+                <form
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void handleReply();
+                  }}
+                  className="border-t border-zinc-100 bg-white p-4 md:p-6 shrink-0"
+                >
+                  <div className="flex items-end gap-2 sm:gap-3">
                     <textarea
+                      aria-label="Reply message"
                       value={replyText}
-                      onChange={(event) => setReplyText(event.target.value)}
+                      onChange={(event) => {
+                        if (selectedTicketId) {
+                          updateReplyDraft(selectedTicketId, event.target.value);
+                        }
+                      }}
                       placeholder="Type your reply..."
-                      className="h-20 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
+                      className="h-20 min-w-0 flex-1 resize-none rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-sm font-medium shadow-inner outline-none focus-visible:ring-2 focus-visible:ring-zinc-900"
                     />
                     <Button
-                      onClick={handleReply}
-                      disabled={replying || !replyText.trim()}
-                      className="h-11 rounded-xl bg-zinc-900 px-6 font-bold text-white shadow-md hover:bg-zinc-800 transition-all active:scale-95"
+                      type="submit"
+                      disabled={replying || resolving || !replyText.trim()}
+                      className="h-11 shrink-0 rounded-xl bg-zinc-900 px-5 font-bold text-white shadow-md hover:bg-zinc-800 sm:px-6 transition-all active:scale-95"
                     >
                       {replying ? "Sending..." : "Send"}
                     </Button>
                   </div>
-                </div>
+                </form>
               ) : null}
             </>
           )}
