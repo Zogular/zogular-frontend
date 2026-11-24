@@ -57,7 +57,6 @@ function CheckoutContent({ auth }: { auth: ClientAuthState }) {
   }
 
   const isGuest = auth.status !== "authenticated";
-  const displayedSubtotal = flow.orderQuote?.itemSubtotal ?? flow.totalAmount;
   return (
     <main className="min-h-screen bg-[#f4fbf6] pb-24">
       <form onSubmit={flow.handleSubmit}>
@@ -100,7 +99,7 @@ function CheckoutContent({ auth }: { auth: ClientAuthState }) {
               stage={flow.checkoutStage}
               items={flow.items}
               itemCount={flow.itemCount}
-              displayedSubtotal={displayedSubtotal}
+              displayedSubtotal={flow.orderQuote?.itemSubtotal}
               deliveryFee={flow.orderQuote?.deliveryFeeAmount}
               total={flow.orderQuote?.grandTotalAmount}
               cashDue={flow.orderQuote?.cashDueOnDelivery}
@@ -110,6 +109,7 @@ function CheckoutContent({ auth }: { auth: ClientAuthState }) {
               isGuest={isGuest}
               canSubmit={flow.canSubmit}
               submitting={flow.submitting}
+              onRetryQuote={flow.retryQuote}
               onBack={() => flow.setCheckoutStage(isGuest ? "details" : "payment")}
             />
           </div>
