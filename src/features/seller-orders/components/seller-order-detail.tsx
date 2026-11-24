@@ -21,6 +21,7 @@ import { toast } from "sonner";
 import { CollectionErrorState } from "@/components/collection/collection-state";
 import { FeaturePendingNotice } from "@/components/shared/FeaturePendingNotice";
 import { Button } from "@/components/ui/button";
+import { invalidateSellerStockQueries } from "@/features/seller-inventory/hooks/useInventory";
 import { cn } from "@/lib/utils";
 import { sanitizeInternalNextPath } from "@/services/auth-intent";
 import {
@@ -36,8 +37,6 @@ import {
 } from "../order-ui";
 import { OrderCancellationDialog } from "./order-cancellation-dialog";
 
-const SELLER_PRODUCTS_QUERY_KEY = ["seller", "products"] as const;
-const SELLER_INVENTORY_QUERY_KEY = ["seller", "inventory"] as const;
 const PROGRESS_STEPS = [
   { id: "new", label: "Received" },
   { id: "confirmed", label: "Confirmed" },
@@ -194,8 +193,7 @@ export function SellerOrderDetailView({ orderId }: { orderId: string }) {
       setCancelOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sellerOrderQueryKeys.lists() }),
-        queryClient.invalidateQueries({ queryKey: SELLER_PRODUCTS_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: SELLER_INVENTORY_QUERY_KEY }),
+        updated.status === "cancelled" ? invalidateSellerStockQueries(queryClient) : undefined,
       ]);
       toast.success(`Order updated to ${getSellerOrderStatusMeta(updated.status).title}.`);
     },
