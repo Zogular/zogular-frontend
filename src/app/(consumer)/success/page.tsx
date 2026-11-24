@@ -201,7 +201,7 @@ function OrderConfirmation({
           </div>
 
           <p className="mt-5 text-sm font-medium leading-6 text-zinc-600">Check your order for the latest delivery updates.</p>
-          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+          <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <Button asChild className="h-12 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white hover:bg-[#00853d]">
               <Link href={`/account/orders/${order.id}`}>View order</Link>
             </Button>

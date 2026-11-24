@@ -826,6 +826,7 @@ async function fulfillStaticDependencies(page: Page) {
   await page.route("**/_vercel/insights/script.js", (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
   await page.route("**/_vercel/speed-insights/script.js", (route) => route.fulfill({ status: 200, contentType: "application/javascript", body: "" }));
   await page.route("https://images.example.test/**", (route) => route.fulfill({ status: 200, contentType: "image/png", body: pixel }));
+  await page.route("https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?*", (route) => route.fulfill({ status: 200, contentType: "image/png", body: pixel }));
   await page.route(/\/_next\/image\?.*/, (route) => route.fulfill({ status: 200, contentType: "image/png", body: pixel }));
 }
 
@@ -883,6 +884,45 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
     await fulfillStaticDependencies(page);
   });
+
+  for (const width of [320, 639, 640, 1440]) {
+    test(`confirmation actions stay inside the card at ${width}px`, async ({ page }) => {
+      await page.setViewportSize({ width, height: 900 });
+      await page.route("**/api/backend/**", (route) => {
+        const { pathname } = new URL(route.request().url());
+        const payload = pathname.endsWith("/user/me") ? userPayload()
+          : pathname.endsWith(`/orders/${IDS.order}`)
+            ? { status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") } }
+            : pathname.endsWith("/cart") ? cartPayload()
+              : { status: "success", data: { categories: [] } };
+        return route.fulfill({ json: payload });
+      });
+
+      await page.goto(`${baseUrl}/success?orderId=${IDS.order}`, { waitUntil: "domcontentloaded" });
+      const heading = page.getByRole("heading", { name: "Order confirmed by Zogular" });
+      await expect(heading).toBeVisible();
+      const card = page.locator("main section").filter({ has: heading });
+      const view = card.getByRole("link", { name: "View order" });
+      const shop = card.getByRole("link", { name: "Continue shopping" });
+      await expect(view).toHaveAttribute("href", `/account/orders/${IDS.order}`);
+      await expect(shop).toHaveAttribute("href", "/categories");
+      const [bounds, first, second] = await Promise.all([card.boundingBox(), view.boundingBox(), shop.boundingBox()]);
+      if (!bounds || !first || !second) throw new Error("Missing confirmation card or action bounds");
+
+      for (const action of [first, second]) {
+        expect(action.x).toBeGreaterThan(bounds.x);
+        expect(action.x + action.width).toBeLessThan(bounds.x + bounds.width);
+        expect(action.height).toBeGreaterThanOrEqual(44);
+      }
+      if (width < 640) {
+        expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+      } else {
+        expect(second.y).toBeCloseTo(first.y, 0);
+        expect(second.x).toBeGreaterThanOrEqual(first.x + first.width);
+      }
+      await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/confirmation-${width}.png`), fullPage: true });
+    });
+  }
 
   for (const viewport of viewports) {
     test(`${viewport.name} guest checkout and confirmation issue zero protected requests`, async ({ page }) => {
