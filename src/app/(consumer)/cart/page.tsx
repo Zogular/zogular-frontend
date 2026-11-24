@@ -26,8 +26,6 @@ export default function CartPage() {
     syncWithBackend,
   } = useCart();
 
-  const finalTotal = totalAmount;
-
   if (!hasHydrated || !identityResolved) {
     return (
       <main className="min-h-screen bg-[#f4fbf6] pb-24 pt-8 md:pt-12">
@@ -88,9 +86,9 @@ export default function CartPage() {
                           <p className="mt-1 text-xs font-medium text-zinc-500">Variant: {item.variant}</p>
                         ) : null}
 
-                        <div className="mt-3 flex items-center justify-between gap-3">
-                          <span className="text-sm font-black text-zinc-900">{formatCurrency(item.price)}</span>
-                          <div className="flex items-center gap-1 rounded-xl border border-zinc-200 bg-zinc-50 p-1">
+                        <div className="mt-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
+                          <span className="whitespace-nowrap text-sm font-black tabular-nums text-zinc-900">{formatCurrency(item.price)}</span>
+                          <div className="flex shrink-0 items-center gap-1 rounded-xl border border-zinc-200 bg-zinc-50 p-1">
                             <button
                               type="button"
                               onClick={() => {
@@ -124,19 +122,18 @@ export default function CartPage() {
 
             <aside className="h-fit rounded-3xl border border-zinc-200/60 bg-white p-5 shadow-sm">
               <h2 className="text-lg font-black text-zinc-900">Order Summary</h2>
-              <div className="mt-4 space-y-2 text-sm">
-                <div className="flex justify-between font-medium text-zinc-500">
-                  <span>Subtotal ({itemCount} items)</span>
-                  <span className="font-bold text-zinc-900">{formatCurrency(totalAmount)}</span>
+              <div className="mt-4 space-y-2.5 text-sm">
+                <div className="flex items-baseline justify-between gap-3 font-medium text-zinc-500">
+                  <span>Items subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
+                  <span data-testid="cart-items-subtotal" className="text-base font-black text-[#FF6B00]">{formatCurrency(totalAmount)}</span>
                 </div>
-                <div className="flex justify-between font-medium text-zinc-500">
+                <div className="flex items-baseline justify-between gap-3 font-medium text-zinc-500">
                   <span>Delivery</span>
-                  <span className="font-bold text-zinc-500">Calculated at checkout</span>
+                  <span className="text-right font-semibold text-zinc-600">Calculated at checkout</span>
                 </div>
-                <div className="flex justify-between border-t border-zinc-100 pt-2 text-base font-black text-zinc-900">
-                  <span>Total</span>
-                  <span className="text-[#FF6B00]">{formatCurrency(finalTotal)}</span>
-                </div>
+                <p className="border-t border-zinc-100 pt-2.5 text-xs font-medium leading-relaxed text-zinc-500">
+                  Items subtotal only. Final delivery fee and any checkout charges are confirmed at checkout after you choose your delivery area.
+                </p>
               </div>
               <Button asChild className="mt-5 h-11 w-full rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
                 <Link href="/checkout">Proceed to checkout</Link>
