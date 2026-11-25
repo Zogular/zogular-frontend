@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 
 type EditorialDiscoveryIntroProps = {
   hasProducts: boolean;
+  hasNewArrivals: boolean;
 };
 
 type EditorialAction = {
@@ -35,12 +36,14 @@ const desktopImage = getImageProps({
   fetchPriority: "high",
 });
 
-export function EditorialDiscoveryIntro({ hasProducts }: EditorialDiscoveryIntroProps) {
-  const heading = hasProducts ? "Find what you need." : "Explore Zogular.";
-  const description = hasProducts
+export function EditorialDiscoveryIntro({ hasProducts, hasNewArrivals }: EditorialDiscoveryIntroProps) {
+  const heading = hasNewArrivals ? "New arrivals" : hasProducts ? "Find what you need." : "Explore Zogular.";
+  const description = hasNewArrivals ? "Latest listings." : hasProducts
     ? "Shop everyday products in Zambia."
     : "No products are available yet.";
-  const actions: EditorialAction[] = hasProducts
+  const actions: EditorialAction[] = hasNewArrivals
+    ? [{ href: "/new-arrivals", label: "View collection" }]
+    : hasProducts
     ? [{ href: "/products", label: "Shop now" }]
     : [
         { href: "/products", label: "Browse products" },
