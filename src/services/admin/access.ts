@@ -1,32 +1,49 @@
-import { apiClient } from "@/services/api";
-import { AdminRole } from "../rbac";
+import { z } from "zod";
+import { ApiError, apiClient } from "@/services/api";
+import type { AdminRole } from "../rbac";
 
-export interface AdminUserRecord {
-  id: string;
-  firstName: string;
-  lastName: string;
-  email: string;
-  role: string;
-  isActive: boolean;
-  createdAt: string;
-}
+const statusRecordSchema = z.object({
+  id: z.string().min(1),
+  isActive: z.boolean(),
+});
 
-interface BackendUsersResponse {
-  data: {
-    users: AdminUserRecord[];
-  };
-  pagination: { total: number; page: number; limit: number; pages: number };
-}
+// User identity and contact fields can be withheld by the API's field policy.
+const adminUserSchema = statusRecordSchema.extend({
+  firstName: z.string().optional(),
+  lastName: z.string().optional(),
+  email: z.string().optional(),
+  role: z.string(),
+  createdAt: z.string(),
+});
+
+const adminUsersResponseSchema = z.object({
+  status: z.literal("success"),
+  data: z.object({ users: z.array(adminUserSchema) }),
+});
+
+const statusResponseSchema = z.object({
+  status: z.literal("success"),
+  data: z.object({ user: statusRecordSchema }),
+});
+
+export type AdminUserRecord = z.infer<typeof adminUserSchema>;
+export type AdminAccessStatus = z.infer<typeof statusRecordSchema>;
+export const adminAccessReasonSchema = z.string().trim().min(10).max(500);
 
 export const adminAccessApi = {
-  async fetchAdmins(): Promise<AdminUserRecord[]> {
-    const response = await apiClient<BackendUsersResponse>("/admin/users", {
+  async fetchAdmins(signal: AbortSignal): Promise<AdminUserRecord[]> {
+    const response = await apiClient<unknown>("/admin/users", {
       method: "GET",
-      query: { limit: 100 }, // Assuming we want all admins and 100 is enough for now
+      query: { limit: 100 },
+      cache: "no-store",
+      skipAuthRefresh: true,
+      signal,
     });
-    // Filter to only include admin roles
-    return response.data.users.filter((user) => 
-      ["SUPER_ADMIN", "TECH_ADMIN", "EXECUTIVE", "OPERATIONS"].includes(user.role)
+    const result = adminUsersResponseSchema.safeParse(response);
+    if (!result.success) throw new ApiError("Admin directory could not be confirmed.", 502);
+
+    return result.data.data.users.filter((user) =>
+      ["SUPER_ADMIN", "TECH_ADMIN", "EXECUTIVE", "OPERATIONS"].includes(user.role),
     );
   },
   async inviteAdmin(firstName: string, lastName: string, email: string, role: AdminRole): Promise<void> {
@@ -43,18 +60,33 @@ export const adminAccessApi = {
       csrf: true
     });
   },
-  async revokeAccess(adminId: string): Promise<void> {
-    await apiClient(`/admin/users/${adminId}/toggle-status`, {
+  async updateStatus(
+    adminId: string,
+    isActive: boolean,
+    reason: string,
+    signal: AbortSignal,
+  ): Promise<AdminAccessStatus> {
+    const result = adminAccessReasonSchema.safeParse(reason);
+    if (!result.success) throw new ApiError("Invalid access status reason.", 400);
+
+    const response = await apiClient<unknown>(`/admin/users/${encodeURIComponent(adminId)}/toggle-status`, {
       method: "PATCH",
-      body: JSON.stringify({ isActive: false }),
-      csrf: true
+      body: JSON.stringify({
+        isActive,
+        reason: result.data,
+        reasonCode: isActive ? "APPROVED_REACTIVATION" : "APPROVED_DEACTIVATION",
+      }),
+      csrf: "header",
+      skipAuthRefresh: true,
+      signal,
     });
+    const confirmation = statusResponseSchema.safeParse(response);
+    if (!confirmation.success) throw new ApiError("Access status change could not be confirmed.", 502);
+
+    const { user } = confirmation.data.data;
+    if (user.id !== adminId || user.isActive !== isActive) {
+      throw new ApiError("Access status change could not be confirmed.", 502);
+    }
+    return user;
   },
-  async restoreAccess(adminId: string): Promise<void> {
-    await apiClient(`/admin/users/${adminId}/toggle-status`, {
-      method: "PATCH",
-      body: JSON.stringify({ isActive: true }),
-      csrf: true
-    });
-  }
 };
