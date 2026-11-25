@@ -188,7 +188,7 @@ export default function AdminOrdersPage() {
             setSearch(value);
             setPage(1);
           }}
-          placeholder="Search order ID, buyer name, email, or phone..."
+          placeholder="Search orders"
           className="flex-1"
         />
         <select
