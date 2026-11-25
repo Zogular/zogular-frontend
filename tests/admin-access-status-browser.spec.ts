@@ -174,7 +174,7 @@ async function containNetwork(context: BrowserContext) {
   });
 }
 
-async function openAdmin(page: Page, name = targetName, listScreenshotPath?: string) {
+async function openAdmin(page: Page, name = targetName, listScreenshotPath?: string, verifyHeader?: () => Promise<void>) {
   await page.goto(`${appOrigin}/admin/access`, { waitUntil: "domcontentloaded" });
   const row = page.getByRole("button", { name, exact: true });
   await expect(row).toBeVisible();
@@ -190,6 +190,7 @@ async function openAdmin(page: Page, name = targetName, listScreenshotPath?: str
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
     await page.screenshot({ path: listScreenshotPath, animations: "disabled" });
   }
+  await verifyHeader?.();
   await row.focus();
   await row.press("Enter");
   const sheet = page.getByRole("dialog", { name: "Administrator Context" });
@@ -403,11 +404,56 @@ test("locks pending dismissal and repeat submissions, then restores keyboard foc
   await expect(sheet.getByRole("button", { name: "Restore access", exact: true })).toBeFocused();
 });
 
+async function verifyAccessHeader(page: Page, width: number, profileScreenshot: string) {
+  const header = page.locator("header").filter({ has: page.getByTestId("admin-profile-trigger") });
+  const menu = header.getByRole("button", { name: "Open admin menu" });
+  const profile = header.getByRole("button", { name: "Open admin profile for Fixture Reviewer" });
+  const command = header.getByRole("button", { name: "Navigate admin" });
+  const notifications = header.getByRole("button", { name: "Notifications are not available yet" });
+  const title = await header.getByText("Admins, Teams, and Roles", { exact: true }).boundingBox();
+  expect(title?.width, "route title retains space").toBeGreaterThan(0);
+  let rightEdge = 0;
+  for (const control of [...(width < 1024 ? [menu] : []), command, notifications, profile]) {
+    await expect(control).toBeInViewport({ ratio: 1 });
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(rightEdge - 1);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.x + box!.width, "header action right edge").toBeLessThanOrEqual(width);
+    if (control === command) expect(box!.x).toBeGreaterThanOrEqual(title!.x + title!.width - 1);
+    rightEdge = box!.x + box!.width;
+  }
+  await expect(notifications).toBeDisabled();
+  await expect(notifications).toHaveAttribute("aria-disabled", "true");
+  if (width >= 1024) await expect(menu).toBeHidden();
+  if (width === 320) {
+    await profile.click();
+    const profileDialog = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Sign out" }) });
+    await expect(profileDialog).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: profileScreenshot, animations: "disabled" });
+    await page.keyboard.press("Escape");
+    await expect(profile).toHaveAttribute("aria-expanded", "false");
+    await command.click();
+    await expect(page.getByRole("dialog", { name: "Navigate admin" })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("dialog", { name: "Navigate admin" })).toBeHidden();
+    expect(access.mutations).toHaveLength(0);
+  }
+}
+
 for (const width of [320, 375, 390, 430, 768, 1024, 1280, 1440]) {
   test(`contains the access sheet and confirmation at ${width}px`, async ({ page }, testInfo) => {
     const height = width === 320 ? 568 : 844;
     await page.setViewportSize({ width, height });
-    const sheet = await openAdmin(page, targetName, testInfo.outputPath(`access-list-${width}.png`));
+    const sheet = await openAdmin(
+      page,
+      targetName,
+      testInfo.outputPath(`access-list-${width}.png`),
+      [320, 390, 768, 1024, 1440].includes(width)
+        ? () => test.step("VIS-03 header containment", () => verifyAccessHeader(page, width, testInfo.outputPath("access-header-profile.png")))
+        : undefined,
+    );
     const email = sheet.getByText(`Email: ${longEmail}`, { exact: true });
     await expect(email).toBeVisible();
     await settlePanelMotion(sheet);
