@@ -1,4 +1,4 @@
-import { expect, test, type BrowserContext, type Page, type Request } from "@playwright/test";
+import { expect, test, type BrowserContext, type Locator, type Page, type Request } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -646,6 +646,103 @@ for (const viewport of browserViewports.filter(({ width }) => width !== 768)) {
     await expect(unavailable).toHaveCount(0);
   });
 }
+
+async function textOverflowsControl(locator: Locator) {
+  return locator.evaluate((element) => {
+    const control = element.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return Array.from(range.getClientRects()).some((rect) => rect.left < control.left - 1 || rect.right > control.right + 1);
+  });
+}
+
+test("VIS-06 mobile category drawer contains category labels at 320px", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success&categories=success`)).toBeOK();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${origin}/new-arrivals`);
+  const menu = page.getByRole("button", { name: "Open menu", exact: true });
+  await menu.click();
+  const drawer = page.getByRole("dialog", { name: "Shop menu", exact: true });
+  const topLink = drawer.getByRole("link", { name: longCategoryName, exact: true });
+  await expect(topLink).toHaveAttribute("href", "/category/accessories");
+  await topLink.scrollIntoViewIfNeeded();
+  await auditPageLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("navbar-mobile-drawer-320.png"), animations: "disabled" });
+  expect.soft(await textOverflowsControl(topLink), "Top Categories link text stays inside its tile").toBe(false);
+
+  await drawer.getByRole("button", { name: new RegExp(`^${longCategoryName}`) }).click();
+  const browse = drawer.getByText(`Browse ${longCategoryName}`, { exact: true });
+  const shop = drawer.getByRole("link", { name: `Shop all ${longCategoryName}`, exact: true });
+  const child = drawer.getByRole("link", { name: longSubcategoryName, exact: true });
+  const back = drawer.getByRole("button", { name: "Back to categories" });
+  await expect(shop).toHaveAttribute("href", "/category/accessories");
+  await expect(child).toHaveAttribute("href", "/category/accessories?subcategory=components");
+  await auditPageLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("navbar-mobile-category-320.png"), animations: "disabled" });
+  expect.soft(await textOverflowsControl(browse), "active category heading stays inside its panel").toBe(false);
+  expect.soft(await textOverflowsControl(shop), "Shop all text stays inside its link").toBe(false);
+  expect.soft((await shop.locator("svg").boundingBox())?.width, "Shop all chevron keeps its width").toBeGreaterThanOrEqual(15);
+  expect.soft((await back.boundingBox())?.width, "category back button keeps its width").toBeGreaterThanOrEqual(35);
+  await back.click();
+  await expect(topLink).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(menu).toBeFocused();
+});
+
+test("VIS-06 category navbar contains long labels without clipping ordinary links", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success&categories=success`)).toBeOK();
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto(`${origin}/new-arrivals`);
+  const categoryNav = page.locator("header nav").filter({ has: page.locator('a[href="/new-arrivals"]') });
+  const longLink = categoryNav.getByRole("link", { name: longCategoryName, exact: true });
+  await expect(longLink).toBeVisible();
+
+  for (const width of [768, 820, 1440, 767, 320]) {
+    await test.step(`long category at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: width === 320 ? 568 : width === 1440 ? 900 : 1024 });
+      await settleRenderedNavigation(page);
+      await page.screenshot({ path: testInfo.outputPath(`navbar-long-${width}.png`), animations: "disabled" });
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      if (width < 768) {
+        await expect(categoryNav).toBeHidden();
+        await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
+        return;
+      }
+      await expect(longLink).toHaveAttribute("href", "/category/accessories");
+      await expect(longLink).toHaveAttribute("title", longCategoryName);
+      await expect(longLink).toHaveCSS("text-overflow", "ellipsis");
+      expect(await longLink.evaluate((link) => link.scrollWidth > link.clientWidth)).toBe(true);
+      for (const link of [
+        categoryNav.getByRole("link", { name: "All Products", exact: true }),
+        categoryNav.getByRole("link", { name: "New Arrivals", exact: true }),
+        longLink,
+      ]) {
+        await expect(link).toBeInViewport({ ratio: 1 });
+        await link.focus();
+        await expect(link).toBeFocused();
+      }
+    });
+  }
+
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success`)).toBeOK();
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.reload();
+  const ordinaryLink = categoryNav.getByRole("link", { name: "Accessories", exact: true });
+  await expect(ordinaryLink).toHaveAttribute("href", "/category/accessories");
+  for (const width of [768, 820, 1440]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await expect(ordinaryLink).toBeInViewport({ ratio: 1 });
+    expect(await ordinaryLink.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
+  }
+});
 
 for (const viewport of browserViewports) {
   test(`source-aligned merchandising routes are truthful at ${viewport.name}`, async ({
