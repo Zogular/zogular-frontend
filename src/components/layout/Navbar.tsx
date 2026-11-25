@@ -320,7 +320,7 @@ function AccountDropdown({
           >
             <User className="h-6 w-6 text-zinc-800 transition-colors group-hover:text-[#009E49]" />
             <div className="hidden flex-col items-start leading-none lg:flex">
-              <span className="text-[10px] font-medium text-zinc-500">{isLoggedIn ? "Welcome back" : "Sign In"}</span>
+              {isLoggedIn ? <span className="text-[10px] font-medium text-zinc-500">Welcome back</span> : null}
               <span className="flex items-center gap-1 text-sm font-bold text-zinc-900">
                 {isLoggedIn ? "My Account" : "Sign In"}
                 <ChevronDown className={cn("h-3 w-3 text-zinc-400 transition-transform", isOpen && "rotate-180 text-[#009E49]")} />
@@ -371,7 +371,7 @@ function AccountDropdown({
 function CartButton({ itemCount, total }: { itemCount: number; total: string }) {
   return (
     <CartDrawer>
-      <button className="group relative flex items-center gap-2 rounded-2xl border border-transparent p-2 text-left transition-all hover:border-white/35 hover:bg-white/35 hover:backdrop-blur-xl">
+      <button type="button" aria-label="Open cart" className="group relative flex items-center gap-2 rounded-2xl border border-transparent p-2 text-left transition-all hover:border-white/35 hover:bg-white/35 hover:backdrop-blur-xl">
         <div className="relative">
           <ShoppingCart className="h-6 w-6 text-zinc-800 transition-colors group-hover:text-[#009E49]" />
           {itemCount > 0 ? (

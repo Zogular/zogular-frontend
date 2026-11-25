@@ -43,6 +43,7 @@ const viewports = [
 ] as const;
 
 test.describe.configure({ mode: "serial" });
+test.use({ channel: process.env.PLAYWRIGHT_CHANNEL });
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
@@ -181,6 +182,69 @@ test("search zero and empty search use explicit search states", async ({ page })
 
   await page.goto(`${frontendBaseUrl}/search`, { waitUntil: "networkidle" });
   await expect(page.getByTestId("listing-search-idle")).toContainText("Search Zogular products");
+});
+
+test.describe("Storefront navbar and empty catalog", () => {
+  test.use({ serviceWorkers: "block" });
+
+  for (const [width, height, navbarId] of [
+    [320, 568, "mobile-navbar-search"],
+    [1440, 900, "desktop-navbar-search"],
+  ] as const) {
+    test(`VIS-09 submits with Enter and clears the navbar query at ${width}px`, async ({ page, context }, testInfo) => {
+      await context.route("**/*", (route) => new URL(route.request().url()).origin === frontendBaseUrl
+        ? route.continue() : route.abort());
+      await context.routeWebSocket("**/*", (socket) => socket.close());
+      fixtureMode = "search-zero";
+      await page.setViewportSize({ width, height });
+      await page.goto(`${frontendBaseUrl}/products`);
+      const header = page.locator("header.sticky");
+      const signIn = header.getByRole("button", { name: "Open sign in menu" });
+      if (width === 1440) await expect(signIn.getByText("Sign In", { exact: true })).toHaveCount(1);
+      await expect(header.getByRole("button", { name: "Open cart" })).toBeVisible();
+      const search = page.locator(`#${navbarId}`);
+      const input = search.getByRole("searchbox", { name: "Search products" });
+      await input.fill("missing lamp");
+      await input.press("Tab");
+      await expect(search.getByRole("button", { name: "Search", exact: true })).toBeFocused();
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(`${frontendBaseUrl}/search?q=missing%20lamp`);
+      await expect(page.getByTestId("listing-search-zero")).toBeVisible();
+      await expect(input).toHaveValue("missing lamp");
+      await page.getByTestId("listing-search-zero").getByRole("link", { name: "Clear search" }).click();
+      await expect(page).toHaveURL(`${frontendBaseUrl}/search`);
+      await expect(page.getByTestId("listing-search-idle")).toBeVisible();
+      await expect(input).toHaveValue("");
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      await page.screenshot({ path: testInfo.outputPath(`cleared-search-${width}.png`), animations: "disabled" });
+
+      await input.fill("Electronics");
+      const category = search.getByRole("option", { name: /^Electronics/ });
+      await expect(category).toBeVisible();
+      await input.press("Home");
+      await expect(category).toHaveAttribute("aria-selected", "true");
+      await input.press("Enter");
+      await expect(page).toHaveURL(`${frontendBaseUrl}/category/electronics`);
+    });
+  }
+
+  test("an empty catalog leads to categories rather than linking back to itself", async ({ page, context }, testInfo) => {
+    await context.route("**/*", (route) => new URL(route.request().url()).origin === frontendBaseUrl
+      ? route.continue() : route.abort());
+    await context.routeWebSocket("**/*", (socket) => socket.close());
+    fixtureMode = "true-empty";
+    await page.setViewportSize({ width: 320, height: 568 });
+    await page.goto(`${frontendBaseUrl}/products`);
+    const empty = page.getByTestId("listing-true-empty");
+    await expect(empty.getByRole("heading", { name: "No products are available yet" })).toBeVisible();
+    await expect(empty.locator('a[href="/products"]')).toHaveCount(0);
+    const categories = empty.getByRole("link", { name: "Browse categories" });
+    await expect(categories).toHaveAttribute("href", "/categories");
+    await categories.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("empty-catalog-320.png"), animations: "disabled" });
+    await categories.click();
+    await expect(page).toHaveURL(`${frontendBaseUrl}/categories`);
+  });
 });
 
 test("unknown category uses not-found without fabricated category copy", async ({ page }) => {
