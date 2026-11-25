@@ -76,6 +76,7 @@ let verifyCodeDelayMs = 0;
 let relatedMode: (typeof RELATED_MODES)[number] = "empty";
 let relatedLimits: Array<string | null> = [];
 let sourceDetailReads = 0;
+let sourceDetailUnavailable = false;
 
 test.use({ channel: process.env.PLAYWRIGHT_CHANNEL });
 
@@ -285,6 +286,10 @@ test.beforeAll(async () => {
 
     if (url.pathname === `/api/v1/products/${SOLAR_PRODUCT.slug}`) {
       sourceDetailReads += 1;
+      if (sourceDetailUnavailable) {
+        res.writeHead(503).end(JSON.stringify({ status: "fail", message: "Synthetic upstream detail diagnostic" }));
+        return;
+      }
       res.end(JSON.stringify({ status: "success", data: { product: SOLAR_PRODUCT } }));
       return;
     }
@@ -388,6 +393,36 @@ test.beforeEach(() => {
   relatedMode = "empty";
   relatedLimits = [];
   sourceDetailReads = 0;
+  sourceDetailUnavailable = false;
+});
+
+test("Buyer product outage uses plain language and can recover with Retry", async ({ browser }, testInfo) => {
+  const context = await browser.newContext({
+    viewport: { width: 320, height: 568 },
+    serviceWorkers: "block",
+  });
+  try {
+    const containment = await installNetworkContainment(context);
+    const page = await context.newPage();
+    sourceDetailUnavailable = true;
+    await page.goto(`${BROWSER_ORIGIN}/product/${SOLAR_PRODUCT.slug}`);
+
+    const main = page.getByRole("main");
+    await expect(main.getByRole("heading", { name: "We couldn't load this page" })).toBeVisible();
+    await expect(main.getByText("Please try again in a moment.")).toBeVisible();
+    await expect(main).not.toContainText(/backend|catalog|synthetic upstream|503/i);
+    const retry = main.getByRole("button", { name: "Retry", exact: true });
+    await expect(retry).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: testInfo.outputPath("buyer-outage-320.png"), animations: "disabled" });
+
+    sourceDetailUnavailable = false;
+    await retry.click();
+    await expect(main.getByRole("heading", { name: SOLAR_PRODUCT.title, exact: true })).toBeVisible();
+    expect(containment.unexpectedHttpViolations).toEqual([]);
+    expect(containment.wsViolations).toEqual([]);
+  } finally {
+    await context.close();
+  }
 });
 
 for (const viewport of VIEWPORTS.filter(({ width }) => width === 320 || width === 1440)) {
