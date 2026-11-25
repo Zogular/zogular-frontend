@@ -514,8 +514,9 @@ function rectsOverlap(a: Rect, b: Rect): boolean {
   );
 }
 
-async function openExtremeTicketDrawer(page: Page, width: number, listScreenshot?: string) {
+async function openExtremeTicketDrawer(page: Page, width: number, listScreenshot?: string, verifyHeader?: () => Promise<void>) {
   await page.goto(`${BROWSER_ORIGIN}/admin/support`, { waitUntil: "networkidle" });
+  await verifyHeader?.();
   const extremeSubject =
     "URGENT_PAYOUT_RECONCILIATION_FAILURE_REF_2026_ZOGULAR_LUSAKA_00000000000000999";
 
@@ -616,6 +617,45 @@ async function holdSupportResponse(
   };
 }
 
+async function verifySupportHeader(page: Page, width: number, profileScreenshot: string) {
+  const header = page.locator("header").filter({ has: page.getByTestId("admin-profile-trigger") });
+  const menu = header.getByRole("button", { name: "Open admin menu" });
+  const profile = header.getByRole("button", { name: "Open admin profile for Fixture Admin" });
+  const command = header.getByRole("button", { name: "Navigate admin" });
+  const notifications = header.getByRole("button", { name: "Notifications are not available yet" });
+  const title = await header.getByText("Support", { exact: true }).boundingBox();
+  expect(title?.width, "route title retains space").toBeGreaterThan(0);
+  let rightEdge = 0;
+  for (const control of [...(width < 1024 ? [menu] : []), command, notifications, profile]) {
+    await expect(control).toBeInViewport({ ratio: 1 });
+    const box = await control.boundingBox();
+    expect(box).not.toBeNull();
+    expect(box!.x).toBeGreaterThanOrEqual(rightEdge - 1);
+    expect(box!.width).toBeGreaterThanOrEqual(44);
+    expect(box!.height).toBeGreaterThanOrEqual(44);
+    expect(box!.x + box!.width, "header action right edge").toBeLessThanOrEqual(width);
+    if (control === command) expect(box!.x).toBeGreaterThanOrEqual(title!.x + title!.width - 1);
+    rightEdge = box!.x + box!.width;
+  }
+  await expect(notifications).toBeDisabled();
+  await expect(notifications).toHaveAttribute("aria-disabled", "true");
+  if (width >= 1024) await expect(menu).toBeHidden();
+  if (width === 320) {
+    await profile.click();
+    const profileDialog = page.getByRole("dialog").filter({ has: page.getByRole("button", { name: "Sign out" }) });
+    await expect(profileDialog).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: profileScreenshot, animations: "disabled" });
+    await page.keyboard.press("Escape");
+    await expect(profile).toHaveAttribute("aria-expanded", "false");
+
+    await menu.click();
+    const navigation = page.getByRole("dialog", { name: "Admin navigation" });
+    await expect(navigation.getByRole("link", { name: "Support", exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+    await expect(navigation).toBeHidden();
+  }
+}
+
 test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
 
   const VIEWPORT_CASES: Array<{ width: number; height: number; label: string }> = [
@@ -633,12 +673,17 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
   for (const vp of VIEWPORT_CASES) {
     test(`drawer containment, bounding-boxes, and scroll at ${vp.label}`, async ({
       context,
-    }) => {
+    }, testInfo) => {
       const { page, violations } = await setupPage(context);
       await page.setViewportSize({ width: vp.width, height: vp.height });
 
       const sheet = await openExtremeTicketDrawer(
-        page, vp.width, path.join(ARTIFACT_DIR, `${PHASE_PREFIX}-support-list-${vp.label}.png`),
+        page,
+        vp.width,
+        path.join(ARTIFACT_DIR, `${PHASE_PREFIX}-support-list-${vp.label}.png`),
+        [320, 390, 768, 1024, 1440].includes(vp.width)
+          ? () => test.step("VIS-03 header containment", () => verifySupportHeader(page, vp.width, testInfo.outputPath("support-header-profile.png")))
+          : undefined,
       );
       await sheet.evaluate(async (element) => {
         await Promise.allSettled(element.getAnimations().map((animation) => animation.finished));
