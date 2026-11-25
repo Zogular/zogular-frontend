@@ -135,6 +135,22 @@ for (const [width, columns] of [[320, 1], [390, 1], [768, 2], [1024, 2], [1440, 
         .filter({ visible: true }).first()).toBeVisible();
       const search = page.getByPlaceholder("Search orders", { exact: true });
       if (width === 320) {
+        const header = page.locator("header").filter({ has: page.getByTestId("admin-command-trigger") });
+        const title = header.getByText("Orders and Fulfillment", { exact: true });
+        await expect(title).toBeInViewport({ ratio: 1 });
+        await expect.poll(() => title.evaluate((element) => {
+          const available = element.getBoundingClientRect();
+          const text = document.createRange();
+          text.selectNodeContents(element);
+          const fragments = Array.from(text.getClientRects());
+          return fragments.length > 0 && fragments.every((fragment) =>
+            fragment.left >= available.left - 1 && fragment.right <= available.right + 1);
+        })).toBe(true);
+        for (const control of ["admin-menu-button", "admin-command-trigger", "admin-notification-trigger"]) {
+          await expect(header.getByTestId(control)).toBeInViewport({ ratio: 1 });
+        }
+        await expect(header.getByRole("button", { name: /open admin profile/i })).toBeInViewport({ ratio: 1 });
+        await page.screenshot({ path: testInfo.outputPath("orders-header-320.png"), animations: "disabled" });
         await search.scrollIntoViewIfNeeded();
         await expect(search).toBeInViewport({ ratio: 1 });
         await expect(search).toHaveValue("");

@@ -36,11 +36,11 @@ export function AdminHeader({
             <Menu />
           </Button>
         </SheetTrigger>
-        <div className="min-w-0">
-          <p className="truncate text-[0.6875rem] font-semibold uppercase tracking-[0.11em] text-[var(--admin-canopy)]">
+        <div className="min-w-0 flex-1 py-2">
+          <p className="sr-only text-[0.6875rem] font-semibold uppercase text-[var(--admin-canopy)] sm:not-sr-only sm:wrap-anywhere">
             {routeContext?.groupLabel ?? "Admin"}
           </p>
-          <p className="truncate text-sm font-semibold text-[var(--admin-ink)]">
+          <p className="wrap-anywhere text-sm leading-tight font-semibold text-[var(--admin-ink)]">
             {routeContext?.capabilityLabel ?? "Workspace"}
           </p>
         </div>
