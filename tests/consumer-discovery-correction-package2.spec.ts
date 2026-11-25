@@ -26,8 +26,11 @@ test("wires the reviewed responsive editorial assets through the Next.js image p
   expect(introSource).not.toMatch(/unoptimized|carousel|autoplay|slider/i);
 });
 
-test("uses only the approved plain hero and no-product words", () => {
+test("uses only the approved collection, editorial, and no-product copy", () => {
   for (const copy of [
+    "New arrivals",
+    "Latest listings.",
+    "View collection",
     "Find what you need.",
     "Shop everyday products in Zambia.",
     "Shop now",
@@ -39,6 +42,7 @@ test("uses only the approved plain hero and no-product words", () => {
     expect(introSource).toContain(copy);
   }
 
+  expect(introSource).toContain('href: "/new-arrivals"');
   expect(introSource).toContain('href: "/products"');
   expect(introSource).toContain('href: "/search"');
   expect(introSource).not.toMatch(/deal|popular|delivery|seller|trust|campaign/i);
@@ -46,7 +50,7 @@ test("uses only the approved plain hero and no-product words", () => {
 
 test("keeps optional product sections conditional and removes stale empty-success chrome", () => {
   expect(homeSource).toContain("const hasProducts =");
-  expect(homeSource).toContain("<EditorialDiscoveryIntro hasProducts={hasProducts} />");
+  expect(homeSource).toContain("<EditorialDiscoveryIntro hasProducts={hasProducts} hasNewArrivals={newArrivals.length > 0} />");
   expect(homeSource).toContain("exploreMore.length > 0 ?");
   expect(homeSource).not.toContain("home-explore-empty");
   expect(homeSource).not.toContain("public catalog currently");
