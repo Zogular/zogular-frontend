@@ -11,6 +11,7 @@ export type AdminOrderStatus =
   | "CANCELLED"
   | "REFUNDED";
 
+/** The API omits protected fields; null on a returned field means no value was recorded. */
 export interface AdminOrderRecord {
   id: string;
   orderNumber: string;
@@ -20,12 +21,12 @@ export interface AdminOrderRecord {
   deliveredAt: string | null;
   estimatedDelivery: string | null;
   trackingNumber: string | null;
-  notes: string | null;
+  notes?: string | null;
   customer: {
     id: string;
-    name: string;
-    email: string;
-    phone: string | null;
+    name?: string;
+    email?: string;
+    phone?: string | null;
   };
   payment: {
     method: string;
@@ -41,7 +42,7 @@ export interface AdminOrderRecord {
   delivery: {
     method: string;
     trackingMode: string;
-    shippingAddress: {
+    shippingAddress?: {
       fullName: string | null;
       phone: string | null;
       addressLine: string | null;
@@ -63,7 +64,7 @@ export interface AdminOrderRecord {
     vendorStatus: string;
     seller: {
       userId: string;
-      name: string;
+      name?: string;
       storeName: string | null;
       applicationStatus: string | null;
     };

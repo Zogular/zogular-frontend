@@ -46,6 +46,15 @@ function getStatusLabel(status: AdminOrderStatus) {
   return toTitleCase(status.toLowerCase());
 }
 
+// Use the response shape, not the admin role, to distinguish omission from a missing value.
+function orderFieldLabel(value: string | null | undefined, emptyLabel = "Not recorded") {
+  return value === undefined ? "Restricted" : value || emptyLabel;
+}
+
+function deliveryAreaLabel(address: AdminOrderRecord["delivery"]["shippingAddress"]) {
+  return orderFieldLabel(address && [address.district, address.city].filter(Boolean).join(", "));
+}
+
 export default function AdminOrdersPage() {
   const identity = useAdminIdentity();
   const canViewOrders = identity ? adminIdentityHasPermission(identity, "view_all_orders") : false;
@@ -104,6 +113,7 @@ export default function AdminOrdersPage() {
     () => orders.find((order) => order.id === selectedOrderId) ?? null,
     [orders, selectedOrderId],
   );
+  const selectedAddress = selectedOrder?.delivery.shippingAddress;
 
   useEffect(() => {
     setNextStatus("");
@@ -239,7 +249,7 @@ export default function AdminOrdersPage() {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="font-black text-zinc-950">{order.orderNumber}</p>
-                  <p className="mt-1 text-sm font-bold text-zinc-800">{order.customer.name}</p>
+                  <p className="mt-1 text-sm font-bold text-zinc-800">{orderFieldLabel(order.customer.name)}</p>
                 </div>
                 <AdminStatusBadge tone={statusTone[order.status]}>
                   {getStatusLabel(order.status)}
@@ -358,9 +368,9 @@ export default function AdminOrdersPage() {
                       </p>
                     </td>
                     <td className="px-5 py-4 align-top">
-                      <p className="font-bold text-zinc-800">{order.customer.name}</p>
-                      <p className="text-xs font-medium text-zinc-500">{order.customer.email}</p>
-                      <p className="text-xs font-medium text-zinc-400">{order.customer.phone ?? "Phone not recorded"}</p>
+                      <p className="font-bold text-zinc-800">{orderFieldLabel(order.customer.name)}</p>
+                      <p className="text-xs font-medium text-zinc-500">{orderFieldLabel(order.customer.email)}</p>
+                      <p className="text-xs font-medium text-zinc-400">{orderFieldLabel(order.customer.phone, "Phone not recorded")}</p>
                     </td>
                     <td className="px-5 py-4 align-top">
                       <p className="font-bold text-zinc-900">{formatAdminCurrency(order.totals.grandTotalAmount)}</p>
@@ -374,7 +384,7 @@ export default function AdminOrdersPage() {
                     <td className="px-5 py-4 align-top">
                       <p className="font-bold text-zinc-800">{toTitleCase(order.delivery.method)}</p>
                       <p className="text-xs font-medium text-zinc-500">
-                        {order.delivery.shippingAddress.district ?? "District pending"} · {order.delivery.shippingAddress.city ?? "City pending"}
+                        {deliveryAreaLabel(order.delivery.shippingAddress)}
                       </p>
                       <p className="mt-1 text-xs font-bold text-amber-700">Manual dispatch only</p>
                     </td>
@@ -438,7 +448,7 @@ export default function AdminOrdersPage() {
           }
         }}
         title={selectedOrder?.orderNumber ?? "Order"}
-        description={selectedOrder ? `${selectedOrder.customer.name} · ${getStatusLabel(selectedOrder.status)}` : "Order detail"}
+        description={selectedOrder ? `${orderFieldLabel(selectedOrder.customer.name)} · ${getStatusLabel(selectedOrder.status)}` : "Order detail"}
       >
         {selectedOrder ? (
           <div className="space-y-6">
@@ -451,9 +461,9 @@ export default function AdminOrdersPage() {
             <div className="rounded-3xl border border-zinc-100 bg-white p-4">
               <h3 className="text-sm font-black text-zinc-950">Buyer</h3>
               <div className="mt-3 grid gap-2 text-sm text-zinc-700">
-                <p><strong>Name:</strong> {selectedOrder.customer.name}</p>
-                <p><strong>Email:</strong> {selectedOrder.customer.email}</p>
-                <p><strong>Phone:</strong> {selectedOrder.customer.phone ?? "Not recorded"}</p>
+                <p><strong>Name:</strong> {orderFieldLabel(selectedOrder.customer.name)}</p>
+                <p><strong>Email:</strong> {orderFieldLabel(selectedOrder.customer.email)}</p>
+                <p><strong>Phone:</strong> {orderFieldLabel(selectedOrder.customer.phone)}</p>
               </div>
             </div>
 
@@ -462,10 +472,16 @@ export default function AdminOrdersPage() {
               <div className="mt-3 grid gap-2 text-sm text-zinc-700">
                 <p><strong>Method:</strong> {toTitleCase(selectedOrder.delivery.method)}</p>
                 <p><strong>Tracking mode:</strong> {toTitleCase(selectedOrder.delivery.trackingMode.replace(/_/g, " "))}</p>
-                <p><strong>Recipient:</strong> {selectedOrder.delivery.shippingAddress.fullName ?? "Not recorded"}</p>
-                <p><strong>Phone:</strong> {selectedOrder.delivery.shippingAddress.phone ?? "Not recorded"}</p>
-                <p><strong>Address:</strong> {selectedOrder.delivery.shippingAddress.addressLine ?? "Not recorded"}</p>
-                <p><strong>Area:</strong> {[selectedOrder.delivery.shippingAddress.district, selectedOrder.delivery.shippingAddress.city].filter(Boolean).join(", ") || "Not recorded"}</p>
+                {selectedAddress ? (
+                  <>
+                    <p><strong>Recipient:</strong> {orderFieldLabel(selectedAddress.fullName)}</p>
+                    <p><strong>Phone:</strong> {orderFieldLabel(selectedAddress.phone)}</p>
+                    <p><strong>Address:</strong> {orderFieldLabel(selectedAddress.addressLine)}</p>
+                    <p><strong>Area:</strong> {deliveryAreaLabel(selectedAddress)}</p>
+                  </>
+                ) : (
+                  <p><strong>Shipping address:</strong> Restricted</p>
+                )}
                 <p><strong>Tracking number:</strong> {selectedOrder.trackingNumber ?? "Manual only"}</p>
                 <p><strong>Estimated delivery:</strong> {formatAdminDateTime(selectedOrder.estimatedDelivery)}</p>
               </div>
@@ -494,7 +510,7 @@ export default function AdminOrdersPage() {
                       <div>
                         <p className="text-sm font-black text-zinc-950">{item.title}</p>
                         <p className="text-xs font-medium text-zinc-500">
-                          {item.seller.storeName ?? item.seller.name} · Vendor item status {toTitleCase(item.vendorStatus.toLowerCase())}
+                          {item.seller.storeName ?? orderFieldLabel(item.seller.name)} · Vendor item status {toTitleCase(item.vendorStatus.toLowerCase())}
                         </p>
                       </div>
                       <p className="text-sm font-black text-zinc-950">{formatAdminCurrency(item.lineTotal)}</p>
@@ -512,11 +528,9 @@ export default function AdminOrdersPage() {
               <p className="mt-2 text-sm text-amber-900">
                 Dispatch and delivery updates remain manual in MVP. This queue reflects backend order snapshots and should not be read as live rider telemetry.
               </p>
-              {selectedOrder.notes ? (
-                <p className="mt-3 text-sm font-medium text-amber-950">
-                  <strong>Order note:</strong> {selectedOrder.notes}
-                </p>
-              ) : null}
+              <p className="mt-3 text-sm font-medium text-amber-950">
+                <strong>Order note:</strong> {orderFieldLabel(selectedOrder.notes)}
+              </p>
             </div>
 
             {canManageFulfillment ? (
