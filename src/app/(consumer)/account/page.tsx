@@ -3,9 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  CheckCircle2,
   ChevronRight,
-  Clock,
   Heart,
   MapPin,
   Package,
@@ -17,7 +15,7 @@ import {
   Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { BuyerOrderStatusBadge } from "@/components/account/BuyerOrderStatusBadge";
 import { Separator } from "@/components/ui/separator";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { useWishlist } from "@/hooks/use-wishlist";
@@ -176,15 +174,7 @@ export default function AccountOverviewPage() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : "Total"}</span>
                       <span className="font-black text-zinc-900">{order.isLegacyIncomplete ? `K${order.itemSubtotal.toLocaleString()}` : `K${order.total?.toLocaleString()}`}</span>
                       {order.isLegacyIncomplete && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Payment breakdown unavailable</span>}
-                      {order.status === "processing" ? (
-                        <Badge className="mt-1 gap-1 border-none bg-amber-100 px-2 shadow-none text-amber-700 hover:bg-amber-100">
-                          <Clock className="h-3 w-3" /> Processing
-                        </Badge>
-                      ) : (
-                        <Badge className="mt-1 gap-1 border-none bg-emerald-100 px-2 shadow-none text-emerald-700 hover:bg-emerald-100">
-                          <CheckCircle2 className="h-3 w-3" /> Delivered
-                        </Badge>
-                      )}
+                      <BuyerOrderStatusBadge status={order.status} compact />
                     </div>
                   </div>
 
