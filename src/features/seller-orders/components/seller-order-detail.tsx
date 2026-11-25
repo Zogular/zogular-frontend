@@ -236,7 +236,7 @@ export function SellerOrderDetailView({ orderId }: { orderId: string }) {
   const primaryTransition = order.allowedTransitions.find((item) => item === "confirmed" || item === "processing");
   return (
     <div className="mx-auto max-w-250 space-y-4 pb-40 md:pb-8">
-      <header className="sticky top-16 z-20 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-200 bg-[#f4fbf6]/95 px-4 py-3 backdrop-blur md:top-0 md:mx-0 md:rounded-xl md:border">
+      <header className="sticky top-[var(--seller-mobile-header-height)] z-20 -mx-4 flex items-center justify-between gap-3 border-b border-zinc-200 bg-[#f4fbf6]/95 px-4 py-3 backdrop-blur md:top-0 md:mx-0 md:rounded-xl md:border">
         <div className="flex min-w-0 items-center gap-3">
           <Button type="button" variant="outline" size="icon" aria-label="Back to seller orders" onClick={handleBack} className="h-9 w-9 shrink-0 rounded-xl"><ArrowLeft className="h-4 w-4" /></Button>
           <div className="min-w-0"><h1 className="truncate text-lg font-black text-zinc-950">{order.orderNumber}</h1><p className="flex items-center gap-1 text-[10px] font-semibold text-zinc-500"><Calendar className="h-3 w-3" />{formatSellerOrderDate(order.createdAt)}</p></div>
