@@ -12,6 +12,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { DiscoverySectionHeader } from "@/features/consumer-discovery/components/DiscoverySectionHeader";
+import { CategoryArtwork } from "@/features/categories/CategoryArtwork";
 import type { HomeCategorySummary } from "@/types/category";
 
 const categoryIcons: Readonly<Record<string, LucideIcon>> = {
@@ -47,7 +48,9 @@ export function HomeCategoryRail({ categories }: { categories: readonly HomeCate
               data-testid="home-category-link"
               className="flex min-h-[76px] h-full flex-col justify-center rounded-2xl border border-zinc-200 bg-white px-3 py-2.5 text-left outline-none transition-colors hover:border-emerald-300 hover:bg-emerald-50/40 focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 motion-reduce:transition-none max-[340px]:min-h-[68px] sm:min-h-[84px]"
             >
-              <CategoryIcon className="mb-2 h-5 w-5 text-[#007a3d]" aria-hidden="true" />
+              <CategoryArtwork slug={category.slug} className="mb-1 size-7 rounded-md">
+                <CategoryIcon className="size-5 text-[#007a3d]" />
+              </CategoryArtwork>
               <span className="line-clamp-2 text-[13px] font-black leading-4 text-zinc-950">{category.name}</span>
               {category.productCount !== undefined ? (
                 <span className="mt-1 text-[11px] font-semibold text-zinc-500">

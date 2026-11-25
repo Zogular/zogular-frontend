@@ -184,6 +184,45 @@ test("search zero and empty search use explicit search states", async ({ page })
   await expect(page.getByTestId("listing-search-idle")).toContainText("Search Zogular products");
 });
 
+test("category artwork is local, slug-scoped and keeps icon fallback", async ({ page, context }, testInfo) => {
+  await context.route("**/*", (route) => new URL(route.request().url()).origin === frontendBaseUrl
+    ? route.continue() : route.abort());
+  await context.routeWebSocket("**/*", (socket) => socket.close());
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(frontendBaseUrl);
+  const home = page.getByTestId("home-categories");
+  await expect(home.locator('[data-category-artwork="electronics"]')).toBeVisible();
+  await expect(home.getByTestId("home-category-link")).toHaveAttribute("href", "/category/electronics");
+  await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 320);
+  await page.route("**/api/backend/categories", (route) => route.fulfill({
+    json: { status: "success", results: 2, data: { categories: [
+      categoryFixture(30),
+      { ...categoryFixture(0), id: "other", name: "Other supplies", slug: "other-supplies", children: [] },
+    ] } },
+  }));
+  const artworkPath = "/images/discovery/category-artwork.webp";
+  const loaded = page.waitForResponse((response) => new URL(response.url()).pathname === artworkPath);
+  await page.goto(`${frontendBaseUrl}/categories`);
+  expect((await loaded).status()).toBe(200);
+  const artwork = page.locator('[data-category-artwork="electronics"]');
+  await expect(artwork).toBeVisible();
+  await expect(page.locator("[data-category-artwork]")).toHaveCount(1);
+  await expect(page.getByRole("link", { name: "Other supplies", exact: true })).toHaveAttribute("href", "/category/other-supplies");
+  await expect(page.getByRole("link", { name: "Electronics", exact: true }).first()).toHaveAttribute("href", "/category/electronics");
+  await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 320);
+  await artwork.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: testInfo.outputPath("category-artwork-320.png"), animations: "disabled" });
+
+  await page.route(`**${artworkPath}`, (route) => route.abort());
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const failed = page.waitForEvent("requestfailed", (request) => new URL(request.url()).pathname === artworkPath);
+  await page.reload();
+  await failed;
+  await expect(artwork.locator("..").locator("svg")).toBeVisible();
+  await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 1440);
+  await page.screenshot({ path: testInfo.outputPath("category-icon-fallback-1440.png"), animations: "disabled" });
+});
+
 test.describe("Storefront navbar and empty catalog", () => {
   test.use({ serviceWorkers: "block" });
 
