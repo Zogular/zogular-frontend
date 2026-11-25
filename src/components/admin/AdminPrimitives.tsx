@@ -169,6 +169,7 @@ export function AdminDetailSheet({
   description,
   contentClassName,
   bodyClassName,
+  contained = false,
   children,
 }: {
   open: boolean;
@@ -177,16 +178,40 @@ export function AdminDetailSheet({
   description: string;
   contentClassName?: string;
   bodyClassName?: string;
+  /** Opt-in containment for tickets with long subjects and conversation text. */
+  contained?: boolean;
   children: ReactNode;
 }) {
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className={cn("w-full border-l border-white/40 bg-white/95 p-0 shadow-2xl shadow-zinc-950/20 backdrop-blur-2xl sm:max-w-xl", contentClassName)}>
-        <SheetHeader className="border-b border-zinc-100 bg-zinc-950 px-6 py-5 text-white">
-          <SheetTitle className="text-lg font-black text-white">{title}</SheetTitle>
-          <SheetDescription className="text-xs font-bold text-zinc-400">{description}</SheetDescription>
+      <SheetContent
+        className={cn(
+          "w-full border-l border-white/40 bg-white/95 p-0 shadow-2xl shadow-zinc-950/20 backdrop-blur-2xl sm:max-w-xl",
+          contained &&
+            "gap-0 min-w-0 data-[side=right]:w-full data-[side=right]:max-w-full data-[side=right]:sm:max-w-xl [&>[data-slot=sheet-close]]:text-zinc-300 [&>[data-slot=sheet-close]]:hover:bg-white/10 [&>[data-slot=sheet-close]]:hover:text-white",
+          contentClassName,
+        )}
+      >
+        <SheetHeader
+          className={cn(
+            "border-b border-zinc-100 bg-zinc-950 px-6 py-5 text-white",
+            contained && "min-w-0 shrink-0 pr-14",
+          )}
+        >
+          <SheetTitle
+            className={cn("text-lg font-black text-white", contained && "min-w-0 break-words [overflow-wrap:anywhere]")}
+          >
+            {title}
+          </SheetTitle>
+          <SheetDescription
+            className={cn("text-xs font-bold text-zinc-400", contained && "min-w-0 break-words [overflow-wrap:anywhere]")}
+          >
+            {description}
+          </SheetDescription>
         </SheetHeader>
-        <div className={cn("flex-1 overflow-y-auto p-6", bodyClassName)}>{children}</div>
+        <div className={cn("flex-1 overflow-y-auto p-6", contained && "min-h-0 min-w-0 p-4 sm:p-6", bodyClassName)}>
+          {children}
+        </div>
       </SheetContent>
     </Sheet>
   );
