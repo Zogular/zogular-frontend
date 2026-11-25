@@ -192,7 +192,7 @@ export default function AdminSupportPage() {
       />
 
       <AdminToolbar>
-        <AdminSearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search tickets by subject, store, or email..." className="flex-1" />
+        <AdminSearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search tickets" className="flex-1" />
         
         <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All statuses</option>
