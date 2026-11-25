@@ -656,6 +656,45 @@ async function textOverflowsControl(locator: Locator) {
   });
 }
 
+test("recent orders show the customer reference without changing the detail route", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Recent order references require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  const orderId = "account-order-fixture";
+  const orderNumber = "ZG-FIXTURE-001";
+  const legacyId = "legacy-account-order";
+  const summary = { status: "PENDING", createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [] };
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) =>
+    route.fulfill({
+      json: {
+        status: "success",
+        results: 2,
+        data: { orders: [{ ...summary, id: orderId, orderNumber }, { ...summary, id: legacyId }] },
+        pagination: { page: 1, limit: 100, total: 2, pages: 1 },
+      },
+    }),
+  );
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    const heading = page.getByRole("heading", { name: orderNumber, exact: true });
+    await expect(heading).toBeVisible();
+    await expect(page.getByRole("heading", { name: orderId, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: legacyId, exact: true })).toBeVisible();
+    for (const id of [orderId, legacyId]) {
+      await expect(page.getByRole("link", { name: "Track", exact: true })
+        .and(page.locator(`a[href="/account/orders/${id}"]`))).toHaveCount(1);
+    }
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    await heading.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`recent-order-reference-${viewport.width}.png`), animations: "disabled" });
+  }
+});
+
 test("VIS-06 mobile category drawer contains category labels at 320px", async ({ page, request }, testInfo) => {
   test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);
