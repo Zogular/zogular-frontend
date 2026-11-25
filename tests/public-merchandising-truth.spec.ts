@@ -941,6 +941,7 @@ test("storefront business attribution and policy FAQs remain readable on mobile 
   await containMerchandisingContext(page.context(), origin);
   const routes = [
     { path: "about", title: "About Zogular", text: /Zogular by Vendara Enterprises is/ },
+    { path: "careers", title: "Careers at Zogular", text: "Where will open roles appear?" },
     { path: "help", title: "Help Center", text: "How do I pay for my order?" },
     { path: "privacy", title: "Privacy Policy", text: "How do I make a privacy request?" },
     { path: "returns", title: "Returns Policy", text: /within seven days after receiving them/ },
@@ -951,8 +952,11 @@ test("storefront business attribution and policy FAQs remain readable on mobile 
     await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
     for (const { path, title, text } of routes) {
       await page.goto(`${origin}/${path}`);
-      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
-      await expect(page.getByRole("region", { name: "Frequently asked questions" })).toBeVisible();
+      const main = page.getByRole("main", { includeHidden: true });
+      await expect(main.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.locator("main"), `/${path} at ${width}px should have one <main>`).toHaveCount(1);
+      await expect(main, `/${path} at ${width}px should expose one main landmark`).toHaveCount(1);
+      await expect(main.getByRole("region", { name: "Frequently asked questions" })).toBeVisible();
       await expect(page.getByText(text, { exact: typeof text === "string" })).toBeVisible();
       await expect(page.getByRole("contentinfo")).toContainText("Zogular by Vendara Enterprises");
       await auditPageLayout(page);

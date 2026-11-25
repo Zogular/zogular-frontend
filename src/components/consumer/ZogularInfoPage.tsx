@@ -79,7 +79,7 @@ export function ZogularInfoPage({
   const featureList = highlights.length > 0 ? highlights : sections.map((section) => section.title);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f4fbf6] pb-24 text-zinc-950">
+    <div className="min-h-screen overflow-hidden bg-[#f4fbf6] pb-24 text-zinc-950">
       <section className={cn("relative border-b border-white/70 bg-linear-to-br", toneStyles[tone])}>
         <div className="absolute inset-x-0 top-0 h-24 bg-white/58 backdrop-blur-3xl" />
         <div className="absolute right-0 top-16 hidden h-72 w-72 rounded-full border border-white/60 bg-white/22 blur-3xl lg:block" />
@@ -244,6 +244,6 @@ export function ZogularInfoPage({
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }
