@@ -156,6 +156,7 @@ export type CreateSellerProductInput = Omit<
   "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem" | "backendCategory"
 > & {
   seller?: Partial<SellerProductListing["seller"]>;
+  categoryLeaf?: Pick<BackendCategoryRef, "id" | "slug">;
 };
 
 export type UpdateSellerProductInput = Partial<
@@ -163,7 +164,7 @@ export type UpdateSellerProductInput = Partial<
     SellerProductListing,
     "id" | "slug" | "createdAt" | "updatedAt" | "seller" | "isSold" | "isLegacySingleItem" | "backendCategory"
   >
->;
+> & Pick<CreateSellerProductInput, "categoryLeaf">;
 
 export interface SellerProductModerationInput extends ProductModerationState {
   action?: ProductModerationAction;
@@ -766,7 +767,15 @@ export async function updateSellerCatalogProduct(
     throw new Error("Confirm that this listing will go offline before saving your changes.");
   }
   const persistStatus = resolvePersistStatus(input.status ?? currentProduct.status);
-  const payload = buildBackendProductPayload({ ...currentProduct, ...input, status: persistStatus }, "update");
+  // Reuse the server reference only for updates that do not supply a category selection.
+  const hasCategoryInput = input.categorySlug !== undefined || input.subcategorySlug !== undefined;
+  const categoryLeaf = input.categoryLeaf ?? (hasCategoryInput ? undefined : currentProduct.backendCategory);
+  const payload = buildBackendProductPayload({
+    ...currentProduct,
+    ...input,
+    categoryLeaf,
+    status: persistStatus,
+  }, "update");
   const response = await apiClient<BackendDetailResponse>(`/vendor/products/${productId}`, {
     method: "PATCH",
     // Apply public edits and enter review together, without an intermediate offline draft.
@@ -1242,10 +1251,13 @@ function buildBackendProductPayload(
     input.categorySlug && input.categorySlug.trim()
       ? input.categorySlug.trim()
       : slugifySellerValue(normalizedCategoryName);
-  const normalizedSubcategorySlug =
-    input.subcategorySlug && input.subcategorySlug.trim()
-      ? input.subcategorySlug.trim()
-      : normalizedCategorySlug;
+  const categoryId = input.categoryLeaf?.id.trim();
+  const leafSlug = input.categoryLeaf?.slug.trim();
+  const backendLeaf = categoryId && leafSlug && !categoryId.startsWith("static-")
+    ? { id: categoryId, slug: leafSlug }
+    : undefined;
+  const normalizedSubcategorySlug = backendLeaf?.slug ?? (input.subcategorySlug?.trim() || normalizedCategorySlug);
+  const location = input.location?.trim();
   const normalizedAttributes = (input.attributes ?? [])
     .filter((attribute) => /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(attribute.attributeId))
     .map((attribute) => ({
@@ -1259,13 +1271,14 @@ function buildBackendProductPayload(
   return removeUndefinedValues({
     title: input.title,
     description: input.description,
-    location: input.location,
+    location: location || (mode === "update" && input.location !== undefined ? null : undefined),
     price: input.price,
     salePrice: mode === "create" ? input.salePrice ?? undefined : input.salePrice,
     images: normalizePayloadImages(input.images),
     condition,
     category: mapLegacyCategory(normalizedCategoryName, normalizedCategorySlug, normalizedSubcategorySlug),
-    categorySlug: normalizedCategorySlug,
+    categoryId: backendLeaf?.id,
+    categorySlug: backendLeaf?.slug ?? normalizedCategorySlug,
     subcategorySlug: normalizedSubcategorySlug,
     status: mode === "create" ? "DRAFT" : mapFrontendStatusToBackend(resolvePersistStatus(input.status)),
     sku: input.sku,

@@ -22,7 +22,7 @@ const CATEGORY_PARENT_ID = "44444444-4444-4444-8444-444444444444";
 const ATTRIBUTE_ID = "55555555-5555-4555-8555-555555555555";
 const SELLER_DRAFT_STORAGE_KEY = "zogular:seller-product-draft:v1:seller-fixture-user";
 const SUBMISSION_RECOVERY_STORAGE_PREFIX = "zogular:product-submission-recovery:v1:";
-const SCREENSHOT_DIR = path.resolve("output/playwright/package-2b-content-policy");
+const SCREENSHOT_DIR = path.resolve(process.env.PACKAGE_2B_SCREENSHOT_DIR ?? "output/playwright/package-2b-content-policy");
 const DIRECT_GUIDANCE =
   "Remove phone numbers, email addresses, social handles, links, or messaging-app details.";
 
@@ -46,6 +46,8 @@ type FixtureState = {
   createCount: number;
   submitCount: number;
   updateCount: number;
+  createBodies: Record<string, unknown>[];
+  updateBodies: Record<string, unknown>[];
   requests: string[];
 };
 
@@ -252,8 +254,17 @@ test.describe("controlled fixture seller and admin recovery", () => {
   test.describe.configure({ timeout: 60_000 });
   test.skip(!APP_BASE_URL, "PACKAGE_2B_BASE_URL is required for controlled browser QA.");
 
-  test.beforeEach(async ({ page }) => {
-    const appOrigin = new URL(APP_BASE_URL!).origin;
+  test.beforeEach(async ({ page, context }) => {
+    const appUrl = new URL(APP_BASE_URL!);
+    expect(appUrl.hostname).toBe("127.0.0.1");
+    expect(new URL(FIXTURE_ORIGIN).hostname).toBe("127.0.0.1");
+    const appOrigin = appUrl.origin;
+    const allowedOrigins = new Set([appOrigin, FIXTURE_ORIGIN]);
+    await context.route("**/*", async (route) => {
+      if (allowedOrigins.has(new URL(route.request().url()).origin)) await route.continue();
+      else await route.abort();
+    });
+    await context.routeWebSocket("**/*", (socket) => socket.close());
     // Keep PWA registration out of the product fixture while workers remain blocked.
     await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
     for (const pathname of ["/_vercel/insights/script.js", "/_vercel/speed-insights/script.js"]) {
@@ -279,11 +290,20 @@ test.describe("controlled fixture seller and admin recovery", () => {
     const diagnostics = collectDiagnostics(page);
     await openSellerPage(page, "/seller/products/new");
     await fillCreateForm(page, "Call 0970000000 only in this retained draft");
+    await page.locator("#product-location").fill("   ");
     await clickVisibleButton(page, "Save Draft");
 
     await expect(page).toHaveURL(/\/seller\/products(?:\?|$)/);
     expect(fixtureState.createCount).toBe(1);
     expect(fixtureState.submitCount).toBe(0);
+    expect(fixtureState.createBodies[0]).toMatchObject({
+      categoryId: CATEGORY_ID,
+      categorySlug: "mobile-phones",
+      subcategorySlug: "mobile-phones",
+      status: "DRAFT",
+    });
+    expect(fixtureState.createBodies[0]).not.toHaveProperty("location");
+    expect(fixtureState.createBodies[0]).not.toHaveProperty("salePrice");
     expect(Array.from(fixtureState.sellerProducts.values()).some((product) =>
       String(product.description).includes("0970000000"),
     )).toBe(true);
@@ -291,22 +311,18 @@ test.describe("controlled fixture seller and admin recovery", () => {
   });
 
   for (const [width, saveLabel] of [[320, "Save"], [1440, "Save Changes"]] as const) {
-    test(`public edit at ${width}px stays live until confirmed and saves directly into review`, async ({ page, context }, testInfo) => {
-      const appUrl = new URL(APP_BASE_URL!);
-      expect(appUrl.hostname).toBe("127.0.0.1");
-      expect(new URL(FIXTURE_ORIGIN).hostname).toBe("127.0.0.1");
-      const appOrigin = appUrl.origin;
-      const allowedOrigins = new Set([appOrigin, FIXTURE_ORIGIN]);
-      await context.route("**/*", async (route) => {
-        if (allowedOrigins.has(new URL(route.request().url()).origin)) await route.continue();
-        else await route.abort();
-      });
-      await context.routeWebSocket("**/*", (socket) => socket.close());
+    test(`public edit at ${width}px stays live until confirmed and saves directly into review`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
-      const original = makeProduct(SELLER_PRODUCT_ID, "Public Fixture Listing", width === 320 ? "PUBLISHED" : "APPROVED");
+      const original = {
+        ...makeProduct(SELLER_PRODUCT_ID, "Public Fixture Listing", width === 320 ? "PUBLISHED" : "APPROVED"),
+        subcategorySlug: "old-category-slug",
+        salePrice: 200,
+      };
       fixtureState.sellerProducts.set(SELLER_PRODUCT_ID, original);
       await openSellerPage(page, `/seller/products/${SELLER_PRODUCT_ID}/edit`);
       await page.locator("#product-title").fill("Edited fixture listing");
+      await page.locator("#product-location").fill("   ");
+      await page.getByText("Offer a discount?", { exact: true }).locator("..").getByRole("button").click();
 
       const save = page.getByRole("button", { name: saveLabel, exact: true });
       const dialog = page.getByRole("dialog", { name: "Take this listing offline for review?" });
@@ -342,10 +358,51 @@ test.describe("controlled fixture seller and admin recovery", () => {
       await expect(page).toHaveURL(new RegExp(`/seller/products/${SELLER_PRODUCT_ID}$`));
       expect(fixtureState.updateCount).toBe(2);
       expect(fixtureState.submitCount).toBe(0);
+      expect(fixtureState.updateBodies).toMatchObject([
+        {
+          status: "PENDING_REVIEW",
+          categoryId: CATEGORY_ID,
+          categorySlug: "mobile-phones",
+          subcategorySlug: "mobile-phones",
+          location: null,
+          salePrice: null,
+        },
+        {
+          status: "PENDING_REVIEW",
+          categoryId: CATEGORY_ID,
+          categorySlug: "mobile-phones",
+          subcategorySlug: "mobile-phones",
+          location: null,
+          salePrice: null,
+        },
+      ]);
       expect(fixtureState.sellerProducts.get(SELLER_PRODUCT_ID)).toMatchObject({
         title: "Edited fixture listing",
         status: "PENDING_REVIEW",
       });
+    });
+  }
+
+  for (const changedFields of [
+    { updatedAt: "2026-08-09T08:00:00.000Z" },
+    { status: "APPROVED" },
+  ]) {
+    test(`public edit rejects a real ${Object.keys(changedFields)[0]} snapshot change before PATCH`, async ({ page }) => {
+      await page.setViewportSize({ width: 1440, height: 900 });
+      const original = makeProduct(SELLER_PRODUCT_ID, "Public Fixture Listing", "PUBLISHED");
+      fixtureState.sellerProducts.set(SELLER_PRODUCT_ID, original);
+      await openSellerPage(page, `/seller/products/${SELLER_PRODUCT_ID}/edit`);
+      await page.locator("#product-title").fill("Unsaved fixture edit");
+      await clickVisibleButton(page, "Save Changes");
+      const concurrentProduct = { ...original, ...changedFields };
+      fixtureState.sellerProducts.set(SELLER_PRODUCT_ID, concurrentProduct);
+      await clickVisibleButton(page, "Save and submit for review");
+
+      await expect(visiblePolicyFeedback(page)).toContainText("Reload before retrying");
+      await expect(page.locator("#product-title")).toHaveValue("Unsaved fixture edit");
+      expect(fixtureState.updateCount).toBe(0);
+      expect(fixtureState.submitCount).toBe(0);
+      expect(fixtureState.sellerProducts.get(SELLER_PRODUCT_ID)).toEqual(concurrentProduct);
     });
   }
 
@@ -375,9 +432,16 @@ test.describe("controlled fixture seller and admin recovery", () => {
     expect(recoveryStorage).not.toContain("fixture-detector-v1");
     expect(recoveryStorage).not.toContain("fixture-contact@example.invalid");
 
+    const rejectedResubmission = page.waitForResponse((response) =>
+      new URL(response.url()).pathname === "/api/backend/vendor/products/created-1/submit-review" &&
+      response.request().method() === "PATCH",
+    );
     await clickVisibleButton(page, "Submit for Review");
+    expect((await rejectedResubmission).status()).toBe(422);
+    await expect(visiblePolicyFeedback(page)).toContainText(DIRECT_GUIDANCE);
+    await expect(page.getByRole("button", { name: "Submit for Review", exact: true }).filter({ visible: true })).toBeEnabled();
     expect(fixtureState.createCount).toBe(1);
-    await expect.poll(() => fixtureState.updateCount).toBe(1);
+    expect(fixtureState.updateCount).toBe(1);
 
     fixtureState.sellerMode = "success";
     await page.locator("#product-title").fill("Corrected fixture product");
@@ -583,6 +647,7 @@ test.describe("controlled fixture seller and admin recovery", () => {
       fixtureState.sellerPolicyFields = ["location"];
 
       await openSellerPage(page, `/seller/products/${SELLER_PRODUCT_ID}/edit`);
+      await expect(page.getByText("1 category detail loaded for Mobile Phones.", { exact: true })).toBeVisible();
       await clickVisibleButton(page, "Submit for Review");
       await assertVisibleFeedbackGeometry(page);
       if (viewport.width < 768) {
@@ -636,6 +701,8 @@ function createFixtureState(): FixtureState {
     createCount: 0,
     submitCount: 0,
     updateCount: 0,
+    createBodies: [],
+    updateBodies: [],
     requests: [],
   };
 }
@@ -943,6 +1010,7 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
 
   if (route === "/vendor/products" && method === "POST") {
     const body = await readJsonBody(request);
+    fixtureState.createBodies.push(body);
     fixtureState.createCount += 1;
     const id = `created-${fixtureState.createCount}`;
     const product = mergeProductInput(makeProduct(id, String(body.title ?? "Untitled"), "DRAFT"), body);
@@ -990,6 +1058,7 @@ async function handleFixtureRequest(request: IncomingMessage, response: ServerRe
     const product = fixtureState.sellerProducts.get(id);
     if (!product) return writeJson(response, 404, { status: "fail", message: "Not found" });
     const body = await readJsonBody(request);
+    fixtureState.updateBodies.push(body);
     const isProtected = body.status === "PENDING_REVIEW" || body.status === "APPROVED" || body.status === "PUBLISHED";
     if (isProtected && fixtureState.sellerMode === "policy") {
       return writePolicyResponse(response, fixtureState.sellerPolicyFields);

@@ -101,6 +101,10 @@ function categorySelectionFromProduct(product?: SellerProductListing): CategoryS
 
   return {
     ...legacySelection,
+    categoryName: product.categoryName,
+    categorySlug: product.categorySlug,
+    subcategoryName: product.subcategoryName,
+    subcategorySlug: product.backendCategory.slug,
     path: [product.categoryName, product.subcategoryName].filter(
       (value, index, values) => value && values.indexOf(value) === index,
     ),
@@ -577,6 +581,9 @@ export function ProductListingStudioForm({
         categorySlug: category.categorySlug,
         subcategoryName: category.subcategoryName,
         subcategorySlug: category.subcategorySlug,
+        categoryLeaf: category.isBackendCategory
+          ? { id: category.leafId, slug: category.leafSlug }
+          : undefined,
         status: payloadStatus,
         price: normalizedPrice,
         salePrice: hasDiscount ? Number(salePrice) : null,
