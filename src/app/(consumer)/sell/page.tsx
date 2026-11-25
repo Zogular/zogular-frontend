@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   ChevronRight,
@@ -128,7 +129,13 @@ export default function SellOnZogularPage() {
   }, [router]);
 
   return (
-    <main className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
+    <div className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
+      <nav aria-label="Storefront" className="border-b border-white/10 px-4 pt-safe md:hidden">
+        <Link href="/" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-white">
+          <ArrowLeft aria-hidden="true" className="size-4" />
+          Back to shop
+        </Link>
+      </nav>
       <section className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top,rgba(0,158,73,0.28),transparent_36%),linear-gradient(135deg,#06110a_0%,#0a1710_46%,#08120c_100%)]">
         <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.03))]" />
         <div className="absolute left-[14%] top-16 h-44 w-44 rounded-full bg-[#00d663]/10 blur-[110px]" />
@@ -155,19 +162,19 @@ export default function SellOnZogularPage() {
             </div>
 
             <div className="mt-7 flex flex-col gap-3 sm:max-w-xl sm:flex-row">
-              <Link href={primaryHref} className="sm:flex-1">
-                <Button className="group h-12 w-full rounded-[1.35rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_42px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:h-13 sm:text-[13px]">
+              <Button asChild className="group h-12 w-full rounded-[1.35rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_42px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:h-13 sm:text-[13px] sm:flex-1">
+                <Link href={primaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full bg-white/85 shadow-[0_0_16px_rgba(255,255,255,0.8)] transition-transform duration-300 group-hover:scale-125" />
                   Create seller account
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
-              <Link href={secondaryHref} className="sm:flex-1">
-                <Button className="group h-12 w-full rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:h-13 sm:text-[13px]">
+                </Link>
+              </Button>
+              <Button asChild className="group h-12 w-full rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:h-13 sm:text-[13px] sm:flex-1">
+                <Link href={secondaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full border border-white/45 bg-white/15 transition-colors duration-300 group-hover:bg-white/8" />
                   Sign in to continue
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
@@ -372,19 +379,19 @@ export default function SellOnZogularPage() {
             </p>
 
             <div className="relative mt-5 grid gap-3">
-              <Link href={primaryHref}>
-                <Button className="group h-12 w-full rounded-[1.25rem] border border-emerald-300/18 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[0_20px_46px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:text-[13px]">
+              <Button asChild className="group h-12 w-full rounded-[1.25rem] border border-emerald-300/18 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[0_20px_46px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:text-[13px]">
+                <Link href={primaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.72)] transition-transform duration-300 group-hover:scale-125" />
                   Create seller account
                   <ChevronRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
-              <Link href={secondaryHref}>
-                <Button className="group h-12 w-full rounded-[1.25rem] border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:text-[13px]">
+                </Link>
+              </Button>
+              <Button asChild className="group h-12 w-full rounded-[1.25rem] border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:text-[13px]">
+                <Link href={secondaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full border border-white/40 bg-white/12" />
                   Sign in to seller access
-                </Button>
-              </Link>
+                </Link>
+              </Button>
             </div>
           </div>
         </div>
@@ -440,7 +447,7 @@ export default function SellOnZogularPage() {
           }
         }
       `}</style>
-    </main>
+    </div>
   );
 }
 

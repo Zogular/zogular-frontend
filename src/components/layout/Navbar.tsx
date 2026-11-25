@@ -511,14 +511,11 @@ function CategoryBar({
                           </div>
                           <div className="min-w-0">
                             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">Category</p>
-                            <h3 className="truncate text-lg font-black text-zinc-900">
+                            <h3 className="wrap-anywhere text-lg font-black text-zinc-900">
                               {activeCategory.label}
                             </h3>
                           </div>
                         </div>
-                        <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-600">
-                          Jump straight into the most useful sections without opening a giant menu.
-                        </p>
                       </div>
                       <Link
                         href={activeCategory.href}
