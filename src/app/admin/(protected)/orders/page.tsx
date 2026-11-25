@@ -441,6 +441,7 @@ export default function AdminOrdersPage() {
       </section>
 
       <AdminDetailSheet
+        contained
         open={Boolean(selectedOrder)}
         onOpenChange={(open) => {
           if (!open) {
@@ -452,10 +453,13 @@ export default function AdminOrdersPage() {
       >
         {selectedOrder ? (
           <div className="space-y-6">
-            <div className="grid gap-3 md:grid-cols-3">
-              <AdminMetricCard title="Grand Total" value={formatAdminCurrency(selectedOrder.totals.grandTotalAmount)} note="Backend order snapshot" icon={<ClipboardList className="h-4 w-4" />} tone="zinc" />
-              <AdminMetricCard title="Delivery Fee" value={formatAdminCurrency(selectedOrder.totals.deliveryFeeAmount)} note="Collected before dispatch where required" icon={<Truck className="h-4 w-4" />} tone="amber" />
-              <AdminMetricCard title="Cash on Delivery" value={formatAdminCurrency(selectedOrder.totals.cashDueOnDelivery)} note="Collected at handoff" icon={<PackageCheck className="h-4 w-4" />} tone="emerald" />
+            {/* The drawer is width-capped even on desktop; size the cards against its content. */}
+            <div className="@container">
+              <div role="group" aria-label="Order totals" className="grid grid-cols-1 gap-3 wrap-anywhere @min-[29rem]:grid-cols-2 [&_h3]:text-xl">
+                <AdminMetricCard title="Grand Total" value={formatAdminCurrency(selectedOrder.totals.grandTotalAmount)} note="Backend order snapshot" icon={<ClipboardList className="h-4 w-4" />} tone="zinc" />
+                <AdminMetricCard title="Delivery Fee" value={formatAdminCurrency(selectedOrder.totals.deliveryFeeAmount)} note="Collected before dispatch where required" icon={<Truck className="h-4 w-4" />} tone="amber" />
+                <AdminMetricCard title="Cash on Delivery" value={formatAdminCurrency(selectedOrder.totals.cashDueOnDelivery)} note="Collected at handoff" icon={<PackageCheck className="h-4 w-4" />} tone="emerald" />
+              </div>
             </div>
 
             <div className="rounded-3xl border border-zinc-100 bg-white p-4">
@@ -506,14 +510,14 @@ export default function AdminOrdersPage() {
               <div className="mt-3 space-y-3">
                 {selectedOrder.items.map((item) => (
                   <div key={item.id} className="rounded-2xl border border-zinc-100 bg-zinc-50 p-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
+                    <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-1">
+                      <div className="min-w-0 wrap-anywhere">
                         <p className="text-sm font-black text-zinc-950">{item.title}</p>
                         <p className="text-xs font-medium text-zinc-500">
                           {item.seller.storeName ?? orderFieldLabel(item.seller.name)} · Vendor item status {toTitleCase(item.vendorStatus.toLowerCase())}
                         </p>
                       </div>
-                      <p className="text-sm font-black text-zinc-950">{formatAdminCurrency(item.lineTotal)}</p>
+                      <p className="max-w-full wrap-anywhere text-sm font-black text-zinc-950">{formatAdminCurrency(item.lineTotal)}</p>
                     </div>
                     <p className="mt-2 text-xs font-medium text-zinc-500">
                       Quantity {item.quantity} · Unit price {formatAdminCurrency(item.price)}
@@ -539,13 +543,13 @@ export default function AdminOrdersPage() {
                 <p className="mt-1 text-xs font-medium text-sky-800">
                   Record manual operations only. Delivery means physical handoff and does not change payment, remittance, wallet, payout, or refund state.
                 </p>
-                <div className="mt-4 grid gap-3">
+                <div className="mt-4 grid grid-cols-1 gap-3">
                   <label className="grid gap-1 text-xs font-bold text-zinc-700">
                     Next status
                     <select
                       value={nextStatus}
                       onChange={(event) => setNextStatus(event.target.value as AdminOrderStatus | "")}
-                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold"
+                      className="h-11 min-w-0 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold"
                     >
                       <option value="">Select an allowed transition</option>
                       {(NEXT_STATUSES[selectedOrder.status] ?? []).map((status) => (
@@ -560,7 +564,7 @@ export default function AdminOrdersPage() {
                       onChange={(event) => setTrackingNumber(event.target.value)}
                       maxLength={120}
                       placeholder="Manual courier or dispatch reference"
-                      className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium"
+                      className="h-11 min-w-0 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-medium"
                     />
                   </label>
                   <label className="grid gap-1 text-xs font-bold text-zinc-700">
@@ -571,7 +575,7 @@ export default function AdminOrdersPage() {
                       maxLength={1000}
                       rows={3}
                       placeholder="Concise dispatch or handoff context. Do not enter credentials or financial secrets."
-                      className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium"
+                      className="min-w-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium"
                     />
                   </label>
                   {mutationError ? <p className="text-xs font-bold text-rose-700">{mutationError}</p> : null}
