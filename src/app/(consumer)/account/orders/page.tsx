@@ -240,8 +240,8 @@ export default function OrdersPage() {
 
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm font-medium text-zinc-600">
-                      {order.status === "delivered" ? "Delivered on:" : "Est. Delivery:"}{" "}
-                      <span className="font-bold text-zinc-900">{order.estDelivery}</span>
+                      Estimated delivery:{" "}
+                      <span className="font-bold text-zinc-900">{order.estDelivery ?? "Not available"}</span>
                     </p>
 
                     <Link href={`/account/orders/${order.id}`} className="w-full sm:w-auto">
