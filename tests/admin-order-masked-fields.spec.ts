@@ -133,6 +133,25 @@ for (const [width, columns] of [[320, 1], [390, 1], [768, 2], [1024, 2], [1440, 
       await expect(queue.getByText(orderNumber, { exact: true }).filter({ visible: true })).toBeVisible();
       await expect(queue.getByText(privileged ? "Fixture Buyer" : "Restricted", { exact: true })
         .filter({ visible: true }).first()).toBeVisible();
+      const search = page.getByPlaceholder("Search orders", { exact: true });
+      if (width === 320) {
+        await search.scrollIntoViewIfNeeded();
+        await expect(search).toBeInViewport({ ratio: 1 });
+        await expect(search).toHaveValue("");
+        const { textWidth, availableWidth } = await search.evaluate((input: HTMLInputElement) => {
+          const style = getComputedStyle(input);
+          const placeholder = getComputedStyle(input, "::placeholder");
+          const canvas = document.createElement("canvas").getContext("2d")!;
+          canvas.font = `${placeholder.fontWeight} ${placeholder.fontSize} ${placeholder.fontFamily}`;
+          return {
+            textWidth: canvas.measureText(input.placeholder).width,
+            availableWidth: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+          };
+        });
+        expect(textWidth).toBeGreaterThan(0);
+        expect(textWidth).toBeLessThanOrEqual(availableWidth);
+        await page.screenshot({ path: testInfo.outputPath("orders-search-320.png"), animations: "disabled" });
+      }
       if (width === 1440) {
         await expect(queue.getByText(privileged ? "Woodlands, Lusaka" : "Restricted", { exact: true }))
           .toHaveCount(privileged ? 1 : 4);
@@ -214,7 +233,6 @@ for (const [width, columns] of [[320, 1], [390, 1], [768, 2], [1024, 2], [1440, 
       if (width === 1440) {
         await page.keyboard.press("Escape");
         await expect(drawer).toBeHidden();
-        const search = page.getByPlaceholder(/Search order ID/);
         if (privileged) {
           const response = page.waitForResponse((result) => result.url().includes("search=fixture-empty-note"));
           await search.fill("fixture-empty-note");
