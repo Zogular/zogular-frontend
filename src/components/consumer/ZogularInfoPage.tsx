@@ -212,7 +212,8 @@ export function ZogularInfoPage({
             ) : null}
 
             {faqs.length > 0 ? (
-              <section className="grid gap-3 md:col-span-2 md:grid-cols-2">
+              <section id="faq" aria-labelledby="faq-heading" className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                <h2 id="faq-heading" className="text-xl font-black text-zinc-950 md:col-span-2">Frequently asked questions</h2>
                 {faqs.map((faq) => (
                   <div key={faq.question} className="rounded-[22px] border border-white/75 bg-white/78 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.05)] backdrop-blur-xl">
                     <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#FF6B00]/10 text-[#FF6B00]">

@@ -6,31 +6,25 @@ export default function ReturnsPage() {
       title="Returns Policy"
       eyebrow="After-purchase support"
       tone="support"
-      description="Zogular reviews after-purchase issues fairly while keeping expectations clear for shoppers and sellers."
-      highlights={["Issue-based review", "Original condition checks", "Clear review process", "Support-led resolution"]}
-      stats={[
-        { value: "Case", label: "Review" },
-        { value: "Fair", label: "Review" },
-        { value: "Clear", label: "Steps" },
-      ]}
+      description="How to request a return, cancel an eligible online purchase, or report a problem with an order."
       sections={[
         {
-          title: "Return Eligibility",
-          body: "Returns are reviewed by issue type, item condition, and seller terms. Change-of-mind returns are not automatic.",
+          title: "Cooling-off period",
+          body: "For online goods covered by Zambia's Electronic Communications and Transactions Act, you can cancel without giving a reason within seven days after receiving them. There is no cancellation penalty; the only charge allowed under this rule is the direct cost of returning the goods. If you already paid, the supplier must issue a full refund within 30 days of cancellation.",
         },
         {
-          title: "Non-Eligible Returns",
-          body: "Products damaged by misuse, opened personal-care items, and explicitly non-returnable items may not qualify for return or refund.",
+          title: "Exceptions and faulty items",
+          body: "The cooling-off right has legal exceptions, which can include personalised or quickly perishable goods. Those exceptions do not take away your separate rights if goods are faulty, unsafe, or not as described. Depending on the issue and applicable law, the supplier may need to repair, replace, or refund the item.",
         },
         {
           title: "How to Start",
-          body: "Open your order history when available, then contact support with clear details. Our team reviews each case and responds with next steps.",
+          body: "Contact support with your order number, the items involved, and whether you are cancelling or reporting a problem. We can help identify the supplier and the next steps. Seller policies do not override your rights under Zambian law.",
         },
       ]}
       steps={[
         {
           title: "Check eligibility",
-          body: "Review whether the issue, item condition, and seller terms support a return, replacement, or refund review.",
+          body: "Check whether you are cancelling an eligible purchase or reporting an issue with what you received.",
         },
         {
           title: "Submit details",
@@ -44,7 +38,7 @@ export default function ReturnsPage() {
       faqs={[
         {
           question: "Are all products returnable?",
-          answer: "No. Some products, issue types, used items, or explicitly non-returnable items may not qualify.",
+          answer: "Not all goods qualify for change-of-mind cancellation. A seller's return restriction does not remove any remedy the law gives you for faulty or misdescribed goods.",
         },
         {
           question: "Where should a shopper start?",

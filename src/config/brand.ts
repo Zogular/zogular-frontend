@@ -9,6 +9,7 @@ export function normalizePublicEmail(value: string | undefined, { disallowResend
 
 export const BRAND = {
   name: "Zogular",
+  businessName: "Vendara Enterprises",
   wordmark: "ZOGULAR",
   slug: "zogular",
   tagline: "Zambia's Online Marketplace",
@@ -33,4 +34,5 @@ export const BRAND = {
 } as const;
 
 export const BRAND_TITLE = `${BRAND.name} | ${BRAND.tagline}`;
+export const BRAND_ATTRIBUTION = `${BRAND.name} by ${BRAND.businessName}`;
 export const BRAND_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://zogular-frontend.vercel.app";

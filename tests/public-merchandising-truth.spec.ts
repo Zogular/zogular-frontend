@@ -935,6 +935,35 @@ for (const viewport of browserViewports) {
   });
 }
 
+test("storefront business attribution and policy FAQs remain readable on mobile and desktop", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Policy verification requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  const routes = [
+    { path: "about", title: "About Zogular", text: /Zogular by Vendara Enterprises is/ },
+    { path: "help", title: "Help Center", text: "How do I pay for my order?" },
+    { path: "privacy", title: "Privacy Policy", text: "How do I make a privacy request?" },
+    { path: "returns", title: "Returns Policy", text: /within seven days after receiving them/ },
+    { path: "terms", title: "Terms and Conditions", text: /do not limit rights you have under Zambian law/ },
+  ];
+
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+    for (const { path, title, text } of routes) {
+      await page.goto(`${origin}/${path}`);
+      await expect(page.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.getByRole("region", { name: "Frequently asked questions" })).toBeVisible();
+      await expect(page.getByText(text, { exact: typeof text === "string" })).toBeVisible();
+      await expect(page.getByRole("contentinfo")).toContainText("Zogular by Vendara Enterprises");
+      await auditPageLayout(page);
+      if (path === "help") {
+        await page.getByRole("heading", { name: "Frequently asked questions" }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath(`help-faq-${width}.png`), animations: "disabled" });
+      }
+    }
+  }
+});
+
 test("VIS-04 storefront footer uses plain payment copy at mobile and desktop widths", async ({ page, request }, testInfo) => {
   test.skip(!useLocalFixture, "Footer verification requires the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);
