@@ -949,6 +949,12 @@ test("VIS-04 storefront footer uses plain payment copy at mobile and desktop wid
     await test.step(`footer at ${viewport.width}px`, async () => {
       await page.setViewportSize(viewport);
       await expect(cashOnDelivery).toBeVisible();
+      await expect(footer.getByRole("link", { name: "Careers", exact: true })).toHaveCount(0);
+      for (const [name, href] of [["About Zogular", "/about"], ["Become a Seller", "/sell"], ["Terms & Conditions", "/terms"]]) {
+        const companyLink = footer.getByRole("link", { name, exact: true });
+        await expect(companyLink).toBeVisible();
+        await expect(companyLink).toHaveAttribute("href", href);
+      }
       await expect(footer).not.toContainText(/backend[- ]quoted|\bCOD\b/i);
       await cashOnDelivery.scrollIntoViewIfNeeded();
       await expect(cashOnDelivery).toBeInViewport({ ratio: 1 });
