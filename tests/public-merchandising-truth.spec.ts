@@ -693,10 +693,69 @@ test("VIS-06 mobile category drawer contains category labels at 320px", async ({
   await expect(menu).toBeFocused();
 });
 
+async function installGuestSessionFixture(page: Page, origin: string) {
+  const guestSessionUrl = `${origin}/api/backend/user/me`;
+  await page.route(guestSessionUrl, (route) => route.fulfill({
+    status: 401,
+    json: { status: "fail", message: "Fixture guest has no session" },
+  }));
+  return guestSessionUrl;
+}
+
+test("guest seller entry explains application and product approval in plain language", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Guest seller entry requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  const guestSessionUrl = await installGuestSessionFixture(page, origin);
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await test.step(`guest at ${viewport.width}px`, async () => {
+      await page.setViewportSize(viewport);
+      const guestResponse = page.waitForResponse((response) =>
+        response.url() === guestSessionUrl && response.status() === 401,
+      );
+      await page.goto(`${origin}/sell`);
+      await guestResponse;
+      await settleRenderedNavigation(page);
+      await expect(page).toHaveURL(`${origin}/sell`);
+
+      const main = page.getByRole("main");
+      await expect(main.getByRole("heading", { level: 1, name: "Sell your products on ZOGULAR" })).toBeVisible();
+      await expect(main.getByText(/verify your email, and apply to sell as an individual or a registered business/)).toBeVisible();
+      await expect(main.getByText(/If you receive limited access, you can draft listings, but you can only submit them for product review after your seller application is approved/)).toBeVisible();
+      await expect(main.getByText(/Each product must be reviewed and approved before shoppers can see it/)).toBeVisible();
+      await expect(main.getByText(/NRC number and photos of both sides of the card/)).toBeVisible();
+      await expect(main.getByText(/Payouts are not available yet/)).toBeVisible();
+      await expect(main).not.toContainText(/auth-first|status-led|\bVENDOR\b|APPROVED seller status|review submit/i);
+
+      for (const [name, href] of [
+        ["Create account", "/seller/register?next=%2Fseller%2Fonboarding%3Fstart%3D1"],
+        ["Sign in", "/seller/login?next=%2Fseller"],
+      ]) {
+        const links = main.getByRole("link", { name, exact: true });
+        await expect(links).toHaveCount(2);
+        for (const link of await links.all()) {
+          await expect(link).toHaveAttribute("href", href);
+          await link.scrollIntoViewIfNeeded();
+          await expect(link).toBeInViewport({ ratio: 1 });
+        }
+      }
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+      await page.screenshot({
+        path: testInfo.outputPath(`sell-guest-${viewport.width}.png`),
+        animations: "disabled",
+        fullPage: true,
+      });
+    });
+  }
+});
+
 test("mobile seller entry and login provide a storefront exit and one main landmark", async ({ page }, testInfo) => {
   test.skip(!useLocalFixture, "Storefront entry checks require the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);
   await containMerchandisingContext(page.context(), origin);
+  await installGuestSessionFixture(page, origin);
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto(`${origin}/sell`);
   const store = page.getByRole("navigation", { name: "Storefront", exact: true });
@@ -712,6 +771,7 @@ test("mobile seller entry and login provide a storefront exit and one main landm
   for (const [width, height] of [[320, 568], [1440, 900]]) {
     await page.setViewportSize({ width, height });
     await page.goto(`${origin}/auth/login`);
+    await expect(page).toHaveURL(`${origin}/auth/login`);
     await expect(page.getByRole("main")).toHaveCount(1);
     await expect(page.locator("main")).toHaveCount(1);
     await expect(page.locator("a button, button a")).toHaveCount(0);
