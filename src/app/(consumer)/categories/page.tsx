@@ -17,6 +17,7 @@ import {
   Tv,
 } from "lucide-react";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
+import { CategoryArtwork } from "@/features/categories/CategoryArtwork";
 import type { CategorySummary } from "@/types/category";
 
 const CATEGORY_ICONS = {
@@ -77,7 +78,7 @@ export default function CategoriesDirectoryPage() {
               All Categories
             </h1>
             <p className="mt-3 text-sm font-medium text-zinc-500 md:text-base">
-              Browse products across electronics, fashion, groceries, and more.
+              Explore the categories available on Zogular.
             </p>
             <Link href="/products" className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-900 px-5 text-sm font-black text-white shadow-md transition-colors hover:bg-zinc-800">
               Shop All Products
@@ -122,9 +123,9 @@ export default function CategoriesDirectoryPage() {
                   className="group flex flex-col rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-all hover:border-[#009E49]/40 hover:shadow-md"
                 >
                   <div className="mb-4 flex items-center gap-4">
-                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110 ${category.colorClass}`}>
+                    <CategoryArtwork slug={category.slug} className={`size-12 rounded-2xl transition-transform duration-300 group-hover:scale-110 ${category.colorClass}`}>
                       <Icon className="h-6 w-6" />
-                    </div>
+                    </CategoryArtwork>
                     <div className="min-w-0">
                       <Link href={categoryUrl} className="wrap-anywhere text-base font-bold text-zinc-900 transition-colors hover:text-[#009E49]">
                         {category.name}
