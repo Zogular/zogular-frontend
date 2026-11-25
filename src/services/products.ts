@@ -856,18 +856,12 @@ export async function getSellerProducts(_options?: { excludeSlug?: string }): Pr
   return [];
 }
 
-export async function getRelatedProducts(
-  options: { excludeSlug?: string; categoryName?: string } = {},
-): Promise<Product[]> {
-  if (options.excludeSlug) {
-    const currentProduct = await fetchBackendProductDetailBySlug(options.excludeSlug);
-    if (currentProduct) {
-      const backendRelated = await fetchBackendRelatedProducts(currentProduct.id, 8);
-      if (backendRelated) return backendRelated.filter((product) => product.slug !== options.excludeSlug);
-    }
-  }
-
-  return [];
+export async function getRelatedProducts({
+  productId,
+  excludeSlug,
+}: { productId: ProductDetail["id"]; excludeSlug: string }): Promise<Product[]> {
+  const products = await fetchBackendRelatedProducts(productId, 8);
+  return products?.filter((product) => product.slug !== excludeSlug) ?? [];
 }
 
 export async function searchProducts(query: string, limit = 50): Promise<Product[]> {

@@ -31,6 +31,36 @@ const ALLOWED_WS_ORIGINS = new Set([
 const ALLOWED_NON_HTTP_PROTOCOLS = new Set(["data:", "blob:", "about:"]);
 const EXPECTED_BLOCKED_BACKDROP_ORIGIN = "https://images.unsplash.com";
 const MAX_STDIO_CHARS = 4096;
+const SOLAR_PRODUCT = {
+  id: "prod-solar-1",
+  slug: "test-solar-inverter",
+  title: "Pure Sine Wave Hybrid Solar Inverter 5kVA",
+  description: "Synthetic fixture product for mobile sticky purchase bar validation.",
+  price: 149999,
+  salePrice: 125000,
+  images: [{ url: "/file.svg", alt: "Solar Inverter", isPrimary: true }],
+  condition: "NEW",
+  category: "ELECTRONICS",
+  categoryRef: { id: "cat-1", name: "Solar & Energy", slug: "solar-energy" },
+  categorySlug: "solar-energy",
+  subcategorySlug: "inverters",
+  location: "Lusaka",
+  stock: 5,
+  status: "PUBLISHED",
+  isApproved: true,
+  isSold: false,
+  user: { id: "seller-1" },
+};
+const RELATED_PRODUCT = {
+  ...SOLAR_PRODUCT,
+  id: "prod-solar-2",
+  slug: "test-related-solar-inverter",
+  title: "Hybrid Solar Inverter 3kVA",
+  price: 88000,
+  salePrice: 82000,
+};
+const RELATED_UNAVAILABLE_DIAGNOSTIC = "SYNTHETIC_RELATED_UPSTREAM_UNAVAILABLE";
+const RELATED_MODES = ["populated", "empty", "unavailable"] as const;
 
 const VIEWPORTS = [
   { name: "mobile-320", width: 320, height: 568 },
@@ -43,6 +73,11 @@ let nextServer: ChildProcess | null = null;
 let nextExitPromise: Promise<void> | null = null;
 let verifyCodeCalls: Array<{ email: string; code: string }> = [];
 let verifyCodeDelayMs = 0;
+let relatedMode: (typeof RELATED_MODES)[number] = "empty";
+let relatedLimits: Array<string | null> = [];
+let sourceDetailReads = 0;
+
+test.use({ channel: process.env.PLAYWRIGHT_CHANNEL });
 
 function appendBounded(current: string, chunk: Buffer | string): string {
   const combined = current + (typeof chunk === "string" ? chunk : chunk.toString("utf8"));
@@ -248,38 +283,31 @@ test.beforeAll(async () => {
       return;
     }
 
-    if (url.pathname === "/api/v1/products/test-solar-inverter") {
-      res.end(
-        JSON.stringify({
-          status: "success",
-          data: {
-            product: {
-              id: "prod-solar-1",
-              slug: "test-solar-inverter",
-              title: "Pure Sine Wave Hybrid Solar Inverter 5kVA",
-              description: "Synthetic fixture product for mobile sticky purchase bar validation.",
-              price: 149999,
-              salePrice: 125000,
-              images: [{ url: "/file.svg", alt: "Solar Inverter", isPrimary: true }],
-              condition: "NEW",
-              category: "ELECTRONICS",
-              categoryRef: { id: "cat-1", name: "Solar & Energy", slug: "solar-energy" },
-              categorySlug: "solar-energy",
-              subcategorySlug: "inverters",
-              location: "Lusaka",
-              stock: 5,
-              status: "PUBLISHED",
-              isApproved: true,
-              isSold: false,
-              user: { id: "seller-1" },
-            },
-          },
-        }),
-      );
+    if (url.pathname === `/api/v1/products/${SOLAR_PRODUCT.slug}`) {
+      sourceDetailReads += 1;
+      res.end(JSON.stringify({ status: "success", data: { product: SOLAR_PRODUCT } }));
       return;
     }
 
-    if (url.pathname === "/api/v1/products/prod-solar-1/related") {
+    if (url.pathname === `/api/v1/products/${RELATED_PRODUCT.slug}`) {
+      res.end(JSON.stringify({ status: "success", data: { product: RELATED_PRODUCT } }));
+      return;
+    }
+
+    if (url.pathname === `/api/v1/products/${SOLAR_PRODUCT.id}/related`) {
+      relatedLimits.push(url.searchParams.get("limit"));
+      if (relatedMode === "unavailable") {
+        res.statusCode = 503;
+        res.end(JSON.stringify({ status: "fail", message: RELATED_UNAVAILABLE_DIAGNOSTIC }));
+        return;
+      }
+      // Returning the source alongside its peer verifies client-side self-exclusion.
+      const products = relatedMode === "populated" ? [SOLAR_PRODUCT, RELATED_PRODUCT] : [];
+      res.end(JSON.stringify({ status: "success", results: products.length, data: { products } }));
+      return;
+    }
+
+    if (url.pathname === `/api/v1/products/${RELATED_PRODUCT.id}/related`) {
       res.end(JSON.stringify({ status: "success", results: 0, data: { products: [] } }));
       return;
     }
@@ -357,7 +385,61 @@ test.afterAll(async () => {
 test.beforeEach(() => {
   verifyCodeCalls = [];
   verifyCodeDelayMs = 0;
+  relatedMode = "empty";
+  relatedLimits = [];
+  sourceDetailReads = 0;
 });
+
+for (const viewport of VIEWPORTS.filter(({ width }) => width === 320 || width === 1440)) {
+  for (const mode of RELATED_MODES) {
+    test(`PDP related products: ${mode} at ${viewport.name}`, async ({ browser }, testInfo) => {
+      relatedMode = mode;
+      const context = await browser.newContext({
+        viewport: { width: viewport.width, height: viewport.height },
+        serviceWorkers: "block",
+      });
+      try {
+        const containment = await installNetworkContainment(context);
+        const page = await context.newPage();
+        await page.goto(`${BROWSER_ORIGIN}/product/${SOLAR_PRODUCT.slug}`);
+        await expect(page.getByRole("heading", { name: SOLAR_PRODUCT.title, exact: true })).toBeVisible();
+        expect(relatedLimits).toEqual(["8"]);
+        // The page and document metadata may each read the source, but recommendations must not reread it.
+        expect(sourceDetailReads).toBeLessThanOrEqual(2);
+        const heading = page.getByRole("heading", { name: "You might also like", exact: true });
+
+        if (mode === "populated") {
+          const section = page.locator("section").filter({ has: heading }).filter({ has: page.getByTestId("product-card") });
+          await expect(section.getByTestId("product-card")).toHaveCount(1);
+          const link = section.getByRole("link", { name: RELATED_PRODUCT.title, exact: true });
+          const target = `/product/${RELATED_PRODUCT.slug}`;
+          await expect(link).toHaveAttribute("href", target);
+          await heading.evaluate((element) => window.scrollBy({
+            top: element.getBoundingClientRect().top - window.innerHeight * 0.28,
+            behavior: "instant",
+          }));
+          await expect(heading).toBeInViewport({ ratio: 1 });
+          const screenshot = testInfo.outputPath("related-products.png");
+          await page.screenshot({ path: screenshot, animations: "disabled" });
+          await testInfo.attach("related-products", { path: screenshot, contentType: "image/png" });
+          await link.click();
+          await expect(page).toHaveURL(`${BROWSER_ORIGIN}${target}`);
+          await expect(page.getByRole("heading", { name: RELATED_PRODUCT.title, exact: true })).toBeVisible();
+        } else {
+          await expect(heading).toHaveCount(0);
+          await expect(page.getByTestId("product-card")).toHaveCount(0);
+          await expect(page.getByText(RELATED_UNAVAILABLE_DIAGNOSTIC)).toHaveCount(0);
+          const purchaseControls = viewport.width === 320 ? page.getByTestId("mobile-sticky-purchase-bar") : page;
+          await expect(purchaseControls.getByRole("button", { name: "Increase quantity" }).first()).toBeEnabled();
+        }
+        expect(containment.unexpectedHttpViolations).toEqual([]);
+        expect(containment.wsViolations).toEqual([]);
+      } finally {
+        await context.close();
+      }
+    });
+  }
+}
 
 for (const viewport of VIEWPORTS) {
   test.describe(`Buyer essentials @ ${viewport.name}`, () => {
