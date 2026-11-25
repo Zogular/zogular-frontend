@@ -272,6 +272,41 @@ for (const viewport of viewports) {
       await auditPageLayout(page);
       const back = main.getByRole("button", { name: "Back to seller orders", exact: true });
       await auditAction(back);
+      const toolbar = main.locator("header").filter({
+        has: page.getByRole("heading", { name: order.orderNumber, exact: true }),
+      });
+      if (viewport.width < 768) {
+        await test.step("VIS-08 joins the sticky seller header and order toolbar while scrolling", async () => {
+          const storeHeading = page.getByRole("heading", { name: application.storeName, exact: true });
+          const shellHeader = page.locator("header").filter({ has: storeHeading });
+          await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+          const start = await toolbar.boundingBox();
+          if (!start) throw new Error("Seller order toolbar is not visible.");
+          await page.evaluate(() => window.scrollTo({ top: 160, behavior: "instant" }));
+          await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(64);
+          const shell = await shellHeader.boundingBox();
+          const detail = await toolbar.boundingBox();
+          if (!shell || !detail) throw new Error("Sticky seller headers are not visible.");
+          await screenshot(page, testInfo, "seller-order-sticky-headers");
+          await testInfo.attach("seller-order-sticky-bounds", {
+            body: JSON.stringify({ shell, detail, gap: detail.y - (shell.y + shell.height) }),
+            contentType: "application/json",
+          });
+          expect(detail.y, "The toolbar must move into its sticky position").toBeLessThan(start.y);
+          expect(Math.abs(shell.y)).toBeLessThanOrEqual(1);
+          expect(Math.abs(detail.y - (shell.y + shell.height))).toBeLessThanOrEqual(1);
+          for (const header of [shellHeader, toolbar]) {
+            expect(await header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+          }
+          await expect(shellHeader.getByRole("link", { name: "Open notifications" })).toBeInViewport({ ratio: 1 });
+          await expect(back).toBeInViewport({ ratio: 1 });
+          await auditPageLayout(page);
+        });
+      } else {
+        await expect(toolbar).toHaveCSS("position", "sticky");
+        await expect(toolbar).toHaveCSS("top", "0px");
+      }
       await back.click();
 
       await expect(page).toHaveURL(`${origin}${LIST}`);

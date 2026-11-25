@@ -444,12 +444,12 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
   return (
     <SellerApplicationContext.Provider value={contextValue}>
-    <div className="flex min-h-dvh w-full flex-col bg-[#f4fbf6] md:flex-row">
+    <div className="flex min-h-dvh w-full flex-col bg-[#f4fbf6] [--seller-mobile-header-height:calc(4rem+env(safe-area-inset-top,0px))] md:flex-row">
       
       {/* =========================================
           1. MOBILE HEADER (Sticky Top)
           ========================================= */}
-      <header className="sticky top-0 z-40 flex items-center justify-between border-b border-[#143320] bg-[#0A1A10] px-4 pb-4 pt-safe text-white shadow-sm md:hidden">
+      <header className="sticky top-0 z-40 flex h-[var(--seller-mobile-header-height)] shrink-0 items-center justify-between border-b border-[#143320] bg-[#0A1A10] px-4 pt-safe text-white shadow-sm md:hidden">
         <div className="flex items-center gap-3 min-w-0">
           <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">
