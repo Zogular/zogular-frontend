@@ -1,9 +1,10 @@
 "use client";
 
 import * as React from "react";
-import { usePathname, useRouter } from "next/navigation";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Search, Tag, FolderTree, ArrowRight } from "lucide-react";
 import { Command, CommandGroup, CommandItem, CommandList, CommandSeparator } from "@/components/ui/command";
+import { parseDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
 import { cn } from "@/lib/utils";
 import { getSearchIndex, searchFromIndex } from "@/services/search";
 import type { SearchIndex } from "@/types/search";
@@ -11,6 +12,13 @@ import type { SearchIndex } from "@/types/search";
 type NavbarSearchProps = {
   mobile?: boolean;
 };
+
+function SearchQuerySync({ onChange }: { onChange: (query: string) => void }) {
+  const searchParams = useSearchParams();
+  const query = parseDiscoveryQuery(searchParams).search ?? "";
+  React.useEffect(() => onChange(query), [onChange, query]);
+  return null;
+}
 
 export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
   const router = useRouter();
@@ -54,6 +62,11 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
     setIsOpen(false);
   }, [pathname]);
 
+  const syncRouteQuery = React.useCallback((value: string) => {
+    setQuery(value);
+    setIsOpen(false);
+  }, []);
+
   const results = React.useMemo(() => {
     if (!searchIndex) return { products: [], categories: [], totalCount: 0 };
     return searchFromIndex(searchIndex, deferredQuery, { productLimit: 0, categoryLimit: 5 });
@@ -72,6 +85,11 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
 
   return (
     <div ref={containerRef} className="relative w-full">
+      {pathname === "/search" ? (
+        <React.Suspense fallback={null}>
+          <SearchQuerySync onChange={syncRouteQuery} />
+        </React.Suspense>
+      ) : null}
       <Command id={mobile ? "mobile-navbar-search" : "desktop-navbar-search"} label={mobile ? "Mobile product search" : "Desktop product search"} shouldFilter={false} className="overflow-visible bg-transparent p-0">
         <form
           onSubmit={(event) => {
@@ -92,7 +110,7 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
             onFocus={() => {
               if (query.trim()) setIsOpen(true);
             }}
-            aria-label={mobile ? undefined : "Search products"}
+            aria-label="Search products"
             placeholder={mobile ? "Search products..." : "Search products"}
             className={cn(
               "w-full rounded-full border border-white/50 bg-white/65 pr-12 pl-11 text-base text-zinc-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_rgba(15,23,42,0.05)] outline-none transition-all placeholder:text-zinc-400 focus:border-[#009E49]/40 focus:bg-white focus:ring-2 focus:ring-[#009E49]/20",
@@ -101,6 +119,10 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
           />
           <button
             type="submit"
+            onKeyDown={(event) => {
+              // cmdk handles Enter on its root; keep the submit button's native activation.
+              if (event.key === "Enter") event.stopPropagation();
+            }}
             className="absolute right-1.5 top-1.5 flex h-9 w-9 items-center justify-center rounded-full bg-[#FF6B00] text-white shadow-md transition-transform hover:scale-105 hover:bg-[#e66000]"
             aria-label="Search"
           >
