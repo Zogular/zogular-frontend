@@ -40,13 +40,15 @@ function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
 }
 
-function formatDate(value: string | null) {
-  if (!value) return "Awaiting submission";
+function formatSubmittedDate(value: string | null, status: ProductModerationStatus) {
+  if (!value) return status === "draft" ? "Awaiting submission" : "Timestamp unavailable";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Timestamp unavailable";
   return new Intl.DateTimeFormat("en-ZM", {
     month: "short",
     day: "numeric",
     year: "numeric",
-  }).format(new Date(value));
+  }).format(date);
 }
 
 export default function AdminProductsPage() {
@@ -413,7 +415,7 @@ export default function AdminProductsPage() {
 
                     <div className="rounded-[1.1rem] border border-zinc-200/80 bg-zinc-50/90 px-2.5">
                       <GridDetailRow label="Category" value={product.categoryName} />
-                      <GridDetailRow label="Submitted" value={formatDate(product.submittedAt)} />
+                      <GridDetailRow label="Submitted" value={formatSubmittedDate(product.submittedAt, product.status)} />
                       <GridDetailRow label="Price" value={formatCurrency(product.price)} />
                       <GridDetailRow label="Stock" value={`${product.stock} units`} isLast />
                     </div>
@@ -484,7 +486,7 @@ export default function AdminProductsPage() {
 
                         <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 text-[10px] font-bold text-zinc-600">
                           <ListInlineMetric label="Category" value={product.categoryName} />
-                          <ListInlineMetric label="Submitted" value={formatDate(product.submittedAt)} />
+                          <ListInlineMetric label="Submitted" value={formatSubmittedDate(product.submittedAt, product.status)} />
                           <ListInlineMetric label="Price" value={formatCurrency(product.price)} />
                           <ListInlineMetric label="Stock" value={`${product.stock} units`} />
                         </div>
@@ -610,7 +612,7 @@ export default function AdminProductsPage() {
                           Backend category snapshot
                         </p>
                       </td>
-                      <td className="p-3 text-xs font-bold text-zinc-600">{formatDate(product.submittedAt)}</td>
+                      <td className="p-3 text-xs font-bold text-zinc-600">{formatSubmittedDate(product.submittedAt, product.status)}</td>
                       <td className="p-3">
                         <p className="font-black text-zinc-900">{formatCurrency(product.price)}</p>
                         <p className="text-[10px] font-bold text-zinc-500">{product.stock} units</p>
