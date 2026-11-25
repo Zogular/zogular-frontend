@@ -1136,3 +1136,54 @@ test("VIS-04 storefront footer uses plain payment copy at mobile and desktop wid
     });
   }
 });
+
+test("buyer account keeps a single main landmark after loading", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Account landmark checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) =>
+    route.fulfill({
+      json: { status: "success", results: 0, data: { orders: [] }, pagination: { page: 1, limit: 100, total: 0, pages: 0 } },
+    }),
+  );
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    await expect(page.getByRole("heading", { name: "Welcome back, Fixture!" })).toBeVisible();
+    await expect(page.getByRole("main")).toHaveCount(1);
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    await page.screenshot({ path: testInfo.outputPath(`buyer-account-${viewport.width}.png`), animations: "disabled" });
+  }
+});
+
+test("buyer account preserves sign-in routing and the single landmark during a session outage", async ({ page }) => {
+  test.skip(!useLocalFixture, "Account landmark checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.setViewportSize({ width: 320, height: 568 });
+  const sessionUrl = `${origin}/api/backend/user/me`;
+  await page.route(sessionUrl, (route) => route.fulfill({
+    status: 503,
+    json: { status: "fail", message: "FIXTURE_PRIVATE_SESSION_DIAGNOSTIC" },
+  }));
+  await page.goto(`${origin}/account`);
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { name: "Account could not load" })).toBeVisible();
+  await expect(main.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(main).not.toContainText("FIXTURE_PRIVATE_SESSION_DIAGNOSTIC");
+  await expect(main).toHaveCount(1);
+  await expect(page.locator("main")).toHaveCount(1);
+
+  await page.unroute(sessionUrl);
+  await page.route(sessionUrl, (route) => route.fulfill({ status: 401, json: { status: "fail" } }));
+  await page.goto(`${origin}/account`);
+  await expect(page).toHaveURL(`${origin}/auth/login?next=%2Faccount`);
+  await expect(page.getByRole("main")).toHaveCount(1);
+});
