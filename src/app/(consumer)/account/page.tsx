@@ -167,7 +167,7 @@ export default function AccountOverviewPage() {
                 <div key={order.id} className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-4 transition-colors hover:border-zinc-300 md:p-5">
                   <div className="mb-4 flex flex-col justify-between gap-4 md:flex-row md:items-center">
                     <div>
-                      <h3 className="font-bold text-zinc-900">{order.id}</h3>
+                      <h3 className="font-bold text-zinc-900">{order.orderNumber}</h3>
                       <p className="mt-0.5 text-xs font-medium text-zinc-500">
                         {order.date} • {order.items.reduce((sum, item) => sum + item.qty, 0)} Item{order.items.length === 1 ? "" : "s"}
                       </p>
