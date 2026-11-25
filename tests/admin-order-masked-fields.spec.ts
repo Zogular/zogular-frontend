@@ -6,12 +6,15 @@ import type { AdminOrderRecord } from "../src/services/admin/orders";
 
 const origin = "http://127.0.0.1:3238";
 const orderNumber = "ZG-FIXTURE-001";
+const rejectedNote = "Synthetic permission rejection";
+const unconfirmedNote = "Synthetic service interruption";
+const internalDiagnostic = "Fixture internal fulfillment diagnostic";
 const timestamp = "2026-11-24T10:00:00.000Z";
 const seller = { userId: "seller-fixture", storeName: null, applicationStatus: "APPROVED" };
 const totals = { itemSubtotal: 123_456_789.99, deliveryFeeAmount: 12_345_678.9,
   cashDueOnDelivery: 123_456_789.99, grandTotalAmount: 135_802_468.89 };
 const metrics = [
-  { title: "Grand Total", amount: "K135,802,468.89", note: "Backend order snapshot" },
+  { title: "Grand Total", amount: "K135,802,468.89", note: "Total recorded for this order" },
   { title: "Delivery Fee", amount: "K12,345,678.9", note: "Collected before dispatch where required" },
   { title: "Cash on Delivery", amount: "K123,456,789.99", note: "Collected at handoff" },
 ];
@@ -55,12 +58,15 @@ let next: ChildProcess | undefined;
 
 test.beforeAll(async () => {
   // The server validates the synthetic admin token and returns the corresponding DTO shape.
-  backend = createServer((request, response) => {
+  backend = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", origin);
     const privileged = request.headers.authorization === "Bearer orders-operations";
     const masked = request.headers.authorization === "Bearer orders-tech";
     response.setHeader("Content-Type", "application/json");
-    if (!privileged && !masked) {
+    if (request.method === "GET" && url.pathname === "/api/v1/auth/csrf-token") {
+      response.setHeader("Set-Cookie", "_csrf=fixture-order-csrf; Path=/; HttpOnly; SameSite=Lax");
+      response.end(JSON.stringify({ status: "success", data: { csrfToken: "fixture-order-csrf" } }));
+    } else if (!privileged && !masked) {
       response.writeHead(401).end(JSON.stringify({ status: "fail" }));
     } else if (request.method === "GET" && url.pathname === "/api/v1/user/me") {
       response.end(JSON.stringify({ status: "success", data: { user: {
@@ -80,6 +86,16 @@ test.beforeAll(async () => {
         : maskedOrder;
       response.end(JSON.stringify({ status: "success", data: { orders: [order] },
         pagination: { total: 1, page: 1, limit: 12, pages: 1 } }));
+    } else if (privileged && request.method === "PATCH" && url.pathname === "/api/v1/admin/orders/order-fixture/status") {
+      let body = "";
+      for await (const chunk of request) body += String(chunk);
+      const input = JSON.parse(body) as { notes?: string };
+      if (input.notes !== rejectedNote && input.notes !== unconfirmedNote) {
+        response.writeHead(400).end(JSON.stringify({ status: "fail", message: "Unexpected fixture update" }));
+        return;
+      }
+      const status = input.notes === rejectedNote ? 403 : 503;
+      response.writeHead(status).end(JSON.stringify({ status: "fail", message: internalDiagnostic }));
     } else {
       response.writeHead(404).end(JSON.stringify({ status: "fail" }));
     }
@@ -115,6 +131,42 @@ test.afterAll(async () => {
     await new Promise<void>((resolve, reject) => backend.close((error) => error ? reject(error) : resolve()));
   }
 });
+
+for (const [width, note, status, message] of [
+  [320, rejectedNote, 403, "You don't have permission to update this order."],
+  [1440, unconfirmedNote, 503, "We couldn't confirm the update. Reload this page and check the order's status before trying again."],
+] as const) {
+  test(`shows safe fulfillment feedback after ${status} at ${width}px`, async ({ page, context }, testInfo) => {
+    await context.route("**/*", (route) => new URL(route.request().url()).origin === origin
+      ? route.continue() : route.abort());
+    await context.routeWebSocket("**/*", (socket) => socket.close());
+    await context.addCookies([{ name: "zogular_admin_session", value: "orders-operations", url: origin }]);
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+    await page.goto(`${origin}/admin/orders`);
+    const queue = width === 1440 ? page.getByRole("table").filter({ visible: true }) : page;
+    await queue.getByRole("button", { name: "Open order" }).click();
+    const drawer = page.getByRole("dialog", { name: orderNumber });
+    const nextStatus = drawer.getByLabel("Next status");
+    const reference = drawer.getByLabel("External courier reference");
+    const notes = drawer.getByLabel("Operations notes");
+    await nextStatus.selectOption("PROCESSING");
+    await reference.fill("DISPATCH-42");
+    await notes.fill(note);
+    const rejection = page.waitForResponse((result) =>
+      result.request().method() === "PATCH" && result.url().endsWith("/admin/orders/order-fixture/status"));
+    await drawer.getByRole("button", { name: "Apply fulfillment update" }).click();
+    const response = await rejection;
+    expect(response.status()).toBe(status);
+    expect(await response.json()).toMatchObject({ message: internalDiagnostic });
+    await expect(drawer.getByText(message, { exact: true })).toBeVisible();
+    await expect(page.locator("[data-sonner-toast]").getByText(message, { exact: true })).toBeVisible();
+    await expect(page.getByText(internalDiagnostic)).toHaveCount(0);
+    await expect(nextStatus).toHaveValue("PROCESSING");
+    await expect(reference).toHaveValue("DISPATCH-42");
+    await expect(notes).toHaveValue(note);
+    await page.screenshot({ path: testInfo.outputPath(`fulfillment-feedback-${width}.png`), animations: "disabled" });
+  });
+}
 
 for (const [width, columns] of [[320, 1], [390, 1], [768, 2], [1024, 2], [1440, 2]]) {
   for (const privileged of [false, true]) {

@@ -16,6 +16,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { formatAdminCurrency, formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
 import { adminIdentityHasPermission } from "@/services/admin/session";
+import { ApiError } from "@/services/api";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 import {
   adminOrdersApi,
@@ -44,6 +45,23 @@ const NEXT_STATUSES: Partial<Record<AdminOrderStatus, AdminOrderStatus[]>> = {
 
 function getStatusLabel(status: AdminOrderStatus) {
   return toTitleCase(status.toLowerCase());
+}
+
+function getFulfillmentErrorMessage(error: unknown): string {
+  const status = error instanceof ApiError ? error.status : undefined;
+  switch (status) {
+    case 400:
+    case 422:
+      return "Check the status, courier reference and notes, then try again.";
+    case 401:
+      return "Your session expired. Sign in again before updating the order.";
+    case 403:
+      return "You don't have permission to update this order.";
+    case 409:
+      return "The order may have changed. Reload this page and check its status before trying again.";
+    default:
+      return "We couldn't confirm the update. Reload this page and check the order's status before trying again.";
+  }
 }
 
 // Use the response shape, not the admin role, to distinguish omission from a missing value.
@@ -93,8 +111,7 @@ export default function AdminOrdersPage() {
     } catch {
       setOrders([]);
       setSelectedOrderId(null);
-      setRequestError("The launch control-room queue could not be loaded from the backend.");
-      toast.error("Failed to load the admin order queue.");
+      setRequestError("We couldn't load the order queue. Try again in a moment.");
     } finally {
       setLoading(false);
     }
@@ -137,7 +154,7 @@ export default function AdminOrdersPage() {
       toast.success(`Order moved to ${getStatusLabel(updated.status)}.`);
       await loadOrders();
     } catch (error) {
-      const message = error instanceof Error ? error.message : "The order update was rejected by the backend.";
+      const message = getFulfillmentErrorMessage(error);
       setMutationError(message);
       toast.error(message);
     } finally {
@@ -158,7 +175,7 @@ export default function AdminOrdersPage() {
     return (
       <AdminEmptyState
         title="Access denied"
-        description="Your admin role cannot view the launch control-room order queue."
+        description="You don't have permission to view the order queue."
       />
     );
   }
@@ -167,18 +184,18 @@ export default function AdminOrdersPage() {
     <div className="space-y-6">
       <AdminPageHeader
         title="Order Queue"
-        description="Launch control-room view for manual dispatch operations. Payment and delivery snapshots come from backend order records; rider tracking remains manual during MVP."
+        description="Review orders, payment amounts and delivery details to coordinate dispatch."
       />
 
       <div className="rounded-3xl border border-amber-200/80 bg-amber-50/80 px-4 py-3 text-sm font-medium text-amber-900 shadow-sm shadow-amber-900/5">
-        Manual delivery remains the MVP truth. Use this queue to review buyer, seller, COD snapshot, and timing context without implying live courier tracking or automated dispatch.
+        Dispatch and delivery updates are recorded manually. Live courier tracking is not available.
       </div>
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <AdminMetricCard title="Orders in View" value={summary.total} note="Current filtered queue size" icon={<ClipboardList className="h-5 w-5" />} tone="zinc" />
         <AdminMetricCard title="Needs Action" value={summary.pending} note="Pending or confirmed orders" icon={<ShieldAlert className="h-5 w-5" />} tone="amber" />
         <AdminMetricCard title="In Motion" value={summary.inFlight} note="Processing or shipped manually" icon={<Truck className="h-5 w-5" />} tone="sky" />
-        <AdminMetricCard title="Delivered" value={summary.delivered} note="Completed demo or live records" icon={<PackageCheck className="h-5 w-5" />} tone="emerald" />
+        <AdminMetricCard title="Delivered" value={summary.delivered} note="Orders marked delivered" icon={<PackageCheck className="h-5 w-5" />} tone="emerald" />
       </div>
 
       <AdminToolbar>
@@ -226,7 +243,7 @@ export default function AdminOrdersPage() {
               <div className="space-y-1">
                 <p className="text-sm font-black text-zinc-700">Order queue unavailable</p>
                 <p className="text-xs font-medium text-zinc-500">
-                  {requestError} Retry after confirming your admin session, network, or backend availability.
+                  {requestError}
                 </p>
               </div>
               <Button
@@ -331,7 +348,7 @@ export default function AdminOrdersPage() {
                       <div className="space-y-1">
                         <p className="text-sm font-black text-zinc-700">Order queue unavailable</p>
                         <p className="text-xs font-medium text-zinc-500">
-                          {requestError} Retry after confirming your admin session, network, or backend availability.
+                          {requestError}
                         </p>
                       </div>
                       <Button
@@ -456,7 +473,7 @@ export default function AdminOrdersPage() {
             {/* The drawer is width-capped even on desktop; size the cards against its content. */}
             <div className="@container">
               <div role="group" aria-label="Order totals" className="grid grid-cols-1 gap-3 wrap-anywhere @min-[29rem]:grid-cols-2 [&_h3]:text-xl">
-                <AdminMetricCard title="Grand Total" value={formatAdminCurrency(selectedOrder.totals.grandTotalAmount)} note="Backend order snapshot" icon={<ClipboardList className="h-4 w-4" />} tone="zinc" />
+                <AdminMetricCard title="Grand Total" value={formatAdminCurrency(selectedOrder.totals.grandTotalAmount)} note="Total recorded for this order" icon={<ClipboardList className="h-4 w-4" />} tone="zinc" />
                 <AdminMetricCard title="Delivery Fee" value={formatAdminCurrency(selectedOrder.totals.deliveryFeeAmount)} note="Collected before dispatch where required" icon={<Truck className="h-4 w-4" />} tone="amber" />
                 <AdminMetricCard title="Cash on Delivery" value={formatAdminCurrency(selectedOrder.totals.cashDueOnDelivery)} note="Collected at handoff" icon={<PackageCheck className="h-4 w-4" />} tone="emerald" />
               </div>
@@ -530,7 +547,7 @@ export default function AdminOrdersPage() {
             <div className="rounded-3xl border border-amber-200 bg-amber-50/70 p-4">
               <h3 className="text-sm font-black text-amber-900">Operations Note</h3>
               <p className="mt-2 text-sm text-amber-900">
-                Dispatch and delivery updates remain manual in MVP. This queue reflects backend order snapshots and should not be read as live rider telemetry.
+                Delivery details reflect the last recorded update, not the courier&apos;s current location.
               </p>
               <p className="mt-3 text-sm font-medium text-amber-950">
                 <strong>Order note:</strong> {orderFieldLabel(selectedOrder.notes)}
@@ -585,7 +602,7 @@ export default function AdminOrdersPage() {
                       onClick={() => void handleOrderMutation()}
                       className="rounded-xl bg-zinc-950 font-black text-white"
                     >
-                      {submitting ? "Saving backend update..." : "Apply fulfillment update"}
+                      {submitting ? "Saving update..." : "Apply fulfillment update"}
                     </Button>
                   ) : (
                     <p className="text-xs font-bold text-zinc-500">No fulfillment transition is available from this status.</p>
