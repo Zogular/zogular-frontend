@@ -693,6 +693,49 @@ test("VIS-06 mobile category drawer contains category labels at 320px", async ({
   await expect(menu).toBeFocused();
 });
 
+test("mobile seller entry and login provide a storefront exit and one main landmark", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Storefront entry checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${origin}/sell`);
+  const store = page.getByRole("navigation", { name: "Storefront", exact: true });
+  const back = store.getByRole("link", { name: "Back to shop", exact: true });
+  await expect(back).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.locator("main")).toHaveCount(1);
+  await expect(page.locator("a button, button a")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("seller-entry-320.png"), animations: "disabled" });
+  await back.click();
+  await expect(page).toHaveURL(`${origin}/`);
+
+  for (const [width, height] of [[320, 568], [1440, 900]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto(`${origin}/auth/login`);
+    await expect(page.getByRole("main")).toHaveCount(1);
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("a button, button a")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Go back", exact: true })).toHaveAttribute("href", "/");
+    await page.screenshot({ path: testInfo.outputPath(`buyer-login-${width}.png`), animations: "disabled" });
+  }
+});
+
+test("All Categories shows the complete active category name without internal copy", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Category navigation requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success&categories=success`)).toBeOK();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${origin}/new-arrivals`);
+  await page.getByRole("button", { name: "All Categories", exact: true }).hover();
+  const heading = page.getByRole("heading", { name: longCategoryName, exact: true });
+  await expect(heading).toBeVisible();
+  expect(await heading.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(page.getByText(/without opening a giant menu/)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Shop All", exact: true })).toHaveAttribute("href", "/category/accessories");
+  await page.screenshot({ path: testInfo.outputPath("all-categories-1280.png"), animations: "disabled" });
+});
+
 test("VIS-06 category navbar contains long labels without clipping ordinary links", async ({ page, request }, testInfo) => {
   test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);

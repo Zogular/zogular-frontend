@@ -90,7 +90,7 @@ function LoginContent() {
   };
 
   return (
-    <main
+    <div
       className="auth-viewport relative w-full bg-cover bg-center bg-no-repeat lg:grid lg:grid-cols-2"
       style={{ backgroundImage: "url('https://images.unsplash.com/photo-1607082348824-0a96f2a4b9da?q=80&w=2070&auto=format&fit=crop')" }}
     >
@@ -220,6 +220,6 @@ function LoginContent() {
           </p>
         </div>
       </div>
-    </main>
+    </div>
   );
 }
