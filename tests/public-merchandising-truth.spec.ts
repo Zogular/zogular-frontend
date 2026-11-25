@@ -835,6 +835,44 @@ test("All Categories shows the complete active category name without internal co
   await page.screenshot({ path: testInfo.outputPath("all-categories-1280.png"), animations: "disabled" });
 });
 
+test("buyer order estimates distinguish real dates from unavailable data", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Delivery estimate checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  const orders = [undefined, "unrecorded-date", "2026-11-28T12:00:00.000Z"].map((estimatedDelivery, index) => ({
+    id: `estimate-order-${index}`, orderNumber: `ZG-ESTIMATE-${index}`,
+    status: index === 2 ? "DELIVERED" : "SHIPPED",
+    createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [], estimatedDelivery,
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) => {
+    const limit = Number(new URL(route.request().url()).searchParams.get("limit"));
+    return route.fulfill({
+      json: {
+        status: "success", results: orders.length, data: { orders },
+        pagination: { page: 1, limit, total: orders.length, pages: 1 },
+      },
+    });
+  });
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    for (const [path, view] of [["/account", "overview"], ["/account/orders", "history"]]) {
+      await page.goto(`${origin}${path}`);
+      const estimates = page.getByText("Estimated delivery: Not available", { exact: true });
+      await expect(estimates).toHaveCount(2);
+      await expect(page.getByText("Estimated delivery: Nov 28", { exact: true })).toBeVisible();
+      await expect(page.getByText(/Delivered on:|Invalid Date/)).toHaveCount(0);
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+      await estimates.first().scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`buyer-estimate-${view}-${viewport.width}.png`), animations: "disabled" });
+    }
+  }
+});
+
 test("VIS-06 category navbar contains long labels without clipping ordinary links", async ({ page, request }, testInfo) => {
   test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);

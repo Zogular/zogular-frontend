@@ -13,7 +13,7 @@ export interface OrderSummary {
   total: number | null;
   itemSubtotal: number;
   status: OrderStatus;
-  estDelivery: string;
+  estDelivery: string | null;
   items: OrderLineItem[];
   isLegacyIncomplete?: boolean;
 }

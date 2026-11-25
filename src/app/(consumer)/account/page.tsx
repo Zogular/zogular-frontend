@@ -182,7 +182,8 @@ export default function AccountOverviewPage() {
 
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5 font-medium text-zinc-600">
-                      <Truck className="h-4 w-4 text-zinc-400" /> {order.estDelivery}
+                      <Truck className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                      <span>Estimated delivery: {order.estDelivery ?? "Not available"}</span>
                     </span>
                     <Button asChild variant="ghost" size="sm" className="h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]">
                       <Link href={`/account/orders/${order.id}`}>
