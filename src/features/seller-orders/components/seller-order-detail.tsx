@@ -110,6 +110,11 @@ function SellerOrderDetailContent({ order, busy, onTransition, onCancel }: {
   const primaryTransition = order.allowedTransitions.find((item) => item === "confirmed" || item === "processing");
   const canCancel = order.allowedTransitions.includes("cancelled");
   const itemCount = order.orderItems.reduce((sum, item) => sum + item.quantity, 0);
+  // The seller order mapper uses the same placeholder for every unavailable address part.
+  const [street, area, city] = [order.shipping.address, order.shipping.area, order.shipping.city]
+    .map((part) => part.trim())
+    .map((part) => part === "Not provided" ? "" : part);
+  const locality = [area, city].filter(Boolean).join(", ");
 
   return (
     <>
@@ -154,9 +159,13 @@ function SellerOrderDetailContent({ order, busy, onTransition, onCancel }: {
             <p className="mt-3 text-sm font-black">{order.customer.name}</p><p className="text-xs text-zinc-500">{order.customer.email}</p>
             {order.customer.phone !== "Not provided" ? <a href={`tel:${order.customer.phone}`} className="mt-3 flex h-10 items-center gap-2 rounded-xl border border-zinc-200 px-3 text-sm font-bold text-zinc-700"><Phone className="h-4 w-4" aria-hidden="true" />{order.customer.phone}</a> : null}
           </section>
-          <section className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
-            <h2 className="flex items-center gap-2 text-xs font-black uppercase tracking-wider"><MapPin className="h-4 w-4 text-zinc-400" aria-hidden="true" /> Delivery</h2>
-            <p className="mt-3 text-sm font-black">{order.shipping.address}</p><p className="text-xs text-zinc-500">{order.shipping.area}, {order.shipping.city}</p>
+          <section aria-labelledby="seller-order-delivery-heading" className="rounded-2xl border border-zinc-200 bg-white p-4 shadow-sm">
+            <h2 id="seller-order-delivery-heading" className="flex items-center gap-2 text-xs font-black uppercase tracking-wider"><MapPin className="h-4 w-4 text-zinc-400" aria-hidden="true" /> Delivery</h2>
+            <div className="mt-3 wrap-anywhere">
+              {street ? <p className="text-sm font-black">{street}</p> : null}
+              {locality ? <p className={street ? "text-xs text-zinc-500" : "text-sm font-black"}>{locality}</p> : null}
+              {!street && !locality ? <p className="text-sm text-zinc-500">No delivery address provided.</p> : null}
+            </div>
             {order.shipping.instructions ? <p className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-semibold leading-5 text-amber-900">{order.shipping.instructions}</p> : null}
           </section>
           {order.status === "refund" ? <Link href={`/seller/support?orderId=${encodeURIComponent(order.id)}&topic=refund`} className="flex h-10 items-center justify-center rounded-xl border border-orange-200 bg-orange-50 text-xs font-black text-orange-800">Contact support about this refund</Link> : null}
