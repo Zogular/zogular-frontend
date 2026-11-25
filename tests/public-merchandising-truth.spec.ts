@@ -934,3 +934,27 @@ for (const viewport of browserViewports) {
 
   });
 }
+
+test("VIS-04 storefront footer uses plain payment copy at mobile and desktop widths", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Footer verification requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success`)).toBeOK();
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${origin}/new-arrivals`);
+  const footer = page.getByRole("contentinfo");
+  const cashOnDelivery = footer.getByText("Cash on delivery", { exact: true });
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await test.step(`footer at ${viewport.width}px`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(cashOnDelivery).toBeVisible();
+      await expect(footer).not.toContainText(/backend[- ]quoted|\bCOD\b/i);
+      await cashOnDelivery.scrollIntoViewIfNeeded();
+      await expect(cashOnDelivery).toBeInViewport({ ratio: 1 });
+      expect(await footer.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await auditPageLayout(page);
+      await page.screenshot({ path: testInfo.outputPath(`footer-payment-${viewport.width}.png`), animations: "disabled" });
+    });
+  }
+});
