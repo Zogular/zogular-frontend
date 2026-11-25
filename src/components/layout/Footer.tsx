@@ -9,7 +9,6 @@ import { BRAND } from "@/config/brand";
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
   { label: "About Zogular", href: "/about" },
-  { label: "Careers", href: "/careers" },
   { label: "Become a Seller", href: "/sell" }, // Fixed route
   { label: "Terms & Conditions", href: "/terms" },
 ];
