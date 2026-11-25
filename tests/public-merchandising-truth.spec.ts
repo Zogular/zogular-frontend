@@ -1014,6 +1014,40 @@ for (const viewport of browserViewports) {
   });
 }
 
+test("buyer order badges use the same status labels on the overview and history", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Buyer order status checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  const orders = ["SHIPPED", "CANCELLED", "REFUNDED", "PENDING", "DELIVERED"].map((status, index) => ({
+    id: `status-order-${index}`, orderNumber: `ZG-STATUS-${index}`, status,
+    createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [],
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) => {
+    const limit = Number(new URL(route.request().url()).searchParams.get("limit"));
+    return route.fulfill({
+      json: {
+        status: "success", results: orders.length, data: { orders },
+        pagination: { page: 1, limit, total: orders.length, pages: 1 },
+      },
+    });
+  });
+  const badges = page.locator("main [data-slot=badge]");
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    await expect(badges).toHaveText(["In Transit", "Cancelled", "Cancelled"]);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    await badges.first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`buyer-overview-status-${viewport.width}.png`), animations: "disabled" });
+    await page.goto(`${origin}/account/orders`);
+    await expect(badges).toHaveText(["In Transit", "Cancelled", "Cancelled", "Processing", "Delivered"]);
+  }
+});
+
 test("storefront business attribution and policy FAQs remain readable on mobile and desktop", async ({ page }, testInfo) => {
   test.skip(!useLocalFixture, "Policy verification requires the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);
