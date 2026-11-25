@@ -1107,6 +1107,54 @@ test("storefront business attribution and policy FAQs remain readable on mobile 
   }
 });
 
+test("buyer account navigation uses single links for profile, order tracking, and address", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Account control checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) =>
+    route.fulfill({
+      json: {
+        status: "success",
+        results: 1,
+        data: { orders: [{
+          id: "account-order-fixture", orderNumber: "ZG-FIXTURE-001", status: "PENDING",
+          createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [],
+        }] },
+        pagination: { page: 1, limit: 100, total: 1, pages: 1 },
+      },
+    }),
+  );
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    const content = page.locator("main").first();
+    await expect(content.getByRole("heading", { name: "Welcome back, Fixture!" })).toBeVisible();
+    for (const [name, href] of [
+      ["Edit Profile", "/account/settings"],
+      ["Track", "/account/orders/account-order-fixture"],
+      ["Add Address", "/account/addresses"],
+    ]) {
+      const link = content.getByRole("link", { name, exact: true }).and(content.locator(`a[href="${href}"]`));
+      await expect(link).toHaveCount(1);
+      await expect(link).toHaveAttribute("href", href);
+      await expect(content.getByRole("button", { name, exact: true })).toHaveCount(0);
+    }
+    await expect(page.locator("main a button, main button a")).toHaveCount(0);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    const profile = page.getByRole("link", { name: "Edit Profile", exact: true });
+    await profile.focus();
+    await expect(profile).toBeFocused();
+    await page.screenshot({ path: testInfo.outputPath(`buyer-account-links-${viewport.width}.png`), animations: "disabled" });
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(`${origin}/account/settings`);
+  }
+});
+
 test("VIS-04 storefront footer uses plain payment copy at mobile and desktop widths", async ({ page, request }, testInfo) => {
   test.skip(!useLocalFixture, "Footer verification requires the isolated merchandising fixture.");
   const origin = loopbackAuditOrigin(browserBaseUrl!);

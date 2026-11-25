@@ -79,11 +79,11 @@ export default function AccountOverviewPage() {
             Manage your orders, track deliveries, and secure your account.
           </p>
         </div>
-        <Link href="/account/settings">
-          <Button variant="outline" className="flex h-11 w-full items-center gap-2 rounded-xl border-zinc-200 px-5 text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900 md:w-auto">
+        <Button asChild variant="outline" className="flex h-11 w-full items-center gap-2 rounded-xl border-zinc-200 px-5 text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900 md:w-auto">
+          <Link href="/account/settings">
             <User className="h-4 w-4" /> Edit Profile
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-3 animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 md:grid-cols-3 md:gap-4" style={{ animationDelay: "100ms" }}>
@@ -194,11 +194,11 @@ export default function AccountOverviewPage() {
                     <span className="flex items-center gap-1.5 font-medium text-zinc-600">
                       <Truck className="h-4 w-4 text-zinc-400" /> {order.estDelivery}
                     </span>
-                    <Link href={`/account/orders/${order.id}`}>
-                      <Button variant="ghost" size="sm" className="h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]">
+                    <Button asChild variant="ghost" size="sm" className="h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]">
+                      <Link href={`/account/orders/${order.id}`}>
                         Track
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               ))
@@ -234,11 +234,11 @@ export default function AccountOverviewPage() {
               <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-6 text-center">
                 <p className="text-sm font-bold text-zinc-900">No default address</p>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-500">Add your first delivery address.</p>
-                <Link href="/account/addresses">
-                  <Button variant="outline" className="mt-3 h-8 text-xs font-bold text-[#009E49] hover:bg-[#009E49]/10">
+                <Button asChild variant="outline" className="mt-3 h-8 text-xs font-bold text-[#009E49] hover:bg-[#009E49]/10">
+                  <Link href="/account/addresses">
                     Add Address
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             )}
           </div>
@@ -255,20 +255,20 @@ export default function AccountOverviewPage() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {SUPPORT_WHATSAPP_NUMBER && (
-                    <a href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10">
+                    <Button asChild variant="outline" className="h-10 w-full justify-start rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10">
+                      <a href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
                         <MessageCircle className="mr-2 h-4 w-4" />
                         WhatsApp Support
-                      </Button>
-                    </a>
+                      </a>
+                    </Button>
                   )}
                   {SUPPORT_CALL_NUMBER && (
-                    <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
-                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
+                    <Button asChild variant="outline" className="h-10 w-full justify-start rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
+                      <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
                         <Phone className="mr-2 h-4 w-4" />
                         Call Support
-                      </Button>
-                    </a>
+                      </a>
+                    </Button>
                   )}
                 </div>
               )}
