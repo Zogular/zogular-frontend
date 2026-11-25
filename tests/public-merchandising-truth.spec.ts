@@ -742,6 +742,42 @@ test("VIS-06 category navbar contains long labels without clipping ordinary link
     await expect(ordinaryLink).toBeInViewport({ ratio: 1 });
     expect(await ordinaryLink.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
   }
+
+  await test.step("VIS-07 desktop search fits and works by keyboard at 768px", async () => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await settleRenderedNavigation(page);
+    const desktopSearch = page.locator("#desktop-navbar-search");
+    const input = desktopSearch.getByRole("searchbox", { name: "Search products", exact: true });
+    const submit = desktopSearch.getByRole("button", { name: "Search", exact: true });
+    await expect(input).toHaveAttribute("aria-label", "Search products");
+    await expect(input).toHaveAttribute("placeholder", "Search products");
+    await expect(input).toHaveValue("");
+    await expect(input).toBeInViewport({ ratio: 1 });
+    const fit = await input.evaluate((element: HTMLInputElement) => {
+      const style = getComputedStyle(element);
+      const placeholderStyle = getComputedStyle(element, "::placeholder");
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context) throw new Error("Cannot measure storefront search text.");
+      context.font = placeholderStyle.font;
+      context.letterSpacing = placeholderStyle.letterSpacing === "normal" ? "0px" : placeholderStyle.letterSpacing;
+      return {
+        textWidth: context.measureText(element.placeholder).width,
+        contentWidth: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      };
+    });
+    await testInfo.attach("desktop-search-fit-768", { body: JSON.stringify(fit), contentType: "application/json" });
+    expect(fit.textWidth).toBeLessThanOrEqual(fit.contentWidth);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 768);
+    await page.screenshot({ path: testInfo.outputPath("navbar-search-768.png"), animations: "disabled" });
+
+    await input.focus();
+    await expect(input).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(submit).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(page).toHaveURL(`${origin}/search`);
+    await expect(page.getByRole("heading", { name: "Search products", exact: true })).toBeVisible();
+  });
 });
 
 for (const viewport of browserViewports) {

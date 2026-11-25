@@ -92,7 +92,8 @@ export function NavbarSearch({ mobile = false }: NavbarSearchProps) {
             onFocus={() => {
               if (query.trim()) setIsOpen(true);
             }}
-            placeholder={mobile ? "Search products..." : "Search products, brands and categories..."}
+            aria-label={mobile ? undefined : "Search products"}
+            placeholder={mobile ? "Search products..." : "Search products"}
             className={cn(
               "w-full rounded-full border border-white/50 bg-white/65 pr-12 pl-11 text-base text-zinc-800 shadow-[inset_0_1px_0_rgba(255,255,255,0.85),0_8px_20px_rgba(15,23,42,0.05)] outline-none transition-all placeholder:text-zinc-400 focus:border-[#009E49]/40 focus:bg-white focus:ring-2 focus:ring-[#009E49]/20",
               "h-12",
