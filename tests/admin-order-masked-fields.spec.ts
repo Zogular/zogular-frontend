@@ -8,17 +8,24 @@ const origin = "http://127.0.0.1:3238";
 const orderNumber = "ZG-FIXTURE-001";
 const timestamp = "2026-11-24T10:00:00.000Z";
 const seller = { userId: "seller-fixture", storeName: null, applicationStatus: "APPROVED" };
+const totals = { itemSubtotal: 123_456_789.99, deliveryFeeAmount: 12_345_678.9,
+  cashDueOnDelivery: 123_456_789.99, grandTotalAmount: 135_802_468.89 };
+const metrics = [
+  { title: "Grand Total", amount: "K135,802,468.89", note: "Backend order snapshot" },
+  { title: "Delivery Fee", amount: "K12,345,678.9", note: "Collected before dispatch where required" },
+  { title: "Cash on Delivery", amount: "K123,456,789.99", note: "Collected at handoff" },
+];
 const maskedOrder = {
   id: "order-fixture", orderNumber, status: "CONFIRMED",
   createdAt: timestamp, updatedAt: timestamp, deliveredAt: null,
   estimatedDelivery: null, trackingNumber: null,
   customer: { id: "buyer-fixture" },
   payment: { method: "CASH_ON_DELIVERY", collectionMode: "COD", commitmentFeeStatus: "PENDING" },
-  totals: { itemSubtotal: 150, deliveryFeeAmount: 40, cashDueOnDelivery: 190, grandTotalAmount: 190 },
+  totals,
   delivery: { method: "delivery", trackingMode: "MANUAL_ONLY" },
   items: [{
     id: "item-fixture", productId: "product-fixture", title: "Fixture desk lamp",
-    slug: "fixture-desk-lamp", quantity: 1, price: 150, lineTotal: 150,
+    slug: "fixture-desk-lamp", quantity: 1, price: totals.itemSubtotal, lineTotal: totals.itemSubtotal,
     vendorId: seller.userId, vendorStatus: "PENDING", seller,
   }],
   sellerSummaries: [{ ...seller, itemCount: 1 }],
@@ -38,7 +45,9 @@ const privilegedOrder = {
   items: maskedOrder.items.map((item) => ({ ...item, seller: { ...seller, name: "Fixture Seller" } })),
 } satisfies AdminOrderRecord;
 
-test.use({ channel: "chrome", serviceWorkers: "block" });
+test.use({ channel: "chrome", serviceWorkers: "block", launchOptions: { args: [
+  "--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+] } });
 test.describe.configure({ mode: "default", timeout: 120_000 });
 
 let backend: Server;
@@ -107,19 +116,20 @@ test.afterAll(async () => {
   }
 });
 
-for (const width of [1440, 390]) {
+for (const [width, columns] of [[320, 1], [390, 1], [768, 2], [1024, 2], [1440, 2]]) {
   for (const privileged of [false, true]) {
     test(`${privileged ? "privileged" : "masked"} Order Queue and drawer at ${width}px`, async ({ page, context }, testInfo) => {
       const pageErrors: Error[] = [];
       page.on("pageerror", (error) => pageErrors.push(error));
       await context.route("**/*", (route) => new URL(route.request().url()).origin === origin
         ? route.continue() : route.abort());
+      await context.routeWebSocket("**/*", (socket) => socket.close());
       await context.addCookies([{ name: "zogular_admin_session",
         value: privileged ? "orders-operations" : "orders-tech", url: origin }]);
       await page.setViewportSize({ width, height: 900 });
       await page.goto(`${origin}/admin/orders`);
 
-      const queue = width === 1440 ? page.getByRole("table") : page;
+      const queue = width >= 1024 ? page.getByRole("table").filter({ visible: true }) : page;
       await expect(queue.getByText(orderNumber, { exact: true }).filter({ visible: true })).toBeVisible();
       await expect(queue.getByText(privileged ? "Fixture Buyer" : "Restricted", { exact: true })
         .filter({ visible: true }).first()).toBeVisible();
@@ -135,6 +145,51 @@ for (const width of [1440, 390]) {
       await openOrder.click();
       const drawer = page.getByRole("dialog", { name: orderNumber });
       await expect(drawer.getByText("Fixture desk lamp")).toBeVisible();
+      const summary = drawer.getByRole("group", { name: "Order totals" });
+      const cards = summary.locator(":scope > div");
+      await expect(cards).toHaveCount(metrics.length);
+      for (const [index, { title, amount, note }] of metrics.entries()) {
+        const card = cards.nth(index);
+        await expect(card.getByText(title, { exact: true })).toBeVisible();
+        await expect(card.getByRole("heading", { name: amount, exact: true })).toBeVisible();
+        await expect(card.getByText(note, { exact: true })).toBeVisible();
+        await expect(card.locator("svg")).toBeVisible();
+      }
+      // Check rendered text fragments too: a block can fit while its unbroken text spills.
+      await expect.poll(() => summary.evaluate((grid) => {
+        const sheet = grid.closest('[role="dialog"]')!;
+        const bounds = grid.getBoundingClientRect();
+        const inside = (outer: DOMRect, inner: DOMRect) => inner.left >= outer.left - 0.5
+          && inner.right <= outer.right + 0.5 && inner.top >= outer.top - 0.5 && inner.bottom <= outer.bottom + 0.5;
+        const cards = Array.from(grid.children);
+        const positions = cards.map((card) => Math.round(card.getBoundingClientRect().left - bounds.left));
+        let drawerOverflow = 0;
+        for (let parent: Element | null = grid; parent; parent = parent.parentElement) {
+          drawerOverflow = Math.max(drawerOverflow, parent.scrollWidth - parent.clientWidth);
+          if (parent === sheet) break;
+        }
+        return {
+          columns: new Set(positions).size,
+          drawerOverflow,
+          drawerOnScreen: sheet.getBoundingClientRect().left >= -0.5
+            && sheet.getBoundingClientRect().right <= window.innerWidth + 0.5,
+          fit: cards.map((card) => {
+            const frame = card.getBoundingClientRect();
+            const icon = card.querySelector("svg")!;
+            const label = card.querySelector("p")!;
+            return inside(bounds, frame) && card.scrollWidth === card.clientWidth
+              && inside(frame, icon.parentElement!.getBoundingClientRect())
+              && inside(icon.parentElement!.getBoundingClientRect(), icon.getBoundingClientRect())
+              && label.getBoundingClientRect().right <= icon.parentElement!.getBoundingClientRect().left
+              && Array.from(card.querySelectorAll("p, h3")).every((text) => {
+                const range = document.createRange();
+                range.selectNodeContents(text);
+                const fragments = Array.from(range.getClientRects());
+                return fragments.length > 0 && fragments.every((fragment) => inside(frame, fragment));
+              });
+          }),
+        };
+      })).toEqual({ columns, drawerOverflow: 0, drawerOnScreen: true, fit: [true, true, true] });
       if (privileged) {
         for (const text of ["Name: Fixture Buyer", "Email: buyer@example.test", "Address: 20 Fixture Road",
           "Area: Woodlands, Lusaka", "Order note: Fixture dispatch note", "Fixture Seller · Vendor item status Pending"]) {
