@@ -656,6 +656,46 @@ async function verifySupportHeader(page: Page, width: number, profileScreenshot:
   }
 }
 
+test("VIS-05 support search placeholder fits and filters at 320x568", async ({ context }, testInfo) => {
+  const { page, violations } = await setupPage(context);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+  const search = page.getByPlaceholder("Search tickets", { exact: true });
+  const [unmatched, matched] = fixtureTickets.map(({ subject }) =>
+    page.locator("article").filter({ hasText: subject }));
+  await expect(unmatched).toBeVisible();
+  await expect(matched).toBeVisible();
+  await search.scrollIntoViewIfNeeded();
+  await expect(search).toBeInViewport({ ratio: 1 });
+  await expect(search).toHaveValue("");
+
+  const { textWidth, availableWidth } = await search.evaluate((input: HTMLInputElement) => {
+    const style = getComputedStyle(input);
+    const placeholder = getComputedStyle(input, "::placeholder");
+    const canvas = document.createElement("canvas").getContext("2d")!;
+    canvas.font = `${placeholder.fontWeight} ${placeholder.fontSize} ${placeholder.fontFamily}`;
+    return {
+      textWidth: canvas.measureText(input.placeholder).width,
+      availableWidth: input.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+    };
+  });
+  expect(textWidth).toBeGreaterThan(0);
+  expect(textWidth).toBeLessThanOrEqual(availableWidth);
+  await page.screenshot({ path: testInfo.outputPath("support-search-320x568.png"), animations: "disabled" });
+
+  const term = "Inventory sync";
+  const response = page.waitForResponse((result) => {
+    const url = new URL(result.url());
+    return url.origin === BROWSER_ORIGIN && url.pathname === "/api/backend/admin/support/tickets"
+      && result.request().method() === "GET" && url.searchParams.get("search") === term;
+  });
+  await search.fill(term);
+  expect((await response).status()).toBe(200);
+  await expect(matched).toBeVisible();
+  await expect(unmatched).toHaveCount(0);
+  expect(violations).toEqual([]);
+});
+
 test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
 
   const VIEWPORT_CASES: Array<{ width: number; height: number; label: string }> = [
