@@ -178,11 +178,13 @@ function OrderList({ orders, listUrl, onCancel }: { orders: SellerOrderSummary[]
           const detailHref = `/seller/orders/${order.id}?returnTo=${encodeURIComponent(listUrl)}`;
           return (
             <div key={order.id} className="grid min-h-22 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 px-3 py-2.5 lg:min-h-18 lg:grid-cols-[minmax(180px,1.3fr)_100px_90px_110px_130px_40px] lg:gap-3 lg:px-4" role="row">
-              <Link href={detailHref} onClick={() => rememberListScroll(listUrl)} className="min-w-0 rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-emerald-500" role="cell">
-                <p className="truncate text-[13px] font-black text-zinc-950">{order.customer}</p>
-                <p className="truncate text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.orderNumber}</p>
-                <p className="mt-0.5 truncate text-[10px] font-semibold text-zinc-500 lg:hidden">{formatSellerOrderDate(order.createdAt)}</p>
-              </Link>
+              <div className="min-w-0" role="cell">
+                <Link href={detailHref} onClick={() => rememberListScroll(listUrl)} className="block rounded-lg outline-none focus-visible:ring-2 focus-visible:ring-emerald-500">
+                  <p className="truncate text-[13px] font-black text-zinc-950">{order.customer}</p>
+                  <p className="truncate text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.orderNumber}</p>
+                  <p className="mt-0.5 truncate text-[10px] font-semibold text-zinc-500 lg:hidden">{formatSellerOrderDate(order.createdAt)}</p>
+                </Link>
+              </div>
               <div className="row-span-2 flex items-center gap-1 lg:row-span-1 lg:contents">
                 <span className="hidden text-xs font-bold text-zinc-700 lg:block" role="cell">{order.items}</span>
                 <span className="hidden text-xs font-black text-zinc-950 lg:block" role="cell">{formatSellerOrderCurrency(order.total)}</span>
