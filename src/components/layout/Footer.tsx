@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleHelp, Mail, Package, ReceiptText, ShieldCheck, Store, Truck } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { BRAND } from "@/config/brand";
+import { BRAND, BRAND_ATTRIBUTION } from "@/config/brand";
 
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
@@ -129,7 +129,7 @@ export function Footer() {
         {/* Bottom Bar: Copyright & Payments */}
         <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-zinc-900 gap-4">
           <p className="text-[10px] md:text-xs text-zinc-500">
-            &copy; {new Date().getFullYear()} Zogular. All rights reserved.
+            &copy; {new Date().getFullYear()} {BRAND_ATTRIBUTION}
           </p>
           
           <div className="flex items-center gap-4">

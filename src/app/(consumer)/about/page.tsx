@@ -1,4 +1,5 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
+import { BRAND_ATTRIBUTION } from "@/config/brand";
 
 export default function AboutPage() {
   return (
@@ -6,7 +7,7 @@ export default function AboutPage() {
       title="About Zogular"
       eyebrow="Zambian platform"
       tone="company"
-      description="Zogular is a Zambian-first marketplace connecting reviewed local sellers with shoppers through backend-quoted pricing, Cash on Delivery, and manually coordinated Lusaka pilot delivery."
+      description={`${BRAND_ATTRIBUTION} is a Zambian marketplace connecting shoppers with local sellers, with cash on delivery and coordinated delivery in Lusaka.`}
       highlights={["Local seller visibility", "Mobile-first shopping", "Clearer delivery expectations", "Practical support"]}
       stats={[
         { value: "ZM", label: "Built for" },
