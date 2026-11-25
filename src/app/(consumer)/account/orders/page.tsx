@@ -16,8 +16,11 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
+import { rememberListScroll, useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
 import { appendOrderPage, getMyOrdersPage } from "@/services/orders";
 import type { OrderPage, OrderStatus } from "@/types/order";
+
+const ORDERS_PATH = "/account/orders";
 
 const STATUS_CONFIG = {
   processing: {
@@ -95,6 +98,7 @@ export default function OrdersPage() {
 
   const orders = orderPage?.orders ?? [];
   const pagination = orderPage?.pagination ?? null;
+  useListScrollRestoration(ORDERS_PATH, !loading && !error && orderPage !== null);
 
   React.useEffect(() => {
     void loadOrders();
@@ -178,11 +182,9 @@ export default function OrdersPage() {
                 Clear Search
               </Button>
             ) : (
-              <Link href="/categories">
-                <Button className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
-                  Browse Categories
-                </Button>
-              </Link>
+              <Button asChild className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
+                <Link href="/categories">Browse Categories</Link>
+              </Button>
             )
           }
         />
@@ -244,11 +246,11 @@ export default function OrdersPage() {
                       <span className="font-bold text-zinc-900">{order.estDelivery}</span>
                     </p>
 
-                    <Link href={`/account/orders/${order.id}`} className="w-full sm:w-auto">
-                      <Button className="w-full rounded-xl bg-zinc-100 text-sm font-bold text-zinc-900 hover:bg-[#009E49] hover:text-white sm:w-auto">
+                    <Button asChild className="h-11 w-full scroll-my-24 rounded-xl bg-zinc-100 text-sm font-bold text-zinc-900 hover:bg-[#009E49] hover:text-white sm:w-auto">
+                      <Link href={`${ORDERS_PATH}/${order.id}`} onClick={() => rememberListScroll(ORDERS_PATH)}>
                         View Order Details
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               </div>

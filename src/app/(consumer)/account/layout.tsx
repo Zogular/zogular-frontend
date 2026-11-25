@@ -57,7 +57,7 @@ export default function AccountLayout({
 
   if (auth.status === "unavailable") {
     return (
-      <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
+      <div className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
         <div className="w-full max-w-md rounded-3xl border border-red-100 bg-white p-6 text-center shadow-[0_18px_46px_rgba(15,23,42,0.08)]">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-red-50 text-red-600">
             <AlertCircle className="h-6 w-6" aria-hidden="true" />
@@ -75,18 +75,18 @@ export default function AccountLayout({
             </Button>
           </div>
         </div>
-      </main>
+      </div>
     );
   }
 
   if (auth.status !== "authenticated" || isSigningOut) {
     return (
-      <main className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
+      <div className="flex min-h-[60vh] items-center justify-center bg-[#f4fbf6] px-4" aria-live="polite">
         <div className="flex items-center gap-3 text-sm font-semibold text-zinc-600">
           <Loader2 className="h-5 w-5 animate-spin text-[#009E49] motion-reduce:animate-none" aria-hidden="true" />
           {isSigningOut ? "Signing out…" : auth.status === "guest" ? "Opening sign in…" : "Checking your account…"}
         </div>
-      </main>
+      </div>
     );
   }
 
@@ -96,7 +96,7 @@ export default function AccountLayout({
   };
 
   return (
-    <main className="min-h-screen bg-[#f4fbf6] pb-24 pt-6 md:pb-12">
+    <div className="min-h-screen bg-[#f4fbf6] pb-24 pt-6 md:pb-12">
       <div className="container mx-auto max-w-6xl px-4 md:px-6">
         
         {/* Breadcrumb */}
@@ -199,6 +199,6 @@ export default function AccountLayout({
           
         </div>
       </div>
-    </main>
+    </div>
   );
 }

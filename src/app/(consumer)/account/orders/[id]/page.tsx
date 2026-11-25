@@ -93,14 +93,14 @@ export default function InvoicePage({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between print:hidden">
-        <Link href="/account/orders">
-          <Button variant="ghost" className="text-zinc-600 hover:text-zinc-900">
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <Button asChild variant="ghost" className="h-11 text-zinc-600 hover:text-zinc-900">
+          <Link href="/account/orders">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Orders
-          </Button>
-        </Link>
+          </Link>
+        </Button>
 
-        <Button onClick={() => window.print()} className="bg-zinc-900 text-white hover:bg-zinc-800">
+        <Button onClick={() => window.print()} className="h-11 bg-zinc-900 text-white hover:bg-zinc-800">
           <Printer className="mr-2 h-4 w-4" /> View / Print Receipt
         </Button>
       </div>
@@ -271,13 +271,9 @@ export default function InvoicePage({
               </div>
             </div>
             <div className="space-y-2">
-              <Link href="/categories">
-                <Button 
-                  className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto"
-                >
-                  Browse Products
-                </Button>
-              </Link>
+              <Button asChild className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto">
+                <Link href="/categories">Browse Products</Link>
+              </Button>
             </div>
           </div>
 
