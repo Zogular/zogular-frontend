@@ -7,25 +7,12 @@
 
 "use client";
 
-import { Suspense, use } from "react";
+import { Suspense } from "react";
 import { useParams } from "next/navigation";
 import { BuyerDetail } from "@/features/admin-buyers/sections/BuyerDetail";
 
-interface PageProps {
-  params?: Promise<{ id: string }> | { id: string };
-}
-
-export default function AdminBuyerDetailPage({ params }: PageProps) {
-  const urlParams = useParams<{ id: string }>();
-  let id = urlParams?.id;
-
-  if (!id && params) {
-    if (params instanceof Promise) {
-      id = use(params).id;
-    } else {
-      id = params.id;
-    }
-  }
+export default function AdminBuyerDetailPage() {
+  const { id } = useParams<{ id: string }>();
 
   return (
     <Suspense
@@ -36,7 +23,7 @@ export default function AdminBuyerDetailPage({ params }: PageProps) {
         </div>
       }
     >
-      <BuyerDetail id={id ?? ""} />
+      <BuyerDetail id={id} />
     </Suspense>
   );
 }
