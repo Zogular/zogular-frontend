@@ -16,9 +16,17 @@ import {
 } from "@/features/admin-overview/components/OverviewStates";
 import { useAdminOverview } from "@/features/admin-overview/hooks/useAdminOverview";
 import { isAdminOverviewEmpty } from "@/features/admin-overview/lib/overview-presentation";
+import { overviewAuthority } from "@/features/admin-overview/lib/overview-cache";
 import type { AdminDashboardOverviewAvailability } from "@/features/admin-overview/types/dashboard-overview";
 
 export function AdminOverview({ nowIso }: { nowIso: string }) {
+  const identity = useAdminIdentity();
+  const authority = overviewAuthority(identity);
+  if (!authority) return <p role="status">Overview is unavailable for this session.</p>;
+  return <AuthorizedOverview key={authority} authority={authority} nowIso={nowIso} />;
+}
+
+function AuthorizedOverview({ authority, nowIso }: { authority: string; nowIso: string }) {
   const identity = useAdminIdentity();
   const reduceMotion = useReducedMotion();
   const {
@@ -33,7 +41,7 @@ export function AdminOverview({ nowIso }: { nowIso: string }) {
     refreshPolicy,
     setGroupBy,
     setPeriod,
-  } = useAdminOverview();
+  } = useAdminOverview(authority);
 
   const motionProps = reduceMotion
     ? { initial: false as const }
@@ -84,7 +92,7 @@ export function AdminOverview({ nowIso }: { nowIso: string }) {
         period={query.period}
         groupBy={query.groupBy}
         isRefreshing={isRefreshing}
-        refreshDisabled={isInitialLoading || isRefreshing}
+        refreshDisabled={isInitialLoading || isRefreshing || error?.kind === "forbidden" || error?.kind === "unauthenticated"}
         onRefresh={() => void refresh()}
         refreshPolicy={refreshPolicy}
       />

@@ -518,10 +518,8 @@ test("maps 401, 403, timeout, 503, network, and malformed failures safely", () =
 
 test("hook config owns cancellation, deduplication, polling, focus, reconnect, and fail-closed behavior", () => {
   const source = readSource("src/features/admin-overview/hooks/useAdminOverview.ts");
-  expect(source).toContain("queryFn: ({ signal })");
   expect(source).toContain("fetchAdminDashboardOverview({ ...query, signal })");
-  expect(source).toContain("placeholderData: keepPreviousData");
-  expect(source).toContain("refetchInterval: ADMIN_OVERVIEW_REFETCH_INTERVAL_MS");
+  expect(source).toContain("refetchInterval: refreshPolicy.effectiveIntervalMs");
   expect(source).toContain("refetchIntervalInBackground: false");
   expect(source).toContain("refetchOnWindowFocus: true");
   expect(source).toContain("refetchOnReconnect: true");

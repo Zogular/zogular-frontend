@@ -1,6 +1,8 @@
 import { expect, test, type Page } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import http from "node:http";
+import net from "node:net";
+import { containAuditNetwork } from "./helpers/ui-audit-checks";
 
 const FRONTEND_PORT = 3320;
 const BACKEND_PORT = 3321;
@@ -11,29 +13,65 @@ const DAY_MS = 86_400_000;
 let backendServer: http.Server | null = null;
 let frontendProcess: ChildProcess | null = null;
 let frontendOutput = "";
+let frontendClosed: Promise<void> | undefined;
+let overviewStatus = 200;
+let overviewRequests = 0;
+let nextIdentity: "principal" | "claims" | null = null;
+let overviewGate: Promise<void> | null = null;
+
+async function checkPort(port: number) {
+  const probe = net.createServer();
+  await new Promise<void>((resolve, reject) => {
+    probe.once("error", reject);
+    probe.listen({ host: "127.0.0.1", port, exclusive: true }, () => {
+      probe.close(error => error ? reject(error) : resolve());
+    });
+  });
+}
 
 test.describe.configure({ mode: "serial", timeout: 120_000 });
+test.use({ serviceWorkers: "block" });
+test.beforeEach(async ({ context }) => {
+  await containAuditNetwork(context, [FRONTEND_ORIGIN, BACKEND_ORIGIN]);
+});
 
 test.beforeAll(async ({}, testInfo) => {
   testInfo.setTimeout(120_000);
-  backendServer = http.createServer((request, response) => {
+  await checkPort(FRONTEND_PORT);
+  await checkPort(BACKEND_PORT);
+  backendServer = http.createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", BACKEND_ORIGIN);
     response.setHeader("content-type", "application/json");
 
-    if (url.pathname === "/api/v1/user/me") {
+    if (url.pathname === "/api/v1/auth/csrf-token") {
+      response.end(JSON.stringify({ csrfToken: "fixture-csrf" }));
+      return;
+    }
+    if (url.pathname === "/api/v1/auth/logout" && request.method === "POST") {
+      response.end(JSON.stringify({ status: "success" }));
+      return;
+    }
+    const login = url.pathname === "/api/v1/auth/login" && request.method === "POST";
+    if (login || url.pathname === "/api/v1/user/me") {
+      const changed = login || request.headers.authorization === "Bearer fixture-next-session";
+      if (!login && !changed && request.headers.authorization !== "Bearer synthetic-rendered-admin-token") {
+        response.writeHead(401).end(JSON.stringify({ status: "fail" }));
+        return;
+      }
       response.end(JSON.stringify({
         status: "success",
         data: {
+          ...(login ? { accessToken: "fixture-next-session" } : {}),
           user: {
-            id: "admin-rendered-overview",
-            name: "Rendered Admin",
+            id: changed && nextIdentity === "principal" ? "admin-second" : "admin-rendered-overview",
+            name: changed ? "Updated Operator" : "Rendered Admin",
             email: "rendered.admin@example.test",
             role: "SUPER_ADMIN",
             permissions: [
               "access_admin_panel",
               "review_sellers",
               "view_all_products",
-              "view_all_orders",
+              ...(changed && nextIdentity === "claims" ? [] : ["view_all_orders"]),
               "view_support_tickets",
             ],
             authStrength: "password",
@@ -44,7 +82,16 @@ test.beforeAll(async ({}, testInfo) => {
     }
 
     if (url.pathname === "/api/v1/admin/dashboard/overview") {
-      response.end(JSON.stringify(overviewEnvelope(url)));
+      overviewRequests++;
+      if (overviewGate) await overviewGate;
+      if (overviewStatus !== 200) {
+        response.writeHead(overviewStatus);
+        response.end(JSON.stringify({ status: "fail", message: "Overview unavailable" }));
+        return;
+      }
+      const envelope = overviewEnvelope(url);
+      if (nextIdentity) envelope.data.overview.snapshot.activeSellers.value = 87;
+      response.end(JSON.stringify(envelope));
       return;
     }
 
@@ -54,12 +101,11 @@ test.beforeAll(async ({}, testInfo) => {
 
   await new Promise<void>((resolve, reject) => {
     backendServer!.once("error", reject);
-    backendServer!.listen(BACKEND_PORT, "127.0.0.1", resolve);
+    backendServer!.listen({ port: BACKEND_PORT, host: "127.0.0.1", exclusive: true }, resolve);
   });
 
-  const npmCommand = process.platform === "win32" ? "npm.cmd" : "npm";
   frontendProcess = spawn(
-    `${npmCommand} run start -- --hostname 127.0.0.1 --port ${FRONTEND_PORT}`,
+    process.execPath, [require.resolve("next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", String(FRONTEND_PORT)],
     {
       cwd: process.cwd(),
       env: {
@@ -68,32 +114,32 @@ test.beforeAll(async ({}, testInfo) => {
         INTERNAL_BACKEND_URL: `${BACKEND_ORIGIN}/api/v1`,
         NEXT_PUBLIC_API_URL: `${BACKEND_ORIGIN}/api/v1`,
       },
-      shell: true,
+      windowsHide: true,
       stdio: ["ignore", "pipe", "pipe"],
     },
   );
-  frontendProcess.stdout?.on("data", (chunk) => {
-    frontendOutput += chunk.toString();
+  frontendClosed = new Promise(resolve => frontendProcess!.once("close", () => resolve()));
+  frontendProcess.once("error", error => {
+    frontendOutput = (frontendOutput + error.message).slice(-8192);
   });
-  frontendProcess.stderr?.on("data", (chunk) => {
-    frontendOutput += chunk.toString();
-  });
+  const append = (chunk: Buffer) => { frontendOutput = (frontendOutput + chunk.toString()).slice(-8192); };
+  frontendProcess.stdout?.on("data", append);
+  frontendProcess.stderr?.on("data", append);
 
   await waitForFrontend();
 });
 
 test.afterAll(async () => {
-  if (frontendProcess && frontendProcess.exitCode === null) {
-    frontendProcess.kill();
-    await Promise.race([
-      new Promise<void>((resolve) => frontendProcess!.once("exit", () => resolve())),
-      new Promise<void>((resolve) => setTimeout(resolve, 6_000)),
-    ]);
-  }
-
-  if (backendServer) {
-    await new Promise<void>((resolve, reject) => {
-      backendServer!.close((error) => (error ? reject(error) : resolve()));
+  try {
+    if (frontendProcess?.pid && frontendProcess.exitCode === null && frontendProcess.signalCode === null) {
+      frontendProcess.kill();
+      const force = setTimeout(() => frontendProcess?.kill("SIGKILL"), 5000);
+      try { await frontendClosed; } finally { clearTimeout(force); }
+    } else await frontendClosed;
+  } finally {
+    if (backendServer?.listening) await new Promise<void>((resolve, reject) => {
+      backendServer!.close(error => error ? reject(error) : resolve());
+      backendServer!.closeAllConnections();
     });
   }
 });
@@ -151,6 +197,70 @@ for (const width of [320, 375, 390, 430, 768, 1024, 1280, 1440] as const) {
   });
 }
 
+for (const change of ["principal", "claims"] as const) {
+  test(`client sign-out and sign-in isolates the ${change} change before fresh data arrives`, async ({ page }) => {
+    await page.context().addCookies([{
+      name: "zogular_admin_session", value: "synthetic-rendered-admin-token",
+      domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax",
+    }]);
+    await page.goto(`${FRONTEND_ORIGIN}/admin/dashboard`);
+    const snapshot = page.getByTestId("snapshot-activeSellers");
+    await expect(snapshot).toContainText("12");
+    const documentStart = await page.evaluate(() => performance.timeOrigin);
+    await page.getByTestId("admin-profile-trigger").click();
+    await page.getByRole("button", { name: "Sign out", exact: true }).click();
+    await expect(page).toHaveURL(/\/admin\/login/);
+
+    let release!: () => void;
+    overviewGate = new Promise<void>(resolve => { release = resolve; });
+    nextIdentity = change;
+    try {
+      const before = overviewRequests;
+      await page.getByLabel("Admin email").fill("rendered.admin@example.test");
+      await page.locator("#admin-password").fill("fixture-password");
+      await page.getByRole("button", { name: "Sign in to admin" }).click();
+      await expect(page).toHaveURL(/\/admin\/dashboard/);
+      await expect(page.getByTestId("admin-profile-trigger")).toHaveAccessibleName(/Updated Operator/);
+      await expect.poll(() => overviewRequests).toBeGreaterThan(before);
+      expect(await page.evaluate(() => performance.timeOrigin)).toBe(documentStart);
+      await expect(page.getByTestId("overview-loading")).toBeVisible();
+      await expect(snapshot).toHaveCount(0);
+      release();
+      await expect(snapshot).toContainText("87");
+    } finally {
+      release();
+      overviewGate = null;
+      nextIdentity = null;
+    }
+  });
+}
+
+for (const status of [401, 403]) {
+  test(`terminal ${status} clears retained Overview and does not retry on period change`, async ({ page }) => {
+    await page.context().addCookies([{
+      name: "zogular_admin_session", value: "synthetic-rendered-admin-token",
+      domain: "127.0.0.1", path: "/", httpOnly: true, sameSite: "Lax",
+    }]);
+    await page.goto(`${FRONTEND_ORIGIN}/admin/dashboard`);
+    await expect(page.getByTestId("overview-content")).toBeVisible();
+    try {
+      overviewStatus = status;
+      await page.getByTestId("overview-refresh").click();
+      await expect(page.getByTestId("overview-error")).toBeVisible();
+      await expect(page.getByTestId("overview-content")).toHaveCount(0);
+      await expect(page.getByTestId("overview-refresh")).toBeDisabled();
+      const afterDenial = overviewRequests;
+      await page.getByRole("button", { name: "Weekly" }).click();
+      await expect(page).toHaveURL(/groupBy=WEEK/);
+      await expect(page.getByTestId("overview-error")).toBeVisible();
+      await expect(page.getByTestId("overview-content")).toHaveCount(0);
+      expect(overviewRequests).toBe(afterDenial);
+    } finally {
+      overviewStatus = 200;
+    }
+  });
+}
+
 async function assertNoHorizontalOverflow(page: Page) {
   const overflow = await page.evaluate(() => ({
     documentOverflow: document.documentElement.scrollWidth - document.documentElement.clientWidth,
@@ -171,9 +281,15 @@ async function waitForFrontend() {
   let lastError: unknown;
 
   while (Date.now() - started < 60_000) {
+    if (!frontendProcess?.pid || frontendProcess.exitCode !== null || frontendProcess.signalCode !== null) {
+      throw new Error(`Next fixture exited during startup: ${frontendOutput}`);
+    }
     try {
-      const response = await fetch(`${FRONTEND_ORIGIN}/admin/login`);
-      if (response.status < 500) return;
+      if (/ready in/i.test(frontendOutput)) {
+        const response = await fetch(`${FRONTEND_ORIGIN}/admin/login`, { redirect: "manual", signal: AbortSignal.timeout(2000) });
+        await response.body?.cancel();
+        if (response.status === 200) return;
+      }
     } catch (error) {
       lastError = error;
     }
