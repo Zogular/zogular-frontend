@@ -1,7 +1,9 @@
 import { spawn, type ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { resolve } from "node:path";
+import { realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { basename, dirname, resolve } from "node:path";
 import { expect, test } from "@playwright/test";
 import { campaignImagePathSchema, homepageBannerCopyShape } from "../src/services/homepage-banners";
 import { auditPageLayout, containAuditNetwork } from "./helpers/ui-audit-checks";
@@ -10,7 +12,9 @@ const app = "http://127.0.0.1:3281";
 const api = "http://127.0.0.1:5081/api/v1";
 const adminEndpoint = "/api/v1/admin/content/homepage-banners";
 const enabled = process.env.HOMEPAGE_CAMPAIGN_LOCAL_FIXTURE === "1";
-test.use({ serviceWorkers: "block", channel: process.env.PLAYWRIGHT_CHANNEL ?? "chrome" });
+test.use({ serviceWorkers: "block", channel: "chrome", launchOptions: { args: [
+  "--disable-background-networking", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+] } });
 const csrf = "banner-fixture-csrf";
 const rejected = { status: "fail", message: "fixture-internal-detail" };
 const asset = { key: "test-crops", mobileSrc: "/images/campaigns/test-mobile.png", desktopSrc: "/images/campaigns/test-desktop.png" };
@@ -29,7 +33,7 @@ type FixtureBanner = {
 function initialState() {
   return {
     mode: "active" as "active" | "empty" | "unavailable" | "malformed",
-    assets: [asset], items: [] as FixtureBanner[], listStatus: 200, allowContent: true, conflict: false,
+    assets: [asset], items: [] as FixtureBanner[], listStatus: 200, allowContent: true, conflict: false, listReads: 0,
     writes: [] as { method: string; pathname: string; body: Record<string, unknown> }[],
   };
 }
@@ -39,7 +43,7 @@ let fixture: Server | undefined;
 let next: ChildProcess | undefined;
 
 function send(res: ServerResponse, code: number, body: unknown) {
-  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+  res.writeHead(code, { "Content-Type": "application/json", "Cache-Control": "private, No-StOrE" });
   res.end(JSON.stringify(body));
 }
 
@@ -47,7 +51,11 @@ async function handle(req: IncomingMessage, res: ServerResponse) {
   const { pathname } = new URL(req.url ?? "/", api);
   const method = req.method ?? "GET";
   const ok = (data: unknown) => send(res, 200, { status: "success", data });
+  if (pathname === adminEndpoint && method === "GET") state.listReads++;
+  if ((pathname === adminEndpoint || pathname.startsWith(adminEndpoint + "/")) &&
+      (!state.allowContent || req.headers.authorization !== "Bearer fixture-token")) return send(res, 403, rejected);
   if (pathname === "/api/v1/user/me") {
+    if (req.headers.authorization !== "Bearer fixture-token") return send(res, 401, rejected);
     return ok({ user: { id: "fixture-admin", name: "Fixture Reviewer", email: "reviewer@example.test", role: "SUPER_ADMIN", permissions: state.allowContent ? ["access_admin_panel", "manage_content"] : ["access_admin_panel"] } });
   }
   if (pathname === "/api/v1/auth/csrf-token") {
@@ -104,28 +112,34 @@ test.describe("loopback campaign UI", () => {
   test.describe.configure({ mode: "default", timeout: 60_000 });
 
   test.beforeAll(async () => {
+    const root = realpathSync.native(resolve(__dirname, ".."));
+    if (dirname(root) !== realpathSync.native(tmpdir()) || !basename(root).startsWith("zg-campaign-chrome-") ||
+        process.env.ADMIN_API_URL !== api || process.env.INTERNAL_BACKEND_URL !== api || process.env.NEXT_PUBLIC_API_URL !== api)
+      throw new Error("Requires a private temporary build pinned to the loopback fixture");
     fixture = createServer((req, res) => { void handle(req, res).catch(() => send(res, 500, rejected)); });
     fixture.listen(5081, "127.0.0.1");
     await once(fixture, "listening");
-    next = spawn(process.execPath, [resolve("node_modules/next/dist/bin/next"), "start", "--hostname", "127.0.0.1", "--port", "3281"], {
-      cwd: resolve(__dirname, ".."),
+    // IPC readiness is emitted only after this process owns the listener. Never probe an unknown app.
+    next = spawn(process.execPath, ["-e", `
+      const app = require("next")({ dev: false, hostname: "127.0.0.1", port: 3281 });
+      app.prepare().then(() => {
+        const http = require("node:http").createServer(app.getRequestHandler());
+        process.once("disconnect", async () => { http.close(); http.closeAllConnections(); await app.close(); process.exit(0); });
+        http.listen(3281, "127.0.0.1", () => process.send("ready"));
+      });
+    `], {
+      cwd: root,
       env: { ...process.env, ADMIN_API_URL: api, INTERNAL_BACKEND_URL: api, NEXT_PUBLIC_API_URL: api, NEXT_PUBLIC_API_PROXY_URL: "/api/backend", ADMIN_AUTH_SESSION_ENDPOINT: "/user/me", NEXT_TELEMETRY_DISABLED: "1" },
-      stdio: ["ignore", "pipe", "pipe"],
+      stdio: ["ignore", "ignore", "ignore", "ipc"], windowsHide: true,
     });
-    let logs = "";
-    for (const stream of [next.stdout, next.stderr]) stream?.on("data", (data) => { logs = (logs + data).slice(-3000); });
-    for (let attempt = 0; attempt < 60 && next.exitCode === null; attempt++) {
-      const ready = await fetch(`${app}/admin/login`, { signal: AbortSignal.timeout(500) }).catch(() => null);
-      if (ready?.ok) return;
-      await new Promise((done) => setTimeout(done, 250));
-    }
-    throw new Error(`Loopback campaign app did not start. Build first.\n${logs}`);
+    await Promise.race([once(next, "message").then(([message]) => expect(message).toBe("ready")),
+      once(next, "exit").then(() => { throw new Error("Private frontend exited before binding"); })]);
   });
 
   test.afterAll(async () => {
     if (next?.pid && next.exitCode === null && next.signalCode === null) {
       const closed = once(next, "exit");
-      next.kill();
+      next.disconnect();
       await closed;
     }
     if (fixture?.listening) {
@@ -154,13 +168,18 @@ test.describe("loopback campaign UI", () => {
       await expect.poll(() => banner.locator("img").evaluate((image: HTMLImageElement) => image.naturalWidth ? new URL(image.currentSrc).searchParams.get("url") : null))
         .toBe(viewport.width < 768 ? asset.mobileSrc : asset.desktopSrc);
       await auditPageLayout(page);
+      if (viewport.width === 1440) await expect(page.getByText("Sign In", { exact: true }).filter({ visible: true }).first()).toBeVisible();
       await page.screenshot({ path: testInfo.outputPath(`campaign-${viewport.width}.png`), animations: "disabled" });
+      await banner.getByRole("link", { name: campaign.ctaLabel }).click();
+      await expect(page).toHaveURL(app + "/categories");
+      await expect(page.getByRole("heading", { name: "All Categories" })).toBeVisible();
     }
     for (const mode of ["empty", "unavailable", "malformed"] as const) {
       state.mode = mode;
-      await page.reload();
+      await page.goto(app);
       await expect(page.getByTestId("home-editorial-intro")).toBeVisible();
       await expect(page.getByTestId("home-campaign-banner")).toHaveCount(0);
+      if (mode === "unavailable") await page.screenshot({ path: testInfo.outputPath("home-unavailable-1440.png"), animations: "disabled" });
     }
     state.mode = "active";
     await page.route((url) => url.origin === app && imagePath(url) === asset.desktopSrc, (route) => route.fulfill({ status: 404 }));
@@ -174,7 +193,9 @@ test.describe("loopback campaign UI", () => {
   test("authorized admin saves a draft and sends versioned publication actions", async ({ context, page }, testInfo) => {
     await context.addCookies([{ name: "zogular_admin_session", value: "fixture-token", url: app }]);
     await page.setViewportSize({ width: 1440, height: 900 });
+    const listReply = page.waitForResponse(r => r.url() === app + "/api/backend/admin/content/homepage-banners" && r.status() === 200);
     await page.goto(`${app}/admin/content`);
+    expect(await (await listReply).headerValue("cache-control")).toBe("no-store");
     await expect(page.getByRole("link", { name: "Content and Merchandising", exact: true })).toHaveCount(0);
     await page.getByRole("button", { name: "New draft" }).click();
     await page.getByLabel("Headline").fill("Fixture draft");
@@ -193,12 +214,20 @@ test.describe("loopback campaign UI", () => {
     await expect(page.getByRole("heading", { name: "Fixture updated draft" })).toBeVisible();
     expect(state.writes[1]).toMatchObject({ method: "PATCH", body: { version: 1, headline: "Fixture updated draft" } });
     state.conflict = true;
+    const rejectedWrite = page.waitForResponse(r => r.url().endsWith("/draft-1/publish") && r.status() === 409);
     await page.getByRole("button", { name: "Publish", exact: true }).click();
+    expect(await (await rejectedWrite).headerValue("cache-control")).toBe("no-store");
     await expect(page.getByText(/schedule overlaps/)).toBeVisible();
     await expect(page.getByText("fixture-internal-detail")).toHaveCount(0);
     await expect(page.getByRole("button", { name: "Publish", exact: true })).toBeDisabled();
+    expect(state.items).toMatchObject([{ headline: "Fixture updated draft", state: "DRAFT", version: 2 }]);
+    await expect(page.getByText("Banner publication saved.", { exact: true })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath("admin-conflict-1440.png"), animations: "disabled" });
     state.conflict = false;
+    const freshList = page.waitForResponse(r => r.url() === app + "/api/backend/admin/content/homepage-banners" && r.status() === 200);
     await page.getByRole("button", { name: "Reload banners" }).click();
+    await freshList;
+    await expect(page.getByText("Draft · All products", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Publish", exact: true }).click();
     await page.getByRole("button", { name: "Pause", exact: true }).click();
     await expect(page.getByText("Banner paused.", { exact: true })).toBeVisible();
@@ -227,7 +256,11 @@ test.describe("loopback campaign UI", () => {
     await page.getByRole("button", { name: "Retry" }).click();
     await expect(page.getByText(/No approved image sets/)).toBeVisible();
     state.allowContent = false;
+    const readsBeforeDenial = state.listReads;
     await page.reload();
+    await expect(page.getByRole("heading", { name: "Page unavailable", exact: true })).toBeVisible();
     await expect(page.getByRole("heading", { name: "Homepage banners", exact: true })).toHaveCount(0);
+    expect(state.listReads).toBe(readsBeforeDenial);
+    expect(state.writes).toEqual([]);
   });
 });
