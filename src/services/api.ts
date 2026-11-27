@@ -121,11 +121,12 @@ function extractCsrfToken(payload: unknown): string {
   return token;
 }
 
-async function fetchWithTimeout(
+async function fetchWithTimeout<T>(
   url: string,
   init: RequestInit,
   timeout: number,
-): Promise<Response> {
+  consume: (response: Response) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeout);
   const onAbort = () => controller.abort();
@@ -136,11 +137,13 @@ async function fetchWithTimeout(
   }
 
   try {
-    return await fetch(url, {
+    const response = await fetch(url, {
       ...init,
       credentials: "include",
       signal: controller.signal,
     });
+    // Fetch resolves at headers. Keep both cancellation paths attached until the body settles.
+    return await consume(response);
   } finally {
     clearTimeout(timeoutId);
     if (init.signal) {
@@ -156,26 +159,20 @@ async function requestCsrfToken(timeout: number): Promise<string> {
         const headers = new Headers();
         headers.set("Accept", "application/json");
 
-        const response = await fetchWithTimeout(
+        return await fetchWithTimeout(
           buildUrl("/auth/csrf-token"),
           { method: "GET", headers },
           timeout,
+          async (response) => {
+            const payload = isJsonResponse(response.headers.get("content-type"))
+              ? await response.json()
+              : await response.text();
+            if (!response.ok) {
+              throw new ApiError("Failed to prepare a secure request.", response.status, payload);
+            }
+            return extractCsrfToken(payload);
+          },
         );
-
-        const contentType = response.headers.get("content-type");
-        const payload = isJsonResponse(contentType)
-          ? await response.json()
-          : await response.text();
-
-        if (!response.ok) {
-          throw new ApiError(
-            "Failed to prepare a secure request.",
-            response.status,
-            payload,
-          );
-        }
-
-        return extractCsrfToken(payload);
       } catch (error) {
         csrfTokenPromise = null;
         throw error;
@@ -195,19 +192,35 @@ async function refreshCookieSession(timeout: number): Promise<boolean> {
           Accept: "application/json",
           "X-CSRF-Token": csrfToken,
         });
-        const response = await fetchWithTimeout(
+        const refreshed = await fetchWithTimeout(
           buildUrl("/auth/refresh-token"),
           { method: "POST", headers },
           timeout,
+          async (response) => {
+            if (!response.ok) {
+              // Discard a denial without parsing diagnostics or cancelling a healthy HTTP exchange.
+              // The request deadline still stops an unfinished stream; its status is already decisive.
+              await response.body?.pipeTo(new WritableStream());
+              return false;
+            }
+            try {
+              await parseResponse(response);
+            } catch (cause) {
+              // Successful headers are not proof of expiry if the body never completes.
+              if (cause instanceof Error && cause.name === "AbortError") {
+                throw new ApiError("Session confirmation timed out. Please try again.", 408);
+              }
+              throw cause;
+            }
+            return true;
+          },
         );
-
-        if (!response.ok) return false;
-
-        await parseResponse(response);
+        if (!refreshed) return false;
         authSessionRevision += 1;
         csrfTokenPromise = null;
         return true;
-      } catch {
+      } catch (cause) {
+        if (cause instanceof ApiError && cause.status === 408) throw cause;
         return false;
       }
     })().finally(() => {
@@ -323,8 +336,10 @@ export async function apiClient<T>(
   while (true) {
     try {
       const { url, init } = await prepareRequest(endpoint, options);
-      const response = await fetchWithTimeout(url, init, timeout);
-      const responseData = await parseResponse(response);
+      const { response, responseData } = await fetchWithTimeout(url, init, timeout, async (response) => ({
+        response,
+        responseData: await parseResponse(response),
+      }));
 
       if (response.ok) return responseData as T;
 
