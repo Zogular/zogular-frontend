@@ -885,7 +885,10 @@ test("diagnostics accept only the exact framework prefetch cancellation signatur
 
 test.describe("consumer auth and wishlist browser acceptance", () => {
   test.skip(!baseUrl, "CONSUMER_AUTH_BASE_URL is required for fixture-based visual QA.");
+  test.use({ serviceWorkers: "block" });
   test.beforeEach(async ({ page }) => {
+    // A blocked worker cannot supply a registration; exercise the browser's no-worker path.
+    await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
     const onePixelPng = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64",
