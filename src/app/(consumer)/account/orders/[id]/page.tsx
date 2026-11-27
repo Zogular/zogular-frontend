@@ -12,6 +12,7 @@ import { getInvoiceById } from "@/services/orders";
 import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { orderHistoryHref, parseOrderFilter } from "@/features/buyer-orders/lib/order-return-state";
 
 const STATUS_CONFIG = {
   processing: {
@@ -42,10 +43,13 @@ function formatCurrency(value: number) {
 
 export default function InvoicePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ status?: string | string[] }>;
 }) {
   const { id } = use(params);
+  const backToOrders = orderHistoryHref(parseOrderFilter(use(searchParams).status));
   const auth = useAuthSession();
 
   const [invoice, setInvoice] = React.useState<Invoice | null>(null);
@@ -80,7 +84,7 @@ export default function InvoicePage({
         error={error}
         resource="order"
         onRetry={loadInvoice}
-        secondaryAction={{ href: "/account/orders", label: "Back to Orders" }}
+        secondaryAction={{ href: backToOrders, label: "Back to Orders" }}
       />
     );
   }
@@ -95,7 +99,7 @@ export default function InvoicePage({
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
         <Button asChild variant="ghost" className="h-11 text-zinc-600 hover:text-zinc-900">
-          <Link href="/account/orders">
+          <Link href={backToOrders}>
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Orders
           </Link>
         </Button>
