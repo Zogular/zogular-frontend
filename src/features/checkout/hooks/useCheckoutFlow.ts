@@ -39,9 +39,10 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   const ownerId = auth.status === "authenticated" ? auth.user.id : null;
   const identityRef = React.useRef({ ownerId, epoch: 0, active: true });
   const submitInFlightRef = React.useRef(false);
+  const addressRequestRef = React.useRef(0);
   const [savedAddresses, setSavedAddresses] = React.useState<Address[]>([]);
   const [isLoadingAddresses, setIsLoadingAddresses] = React.useState(false);
-  const [addressLoadError, setAddressLoadError] = React.useState(false);
+  const [addressLoadError, setAddressLoadError] = React.useState<string | null>(null);
   const [selectedAddressId, setSelectedAddressId] = React.useState<string | null>(null);
   const [submitting, setSubmitting] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
@@ -90,11 +91,14 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   }, [auth, router]);
 
   const loadAddresses = React.useCallback(async (expectedOwnerId: string, epoch: number) => {
+    const request = ++addressRequestRef.current;
+    const isCurrentRequest = () =>
+      addressRequestRef.current === request && isCurrentIdentity(expectedOwnerId, epoch);
     setIsLoadingAddresses(true);
-    setAddressLoadError(false);
+    setAddressLoadError(null);
     try {
       const addresses = await getSavedAddresses();
-      if (!isCurrentIdentity(expectedOwnerId, epoch)) return;
+      if (!isCurrentRequest()) return;
       if (!Array.isArray(addresses) || !addresses.every(isValidCheckoutAddress)) {
         throw new CheckoutContractError("Delivery address response is malformed.");
       }
@@ -102,13 +106,12 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       const defaultAddress = addresses.find((address) => address.isDefault) ?? addresses[0];
       setSelectedAddressId(defaultAddress?.id ?? null);
     } catch (error) {
-      if (!isCurrentIdentity(expectedOwnerId, epoch)) return;
+      if (!isCurrentRequest()) return;
       setSavedAddresses([]);
       setSelectedAddressId(null);
-      setAddressLoadError(true);
-      setSubmitError(getCheckoutErrorMessage(error, "address"));
+      setAddressLoadError(getCheckoutErrorMessage(error, "address"));
     } finally {
-      if (isCurrentIdentity(expectedOwnerId, epoch)) setIsLoadingAddresses(false);
+      if (isCurrentRequest()) setIsLoadingAddresses(false);
     }
   }, [isCurrentIdentity]);
 
@@ -205,6 +208,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     && !submitting
     && !hasUnknownOutcome
     && !isLoadingAddresses
+    && !addressLoadError
     && !isLoadingQuote
     && Boolean(orderQuote)
     && quotedCartKey === currentCartKey

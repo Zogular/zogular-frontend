@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { Address } from "@/types/address";
 import type { CheckoutStage } from "@/features/checkout/types/checkout.types";
@@ -8,7 +9,7 @@ interface AddressSectionProps {
   addresses: Address[];
   selectedAddressId: string | null;
   isLoading: boolean;
-  hasLoadError: boolean;
+  loadError: string | null;
   detailsComplete: boolean;
   onSelect: (addressId: string) => void;
   onRetry: () => void;
@@ -22,43 +23,48 @@ export function AddressSection({
   addresses,
   selectedAddressId,
   isLoading,
-  hasLoadError,
+  loadError,
   detailsComplete,
   onSelect,
   onRetry,
   onContinue,
 }: AddressSectionProps) {
   const className = `${stage === "details" ? "block" : "hidden"} ${sectionClass}`;
+  const headingRef = useRef<HTMLHeadingElement>(null);
 
-  if (isLoading) {
+  const heading = (
+    <h2 ref={headingRef} tabIndex={-1} className="mb-1 flex items-center gap-2 text-lg font-bold text-zinc-900">
+      <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
+      Delivery Address
+    </h2>
+  );
+
+  if (isLoading || loadError) {
     return (
       <section className={className}>
-        <div className="flex h-32 items-center justify-center">
-          <p className="text-sm font-medium text-zinc-500">Loading delivery addresses...</p>
-        </div>
-      </section>
-    );
-  }
-
-  if (hasLoadError) {
-    return (
-      <section className={className}>
-        <div className="flex h-32 flex-col items-center justify-center gap-3">
-          <p className="text-sm font-medium text-red-600">Delivery addresses could not load.</p>
-          <Button type="button" onClick={onRetry} variant="outline" className="h-11">
-            Try again
-          </Button>
-        </div>
+        {heading}
+        {isLoading ? (
+          <div className="flex min-h-32 items-center justify-center">
+            <p role="status" className="text-sm font-medium text-zinc-500">Loading delivery addresses...</p>
+          </div>
+        ) : (
+          <div className="flex min-h-32 flex-col items-center justify-center gap-3">
+            <p role="alert" className="text-center text-sm font-medium text-red-600">{loadError}</p>
+            <Button type="button" onClick={() => {
+              headingRef.current?.focus();
+              onRetry();
+            }} variant="outline" className="h-11">
+              Try again
+            </Button>
+          </div>
+        )}
       </section>
     );
   }
 
   return (
     <section className={className}>
-      <h2 className="mb-1 flex items-center gap-2 text-lg font-bold text-zinc-900">
-        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-zinc-900 text-xs text-white">1</span>
-        Delivery Address
-      </h2>
+      {heading}
       <p className="mb-5 pl-8 text-xs font-medium text-zinc-500">Choose an available Lusaka delivery area.</p>
       {addresses.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50 py-10 text-center">

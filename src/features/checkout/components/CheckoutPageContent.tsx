@@ -83,7 +83,7 @@ function CheckoutContent({ auth }: { auth: ClientAuthState }) {
                 addresses={flow.savedAddresses}
                 selectedAddressId={flow.selectedAddressId}
                 isLoading={flow.isLoadingAddresses}
-                hasLoadError={flow.addressLoadError}
+                loadError={flow.addressLoadError}
                 detailsComplete={flow.detailsComplete}
                 onSelect={flow.setSelectedAddressId}
                 onRetry={flow.retryAddresses}
