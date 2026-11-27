@@ -93,19 +93,19 @@ export default function InvoicePage({
 
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
-      <div className="flex justify-between print:hidden">
-        <Link href="/account/orders">
-          <Button variant="ghost" className="text-zinc-600 hover:text-zinc-900">
+      <div className="flex flex-wrap items-center justify-between gap-2 print:hidden">
+        <Button asChild variant="ghost" className="h-11 text-zinc-600 hover:text-zinc-900">
+          <Link href="/account/orders">
             <ArrowLeft className="mr-2 h-4 w-4" /> Back to Orders
-          </Button>
-        </Link>
+          </Link>
+        </Button>
 
-        <Button onClick={() => window.print()} className="bg-zinc-900 text-white hover:bg-zinc-800">
+        <Button onClick={() => window.print()} className="h-11 bg-zinc-900 text-white hover:bg-zinc-800">
           <Printer className="mr-2 h-4 w-4" /> View / Print Receipt
         </Button>
       </div>
 
-      <div className="rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-sm sm:p-10 print:border-none print:shadow-none print:p-0">
+      <div className="@container/receipt rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-sm sm:p-10 print:border-none print:shadow-none print:p-0">
         <div className="mb-8 flex flex-col justify-between gap-6 sm:flex-row">
           <div>
             <h2 className="text-2xl font-black text-[#009E49]">Zogular</h2>
@@ -239,24 +239,24 @@ export default function InvoicePage({
           </div>
         </div>
 
-        <div className="mt-8 flex flex-col justify-between border-t border-zinc-200 pt-6 sm:flex-row">
-          <div className="mb-6 space-y-4 sm:mb-0 print:hidden">
-            <div className="flex flex-col gap-3 sm:flex-row">
+        <div className="mt-8 grid grid-cols-1 gap-6 border-t border-zinc-200 pt-6 @2xl/receipt:grid-cols-[minmax(0,1fr)_18rem] print:block">
+          <div className="min-w-0 space-y-4 print:hidden">
+            <div className="flex flex-col gap-3 @sm/receipt:flex-row @sm/receipt:flex-wrap">
               {whatsappLink && (
-                <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
-                  <Button variant="outline" className="h-11 w-full rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10 sm:w-auto">
+                <Button asChild variant="outline" className="h-11 w-full rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10 sm:w-auto">
+                  <a href={whatsappLink} target="_blank" rel="noopener noreferrer">
                     <MessageCircle className="mr-2 h-4 w-4" />
                     WhatsApp Support
-                  </Button>
-                </a>
+                  </a>
+                </Button>
               )}
               {SUPPORT_CALL_NUMBER && (
-                <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
-                  <Button variant="outline" className="h-11 w-full rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50 sm:w-auto">
+                <Button asChild variant="outline" className="h-11 w-full rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50 sm:w-auto">
+                  <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
                     <Phone className="mr-2 h-4 w-4" />
                     Call Support
-                  </Button>
-                </a>
+                  </a>
+                </Button>
               )}
             </div>
             <div className="rounded-xl border border-zinc-200 bg-zinc-50 p-3">
@@ -271,20 +271,16 @@ export default function InvoicePage({
               </div>
             </div>
             <div className="space-y-2">
-              <Link href="/categories">
-                <Button 
-                  className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto"
-                >
-                  Browse Products
-                </Button>
-              </Link>
+              <Button asChild className="h-11 w-full rounded-xl bg-zinc-900 font-bold text-white hover:bg-zinc-800 sm:w-auto">
+                <Link href="/categories">Browse Products</Link>
+              </Button>
             </div>
           </div>
 
-          <div className="w-full space-y-3 sm:w-72">
-            <div className="flex justify-between text-sm">
+          <section aria-label="Order totals" className="min-w-0 space-y-3 print:w-72 print:max-w-full">
+            <div className="flex justify-between gap-3 text-sm">
               <span className="text-zinc-500">Subtotal</span>
-              <span className="font-medium text-zinc-900">{formatCurrency(invoice.subtotal)}</span>
+              <span className="min-w-0 wrap-anywhere text-right font-medium text-zinc-900">{formatCurrency(invoice.subtotal)}</span>
             </div>
 
             {invoice.isLegacyIncomplete ? (
@@ -293,36 +289,36 @@ export default function InvoicePage({
               </div>
             ) : (
               <>
-                <div className="flex justify-between text-sm">
+                <div className="flex justify-between gap-3 text-sm">
                   <span className="text-zinc-500">Shipping Fee</span>
-                  <span className="font-medium text-zinc-900">{formatCurrency(invoice.shippingFee!)}</span>
+                  <span className="min-w-0 wrap-anywhere text-right font-medium text-zinc-900">{formatCurrency(invoice.shippingFee!)}</span>
                 </div>
 
                 {invoice.discount > 0 ? (
-                  <div className="flex justify-between text-sm text-[#009E49]">
+                  <div className="flex justify-between gap-3 text-sm text-[#009E49]">
                     <span>Discount</span>
-                    <span className="font-medium">-{formatCurrency(invoice.discount)}</span>
+                    <span className="min-w-0 wrap-anywhere text-right font-medium">-{formatCurrency(invoice.discount)}</span>
                   </div>
                 ) : null}
 
                 <Separator className="bg-zinc-100" />
 
-                <div className="flex items-center justify-between pt-1">
+                <div className="flex items-center justify-between gap-3 pt-1">
                   <span className="font-bold text-zinc-900">Total</span>
-                  <span className="text-2xl font-black text-[#009E49]">
+                  <span className="min-w-0 wrap-anywhere text-right text-2xl font-black text-[#009E49]">
                     {formatCurrency(invoice.total!)}
                   </span>
                 </div>
 
                 {typeof invoice.commitmentFeeAmount === "number" && typeof invoice.cashDueOnDelivery === "number" && (
                   <div className="mt-3 space-y-2 rounded-xl bg-orange-50 p-3 text-sm print:bg-transparent print:p-0 print:border print:border-zinc-200">
-                    <div className="flex justify-between font-bold text-orange-900 print:text-zinc-900">
+                    <div className="flex justify-between gap-3 font-bold text-orange-900 print:text-zinc-900">
                       <span>Delivery Fee (Due Now)</span>
-                      <span>{formatCurrency(invoice.commitmentFeeAmount)}</span>
+                      <span className="min-w-0 wrap-anywhere text-right">{formatCurrency(invoice.commitmentFeeAmount)}</span>
                     </div>
-                    <div className="flex justify-between font-bold text-zinc-900">
+                    <div className="flex justify-between gap-3 font-bold text-zinc-900">
                       <span>Cash Due on Delivery</span>
-                      <span>{formatCurrency(invoice.cashDueOnDelivery)}</span>
+                      <span className="min-w-0 wrap-anywhere text-right">{formatCurrency(invoice.cashDueOnDelivery)}</span>
                     </div>
                     <p className="text-[10px] font-medium leading-tight text-orange-700 print:hidden">
                       * Official payment status is pending.
@@ -331,7 +327,7 @@ export default function InvoicePage({
                 )}
               </>
             )}
-          </div>
+          </section>
         </div>
       </div>
     </div>
