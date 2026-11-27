@@ -19,7 +19,7 @@ import {
   parseCreatedOrderResponse,
   type CreateCheckoutOrderInput,
 } from "../src/services/checkout";
-import { beginGeneration, checkoutMode, finishGeneration, heldGeneration, observeGeneration,
+import { beginGeneration, checkoutMode, preserveLegacySending, settleGeneration, rejectGenerationAttempt, heldGeneration, observeGeneration,
   reviewChangedGeneration, useCart, type CartItem } from "../src/hooks/use-cart";
 
 const repoRoot = path.resolve(__dirname, "..");
@@ -217,17 +217,30 @@ test("generation: explicit fenced review survives reload and stale competing tab
   const previous = (globalThis as { window?: unknown }).window;
   const previousFetch = globalThis.fetch;
   const localStorage = storage(), a = storage(), b = storage(), late = storage();
-  const tab = (sessionStorage: typeof a) => { (globalThis as {window?: unknown}).window = { localStorage, sessionStorage, dispatchEvent: () => true }; };
+  let notices = 0;
+  const tab = (sessionStorage: typeof a) => { (globalThis as {window?: unknown}).window = { localStorage, sessionStorage, dispatchEvent: () => { notices++; return true; } }; };
   try {
     seedOwnedCart("owner-a");
-    tab(a); observeGeneration("owner-a",IDS.cart); beginGeneration("owner-a",IDS.cart);
+    tab(a); observeGeneration("owner-a",IDS.cart);
+    const put = localStorage.setItem;
+    localStorage.setItem = () => { throw new Error("storage full"); };
+    expect(() => beginGeneration("owner-a", IDS.cart)).toThrow();
+    expect(heldGeneration("owner-a")).toBeNull();
+    // Interleave at the first write, after both tabs can pass the empty check.
+    let competing = "";
+    localStorage.setItem = (name, value) => {
+      localStorage.setItem = put;
+      tab(b); competing = beginGeneration("owner-a", IDS.cart);
+      tab(a); return put(name, value);
+    };
+    const pending = beginGeneration("owner-a", IDS.cart);
+    expect(competing).not.toBe(pending);
     expect(heldGeneration("owner-a")).toBe(IDS.cart);
     tab(b); expect(checkoutMode("owner-a")).toBe("required");
     expect(() => observeGeneration("owner-a")).toThrow();
-    beginGeneration("owner-a",IDS.cart);
-    tab(late); beginGeneration("owner-a",IDS.cart);
-    tab(a); finishGeneration("owner-a",IDS.cart,"unknown");
-    tab(b); finishGeneration("owner-a",IDS.cart,"rejected");
+    expect(() => beginGeneration("owner-a",IDS.cart)).toThrow();
+    rejectGenerationAttempt("owner-a", IDS.cart, competing);
+    tab(storage()); // neither sending tab's session is needed
     expect(heldGeneration("owner-a")).toBe(IDS.cart);
     expect(heldGeneration("owner-b")).toBeNull();
     expect(reviewChangedGeneration("owner-a", IDS.cart, IDS.cart)).toBe(false);
@@ -252,25 +265,42 @@ test("generation: explicit fenced review survives reload and stale competing tab
     expect(reads.slice(-3)).toEqual([IDS.cart,"cart",IDS.cart]);
     const adopt = useCart.getState().prepareCartAdoption("owner-a", IDS.cart);
     expect(adopt).not.toBeNull();
-    finishGeneration("owner-a", IDS.order, "unknown");
-    finishGeneration("owner-b", IDS.cart, "unknown");
+    localStorage.setItem = () => { throw new Error("Cannot publish fence"); };
+    expect(reviewChangedGeneration("owner-a", IDS.cart, review!.snapshot!.generation!)).toBe(false);
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    localStorage.setItem = put;
+    localStorage.setItem("zg-checkout:owner-a:hold:" + IDS.order, IDS.order);
+    localStorage.setItem("zg-checkout:owner-b:hold:" + IDS.cart, IDS.cart);
+    const remove = localStorage.removeItem, beforeSettlement = notices;
+    localStorage.removeItem = () => { throw new Error("Cannot clean up old records"); };
     expect(reviewChangedGeneration("owner-a", IDS.cart, review!.snapshot!.generation!)).toBe(true);
+    localStorage.removeItem = remove;
+    expect(notices).toBe(beforeSettlement + 1);
+    expect(localStorage.map.has("zg-checkout:owner-a:attempt:" + IDS.cart + ":" + pending)).toBe(true);
     expect(localStorage.map.has("zg-checkout:owner-a:hold:" + IDS.cart)).toBe(false);
     expect(localStorage.getItem("zg-checkout:owner-a:fenced:" + IDS.cart)).toBe(IDS.cart);
     expect(adopt?.([])).toBe(false);
     expect(useCart.getState().items).toEqual([cartItem]);
-    tab(late); // still has a tab-private sending marker for the fenced key
+    late.setItem("zg-checkout:owner-a:sending", IDS.cart);
+    tab(late); // an older client still has a tab-private sending marker
     expect(heldGeneration("owner-a")).toBe(IDS.order);
-    finishGeneration("owner-a", IDS.cart, "unknown");
+    rejectGenerationAttempt("owner-a", IDS.cart, pending);
     expect(localStorage.map.has("zg-checkout:owner-a:hold:" + IDS.cart)).toBe(false);
     // Simulate an old writer that checked the fence just before it was published.
     localStorage.setItem("zg-checkout:owner-a:hold:" + IDS.cart, IDS.cart);
     tab(storage());
     expect(heldGeneration("owner-b")).toBe(IDS.cart);
     expect(heldGeneration("owner-a")).toBe(IDS.order);
-    finishGeneration("owner-a", IDS.order, "confirmed");
+    settleGeneration("owner-a", IDS.order);
     expect(heldGeneration("owner-a")).toBeNull();
     expect(() => beginGeneration("owner-a", IDS.cart)).toThrow();
+    a.setItem("zg-checkout:legacy-owner:sending", IDS.order);
+    tab(a);
+    expect(heldGeneration("legacy-owner")).toBe(IDS.order);
+    preserveLegacySending("legacy-owner", IDS.order);
+    expect(a.getItem("zg-checkout:legacy-owner:sending")).toBeNull();
+    tab(storage());
+    expect(heldGeneration("legacy-owner")).toBe(IDS.order);
   } finally {
     globalThis.fetch = previousFetch;
     if (previous === undefined) delete (globalThis as { window?: unknown }).window;
@@ -1144,6 +1174,24 @@ async function setBrowserIdentity(page: Page, ownerId: string | null) {
   }, ownerId);
 }
 
+async function failCheckoutStorage(page: Page, failure: "fence" | "cleanup") {
+  await page.evaluate(mode => {
+    const put = Storage.prototype.setItem, remove = Storage.prototype.removeItem;
+    Storage.prototype.setItem = function (name, value) {
+      if (mode === "fence" && this === localStorage && name.startsWith("zg-checkout:owner-a:fenced:")) {
+        throw new DOMException("Synthetic fence failure", "QuotaExceededError");
+      }
+      return put.call(this, name, value);
+    };
+    Storage.prototype.removeItem = function (name) {
+      if (mode === "cleanup" && this === localStorage && name.startsWith("zg-checkout:owner-a:attempt:")) {
+        throw new DOMException("Synthetic cleanup failure", "SecurityError");
+      }
+      return remove.call(this, name);
+    };
+  }, failure);
+}
+
 async function fulfillStaticDependencies(page: Page) {
   const pixel = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -1655,6 +1703,125 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
         expect([creates, receipts]).toEqual([0, 0]);
       } finally { release.resolve(); }
       expect(unexpected).toEqual([]);
+    });
+  }
+
+  test("closing the submitting tab before its response preserves owner receipt recovery", async ({ page, context }, info) => {
+    const dispatched = deferred<void>();
+    let posts = 0, receipts = 0, committed = false;
+    await context.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+      id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+    })));
+    await context.route("**/api/backend/**", async route => {
+      const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+      if (path === "/user/me") return route.fulfill({ json: userPayload() });
+      if (path === "/user/addresses") return route.fulfill({ json: addressPayload() });
+      if (path === "/cart") return route.fulfill({ json: cartPayload({ generation: IDS.cart }) });
+      if (path === "/orders/quote") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+      if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+      if (path === "/orders" && route.request().method() === "POST") {
+        expect(route.request().postDataJSON().cartGeneration).toBe(IDS.cart);
+        posts++;
+        dispatched.resolve();
+        return; // Leave the request paused until Chrome closes the originating tab.
+      }
+      if (path === "/orders/checkout-receipt/" + IDS.cart && route.request().method() === "GET") {
+        receipts++;
+        return route.fulfill(committed ? { json: receiptFor(IDS.cart) } : { status: 404, json: {} });
+      }
+      if (path === "/orders/" + IDS.order) return route.fulfill({ json: {
+        status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") },
+      } });
+      return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+    });
+    await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+    await advanceMobileCheckoutToReview(page);
+    const place = page.getByRole("button", { name: "Place Order Now" });
+    await page.evaluate(() => {
+      const put = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (name, value) {
+        if (this === localStorage && name.startsWith("zg-checkout:owner-a:attempt:")) {
+          Storage.prototype.setItem = put;
+          throw new DOMException("Synthetic storage failure", "QuotaExceededError");
+        }
+        return put.call(this, name, value);
+      };
+    });
+    await place.click();
+    await expect(page.getByText("This tab did not send an order.", { exact: false })).toBeVisible();
+    expect(posts).toBe(0);
+    await place.click();
+    await dispatched.promise;
+    await page.close();
+    const reopened = await context.newPage();
+    await fulfillStaticDependencies(reopened);
+    await reopened.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+    const check = reopened.getByRole("button", { name: "Check order status" });
+    await expect(check).toBeVisible();
+    await expect(reopened.getByRole("button", { name: "Retry this exact order" })).toHaveCount(0);
+    expect([posts, receipts]).toEqual([1, 0]);
+    await check.click();
+    await expect(reopened.getByText("No receipt is available yet.", { exact: false })).toBeVisible();
+    await reopened.screenshot({ path: info.outputPath("reopened-receipt-pending.png") });
+    await failCheckoutStorage(reopened, "fence");
+    committed = true;
+    await check.click();
+    await expect(reopened.getByRole("heading", { name: "Order confirmed by Zogular" })).toBeVisible();
+    expect(await reopened.evaluate(() => Object.keys(localStorage).some(k => k.startsWith("zg-checkout:owner-a:attempt:")))).toBe(true);
+    expect([posts, receipts]).toEqual([1, 2]);
+  });
+
+  for (const scenario of ["create cleanup", "create fence", "exact retry", "changed cart"] as const) {
+    test(`checkout settlement storage failure: ${scenario}`, async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      let posts = 0, receipts = 0;
+      await page.route("**/api/backend/**", async route => {
+        const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+        if (path === "/user/me") return route.fulfill({ json: userPayload() });
+        if (path === "/user/addresses") return route.fulfill({ json: addressPayload() });
+        if (path === "/cart") return route.fulfill({ json: cartPayload({
+          generation: posts && scenario === "changed cart" ? IDS.secondProduct : IDS.cart,
+        }) });
+        if (path === "/orders/quote") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+        if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (path === "/orders" && route.request().method() === "POST") {
+          posts++;
+          if ((scenario === "exact retry" || scenario === "changed cart") && posts === 1) return route.abort("failed");
+          return route.fulfill({ json: { status: "success", data: {
+            ...createdOrderPayload({ userId: "owner-a", status: "CONFIRMED" }).data, cartGeneration: IDS.cart,
+          } } });
+        }
+        if (path === "/orders/checkout-receipt/" + IDS.cart) { receipts++; return route.fulfill({ status: 404, json: {} }); }
+        if (path === "/orders/" + IDS.order) return route.fulfill({ json: {
+          status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") },
+        } });
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+      await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+      await advanceMobileCheckoutToReview(page);
+      await failCheckoutStorage(page, scenario === "create cleanup" ? "cleanup" : "fence");
+      await page.getByRole("button", { name: "Place Order Now" }).click();
+      if (scenario === "exact retry") {
+        await page.getByRole("button", { name: "Retry this exact order" }).click();
+      } else if (scenario === "changed cart") {
+        await page.getByRole("button", { name: "Check order status" }).click();
+        await page.getByRole("button", { name: "Review my updated cart" }).click();
+        await expect(page.getByText("Your updated cart could not be opened.", { exact: false })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Order outcome not confirmed" })).toBeVisible();
+        expect(new URL(page.url()).pathname).toBe("/checkout");
+        expect([posts, receipts]).toEqual([1, 4]);
+        return;
+      }
+      await expect(page).toHaveURL(new RegExp("/success\\?orderId=" + IDS.order + "$"));
+      await expect(page.getByRole("heading", { name: "Order confirmed by Zogular" })).toBeVisible();
+      expect([posts, receipts]).toEqual(scenario === "exact retry" ? [2, 1] : [1, 0]);
+      const records = await page.evaluate(key => ({
+        fence: localStorage.getItem("zg-checkout:owner-a:fenced:" + key),
+        attempts: Object.keys(localStorage).filter(k => k.startsWith("zg-checkout:owner-a:attempt:" + key + ":")).length,
+      }), IDS.cart);
+      expect(records).toEqual({ fence: scenario === "create cleanup" ? IDS.cart : null, attempts: 1 });
     });
   }
 

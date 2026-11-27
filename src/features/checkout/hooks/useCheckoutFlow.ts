@@ -3,8 +3,8 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { ClientAuthState } from "@/hooks/use-auth-session";
-import { beginGeneration, CART_REVIEW_PENDING, checkoutMode, finishGeneration, heldGeneration, observeGeneration,
-  reviewChangedGeneration, subscribeCheckoutHold, useCart } from "@/hooks/use-cart";
+import { beginGeneration, CART_REVIEW_PENDING, checkoutMode, settleGeneration, rejectGenerationAttempt, heldGeneration, observeGeneration,
+  preserveLegacySending, reviewChangedGeneration, subscribeCheckoutHold, useCart } from "@/hooks/use-cart";
 import { appendNextPath } from "@/services/auth-intent";
 import { getSavedAddresses } from "@/services/account";
 import {
@@ -61,6 +61,14 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   const [submitting, setSubmitting] = React.useState(false);
   const [checkingReceipt, setCheckingReceipt] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  React.useEffect(() => {
+    if (!ownerId || !held || held === "unavailable") return;
+    try {
+      preserveLegacySending(ownerId, held);
+    } catch {
+      setSubmitError("Keep this tab open while you check your order status.");
+    }
+  }, [ownerId, held]);
   const [checkoutStage, setCheckoutStage] = React.useState<CheckoutStage>("details");
   const [orderQuote, setOrderQuote] = React.useState<CheckoutQuote | null>(null);
   const [quotedCartKey, setQuotedCartKey] = React.useState<string | null>(null);
@@ -274,6 +282,14 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     && quotedAddress === selectedAddress
     && !quoteError;
 
+  const showVerifiedOrder = (owner: string, generation: string, orderId: string) => {
+    // A storage failure can block cart reuse, but cannot undo a verified order.
+    const settled = settleGeneration(owner, generation);
+    exactRetry.current = null;
+    router.push(`/success?orderId=${encodeURIComponent(orderId)}`);
+    if (settled) void useCart.getState().refreshCartAfterReceipt(owner);
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitInFlightRef.current) return;
@@ -306,6 +322,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     const session = getAuthSessionSnapshot();
     const current = () => isCurrentIdentity(expectedOwnerId, epoch) && session === getAuthSessionSnapshot();
     let dispatched = false;
+    let attempt: string | undefined;
     try {
       if (!key) await syncWithBackend();
       if (!current()) return;
@@ -351,24 +368,39 @@ export function useCheckoutFlow(auth: ClientAuthState) {
         paymentMethod: "cash_on_delivery",
       }, orderQuote, expectedOwnerId, checkoutMode(expectedOwnerId));
       if (key) {
-        beginGeneration(expectedOwnerId, key);
+        try {
+          attempt = beginGeneration(expectedOwnerId, key);
+        } catch {
+          setSubmitError("This tab did not send an order. Check your checkout status before trying again.");
+          return;
+        }
         exactRetry.current = { generation: key, send };
       }
       dispatched = true;
       const order = await send();
-      if (!current() || (key && heldGeneration(expectedOwnerId) !== key)) return;
+      if (!current()) return;
       if (key) {
-        finishGeneration(expectedOwnerId, key, "confirmed");
-        void useCart.getState().refreshCartAfterReceipt(expectedOwnerId);
-        exactRetry.current = null;
-      } else clearConfirmedCart(expectedOwnerId);
-      router.push(`/success?orderId=${encodeURIComponent(order.id)}`);
+        const hold = heldGeneration(expectedOwnerId);
+        if (hold !== key && hold !== "unavailable") return;
+        showVerifiedOrder(expectedOwnerId, key, order.id);
+      } else {
+        clearConfirmedCart(expectedOwnerId);
+        router.push(`/success?orderId=${encodeURIComponent(order.id)}`);
+      }
     } catch (error) {
       if (!current()) return;
       const code = conflictCode(error);
       if (key && dispatched) {
         const unknown = error instanceof CheckoutOrderOutcomeUnknownError || code === "CHECKOUT_INTENT_CONFLICT" || code === "CHECKOUT_CART_CHANGED" || !(error instanceof ApiError || error instanceof CheckoutQuoteChangedError);
-        finishGeneration(expectedOwnerId, key, unknown ? "unknown" : "rejected");
+        if (!unknown && attempt) {
+          try {
+            rejectGenerationAttempt(expectedOwnerId, key, attempt);
+          } catch {
+            exactRetry.current = null;
+            setSubmitError("Check your order status before trying again.");
+            return;
+          }
+        }
         if (!(error instanceof CheckoutOrderOutcomeUnknownError)) exactRetry.current = null;
       }
       if (error instanceof CheckoutQuoteChangedError || code === "CHECKOUT_RELOAD_REQUIRED") {
@@ -395,23 +427,25 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     if (!ownerId || !held || held === "unavailable" || heldGeneration(ownerId) !== held || submitInFlightRef.current) return;
     const epoch = identityRef.current.epoch;
     const session = getAuthSessionSnapshot();
-    const current = () => isCurrentIdentity(ownerId, epoch) && session === getAuthSessionSnapshot() && heldGeneration(ownerId) === held;
+    const current = (verifiedRead = false) => {
+      const hold = heldGeneration(ownerId);
+      return isCurrentIdentity(ownerId, epoch) && session === getAuthSessionSnapshot()
+        && (hold === held || (verifiedRead && hold === "unavailable"));
+    };
     submitInFlightRef.current = true;
     setCheckingReceipt(true);
     setSubmitting(true);
     setSubmitError(null);
     try {
       const adopt = action === "review" ? useCart.getState().prepareCartAdoption(ownerId, held) : null;
-      const result = await inspectCheckoutOutcome(ownerId, held, current);
-      if (!result || !current()) return;
+      const result = await inspectCheckoutOutcome(ownerId, held, () => current(true));
+      if (!result || !current(true)) return;
       const { snapshot, receipt } = result;
       if (receipt) {
-        finishGeneration(ownerId, held, "confirmed");
-        void useCart.getState().refreshCartAfterReceipt(ownerId);
-        exactRetry.current = null;
-        router.push(`/success?orderId=${encodeURIComponent(receipt.id)}`);
+        showVerifiedOrder(ownerId, held, receipt.id);
         return;
       }
+      if (!current()) return; // Unreadable storage never authorizes review or another POST.
       if (snapshot?.generation && snapshot.generation !== held) {
         if (action === "review" && changedCart?.old === held && changedCart.next === snapshot.generation) {
           if (reviewChangedGeneration(ownerId, held, snapshot.generation)) {
@@ -421,18 +455,15 @@ export function useCheckoutFlow(auth: ClientAuthState) {
             setChangedCart(null);
             setCheckoutStage(adopted ? "details" : "review");
             refreshQuote();
-          }
+          } else setSubmitError("Your updated cart could not be opened. Check your order status before trying again.");
         } else setChangedCart({ old: held, next: snapshot.generation });
         return;
       }
       setChangedCart(null);
       if (action === "retry" && exactRetry.current?.generation === held) {
         const order = await exactRetry.current.send();
-        if (!current()) return;
-        finishGeneration(ownerId, held, "confirmed");
-        void useCart.getState().refreshCartAfterReceipt(ownerId);
-        exactRetry.current = null;
-        router.push(`/success?orderId=${encodeURIComponent(order.id)}`);
+        if (!current(true)) return;
+        showVerifiedOrder(ownerId, held, order.id);
       } else setSubmitError("No receipt is available yet. Check again before placing another order.");
     } catch (error) {
       if (current()) {

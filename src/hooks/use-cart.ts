@@ -92,6 +92,12 @@ export function heldGeneration(owner: string | null): string | null {
     for (let i = 0; i < window.localStorage.length; i++) {
       const name = window.localStorage.key(i);
       if (name?.startsWith(prefix + "hold:")) keys.push(checkoutGeneration(name.slice((prefix + "hold:").length)));
+      if (name?.startsWith(prefix + "attempt:")) {
+        const [key, attempt, ...rest] = name.slice((prefix + "attempt:").length).split(":");
+        checkoutGeneration(attempt);
+        if (rest.length || window.localStorage.getItem(name) !== key) return "unavailable";
+        keys.push(checkoutGeneration(key));
+      }
     }
     return keys.find(key => !isFenced(prefix, key)) ?? null;
   } catch { return "unavailable"; }
@@ -99,30 +105,65 @@ export function heldGeneration(owner: string | null): string | null {
 
 export function beginGeneration(owner: string, key: string) {
   const prefix = marker(owner);
-  if (heldGeneration(owner) || isFenced(prefix, key) || window.localStorage.getItem(prefix + "hold:" + key) !== null) throw new Error("Checkout already pending");
-  window.sessionStorage.setItem(prefix + "sending", checkoutGeneration(key));
+  checkoutGeneration(key);
+  if (heldGeneration(owner) || isFenced(prefix, key)) throw new Error("Checkout already pending");
+  // Local storage has no compare-and-set: two tabs can both pass the check.
+  // Separate keys let each definitive rejection retire only its own dispatch.
+  const attempt = crypto.randomUUID();
+  const name = prefix + "attempt:" + key + ":" + attempt;
+  window.localStorage.setItem(name, key);
+  if (window.localStorage.getItem(name) !== key || heldGeneration(owner) !== key) {
+    window.localStorage.removeItem(name);
+    throw new Error("Checkout attempt could not be recorded");
+  }
+  notifyHold();
+  return attempt;
+}
+
+// On upgrade a reloaded tab may have only the previous session-local record.
+// Copy before removal so a failed write never discards that evidence.
+export function preserveLegacySending(owner: string, key: string) {
+  const prefix = marker(owner);
+  if (window.sessionStorage.getItem(prefix + "sending") !== key || isFenced(prefix, key)) return;
+  window.localStorage.setItem(prefix + "hold:" + checkoutGeneration(key), key);
+  if (window.localStorage.getItem(prefix + "hold:" + key) !== key) throw new Error("Checkout hold could not be preserved");
+  window.sessionStorage.removeItem(prefix + "sending");
+}
+
+export function rejectGenerationAttempt(owner: string, key: string, attempt: string) {
+  window.localStorage.removeItem(marker(owner) + "attempt:" + checkoutGeneration(key) + ":" + checkoutGeneration(attempt));
   notifyHold();
 }
-export function finishGeneration(owner: string, key: string, outcome: "confirmed" | "unknown" | "rejected") {
+
+// Called only on a matching confirmed order/receipt or explicit fenced review.
+// Publish the fence before cleanup so a late writer cannot revive the hold.
+export function settleGeneration(owner: string, key: string) {
+  checkoutGeneration(key);
   const prefix = marker(owner);
-  if (outcome === "unknown" && !isFenced(prefix, key)) {
-    window.localStorage.setItem(prefix + "hold:" + key, checkoutGeneration(key));
-    if (isFenced(prefix, key)) window.localStorage.removeItem(prefix + "hold:" + key);
+  try {
+    window.localStorage.setItem(prefix + "fenced:" + key, key);
+    if (!isFenced(prefix, key)) return false;
+  } catch {
+    return false; // Retain every unresolved record when settlement cannot be published.
   }
-  if (outcome === "confirmed") window.localStorage.removeItem(prefix + "hold:" + key);
-  if (window.sessionStorage.getItem(prefix + "sending") === key) window.sessionStorage.removeItem(prefix + "sending");
+  try {
+    const attempts = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const name = window.localStorage.key(i);
+      if (name?.startsWith(prefix + "attempt:" + key + ":")) attempts.push(name);
+    }
+    for (const name of attempts) window.localStorage.removeItem(name);
+    window.localStorage.removeItem(prefix + "hold:" + key);
+    if (window.sessionStorage.getItem(prefix + "sending") === key) window.sessionStorage.removeItem(prefix + "sending");
+  } catch {
+    // The verified fence, not successful garbage collection, settles these records.
+  }
   notifyHold();
+  return true;
 }
 export function reviewChangedGeneration(owner: string, old: string, next: string) {
   if (checkoutGeneration(next) === old || heldGeneration(owner) !== old) return false;
-  // Publish the fence first: another tab can still have an in-flight marker or
-  // finish a lost request between these writes. Never clear by owner prefix.
-  const prefix = marker(owner);
-  window.localStorage.setItem(prefix + "fenced:" + old, checkoutGeneration(old));
-  window.localStorage.removeItem(prefix + "hold:" + old);
-  if (window.sessionStorage.getItem(prefix + "sending") === old) window.sessionStorage.removeItem(prefix + "sending");
-  notifyHold();
-  return true;
+  return settleGeneration(owner, old);
 }
 
 async function readCartItems(context: OperationContext) {
