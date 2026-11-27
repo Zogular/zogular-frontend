@@ -13,6 +13,7 @@ import {
   CheckoutQuoteChangedError,
   prepareCheckoutOrder,
   readCheckoutCart,
+  readCheckoutReceipt,
   inspectCheckoutOutcome,
   quoteCheckoutOrder,
   type CheckoutQuote,
@@ -61,6 +62,11 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   const [submitting, setSubmitting] = React.useState(false);
   const [checkingReceipt, setCheckingReceipt] = React.useState(false);
   const [submitError, setSubmitError] = React.useState<string | null>(null);
+  // A receipt binds an order to the buyer/cart, not to this tab's address or notes.
+  // Keep conflict provenance in memory only; a reopened tab cannot reconstruct it.
+  const [existing, setExisting] = React.useState<{
+    owner: string; generation: string; epoch: number; session: string; conflict: boolean; orderId?: string;
+  } | null>(null);
   React.useEffect(() => {
     if (!ownerId || !held || held === "unavailable") return;
     try {
@@ -290,6 +296,20 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     if (settled) void useCart.getState().refreshCartAfterReceipt(owner);
   };
 
+  const scopedExisting = existing && existing.owner === ownerId && existing.epoch === identityRef.current.epoch
+    && existing.session === getAuthSessionSnapshot() && (!held || existing.generation === held || held === "unavailable")
+    ? existing : null;
+  const viewExistingOrder = () => {
+    if (!scopedExisting?.orderId) return;
+    const { owner, generation, orderId, session, epoch } = scopedExisting;
+    const currentHold = heldGeneration(owner);
+    if (!isCurrentIdentity(owner, epoch) || getAuthSessionSnapshot() !== session ||
+        (currentHold && currentHold !== generation && currentHold !== "unavailable")) return;
+    // Until this deliberate action, closing the tab must preserve receipt recovery.
+    if (currentHold) settleGeneration(owner, generation);
+    router.push(`/account/orders/${encodeURIComponent(orderId)}`);
+  };
+
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (submitInFlightRef.current) return;
@@ -391,6 +411,9 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       if (!current()) return;
       const code = conflictCode(error);
       if (key && dispatched) {
+        if (code === "CHECKOUT_INTENT_CONFLICT") {
+          setExisting({ owner: expectedOwnerId, generation: key, epoch, session, conflict: true });
+        }
         const unknown = error instanceof CheckoutOrderOutcomeUnknownError || code === "CHECKOUT_INTENT_CONFLICT" || code === "CHECKOUT_CART_CHANGED" || !(error instanceof ApiError || error instanceof CheckoutQuoteChangedError);
         if (!unknown && attempt) {
           try {
@@ -424,6 +447,32 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   // GET cart is deliberately separate from syncWithBackend: reconciliation
   // may send mutations and must never be triggered as a consequence of a 404.
   const recover = async (action: "check" | "review" | "retry") => {
+    if (scopedExisting?.conflict && ownerId) {
+      if (action !== "check" || submitInFlightRef.current) return;
+      const { generation, epoch, session } = scopedExisting;
+      const current = () => {
+        const hold = heldGeneration(ownerId);
+        return isCurrentIdentity(ownerId, epoch) && getAuthSessionSnapshot() === session && (!hold || hold === generation);
+      };
+      if (!current()) return;
+      submitInFlightRef.current = true;
+      setCheckingReceipt(true);
+      setSubmitting(true);
+      setSubmitError(null);
+      try {
+        // The server rejected this intent. Even a receipt miss cannot make it retryable.
+        const receipt = await readCheckoutReceipt(ownerId, generation);
+        if (!current()) return;
+        if (receipt) setExisting({ ...scopedExisting, orderId: receipt.id });
+        else setSubmitError("No receipt is available yet. Check again or contact support.");
+      } catch {
+        if (current()) setSubmitError("The existing order could not be loaded. Check again or contact support.");
+      } finally {
+        if (isCurrentIdentity(ownerId, epoch)) { setSubmitting(false); setCheckingReceipt(false); }
+        submitInFlightRef.current = false;
+      }
+      return;
+    }
     if (!ownerId || !held || held === "unavailable" || heldGeneration(ownerId) !== held || submitInFlightRef.current) return;
     const epoch = identityRef.current.epoch;
     const session = getAuthSessionSnapshot();
@@ -442,7 +491,10 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       if (!result || !current(true)) return;
       const { snapshot, receipt } = result;
       if (receipt) {
-        showVerifiedOrder(ownerId, held, receipt.id);
+        exactRetry.current = null;
+        setChangedCart(null);
+        setExisting({ owner: ownerId, generation: held, epoch, session, orderId: receipt.id,
+          conflict: false });
         return;
       }
       if (!current()) return; // Unreadable storage never authorizes review or another POST.
@@ -468,7 +520,10 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     } catch (error) {
       if (current()) {
         if (action === "retry" && (conflictCode(error) || error instanceof CheckoutQuoteChangedError)) exactRetry.current = null;
-        setSubmitError("Your order could not be confirmed. Check again or contact support.");
+        if (action === "retry" && conflictCode(error) === "CHECKOUT_INTENT_CONFLICT") {
+          setExisting({ owner: ownerId, generation: held, epoch, session, conflict: true });
+          setSubmitError(getCheckoutErrorMessage(error, "create"));
+        } else setSubmitError("Your order could not be confirmed. Check again or contact support.");
       }
     } finally {
       if (isCurrentIdentity(ownerId, epoch)) { setSubmitting(false); setCheckingReceipt(false); }
@@ -501,8 +556,10 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     held,
     placing: submitting && !checkingReceipt,
     recover,
-    canReviewChanged: changedCart?.old === held,
-    canRetryExact: Boolean(held && exactRetry.current?.generation === held),
+    intentConflict: scopedExisting?.conflict === true,
+    onViewExistingOrder: scopedExisting?.orderId ? viewExistingOrder : undefined,
+    canReviewChanged: !scopedExisting && changedCart?.old === held,
+    canRetryExact: !scopedExisting && Boolean(held && exactRetry.current?.generation === held),
     detailsComplete,
     canSubmit,
     resumeCheckoutAfterReview,

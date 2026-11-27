@@ -1766,10 +1766,82 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     await failCheckoutStorage(reopened, "fence");
     committed = true;
     await check.click();
-    await expect(reopened.getByRole("heading", { name: "Order confirmed by Zogular" })).toBeVisible();
+    await expect(reopened.getByRole("heading", { name: "Existing order found" })).toBeVisible();
+    await expect(reopened.getByText(/latest checkout changes were not placed/i)).toHaveCount(0);
+    await expect(reopened).toHaveURL(baseUrl + "/checkout");
+    await reopened.screenshot({ path: info.outputPath("reopened-order-found.png") });
+    await reopened.getByRole("button", { name: "View existing order" }).click();
+    await expect(reopened).toHaveURL(baseUrl + "/account/orders/" + IDS.order);
+    await expect(reopened.getByRole("heading", { name: "RECEIPT", exact: true })).toBeVisible();
     expect(await reopened.evaluate(() => Object.keys(localStorage).some(k => k.startsWith("zg-checkout:owner-a:attempt:")))).toBe(true);
     expect([posts, receipts]).toEqual([1, 2]);
   });
+
+  for (const width of [320, 1440]) {
+    test(`receipt intent conflict: deliberate existing-order read at ${width}px`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      const order = detailOrderPayload("owner-a", "ZG-2026-0001");
+      const addresses = addressPayload();
+      addresses.data.addresses[0].addressLine = "24 Cairo Road";
+      const writes: string[] = [];
+      let receipts = 0, details = 0;
+      await page.route("**/api/backend/**", async route => {
+        const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+        const method = route.request().method();
+        if (method !== "GET") writes.push(method + " " + path);
+        if (path === "/user/me") return route.fulfill({ json: userPayload() });
+        if (path === "/user/addresses") return route.fulfill({ json: addresses });
+        if (path === "/cart" && method === "GET") return route.fulfill({ json: cartPayload({ generation: IDS.cart }) });
+        if (path === "/orders/quote") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+        if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (path === "/orders" && method === "POST") {
+          const body = route.request().postDataJSON();
+          expect(body.shippingAddress.addressLine).toBe("24 Cairo Road");
+          expect(body.cartGeneration).toBe(IDS.cart);
+          if (width === 1440) {
+            // Another tab received its matched POST success before this 409 arrived.
+            await page.evaluate(generation => {
+              const key = "zg-checkout:owner-a:fenced:" + generation;
+              localStorage.setItem(key, generation);
+              window.dispatchEvent(new StorageEvent("storage", { key, newValue: generation }));
+            }, IDS.cart);
+          }
+          return route.fulfill({ status: 409, json: { status: "fail", code: "CHECKOUT_INTENT_CONFLICT", message: "fixture diagnostic" } });
+        }
+        if (path === "/orders/checkout-receipt/" + IDS.cart) { receipts++; return route.fulfill({ json: receiptFor(IDS.cart) }); }
+        if (path === "/orders/" + IDS.order) { details++; return route.fulfill({ json: { status: "success", data: { order } } }); }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+      await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+      await advanceMobileCheckoutToReview(page);
+      const lines = () => page.evaluate(() => JSON.parse(localStorage.getItem("zogular-cart-storage")!).state.items);
+      const before = await lines();
+      expect(before).toHaveLength(1);
+      await page.getByRole("button", { name: "Place Order Now" }).click();
+      const notPlaced = page.getByText(/Your latest checkout changes were not placed/);
+      await expect(notPlaced).toBeVisible();
+      await page.getByRole("button", { name: "Check order status" }).click();
+      const view = page.getByRole("button", { name: "View existing order" });
+      await expect(view).toBeVisible();
+      await expect(notPlaced).toBeVisible();
+      await expect(page.getByRole("button", {name:"Retry this exact order"})).toHaveCount(0);
+      await expect(page).toHaveURL(baseUrl + "/checkout");
+      expect([receipts, details]).toEqual([1, 0]);
+      expect(await lines()).toEqual(before);
+      await page.screenshot({path:info.outputPath("existing-order.png"), animations:"disabled"});
+      await view.click();
+      await expect(page).toHaveURL(baseUrl + "/account/orders/" + IDS.order);
+      await expect(page.getByRole("heading", { name: "RECEIPT", exact: true })).toBeVisible();
+      await expect(page.getByText(/15 Great East Road/).first()).toBeVisible();
+      await expect(page.getByRole("region", { name:"Order totals" })).toContainText("K550");
+      await expect(page.getByText(/24 Cairo Road|fixture diagnostic/)).toHaveCount(0);
+      expect(writes.filter(write => write !== "POST /orders/quote")).toEqual(["POST /orders"]);
+      expect(await lines()).toEqual(before);
+    });
+  }
 
   for (const scenario of ["create cleanup", "create fence", "exact retry", "changed cart"] as const) {
     test(`checkout settlement storage failure: ${scenario}`, async ({ page }) => {

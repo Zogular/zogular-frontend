@@ -4,6 +4,8 @@ import { CheckoutContractError } from "@/services/checkout";
 import type { Address } from "@/types/address";
 import type { CheckoutErrorBoundary } from "@/features/checkout/types/checkout.types";
 
+export const INTENT_CONFLICT_MESSAGE = "Your latest checkout changes were not placed.";
+
 export interface QuoteRecovery {
   message: string;
   action: "review-cart" | "refresh-total";
@@ -44,7 +46,7 @@ export function getCheckoutErrorMessage(
   }
   if (error instanceof ApiError) {
     if (error.status === 409 && error.details && typeof error.details === "object" && "code" in error.details) {
-      if (error.details.code === "CHECKOUT_INTENT_CONFLICT") return "This cart was used for another checkout. Check its order status.";
+      if (error.details.code === "CHECKOUT_INTENT_CONFLICT") return INTENT_CONFLICT_MESSAGE;
       if (error.details.code === "CHECKOUT_CART_CHANGED") return boundary === "quote"
         ? "Your cart changed. Review your updated cart before checking out."
         : "Your cart changed. Check its order status before reviewing the latest cart.";

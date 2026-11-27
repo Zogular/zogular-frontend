@@ -41,10 +41,11 @@ export function CheckoutContent({ auth }: { auth: ClientAuthState }) {
     );
   }
 
-  if (flow.held) {
+  if (flow.held || flow.intentConflict || flow.onViewExistingOrder) {
     if (flow.placing) return <main className="container mx-auto max-w-3xl px-4 py-8" role="status">Placing your order…</main>;
     return <main className="container mx-auto max-w-3xl px-4 py-8">
       <UnknownOutcomeState modern busy={flow.submitting || flow.held === "unavailable"} message={flow.submitError}
+        intentConflict={flow.intentConflict} onViewExistingOrder={flow.onViewExistingOrder}
         onResume={() => void flow.recover("check")}
         onReview={flow.canReviewChanged ? () => void flow.recover("review") : undefined}
         onRetry={flow.canRetryExact && !flow.canReviewChanged ? () => void flow.recover("retry") : undefined} />
