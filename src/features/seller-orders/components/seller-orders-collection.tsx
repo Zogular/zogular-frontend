@@ -45,6 +45,8 @@ import {
   SELLER_ORDER_STATUSES,
 } from "../order-ui";
 import { OrderCancellationDialog } from "./order-cancellation-dialog";
+import { useSellerApplication, useSellerCapability } from "@/components/seller/SellerApplicationContext";
+import { orderErrorMessage, useOrderConflictRecovery } from "../lib/order-error-presentation";
 
 function escapeCsv(value: string | number) {
   const text = String(value);
@@ -261,36 +263,57 @@ function OrderBoard({ orders, visibleStatuses, facets, listUrl, onCancel }: {
 }
 
 export function SellerOrdersCollection() {
+  const { application, loading, error, refresh } = useSellerApplication();
+  const allowed = useSellerCapability("canReceiveOrders");
+  if (error) return <CollectionErrorState title="Seller access could not be checked" description="Check your seller access before managing orders." action={{ label: "Try again", onClick: () => void refresh() }} />;
+  if (loading || !application || !allowed) return <OrderCollectionSkeleton view="list" />;
+  return <ScopedOrdersCollection key={application.id} sellerId={application.id} />;
+}
+
+function ScopedOrdersCollection({ sellerId }: { sellerId: string }) {
+  const recovery = useOrderConflictRecovery(sellerId);
   const state = useSellerOrdersQueryState();
   const queryClient = useQueryClient();
   const [cancelTarget, setCancelTarget] = useState<SellerOrderSummary | null>(null);
   const ordersQuery = useQuery({
-    queryKey: sellerOrderQueryKeys.list(state.apiQuery),
+    queryKey: [...sellerOrderQueryKeys.list(state.apiQuery), sellerId],
+    retry: false,
     queryFn: () => sellerOrdersApi.fetchPage(state.apiQuery),
     placeholderData: keepPreviousData,
     staleTime: 30_000,
   });
   const cancellation = useMutation({
     mutationFn: (orderId: string) => sellerOrdersApi.cancelOrder(orderId),
-    onSuccess: async (updated) => {
-      setCancelTarget(null);
+    onMutate: recovery.capture,
+    retry: false,
+    onSuccess: async (updated, _intent, current) => {
+      if (!current?.sameSession()) return;
+      if (current.visible()) setCancelTarget(null);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sellerOrderQueryKeys.lists() }),
         queryClient.invalidateQueries({ queryKey: sellerOrderQueryKeys.detail(updated.id) }),
         updated.status === "cancelled" ? invalidateSellerStockQueries(queryClient) : undefined,
       ]);
-      toast.success(`Order ${updated.orderNumber} cancelled.`);
+      if (current.visible()) toast.success("Order cancelled.");
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not cancel the order."),
+    onError: (error, orderId, current) => {
+      const conflict = recovery.rejectConflict(error, orderId, Boolean(current?.visible()));
+      if (!current?.visible()) return;
+      setCancelTarget(null);
+      if (!conflict) toast.error(orderErrorMessage(error, "update"));
+    },
   });
   const data = ordersQuery.data;
   const orders = useMemo(() => data?.orders ?? [], [data?.orders]);
+  const currentTarget = !ordersQuery.isError && !ordersQuery.isPlaceholderData
+    ? orders.find((item) => item.id === cancelTarget?.id && item.allowedTransitions.includes("cancelled")) : undefined;
   const facets = useMemo(() => new Map(data?.facets.statuses.map((facet) => [facet.status, facet.count]) ?? []), [data?.facets.statuses]);
   const visibleStatuses = state.status
     ? [state.status]
     : SELLER_ORDER_STATUSES.filter((status) => status.id !== "unknown").map((status) => status.id);
   const activeFilterCount = Number(Boolean(state.status)) + Number(Boolean(state.createdFrom)) + Number(Boolean(state.createdTo));
-  const isInitialLoading = ordersQuery.isPending && !data;
+  const invalidated = queryClient.getQueryState([...sellerOrderQueryKeys.list(state.apiQuery), sellerId])?.isInvalidated;
+  const isInitialLoading = (ordersQuery.isPending && !data) || ordersQuery.isPlaceholderData || Boolean(ordersQuery.isFetching && invalidated);
   useListScrollRestoration(state.listUrl, !isInitialLoading);
 
   const filters = (
@@ -324,17 +347,29 @@ export function SellerOrdersCollection() {
     toast.success("Current page exported.");
   }, [orders, state.page]);
 
-  return (
-    <div className="mx-auto flex w-full max-w-350 flex-col gap-4 pb-20 md:pb-6">
+  const needsRefresh = Boolean(recovery.notice || (data && invalidated && !ordersQuery.isError && !ordersQuery.isFetching));
+  const header = (
       <header className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">Orders</h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">Manage your items from confirmation through operations handoff.</p>
         </div>
-        <Button type="button" variant="outline" disabled={orders.length === 0} onClick={handleExport} className="h-10 self-start rounded-xl bg-white text-xs font-bold">
+        <Button type="button" variant="outline" disabled={needsRefresh || isInitialLoading || ordersQuery.isError || orders.length === 0} onClick={handleExport} className="h-10 self-start rounded-xl bg-white text-xs font-bold">
           <Download className="mr-2 h-4 w-4" aria-hidden="true" /> Export current page
         </Button>
       </header>
+  );
+  if (needsRefresh) return (
+    <div className="mx-auto flex w-full max-w-350 flex-col gap-4 pb-20 md:pb-6">
+      {header}
+      {recovery.notice
+        ? <CollectionErrorState {...recovery.notice} action={recovery.notice.action(ordersQuery.refetch)} />
+        : <CollectionErrorState title="Orders need refreshing" description="Load the current orders before making a change." action={{ label: "Refresh order", onClick: () => void ordersQuery.refetch() }} />}
+    </div>
+  );
+  return (
+    <div className="mx-auto flex w-full max-w-350 flex-col gap-4 pb-20 md:pb-6">
+      {header}
 
       <FeaturePendingNotice compact title="Payment details are still limited" description="Order totals cover only items assigned to your store. Final earnings and payment availability will appear when confirmed by Zogular." />
 
@@ -361,7 +396,7 @@ export function SellerOrdersCollection() {
       ) : null}
 
       {isInitialLoading ? <OrderCollectionSkeleton view={state.view} /> : null}
-      {!isInitialLoading && ordersQuery.isError ? <CollectionErrorState title="Orders could not be loaded" description={ordersQuery.error instanceof Error ? ordersQuery.error.message : "Try the request again."} action={{ label: "Try again", onClick: () => void ordersQuery.refetch() }} /> : null}
+      {!isInitialLoading && ordersQuery.isError ? <CollectionErrorState title="Orders could not be loaded" description={orderErrorMessage(ordersQuery.error, "read")} action={{ label: "Try again", onClick: () => void ordersQuery.refetch() }} /> : null}
       {!isInitialLoading && !ordersQuery.isError && data?.summary.totalOrders === 0 ? <CollectionState title="No orders yet" description="Orders containing your approved products will appear here when buyers place them." icon={Package} /> : null}
       {!isInitialLoading && !ordersQuery.isError && data && data.summary.totalOrders > 0 && orders.length === 0 ? <CollectionState title="No orders match these filters" description="Change the search, status, date range, or page to see other orders." action={{ label: "Clear status filter", onClick: () => state.setStatus(undefined) }} /> : null}
       {!isInitialLoading && !ordersQuery.isError && orders.length > 0 ? (
@@ -382,7 +417,7 @@ export function SellerOrdersCollection() {
         </div>
       ) : null}
 
-      <OrderCancellationDialog order={cancelTarget} open={Boolean(cancelTarget)} pending={cancellation.isPending} onOpenChange={(open) => !open && setCancelTarget(null)} onConfirm={() => cancelTarget && cancellation.mutate(cancelTarget.id)} />
+      <OrderCancellationDialog order={currentTarget ?? null} open={Boolean(currentTarget) && !isInitialLoading} pending={cancellation.isPending} onOpenChange={(open) => !open && setCancelTarget(null)} onConfirm={() => currentTarget && cancellation.mutate(currentTarget.id)} />
     </div>
   );
 }

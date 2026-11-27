@@ -192,6 +192,12 @@ test("detail acceptance does not refetch stock, but confirmed cancellation refre
 
 test("collection cancellation updates stock only after success", async ({ page, context }) => {
   const state = await openStockWorkspace(page, context);
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() === "PATCH" && new URL(request.url()).pathname === `/api/backend/vendor/orders/${orderId}/status`) {
+      writes.push(request.postDataJSON().status);
+    }
+  });
   await expectCatalogStock(page, 4);
   const warmReads = state.productReads;
   const dialog = page.getByRole("dialog");
@@ -205,16 +211,28 @@ test("collection cancellation updates stock only after success", async ({ page, 
   await openCancellation();
   state.failCancellation = true;
   await confirm.click();
-  await expect(page.getByText("Fixture cancellation failed.")).toBeVisible();
-  await dialog.getByRole("button", { name: "Keep order" }).click();
+  const conflict = page.getByRole("alert").filter({ has: page.getByRole("heading", { name: "Order changed" }) });
+  await expect(conflict).toContainText("Refresh to see the current status before making another change.");
+  await expect(page.getByText("Fixture cancellation failed.")).toHaveCount(0);
+  await expect(dialog).toHaveCount(0);
+  await Promise.all([
+    page.waitForResponse((response) => new URL(response.url()).pathname === "/api/backend/vendor/orders"
+      && response.request().method() === "GET" && response.status() === 200),
+    conflict.getByRole("button", { name: "Refresh order" }).click(),
+  ]);
+  await expect(page.getByRole("table", { name: "Seller orders" })).toBeVisible();
   await expectCatalogStock(page, 4);
   expect(state.productReads).toBe(warmReads);
+  expect(writes).toEqual(["CANCELLED"]);
 
   state.failCancellation = false;
   await openCancellation();
+  expect(writes).toEqual(["CANCELLED"]);
   await confirm.click();
-  await expect(page.getByText(`Order ${orderNumber} cancelled.`)).toBeVisible();
+  await expect(page.getByText("Order cancelled.", { exact: true })).toBeVisible();
   await expectCatalogStock(page, 5);
+  expect(state.productReads).toBeGreaterThan(warmReads);
+  expect(writes).toEqual(["CANCELLED", "CANCELLED"]);
 });
 
 for (const entry of ["inline", "menu"] as const) {

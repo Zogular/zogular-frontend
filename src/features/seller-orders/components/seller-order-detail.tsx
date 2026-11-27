@@ -36,6 +36,8 @@ import {
   getSellerOrderStatusMeta,
 } from "../order-ui";
 import { OrderCancellationDialog } from "./order-cancellation-dialog";
+import { useSellerApplication, useSellerCapability } from "@/components/seller/SellerApplicationContext";
+import { orderErrorMessage, useOrderConflictRecovery } from "../lib/order-error-presentation";
 
 const PROGRESS_STEPS = [
   { id: "new", label: "Received" },
@@ -184,12 +186,22 @@ function SellerOrderDetailContent({ order, busy, onTransition, onCancel }: {
 }
 
 export function SellerOrderDetailView({ orderId }: { orderId: string }) {
+  const { application, loading, error, refresh } = useSellerApplication();
+  const allowed = useSellerCapability("canReceiveOrders");
+  if (error) return <CollectionErrorState title="Seller access could not be checked" description="Check your seller access before managing orders." action={{ label: "Try again", onClick: () => void refresh() }} />;
+  if (loading || !application || !allowed) return <OrderDetailSkeleton />;
+  return <ScopedOrderDetail key={JSON.stringify([application.id, orderId])} orderId={orderId} sellerId={application.id} />;
+}
+
+function ScopedOrderDetail({ sellerId, orderId }: { sellerId: string; orderId: string }) {
+  const recovery = useOrderConflictRecovery(sellerId);
   const router = useRouter();
   const searchParams = useSearchParams();
   const queryClient = useQueryClient();
   const [cancelOpen, setCancelOpen] = useState(false);
   const orderQuery = useQuery({
-    queryKey: sellerOrderQueryKeys.detail(orderId),
+    queryKey: [...sellerOrderQueryKeys.detail(orderId), sellerId],
+    retry: false,
     queryFn: () => sellerOrdersApi.fetchById(orderId),
     staleTime: 30_000,
   });
@@ -197,16 +209,24 @@ export function SellerOrderDetailView({ orderId }: { orderId: string }) {
   const order = orderQuery.data;
   const mutation = useMutation({
     mutationFn: (status: SellerOrderStatus) => sellerOrdersApi.updateStatus(orderId, status),
-    onSuccess: async (updated) => {
-      queryClient.setQueryData(sellerOrderQueryKeys.detail(orderId), updated);
-      setCancelOpen(false);
+    onMutate: recovery.capture,
+    retry: false,
+    onSuccess: async (updated, _intent, current) => {
+      if (!current?.sameSession()) return;
+      queryClient.setQueryData([...sellerOrderQueryKeys.detail(orderId), sellerId], updated);
+      if (current.visible()) setCancelOpen(false);
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: sellerOrderQueryKeys.lists() }),
         updated.status === "cancelled" ? invalidateSellerStockQueries(queryClient) : undefined,
       ]);
-      toast.success(`Order updated to ${getSellerOrderStatusMeta(updated.status).title}.`);
+      if (current.visible()) toast.success(`Order updated to ${getSellerOrderStatusMeta(updated.status).title}.`);
     },
-    onError: (error) => toast.error(error instanceof Error ? error.message : "Could not update the order."),
+    onError: (error, _intent, current) => {
+      const conflict = recovery.rejectConflict(error, orderId, Boolean(current?.visible()));
+      if (!current?.visible()) return;
+      setCancelOpen(false);
+      if (!conflict) toast.error(orderErrorMessage(error, "update"));
+    },
   });
   const statusMeta = order ? getSellerOrderStatusMeta(order.status) : null;
   const StatusIcon = statusMeta?.icon ?? CheckCircle2;
@@ -230,8 +250,17 @@ export function SellerOrderDetailView({ orderId }: { orderId: string }) {
     else router.push("/seller/orders");
   };
 
-  if (orderQuery.isPending) return <OrderDetailSkeleton />;
-  if (orderQuery.isError || !order || !statusMeta) return <CollectionErrorState title="Order could not be loaded" description={orderQuery.error instanceof Error ? orderQuery.error.message : "This order is unavailable."} action={{ label: "Try again", onClick: () => void orderQuery.refetch() }} className="mx-auto max-w-250" />;
+  const invalidated = queryClient.getQueryState([...sellerOrderQueryKeys.detail(orderId), sellerId])?.isInvalidated;
+  if (recovery.notice || (order && invalidated && !orderQuery.isError && !orderQuery.isFetching)) return (
+    <div className="mx-auto max-w-250 space-y-4">
+      <Button type="button" variant="outline" onClick={handleBack}><ArrowLeft aria-hidden="true" />Back to seller orders</Button>
+      {recovery.notice
+        ? <CollectionErrorState {...recovery.notice} action={recovery.notice.action(orderQuery.refetch)} />
+        : <CollectionErrorState title="Order needs refreshing" description="Load the current status before making a change." action={{ label: "Refresh order", onClick: () => void orderQuery.refetch() }} />}
+    </div>
+  );
+  if (orderQuery.isPending || (orderQuery.isFetching && invalidated)) return <OrderDetailSkeleton />;
+  if (orderQuery.isError || !order || !statusMeta) return <CollectionErrorState title="Order could not be loaded" description={orderErrorMessage(orderQuery.error, "read")} action={{ label: "Try again", onClick: () => void orderQuery.refetch() }} className="mx-auto max-w-250" />;
 
   const primaryTransition = order.allowedTransitions.find((item) => item === "confirmed" || item === "processing");
   return (
@@ -250,7 +279,7 @@ export function SellerOrderDetailView({ orderId }: { orderId: string }) {
       </header>
 
       <SellerOrderDetailContent order={order} busy={mutation.isPending} onTransition={(status) => mutation.mutate(status)} onCancel={() => setCancelOpen(true)} />
-      <OrderCancellationDialog order={summaryForDialog} open={cancelOpen} pending={mutation.isPending} onOpenChange={setCancelOpen} onConfirm={() => mutation.mutate("cancelled")} />
+      <OrderCancellationDialog order={summaryForDialog} open={cancelOpen && order.allowedTransitions.includes("cancelled")} pending={mutation.isPending} onOpenChange={setCancelOpen} onConfirm={() => order.allowedTransitions.includes("cancelled") && mutation.mutate("cancelled")} />
     </div>
   );
 }
