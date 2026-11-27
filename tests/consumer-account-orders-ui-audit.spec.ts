@@ -75,6 +75,7 @@ const returnOrders: readonly BackendOrder[] = Array.from({ length: 52 }, (_, ind
 
 type PagedOrderFixture = { rows: readonly BackendOrder[]; reads: number[]; failPage?: number };
 type OrderFixture = {
+  verifiedBuyer?: typeof buyer;
   listStatus: 200 | 503 | "malformed";
   detailStatus: 200 | 403 | 404 | 503;
   listCount: 0 | 1 | typeof fullListCount;
@@ -115,7 +116,7 @@ const test = base.extend<{ orderFixture: OrderFixture }>({
       if (local && method === "GET") {
         switch (url.pathname) {
           case `${proxyPrefix}/user/me`:
-            return ok({ status: "success", data: { user: buyer } });
+            return ok({ status: "success", data: { user: fixture.verifiedBuyer ?? buyer } });
           case `${proxyPrefix}/orders`:
             if (fixture.paged) {
               const requested = url.searchParams.get("page");
@@ -423,6 +424,68 @@ for (const returnVia of ["browser Back", "receipt link", "changed filtered compo
     }
   });
 }
+
+test("A1 discards buyer A's delayed return replay when another tab verifies buyer B", async ({ context, page, orderFixture }) => {
+  await page.setViewportSize({ width: 1024, height: 768 });
+  const a = { rows: returnOrders, reads: [] as number[] };
+  orderFixture.paged = a;
+  await page.goto(ordersPath);
+  await expect(page.getByRole("heading", { name: "Buyer One" })).toBeVisible();
+  const search = page.getByPlaceholder("Search Order ID or Item...");
+  await search.fill(returnSearch);
+  const more = page.getByRole("button", { name: "Load More Orders" });
+  await more.click();
+  await expect(page.getByText(`${returnSearch}-20`, { exact: true })).toBeVisible();
+  await more.click();
+  const anchor = orderDetailsLink(page);
+  await anchor.evaluate(node => node.scrollIntoView({ block: "center", behavior: "instant" }));
+  await expect(anchor).toBeInViewport();
+  const savedY = await page.evaluate(() => window.scrollY);
+  expect(savedY).toBeGreaterThan(768);
+  await anchor.click();
+  await expect(page.getByRole("heading", { name: "RECEIPT", exact: true })).toBeVisible();
+
+  // Capture A's response before changing the synthetic server session. Only the original tab is delayed.
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  let settled = false;
+  await page.route(url => url.pathname === `${proxyPrefix}/orders` && url.searchParams.get("page") === "2", async route => {
+    const json = pagedOrderResponse(a, 2);
+    await gate;
+    await route.fulfill({ json });
+    settled = true;
+  }, { times: 1 });
+  try {
+    await page.getByRole("link", { name: "Back to Orders" }).click();
+    await expect.poll(() => a.reads).toEqual([1, 2, 3, 1, 2]);
+    const b = { ...buyer, id: "buyer-2", lastName: "Two", email: "two@example.test" };
+    orderFixture.verifiedBuyer = b;
+    orderFixture.paged = { reads: [], rows: returnOrders.slice(0, 20).map((row, i) => ({
+      ...row, id: `00000000-0000-4000-8000-${String(500 + i).padStart(12, "0")}`,
+      userId: b.id, orderNumber: `B-HISTORY-${i}`,
+    })) };
+    const sibling = await context.newPage();
+    await sibling.setViewportSize({ width: 1024, height: 768 });
+    await sibling.goto(ordersPath);
+    const identity = { name: "Buyer Two", exact: true };
+    await expect(sibling.getByRole("heading", identity)).toBeVisible();
+    await expect(page.getByRole("heading", identity)).toBeVisible();
+    const assertFreshHistory = async () => {
+      await expect(page.getByText("B-HISTORY-0", { exact: true })).toBeVisible();
+      await expect(search).toHaveValue("");
+      await expect(page.getByText(returnSearch, { exact: false })).toHaveCount(0);
+      await expect(anchor).toHaveCount(0);
+      expect(await page.evaluate(() => window.scrollY)).toBe(0);
+    };
+    await assertFreshHistory();
+    release();
+    await expect.poll(() => settled).toBe(true);
+    await page.evaluate(() => new Promise<void>(done => requestAnimationFrame(() => requestAnimationFrame(() => done()))));
+    await assertFreshHistory();
+  } finally {
+    release();
+  }
+});
 
 test("an empty order history offers a native category link", async ({ page, orderFixture }, testInfo) => {
   orderFixture.listCount = 0;
