@@ -3,15 +3,17 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone, LifeBuoy } from "lucide-react";
+import { usePathname, useRouter } from "next/navigation";
+import { AlertCircle, ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone, LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
-import { getInvoiceById } from "@/services/orders";
-import type { Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 import { useAuthSession } from "@/hooks/use-auth-session";
+import { appendNextPath } from "@/services/auth-intent";
+import { BuyerOrderCancelDialog } from "@/features/buyer-orders/components/BuyerOrderCancelDialog";
+import { useBuyerOrderCancellation } from "@/features/buyer-orders/hooks/use-buyer-order-cancellation";
 import { orderHistoryHref, parseOrderFilter } from "@/features/buyer-orders/lib/order-return-state";
 
 const STATUS_CONFIG = {
@@ -50,29 +52,24 @@ export default function InvoicePage({
 }) {
   const { id } = use(params);
   const backToOrders = orderHistoryHref(parseOrderFilter(use(searchParams).status));
+  const pathname = usePathname();
+  const router = useRouter();
   const auth = useAuthSession();
-
-  const [invoice, setInvoice] = React.useState<Invoice | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<unknown>(null);
-
-  const loadInvoice = React.useCallback(async () => {
-    if (auth.status !== "authenticated") return;
-    try {
-      setLoading(true);
-      setError(null);
-      const data = await getInvoiceById(id, auth.user);
-      setInvoice(data);
-    } catch (loadError) {
-      setError(loadError);
-    } finally {
-      setLoading(false);
-    }
-  }, [auth, id]);
-
-  React.useEffect(() => {
-    loadInvoice();
-  }, [loadInvoice]);
+  const {
+    invoice,
+    loading,
+    loadError: error,
+    loadInvoice,
+    dialogOpen,
+    isSubmitting,
+    isCheckingStatus,
+    feedback,
+    canShowCancelAction,
+    openDialog,
+    handleDialogOpenChange,
+    confirmCancellation,
+    checkOrderStatus,
+  } = useBuyerOrderCancellation(id, auth);
 
   if (loading) {
     return <div className="py-16 text-center text-sm font-medium text-zinc-500">Loading invoice details...</div>;
@@ -86,6 +83,36 @@ export default function InvoicePage({
         onRetry={loadInvoice}
         secondaryAction={{ href: backToOrders, label: "Back to Orders" }}
       />
+    );
+  }
+
+  if (feedback?.kind === "auth-required") {
+    return (
+      <div
+        role="alert"
+        aria-live="polite"
+        className="rounded-3xl border border-amber-200 bg-white p-6 shadow-sm sm:p-8 print:hidden"
+      >
+        <div className="flex items-start gap-3">
+          <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-700" aria-hidden="true" />
+          <div className="space-y-3">
+            <h1 className="text-lg font-black text-zinc-900">Sign in to continue</h1>
+            <p className="text-sm font-medium text-zinc-600">{feedback.message}</p>
+            <div className="flex flex-wrap gap-3 pt-1">
+              <Button
+                type="button"
+                onClick={() => router.replace(appendNextPath("/auth/login?reason=signin-again", pathname))}
+                className="h-11 bg-zinc-900 text-white hover:bg-zinc-800"
+              >
+                Sign in
+              </Button>
+              <Button asChild variant="ghost" className="h-11 text-zinc-600 hover:text-zinc-900">
+                <Link href={backToOrders}>Back to Orders</Link>
+              </Button>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   }
 
@@ -104,10 +131,57 @@ export default function InvoicePage({
           </Link>
         </Button>
 
-        <Button onClick={() => window.print()} className="h-11 bg-zinc-900 text-white hover:bg-zinc-800">
-          <Printer className="mr-2 h-4 w-4" /> View / Print Receipt
-        </Button>
+        <div className="flex flex-wrap items-center gap-2">
+          {canShowCancelAction ? (
+            <BuyerOrderCancelDialog
+              orderLabel={invoice.orderNumber || invoice.id}
+              open={dialogOpen}
+              isSubmitting={isSubmitting}
+              csrfRetryMessage={feedback?.kind === "csrf-expired" ? feedback.message : null}
+              onOpenTrigger={openDialog}
+              onOpenChange={handleDialogOpenChange}
+              onConfirmCancellation={confirmCancellation}
+            />
+          ) : null}
+
+          <Button onClick={() => window.print()} className="h-11 bg-zinc-900 text-white hover:bg-zinc-800">
+            <Printer className="mr-2 h-4 w-4" /> View / Print Receipt
+          </Button>
+        </div>
       </div>
+
+      {feedback && feedback.kind !== "csrf-expired" ? (
+        <div
+          role={feedback.kind === "confirmed" ? "status" : "alert"}
+          aria-live="polite"
+          className={`flex flex-col gap-3 rounded-2xl border p-4 sm:flex-row sm:items-center sm:justify-between print:hidden ${
+            feedback.kind === "confirmed"
+              ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <div className="flex items-start gap-2.5 text-sm font-medium">
+            {feedback.kind === "confirmed" ? (
+              <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-700" aria-hidden="true" />
+            ) : (
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-700" aria-hidden="true" />
+            )}
+            <span>{feedback.message}</span>
+          </div>
+
+          {feedback.kind === "uncertain" ? (
+            <Button
+              type="button"
+              variant="outline"
+              disabled={isCheckingStatus}
+              onClick={() => void checkOrderStatus()}
+              className="h-10 shrink-0 border-amber-300 bg-white text-amber-900 hover:bg-amber-100"
+            >
+              {isCheckingStatus ? "Checking status…" : "Check order status"}
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
 
       <div className="@container/receipt rounded-3xl border border-zinc-200/60 bg-white p-6 shadow-sm sm:p-10 print:border-none print:shadow-none print:p-0">
         <div className="mb-8 flex flex-col justify-between gap-6 sm:flex-row">
@@ -177,9 +251,13 @@ export default function InvoicePage({
             <div className="flex items-start gap-3">
               <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
               <div>
-                <h3 className="text-sm font-bold text-red-900">Order Cancelled</h3>
+                <h3 className="text-sm font-bold text-red-900">
+                  {invoice.rawStatus === "REFUNDED" ? "Order Refunded" : "Order Cancelled"}
+                </h3>
                 <p className="mt-1 text-sm text-red-700">
-                  Refund status will appear here when a cancelled order has a recorded refund.
+                  {invoice.rawStatus === "REFUNDED"
+                    ? "A refund has been recorded for this order."
+                    : "Refund status will appear here if a refund is recorded for this cancelled order."}
                 </p>
               </div>
             </div>

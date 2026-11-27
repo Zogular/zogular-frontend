@@ -231,43 +231,69 @@ function formatPaymentMethod(method?: string): string {
   return method;
 }
 
-export async function getInvoiceById(id: string, verifiedUser?: AuthUser, signal?: AbortSignal): Promise<Invoice> {
-  const response = await apiClient<unknown>(`/orders/${id}`, { signal });
-  if (!response || typeof response !== "object" || !("data" in response)) {
+export function parseBuyerCanCancel(order: unknown): boolean {
+  if (!order || typeof order !== "object" || Array.isArray(order)) {
+    return false;
+  }
+  const buyerActions = (order as { buyerActions?: unknown }).buyerActions;
+  if (!buyerActions || typeof buyerActions !== "object" || Array.isArray(buyerActions)) {
+    return false;
+  }
+  return (buyerActions as { canCancel?: unknown }).canCancel === true;
+}
+
+function hasExplicitFalseBuyerCanCancel(order: unknown): boolean {
+  if (!order || typeof order !== "object" || Array.isArray(order)) {
+    return false;
+  }
+  const buyerActions = (order as { buyerActions?: unknown }).buyerActions;
+  if (!buyerActions || typeof buyerActions !== "object" || Array.isArray(buyerActions)) {
+    return false;
+  }
+  return (buyerActions as { canCancel?: unknown }).canCancel === false;
+}
+
+function parseOrderDetailEnvelope(
+  response: unknown,
+  expectedOrderId: string,
+  verifiedUser?: AuthUser,
+): Invoice {
+  if (!response || typeof response !== "object" || Array.isArray(response) || !("data" in response)) {
     throw new OrderContractError("Order response is malformed.");
   }
   const data = (response as { data?: unknown }).data;
-  if (!data || typeof data !== "object" || !("order" in data)) {
+  if (!data || typeof data !== "object" || Array.isArray(data) || !("order" in data)) {
     throw new OrderContractError("Order response is malformed.");
   }
   const order = (data as { order?: unknown }).order;
   assertBackendOrder(order);
-  
-  // Try to parse shipping address if it's JSON
+  if (order.id !== expectedOrderId) {
+    throw new OrderContractError("Order response does not match the requested order.");
+  }
+
   let shippingAddressStr = "N/A";
   let shippingArea = "N/A";
   let shippingCity = "N/A";
   let shippingName = "Customer";
   let shippingPhone = "N/A";
-  
+
   if (order.shippingAddress) {
-    if (typeof order.shippingAddress === 'string') {
-       shippingAddressStr = order.shippingAddress;
-    } else if (typeof order.shippingAddress === 'object') {
-       const addr = order.shippingAddress as Record<string, string>;
-       shippingAddressStr = addr.address || addr.addressLine || addr.street || "N/A";
-       shippingArea = addr.area || addr.district || "N/A";
-       shippingCity = addr.city || "N/A";
-       shippingName = addr.fullName || addr.name || shippingName;
-       shippingPhone = addr.phone || shippingPhone;
+    if (typeof order.shippingAddress === "string") {
+      shippingAddressStr = order.shippingAddress;
+    } else if (typeof order.shippingAddress === "object") {
+      const addr = order.shippingAddress as Record<string, string>;
+      shippingAddressStr = addr.address || addr.addressLine || addr.street || "N/A";
+      shippingArea = addr.area || addr.district || "N/A";
+      shippingCity = addr.city || "N/A";
+      shippingName = addr.fullName || addr.name || shippingName;
+      shippingPhone = addr.phone || shippingPhone;
     }
   }
 
-  const getOrderItemLineTotal = (item: BackendOrderItem) => 
+  const getOrderItemLineTotal = (item: BackendOrderItem) =>
     typeof item.lineTotal === "number" ? item.lineTotal : (item.price || 0) * (item.quantity || 1);
 
   const subtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
-  
   const isLegacyIncomplete = isOrderLegacyIncomplete(order);
 
   return {
@@ -279,6 +305,8 @@ export async function getInvoiceById(id: string, verifiedUser?: AuthUser, signal
       day: "numeric",
     }),
     status: mapBackendStatusToFrontend(order.status),
+    rawStatus: order.status,
+    canCancel: parseBuyerCanCancel(order),
     customer: {
       name: verifiedUser ? `${verifiedUser.firstName} ${verifiedUser.lastName}`.trim() : shippingName,
       email: verifiedUser?.email || "N/A",
@@ -308,4 +336,30 @@ export async function getInvoiceById(id: string, verifiedUser?: AuthUser, signal
     total: isLegacyIncomplete ? null : (order.grandTotalAmount as number),
     isLegacyIncomplete,
   };
+}
+
+export async function getInvoiceById(id: string, verifiedUser?: AuthUser, signal?: AbortSignal): Promise<Invoice> {
+  const response = await apiClient<unknown>(`/orders/${encodeURIComponent(id)}`, { signal });
+  return parseOrderDetailEnvelope(response, id, verifiedUser);
+}
+
+export async function cancelBuyerOrder(id: string, verifiedUser?: AuthUser, signal?: AbortSignal): Promise<Invoice> {
+  const response = await apiClient<unknown>(`/orders/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    csrf: true,
+    noAutoReplay: true,
+    signal,
+  });
+
+  if (!response || typeof response !== "object" || Array.isArray(response) || (response as { status?: unknown }).status !== "success") {
+    throw new OrderContractError("Order cancellation response could not be verified.");
+  }
+
+  const rawOrder = (response as { data?: { order?: unknown } }).data?.order;
+  const invoice = parseOrderDetailEnvelope(response, id, verifiedUser);
+  if (invoice.rawStatus !== "CANCELLED" || !hasExplicitFalseBuyerCanCancel(rawOrder)) {
+    throw new OrderContractError("Order cancellation response could not be verified.");
+  }
+
+  return invoice;
 }

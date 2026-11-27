@@ -1,3 +1,5 @@
+import type { BackendOrderStatus } from "@/types/backend-order";
+
 export type OrderStatus = "processing" | "shipped" | "delivered" | "cancelled";
 
 export interface OrderLineItem {
@@ -44,6 +46,8 @@ export interface Invoice {
   orderNumber?: string;
   date: string;
   status: OrderStatus;
+  rawStatus: BackendOrderStatus;
+  canCancel: boolean;
   customer: {
     name: string;
     email: string;
