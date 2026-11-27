@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useMemo } from "react";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { QueryClient, useQuery } from "@tanstack/react-query";
+import { overviewKey, overviewPlaceholder, purgeOverview } from "../lib/overview-cache";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { shouldHideOverviewAfterRefreshError } from "@/features/admin-overview/components/OverviewStates";
 import {
@@ -26,7 +27,6 @@ import {
 } from "@/features/admin-shell";
 
 export const ADMIN_OVERVIEW_REFETCH_INTERVAL_MS = DEFAULT_ADMIN_REFRESH_SETTINGS.intervalMs;
-export const ADMIN_OVERVIEW_QUERY_KEY = "admin-dashboard-overview" as const;
 
 export type AdminOverviewFreshness = "fresh" | "stale" | "degraded";
 
@@ -90,16 +90,27 @@ export function applyAdminOverviewQueryToSearchParams(
   return next;
 }
 
-export function adminOverviewQueryKey(query: AdminDashboardOverviewQuery) {
-  return [
-    ADMIN_OVERVIEW_QUERY_KEY,
-    query.period,
-    query.comparison,
-    query.groupBy,
-  ] as const;
-}
-
-export function useAdminOverview() {
+export function useAdminOverview(authority: string) {
+  // The keyed workspace owns this client. No data survives into a new session or shell.
+  const [client] = useState(() => new QueryClient());
+  const [terminal, setTerminal] = useState<ReturnType<typeof getAdminOverviewSafeError> | null>(null);
+  const blocked = useRef(false);
+  const mounted = useRef(false);
+  useEffect(() => {
+    mounted.current = true;
+    client.mount();
+    return () => {
+      mounted.current = false;
+      client.unmount();
+      // Strict Mode immediately reattaches the same client; a real exit releases all periods.
+      queueMicrotask(() => {
+        if (!mounted.current) purgeOverview(client, authority);
+      });
+    };
+  }, [authority, client]);
+  useEffect(() => {
+    if (terminal) purgeOverview(client, authority);
+  }, [authority, client, terminal]);
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -133,9 +144,22 @@ export function useAdminOverview() {
   }, [query, searchParamsKey, writeQuery]);
 
   const result = useQuery({
-    queryKey: adminOverviewQueryKey(query),
-    queryFn: ({ signal }) => fetchAdminDashboardOverview({ ...query, signal }),
-    placeholderData: keepPreviousData,
+    queryKey: overviewKey(authority, query),
+    enabled: !terminal,
+    queryFn: async ({ signal }) => {
+      if (blocked.current) throw new Error("Overview access is unavailable.");
+      try {
+        return await fetchAdminDashboardOverview({ ...query, signal });
+      } catch (cause) {
+        const safe = getAdminOverviewSafeError(cause);
+        if (!signal.aborted && (safe.kind === "unauthenticated" || safe.kind === "forbidden")) {
+          blocked.current = true;
+          setTerminal(safe);
+        }
+        throw cause;
+      }
+    },
+    placeholderData: (previous, entry) => blocked.current ? undefined : overviewPlaceholder(authority, previous, entry?.queryKey),
     staleTime: refreshPolicy.effectiveIntervalMs ? refreshPolicy.effectiveIntervalMs : Infinity,
     refetchInterval: refreshPolicy.effectiveIntervalMs,
     refetchIntervalInBackground: false,
@@ -143,9 +167,9 @@ export function useAdminOverview() {
     refetchOnMount: refreshPolicy.settings.refreshOnNavigation,
     refetchOnReconnect: true,
     retry: false,
-  });
+  }, client);
 
-  const error = result.error ? getAdminOverviewSafeError(result.error) : null;
+  const error = terminal ?? (result.error ? getAdminOverviewSafeError(result.error) : null);
   const failClosed = Boolean(
     error &&
       (shouldHideOverviewAfterRefreshError(error) ||
@@ -157,7 +181,7 @@ export function useAdminOverview() {
     : result.isStale || result.isPlaceholderData
       ? "stale"
       : "fresh";
-  const isInitialLoading = result.isPending && !data;
+  const isInitialLoading = !error && result.isPending && !data;
   const isRefreshing = result.isFetching && !result.isPending;
 
   const setPeriod = useCallback(
@@ -181,7 +205,7 @@ export function useAdminOverview() {
   );
 
   const refresh = useCallback(
-    () => result.refetch({ cancelRefetch: false }),
+    () => { if (mounted.current && !blocked.current) return result.refetch({ cancelRefetch: false }); },
     [result],
   );
 
