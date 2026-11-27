@@ -9,7 +9,7 @@ const pageNumber = z.string().regex(/^[1-9]\d{0,3}$/).transform(Number).pipe(z.i
 const text = z.string().nullable();
 const dimension = z.number().nullable();
 const segment = z.string().min(1).regex(/^[^\s/%?#\\]+$/).refine((value) => value !== "." && value !== "..");
-const imageUrl = z.string().refine((value) => {
+function isSupportedStoreImage(value: string): boolean {
   if (/^\/(?![\/\\])[^\\\s]*$/.test(value)) return true;
   try {
     const url = new URL(value);
@@ -19,7 +19,7 @@ const imageUrl = z.string().refine((value) => {
   } catch {
     return false;
   }
-});
+}
 
 // Validate the canonical public serializer shape before passing data to the shared card normalizer.
 const publicProduct = z.strictObject({
@@ -30,7 +30,7 @@ const publicProduct = z.strictObject({
   price: z.number().positive(),
   salePrice: z.number().nullable(),
   images: z.array(z.strictObject({
-    url: imageUrl, alt: text, isPrimary: z.boolean(), sortOrder: z.number(),
+    url: z.string(), alt: text, isPrimary: z.boolean(), sortOrder: z.number(),
     linkedVariantValue: text, width: dimension, height: dimension,
   })),
   condition: z.string(),
@@ -109,7 +109,10 @@ export async function getPublicStorePage(slug: string, page: number): Promise<St
     return { kind: "ready", data: {
       store, pagination,
       products: products.map((product) => normalizeBackendProduct({
-        ...product, user: undefined, reviews: product.reviews.map(({ rating }) => ({ rating })),
+        ...product,
+        // Media that the public API can serialize is not necessarily renderable by the shared card.
+        images: product.images.filter(({ url }) => isSupportedStoreImage(url)),
+        user: undefined, reviews: product.reviews.map(({ rating }) => ({ rating })),
       })),
     } };
   } catch {

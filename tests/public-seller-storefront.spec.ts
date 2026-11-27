@@ -15,6 +15,7 @@ const backendPath = `/api/v1/products/by-store/${storeSlug}`;
 const rawDiagnostic = "Fixture internal directory diagnostic";
 const ownerId = "opaque-public-owner-fixture";
 const reviewerName = "FixtureReviewer";
+const unapprovedHost = "unapproved-media.example.test";
 const limit = 20;
 const loopbackOnly = `import { Socket } from "node:net";
 const connect = Socket.prototype.connect;
@@ -34,12 +35,17 @@ let fixturePort: number | undefined;
 const storeReads: Array<{ page: string | null; limit: string | null; auth: boolean }> = [];
 
 function product(n: number) {
+  const image = {
+    url: "/images/discovery/category-artwork.webp", alt: null, isPrimary: true, sortOrder: 0,
+    linkedVariantValue: null, width: null, height: null,
+  };
+  const external = { ...image, url: `https://${unapprovedHost}/lamp.webp` };
+  const insecure = { ...image, url: "http://res.cloudinary.com/fixture/lamp.webp" };
   return {
     id: `product-${n}`, slug: `desk-lamp-${n}`, title: `Desk lamp ${n}`, description: "Fixture lamp",
-    price: 149, salePrice: null, images: [{
-      url: "/images/discovery/category-artwork.webp", alt: null, isPrimary: true, sortOrder: 0,
-      linkedVariantValue: null, width: null, height: null,
-    }],
+    price: 149, salePrice: null, images: n === 1
+      ? [external, { ...image, isPrimary: false, sortOrder: 1 }]
+      : n === 2 ? [insecure, external] : [image],
     condition: "NEW", category: "ELECTRONICS", categoryRef: null, categorySlug: null, subcategorySlug: null,
     location: null, sku: null, stock: 4, brand: null, model: null, ram: null, storage: null, size: null, color: null,
     isSold: false, user: { id: ownerId }, reviews: [{
@@ -178,13 +184,28 @@ test.beforeEach(async ({ context }) => {
 });
 
 for (const width of [320, 1440]) {
-  test(`renders the approved name and paginates the public store at ${width}px`, async ({ page }, testInfo) => {
+  test(`renders and paginates the public store with mixed media at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: width === 320 ? 700 : 900 });
+    const unsupportedRequests: string[] = [];
+    page.on("request", (request) => {
+      const url = new URL(request.url());
+      const source = url.pathname === "/_next/image" ? url.searchParams.get("url") : url.href;
+      if (source?.includes(unapprovedHost) || source?.startsWith("http://res.cloudinary.com/")) {
+        unsupportedRequests.push(source);
+      }
+    });
     await page.goto(`${origin}${path}`);
     await expect(page.getByRole("heading", { name: storeName, exact: true })).toBeInViewport();
     const grid = page.getByRole("list", { name: "Store products" });
     await expect(grid.getByTestId("product-card")).toHaveCount(limit);
-    await expect(grid.getByRole("link", { name: "View Desk lamp 1", exact: true })).toHaveAttribute("href", "/product/desk-lamp-1");
+    await expect(page.getByText("21 products", { exact: true })).toBeVisible();
+    const mixedMedia = grid.getByRole("link", { name: "View Desk lamp 1", exact: true });
+    await expect(mixedMedia).toHaveAttribute("href", "/product/desk-lamp-1");
+    await expect.poll(() => mixedMedia.locator("img").evaluate((img: HTMLImageElement) => img.naturalWidth)).toBeGreaterThan(0);
+    const noMedia = grid.getByRole("link", { name: "View Desk lamp 2", exact: true });
+    await expect(noMedia).toBeVisible();
+    await expect(noMedia.locator("img")).toHaveCount(0);
+    expect(await page.content()).not.toContain(unapprovedHost);
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("store-products.png"), animations: "disabled" });
     const nextPage = page.getByRole("link", { name: "Next", exact: true });
@@ -203,6 +224,7 @@ for (const width of [320, 1440]) {
     const html = await page.content();
     expect(html).not.toContain(ownerId);
     expect(html).not.toContain(reviewerName);
+    expect(unsupportedRequests).toEqual([]);
   });
 }
 
