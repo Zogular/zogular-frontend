@@ -1,5 +1,5 @@
 import type { CartItem } from "@/hooks/use-cart";
-import { ApiError } from "@/services/api";
+import { ApiError, isCsrfError } from "@/services/api";
 import { CheckoutContractError } from "@/services/checkout";
 import type { Address } from "@/types/address";
 import type { CheckoutErrorBoundary } from "@/features/checkout/types/checkout.types";
@@ -38,6 +38,9 @@ export function getCheckoutErrorMessage(
       : "Your order details could not be confirmed. Review them and try again.";
   }
   if (error instanceof ApiError) {
+    if (boundary === "create" && isCsrfError(error)) {
+      return "Your order was not placed because your checkout verification expired. Select Place Order Now to try again.";
+    }
     if (error.status === 401 || error.status === 403) return "Please sign in again to continue.";
     if (error.status === 404 || error.status === 409 || error.status === 422) {
       return boundary === "address"

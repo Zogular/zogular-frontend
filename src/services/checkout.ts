@@ -279,6 +279,7 @@ export async function createCheckoutOrder(
     response = await apiClient<unknown>("/orders", {
       method: "POST",
       csrf: true,
+      noAutoReplay: true,
       body: JSON.stringify({ ...request, expectedQuote }),
     });
   } catch (error) {
