@@ -4,6 +4,11 @@ import { CheckoutContractError } from "@/services/checkout";
 import type { Address } from "@/types/address";
 import type { CheckoutErrorBoundary } from "@/features/checkout/types/checkout.types";
 
+export interface QuoteRecovery {
+  message: string;
+  action: "review-cart" | "refresh-total";
+}
+
 export function formatCheckoutCurrency(value: number): string {
   return `K${value.toLocaleString()}`;
 }
@@ -40,7 +45,9 @@ export function getCheckoutErrorMessage(
   if (error instanceof ApiError) {
     if (error.status === 409 && error.details && typeof error.details === "object" && "code" in error.details) {
       if (error.details.code === "CHECKOUT_INTENT_CONFLICT") return "This cart was used for another checkout. Check its order status.";
-      if (error.details.code === "CHECKOUT_CART_CHANGED") return "Your cart changed. Check its order status before reviewing the latest cart.";
+      if (error.details.code === "CHECKOUT_CART_CHANGED") return boundary === "quote"
+        ? "Your cart changed. Review your updated cart before checking out."
+        : "Your cart changed. Check its order status before reviewing the latest cart.";
       if (error.details.code === "CHECKOUT_RELOAD_REQUIRED") return "Refresh checkout and review the latest totals.";
     }
     if (boundary === "create" && isCsrfError(error)) {

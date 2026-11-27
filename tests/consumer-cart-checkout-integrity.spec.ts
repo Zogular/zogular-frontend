@@ -1510,6 +1510,154 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     });
   }
 
+  for (const scenario of ["review", "concurrent edit", "buyer switch", "late hold", "create conflict"] as const) {
+    test(`quote recovery boundary: ${scenario}`, async ({ page }, info) => {
+      const mobile = scenario === "review";
+      await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      const line = cartPayload().data.cart.items[0];
+      const latest = cartPayload({ generation: IDS.secondProduct, items: [{
+        ...line, id: IDS.secondCartItem, productId: IDS.secondProduct,
+        product: { ...line.product, id: IDS.secondProduct, title: "Updated cart item", slug: "updated-cart-item" },
+      }] });
+      const started = deferred<void>(), release = deferred<void>();
+      let review = false, reads = 0, quotes = 0, receipts = 0, creates = 0;
+      let buyer = "owner-a";
+      const unexpected: string[] = [];
+      const conflict = { status: "fail", code: "CHECKOUT_CART_CHANGED", message: "private fixture detail" };
+      await page.route("**/api/backend/**", async route => {
+        const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+        const method = route.request().method();
+        if (path === "/user/me") return route.fulfill({ json: userPayload(buyer) });
+        if (path === "/user/addresses") return route.fulfill({ json: addressPayload(buyer) });
+        if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (path === "/cart" && method === "GET") {
+          if (buyer === "owner-b") return route.fulfill({ json: cartPayload({ generation: IDS.secondProduct,
+            items: [], summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 } }) });
+          if (!review) return route.fulfill({ json: cartPayload(mobile ? {} : { generation: IDS.cart }) });
+          reads++;
+          if ((mobile && reads === 1) || (!mobile && reads > 1)) return route.fulfill({ status: 503, json: {} });
+          started.resolve();
+          await release.promise;
+          return route.fulfill({ json: latest });
+        }
+        if (path === "/orders/quote" && method === "POST") {
+          quotes++;
+          if (mobile && quotes === 1) return route.fulfill({ status: 503, json: {} });
+          if (scenario === "create conflict") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+          return route.fulfill({ status: 409, json: conflict });
+        }
+        if (path === "/orders" && method === "POST") {
+          creates++;
+          return route.fulfill({ status: 409, json: conflict });
+        }
+        if (path === "/orders/checkout-receipt/" + IDS.cart && method === "GET") {
+          receipts++;
+          return route.fulfill({ status: 404, json: {} });
+        }
+        if (method !== "GET" || path.startsWith("/orders")) unexpected.push(method + " " + path);
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+      try {
+        await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+        await advanceMobileCheckoutToReview(page);
+        const action = page.getByRole("button", { name: "Review cart", exact: true });
+        const alert = page.locator("form").getByRole("alert");
+        if (scenario === "create conflict") {
+          await page.getByRole("button", { name: "Place Order Now" }).click();
+          await expect(page.getByRole("heading", { name: "Order outcome not confirmed" })).toBeVisible();
+          await expect(action).toHaveCount(0);
+          await page.getByRole("button", { name: "Check order status" }).click();
+          await expect(page.getByText("No receipt is available yet.", { exact: false })).toBeVisible();
+          expect([creates, receipts]).toEqual([1, 1]);
+          expect(unexpected).toEqual([]);
+          return;
+        }
+        if (mobile) {
+          const retry = page.getByRole("button", { name: "Refresh order total" });
+          await expect(retry).toBeVisible();
+          await expect(action).toHaveCount(0);
+          await retry.click();
+        }
+        await expect(alert).toHaveText("Your cart changed. Review your updated cart before checking out.");
+        await expect(page.getByRole("button", { name: "Place Order Now" })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "Refresh order total" })).toHaveCount(0);
+        await expect(page.getByText(/private fixture detail|CHECKOUT_CART_CHANGED|check its order status/i)).toHaveCount(0);
+        await action.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: info.outputPath("quote-conflict.png") });
+        const issued = () => page.evaluate(() => localStorage.getItem("zg-checkout:owner-a:issued"));
+        expect(await issued()).toBe(mobile ? null : IDS.cart);
+        review = true;
+        if (mobile) {
+          await action.click();
+          await expect(alert).toHaveText("Your cart could not be refreshed. Try reviewing it again.");
+          await expect(action).toBeEnabled();
+          expect(await issued()).toBeNull();
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        }
+        await action.click();
+        await started.promise;
+        await expect(action).toBeDisabled();
+        if (scenario === "late hold") {
+          // Publish the existing owner-scoped unknown marker from a second tab
+          // while the first tab's deliberate cart read is still outstanding.
+          const other = await page.context().newPage();
+          try {
+            await other.goto(baseUrl + "/icon.png");
+            await other.evaluate(key => localStorage.setItem("zg-checkout:owner-a:hold:" + key, key), IDS.cart);
+          } finally { await other.close(); }
+          const check = page.getByRole("button", { name: "Check order status" });
+          await expect(check).toBeVisible();
+          const stale = page.waitForResponse(r => r.url().endsWith("/api/backend/cart") && r.status() === 200);
+          release.resolve();
+          await (await stale).finished();
+          await expect(check).toBeVisible();
+          expect(await issued()).toBe(IDS.cart);
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        } else if (scenario === "buyer switch") {
+          buyer = "owner-b";
+          await setBrowserIdentity(page, buyer);
+          const empty = page.getByRole("heading", { name: "Your cart is empty" });
+          await expect(empty).toBeVisible();
+          const stale = page.waitForResponse(r => r.url().endsWith("/api/backend/cart") && r.status() === 200);
+          release.resolve();
+          await (await stale).finished();
+          await expect(empty).toBeVisible();
+          await expect(page.getByText("Updated cart item", { exact: true })).toHaveCount(0);
+          expect(await issued()).toBe(IDS.cart);
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        } else if (scenario === "concurrent edit") {
+          await page.getByRole("button", { name: "Open cart" }).click();
+          await page.getByRole("button", { name: /Decrease Samsung Galaxy A55 5G quantity/ }).click();
+          const kept = page.getByRole("button", { name: "Remove Samsung Galaxy A55 5G", exact: true });
+          await expect(kept).toBeVisible();
+          const stale = page.waitForResponse(r => r.url().endsWith("/api/backend/cart") && r.status() === 200);
+          release.resolve();
+          await (await stale).finished();
+          await expect(kept).toBeVisible();
+          await page.keyboard.press("Escape");
+          const previousReads = reads;
+          await action.click();
+          await expect(alert).toHaveText("Your cart changes were kept. Open your cart and review them before checking out.");
+          expect(reads).toBe(previousReads);
+          expect(await issued()).toBe(IDS.cart);
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        } else {
+          release.resolve();
+          await expect(page).toHaveURL(baseUrl + "/cart");
+          await expect(page.getByText("Updated cart item", { exact: true })).toBeVisible();
+          await expect(page.getByText("Samsung Galaxy A55 5G", { exact: true })).toHaveCount(0);
+          expect(reads).toBe(2);
+          expect(await issued()).toBe(IDS.secondProduct);
+        }
+        expect([creates, receipts]).toEqual([0, 0]);
+      } finally { release.resolve(); }
+      expect(unexpected).toEqual([]);
+    });
+  }
+
   for (const [width, height] of [[320, 568], [390, 844], [1440, 900]]) {
     test(`held checkout restores visible recovery on reload at ${width}px`, async ({ page }, info) => {
       await page.setViewportSize({ width, height });

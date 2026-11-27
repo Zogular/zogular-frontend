@@ -22,6 +22,7 @@ import {
   buildCartRequestKey,
   getCheckoutErrorMessage,
   isValidCheckoutAddress,
+  type QuoteRecovery,
 } from "@/features/checkout/lib/checkout-presentation";
 import type { CheckoutStage } from "@/features/checkout/types/checkout.types";
 import { ApiError } from "@/services/api";
@@ -66,7 +67,10 @@ export function useCheckoutFlow(auth: ClientAuthState) {
   const [quotedAddress, setQuotedAddress] = React.useState<Address | null>(null);
   const [quoteRefreshVersion, refreshQuote] = React.useReducer((value: number) => value + 1, 0);
   const [isLoadingQuote, setIsLoadingQuote] = React.useState(false);
-  const [quoteError, setQuoteError] = React.useState<string | null>(null);
+  type QuoteFailure = QuoteRecovery & { current: () => boolean };
+  const [quoteError, setQuoteError] = React.useState<QuoteFailure | null>(null);
+  const reviewRequest = React.useRef<QuoteFailure | null>(null);
+  const [reviewing, setReviewing] = React.useState<QuoteFailure | null>(null);
 
   if (identityRef.current.ownerId !== ownerId) {
     identityRef.current.ownerId = ownerId;
@@ -156,13 +160,18 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       setQuotedCartKey(null);
       setQuotedAddress(null);
       setIsLoadingQuote(false);
+      setQuoteError(null);
       return;
     }
 
     const expectedOwnerId = auth.user.id;
     const epoch = identityRef.current.epoch;
     const requestCartKey = currentCartKey;
+    const session = getAuthSessionSnapshot();
     let active = true;
+    const current = () => active && isCurrentIdentity(expectedOwnerId, epoch)
+      && getAuthSessionSnapshot() === session && !heldGeneration(expectedOwnerId)
+      && useCart.getState().checkoutOutcomeOwnerId !== expectedOwnerId;
     const fetchQuote = async () => {
       setIsLoadingQuote(true);
       setQuoteError(null);
@@ -185,17 +194,18 @@ export function useCheckoutFlow(auth: ClientAuthState) {
           },
           paymentMethod: "cash_on_delivery",
         }, checkoutMode(expectedOwnerId));
-        if (active && isCurrentIdentity(expectedOwnerId, epoch)) {
+        if (current()) {
           observeGeneration(expectedOwnerId, quote.cartGeneration);
           setOrderQuote(quote);
           setQuotedCartKey(requestCartKey);
           setQuotedAddress(selectedAddress);
         }
       } catch (error) {
-        if (active && isCurrentIdentity(expectedOwnerId, epoch)) {
+        if (current()) {
           setOrderQuote(null);
           setQuotedCartKey(null);
-          setQuoteError(getCheckoutErrorMessage(error, "quote"));
+          setQuoteError({ message: getCheckoutErrorMessage(error, "quote"), current,
+            action: conflictCode(error) === "CHECKOUT_CART_CHANGED" ? "review-cart" : "refresh-total" });
         }
       } finally {
         if (active && isCurrentIdentity(expectedOwnerId, epoch)) setIsLoadingQuote(false);
@@ -217,6 +227,35 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     quoteRefreshVersion,
     selectedAddress,
   ]);
+
+  const retryQuote = async () => {
+    if (!ownerId || !quoteError?.current() || reviewRequest.current === quoteError) return;
+    if (quoteError.action === "refresh-total") { refreshQuote(); return; }
+
+    // Capture the idle store before the GET. Never reconcile (which can write)
+    // or replace newer local work merely because the buyer requested a review.
+    const fail = (message: string) => setQuoteError(previous =>
+      previous === quoteError ? { ...previous, message } : previous);
+    const adopt = useCart.getState().prepareCartAdoption(ownerId);
+    if (!adopt) { fail(CART_REVIEW_PENDING); return; }
+    reviewRequest.current = quoteError;
+    setReviewing(quoteError);
+    try {
+      const snapshot = await readCheckoutCart("required");
+      if (!quoteError.current()) return;
+      if (!adopt(snapshot.items)) { fail(CART_REVIEW_PENDING); return; }
+      if (!quoteError.current()) return;
+      observeGeneration(ownerId, snapshot.generation);
+      router.push("/cart");
+    } catch {
+      if (quoteError.current()) fail("Your cart could not be refreshed. Try reviewing it again.");
+    } finally {
+      if (reviewRequest.current === quoteError) {
+        reviewRequest.current = null;
+        setReviewing(null);
+      }
+    }
+  };
 
   const hasUnknownOutcome = Boolean(held) || (ownerId !== null && checkoutOutcomeOwnerId === ownerId);
   const detailsComplete = selectedAddressId !== null;
@@ -424,9 +463,9 @@ export function useCheckoutFlow(auth: ClientAuthState) {
     checkoutStage,
     setCheckoutStage,
     orderQuote,
-    isLoadingQuote,
+    isLoadingQuote: isLoadingQuote || (reviewing !== null && reviewing === quoteError),
     quoteError,
-    retryQuote: refreshQuote,
+    retryQuote,
     hasUnknownOutcome,
     held,
     placing: submitting && !checkingReceipt,
