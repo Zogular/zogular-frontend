@@ -1,148 +1,51 @@
-// src/services/settings.ts
-
+import { z } from "zod";
 import { apiClient } from "@/services/api";
 import { throwBackendPendingFeature } from "@/services/backend-pending";
 
-export interface StoreProfile {
-  name: string;
-  slug: string;
-  logo: string | null;
-  banner: string | null;
-  description: string;
-  category: string;
-}
+// The settings read model is server-owned. Empty media strings are valid wire values.
+const media = z.string().nullable().transform(value => value?.trim() || null);
+const settingsSchema = z.object({
+  profile: z.object({
+    name: z.string(), slug: z.string(), logo: media, banner: media,
+    description: z.string(), category: z.string(),
+  }),
+  business: z.object({
+    ownerName: z.string(), phone: z.string(), supportEmail: z.string(), address: z.string(),
+    city: z.string(), country: z.string(), taxNumber: z.string(),
+  }),
+  fulfillment: z.object({
+    deliveryEnabled: z.boolean(), pickupEnabled: z.boolean(), defaultDeliveryFee: z.number(),
+    freeDeliveryThreshold: z.number().nullable(), processingTimeDays: z.number(),
+  }),
+  operations: z.object({
+    storefrontVisible: z.boolean(), vacationMode: z.boolean(), autoAcceptOrders: z.boolean(),
+    inventoryTracking: z.boolean(), lowStockAlerts: z.boolean(), autoReplyMessage: z.string(),
+    returnPolicy: z.string(),
+  }),
+  seo: z.object({ metaTitle: z.string(), metaDescription: z.string(), keywords: z.string() }),
+});
 
-export interface BusinessInfo {
-  ownerName: string;
-  phone: string;
-  supportEmail: string;
-  address: string;
-  city: string;
-  country: string;
-  taxNumber: string;
-}
+const settingsEnvelope = z.object({
+  status: z.literal("success"),
+  data: z.object({ settings: settingsSchema }),
+});
 
-export interface FulfillmentSettings {
-  deliveryEnabled: boolean;
-  pickupEnabled: boolean;
-  defaultDeliveryFee: number;
-  freeDeliveryThreshold: number | null;
-  processingTimeDays: number;
-}
-
-export interface OperationalSettings {
-  storefrontVisible: boolean;
-  vacationMode: boolean;
-  autoAcceptOrders: boolean;
-  inventoryTracking: boolean;
-  lowStockAlerts: boolean;
-  autoReplyMessage: string;
-  returnPolicy: string;
-}
-
-export interface SeoSettings {
-  metaTitle: string;
-  metaDescription: string;
-  keywords: string;
-}
-
-export interface StoreSettings {
-  profile: StoreProfile;
-  business: BusinessInfo;
-  fulfillment: FulfillmentSettings;
-  operations: OperationalSettings;
-  seo: SeoSettings;
-}
+export type StoreSettings = z.infer<typeof settingsSchema>;
+export type StoreProfile = StoreSettings["profile"];
+export type BusinessInfo = StoreSettings["business"];
+export type FulfillmentSettings = StoreSettings["fulfillment"];
+export type OperationalSettings = StoreSettings["operations"];
+export type SeoSettings = StoreSettings["seo"];
 
 export const SELLER_SETTINGS_BACKEND_PENDING_NOTICE =
   "You can review your current store information, but editing and saving changes are not available yet.";
 
-
-function asString(val: unknown): string {
-  return typeof val === "string" ? val : "";
-}
-
-function asBoolean(val: unknown): boolean {
-  return typeof val === "boolean" ? val : false;
-}
-
-function asNumber(val: unknown): number {
-  return typeof val === "number" ? val : 0;
-}
-
-function asNullableString(val: unknown): string | null {
-  const str = asString(val).trim();
-  return str.length > 0 ? str : null;
-}
-
-function asNullableNumber(val: unknown): number | null {
-  return typeof val === "number" ? val : null;
-}
-
-function asRecord(val: unknown): Record<string, unknown> | null {
-  if (val && typeof val === "object" && !Array.isArray(val)) {
-    return val as Record<string, unknown>;
-  }
-  return null;
-}
-
-function normalizeStoreSettings(payload: unknown): StoreSettings {
-  const root = asRecord(payload);
-  const data = root?.data ? asRecord(root?.data) : root;
-  const settings = data?.settings ? asRecord(data.settings) : data;
-  
-  const profile = asRecord(settings?.profile);
-  const business = asRecord(settings?.business);
-  const fulfillment = asRecord(settings?.fulfillment);
-  const operations = asRecord(settings?.operations);
-  const seo = asRecord(settings?.seo);
-
-  return {
-    profile: {
-      name: asString(profile?.name),
-      slug: asString(profile?.slug),
-      logo: asNullableString(profile?.logo),
-      banner: asNullableString(profile?.banner),
-      description: asString(profile?.description),
-      category: asString(profile?.category),
-    },
-    business: {
-      ownerName: asString(business?.ownerName),
-      phone: asString(business?.phone),
-      supportEmail: asString(business?.supportEmail),
-      address: asString(business?.address),
-      city: asString(business?.city),
-      country: asString(business?.country) || "Zambia",
-      taxNumber: asString(business?.taxNumber),
-    },
-    fulfillment: {
-      deliveryEnabled: asBoolean(fulfillment?.deliveryEnabled),
-      pickupEnabled: asBoolean(fulfillment?.pickupEnabled),
-      defaultDeliveryFee: asNumber(fulfillment?.defaultDeliveryFee),
-      freeDeliveryThreshold: asNullableNumber(fulfillment?.freeDeliveryThreshold),
-      processingTimeDays: asNumber(fulfillment?.processingTimeDays),
-    },
-    operations: {
-      storefrontVisible: asBoolean(operations?.storefrontVisible),
-      vacationMode: asBoolean(operations?.vacationMode),
-      autoAcceptOrders: asBoolean(operations?.autoAcceptOrders),
-      inventoryTracking: asBoolean(operations?.inventoryTracking),
-      lowStockAlerts: asBoolean(operations?.lowStockAlerts),
-      autoReplyMessage: asString(operations?.autoReplyMessage),
-      returnPolicy: asString(operations?.returnPolicy),
-    },
-    seo: {
-      metaTitle: asString(seo?.metaTitle),
-      metaDescription: asString(seo?.metaDescription),
-      keywords: asString(seo?.keywords),
-    }
-  };
-}
-
 export const settingsApi = {
   async fetchSettings(): Promise<StoreSettings> {
     const payload = await apiClient<unknown>("/vendor/settings/me", { method: "GET" });
-    return normalizeStoreSettings(payload);
+    const result = settingsEnvelope.safeParse(payload);
+    if (!result.success) throw new Error("Seller settings could not be loaded.");
+    return result.data.data.settings;
   },
   async updateSettings(payload: StoreSettings): Promise<StoreSettings> {
     void payload;
