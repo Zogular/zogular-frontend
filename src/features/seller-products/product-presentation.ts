@@ -2,17 +2,22 @@ import type { SellerProductListing, SellerProductStatus } from "@/services/selle
 
 export type SellerProductStockState = "in-stock" | "low-stock" | "out-of-stock";
 
-export function getSellerProductStockState(product: SellerProductListing): SellerProductStockState {
-  if (product.stock === 0) return "out-of-stock";
+type StockPresentationInput = Pick<SellerProductListing, "stock" | "isSold" | "isLegacySingleItem" | "lowStockThreshold">;
+
+export function getSellerProductStockState(product: StockPresentationInput): SellerProductStockState {
+  if (product.isSold) return "out-of-stock";
+  // A legacy listing represents one item, not a counted stock level.
+  if (product.isLegacySingleItem) return "in-stock";
+  if (product.stock <= 0) return "out-of-stock";
   if (product.stock <= product.lowStockThreshold) return "low-stock";
   return "in-stock";
 }
 
-export function getSellerProductStockLabel(product: SellerProductListing) {
+export function getSellerProductStockLabel(product: StockPresentationInput) {
   const stockState = getSellerProductStockState(product);
   if (stockState === "out-of-stock") return "Out of stock";
   if (stockState === "low-stock") return `${product.stock} low`;
-  return `${product.stock} in stock`;
+  return `${product.isLegacySingleItem ? 1 : product.stock} in stock`;
 }
 
 export function formatSellerProductPrice(product: SellerProductListing) {
