@@ -1510,6 +1510,91 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     });
   }
 
+  for (const [width, height] of [[320, 568], [390, 844], [1440, 900]]) {
+    test(`held checkout restores visible recovery on reload at ${width}px`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height });
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      let posts = 0;
+      const checking = deferred<void>(), release = deferred<void>();
+      await page.route("**/api/backend/**", async route => {
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+        if (pathname.endsWith("/user/addresses")) return route.fulfill({ json: addressPayload() });
+        if (pathname.endsWith("/cart")) return route.fulfill({ json: cartPayload({ generation: IDS.cart }) });
+        if (pathname.endsWith("/orders/quote")) return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+        if (pathname.endsWith("/auth/csrf-token")) return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (pathname.endsWith("/orders") && route.request().method() === "POST") {
+          expect(route.request().postDataJSON().cartGeneration).toBe(IDS.cart);
+          posts++;
+          return route.abort("failed");
+        }
+        if (pathname.endsWith("/checkout-receipt/" + IDS.cart)) {
+          checking.resolve();
+          await release.promise;
+          return route.fulfill({ status: 404, json: {} });
+        }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+
+      const heading = page.getByRole("heading", { name: "Order outcome not confirmed" });
+      const check = page.getByRole("button", { name: "Check order status" });
+      await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+      await advanceMobileCheckoutToReview(page);
+      const submit = page.getByRole("button", { name: "Place Order Now" });
+      const reviewOffset = await page.evaluate(() => {
+        window.scrollTo({ top: 120, behavior: "instant" });
+        return window.scrollY;
+      });
+      if (width < 768) expect(reviewOffset).toBeGreaterThan(0);
+      await submit.scrollIntoViewIfNeeded();
+      await submit.click();
+      await expect(heading).toBeVisible();
+      // Model a retained Review offset explicitly; neither measurement may auto-scroll a locator.
+      const offset = await page.evaluate(top => {
+        window.scrollTo({ top, behavior: "instant" });
+        return window.scrollY;
+      }, reviewOffset);
+      if (width < 768) expect(offset).toBeGreaterThan(0);
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(check).toBeVisible();
+      const measure = async (target: typeof heading) => target.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const headerBottom = document.querySelector("header")!.getBoundingClientRect().bottom;
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return { top: rect.top, bottom: rect.bottom, headerBottom, hit: el.contains(hit),
+          overflow: document.documentElement.scrollWidth - innerWidth, viewport: innerHeight, scroll: scrollY };
+      });
+      const geometry = { heading: await measure(heading), status: await measure(check) };
+      const evidence = info.outputPath("viewport.json");
+      await page.screenshot({ path: info.outputPath("held-viewport.png") });
+      await fs.promises.writeFile(evidence, JSON.stringify(geometry));
+      await info.attach("viewport", { path: evidence, contentType: "application/json" });
+      for (const box of Object.values(geometry)) {
+        expect(box.top).toBeGreaterThanOrEqual(box.headerBottom);
+        expect(box.bottom).toBeLessThanOrEqual(box.viewport);
+        expect(box.hit).toBe(true);
+        expect(box.overflow).toBeLessThanOrEqual(0);
+      }
+      try {
+        await check.click();
+        await checking.promise;
+        const support = page.getByRole("link", { name: "Contact support" });
+        await support.focus();
+        const before = await page.evaluate(() => {
+          window.scrollTo({ top: 35, behavior: "instant" });
+          return scrollY;
+        });
+        release.resolve();
+        await expect(page.getByText("No receipt is available yet.", { exact: false })).toBeVisible();
+        await expect(support).toBeFocused();
+        expect(await page.evaluate(() => scrollY)).toBe(before);
+        expect(posts).toBe(1);
+      } finally { release.resolve(); }
+    });
+  }
+
   test("committed-but-lost create response shows indeterminate recovery, retains cart, and never retries POST", async ({ page }) => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.addInitScript(() => {
