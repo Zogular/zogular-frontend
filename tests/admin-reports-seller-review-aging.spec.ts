@@ -329,22 +329,35 @@ test.describe("admin reports operational seller-review aging browser acceptance"
     await page.setViewportSize({ width: 390, height: 844 });
     await signInAsAdmin(page);
 
+    const totalCell = page.getByRole("row", { name: /Total awaiting review/ }).getByRole("cell");
+    const staleNotice = page.getByText(/Showing last confirmed snapshot\./);
+    const refreshButton = page.getByRole("button", { name: "Refresh" });
+
     reportMode = "zero";
     await page.goto(`${FRONTEND_ORIGIN}/admin/reports`, { waitUntil: "networkidle" });
     await expect(page.getByText("No seller applications are currently awaiting review.")).toBeVisible();
+    await expect(totalCell).toHaveText("0");
 
     reportMode = "error503";
-    await page.getByRole("button", { name: "Refresh" }).click();
+    await refreshButton.click();
     await expect(page.getByText(/temporarily unavailable/i)).toBeVisible();
+    await expect(staleNotice).toBeVisible();
+    await expect(totalCell).toHaveText("0");
 
     reportMode = "valid";
-    await page.getByRole("button", { name: "Refresh" }).click();
-    await expect(page.getByText("Total awaiting review")).toBeVisible();
+    await refreshButton.click();
+    await expect(totalCell).toHaveText("10");
+    await expect(staleNotice).toHaveCount(0);
+    await expect(page.getByText("No seller applications are currently awaiting review.")).toHaveCount(0);
 
-    // Terminal 403 purges cached data fail-closed
+    // Terminal 403 purges cached data fail-closed and disables refresh with no extra requests
     reportMode = "forbidden403";
-    await page.getByRole("button", { name: "Refresh" }).click();
-    await expect(page.getByText("Total awaiting review")).toHaveCount(0);
+    await refreshButton.click();
+    await expect(page.getByRole("table")).toHaveCount(0);
+    await expect(refreshButton).toBeDisabled();
+    const requestsAfter403 = reportRequests;
+    await page.waitForTimeout(250);
+    expect(reportRequests).toBe(requestsAfter403);
 
     // Operator with view_all_reports but without review_sellers makes 0 report requests
     currentPermissions = ["access_admin_panel", "view_all_reports"];
