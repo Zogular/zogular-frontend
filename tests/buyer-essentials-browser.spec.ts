@@ -461,11 +461,38 @@ for (const viewport of VIEWPORTS.filter(({ width }) => width === 320 || width ==
           await expect(page).toHaveURL(`${BROWSER_ORIGIN}${target}`);
           await expect(page.getByRole("heading", { name: RELATED_PRODUCT.title, exact: true })).toBeVisible();
         } else {
-          await expect(heading).toHaveCount(0);
           await expect(page.getByTestId("product-card")).toHaveCount(0);
           await expect(page.getByText(RELATED_UNAVAILABLE_DIAGNOSTIC)).toHaveCount(0);
           const purchaseControls = viewport.width === 320 ? page.getByTestId("mobile-sticky-purchase-bar") : page;
           await expect(purchaseControls.getByRole("button", { name: "Increase quantity" }).first()).toBeEnabled();
+          const notice = page.getByText("We couldn't load related products.", { exact: true });
+          if (mode === "empty") {
+            await expect(heading).toHaveCount(0);
+            await expect(notice).toHaveCount(0);
+          } else {
+            await expect(heading).toBeVisible();
+            await expect(notice).toBeVisible();
+            const recovery = page.locator("section").filter({ has: heading }).getByRole("link", { name: "Browse all products" });
+            await expect(recovery).toHaveAttribute("href", "/products");
+            await recovery.evaluate((link) => link.scrollIntoView({ block: "center", behavior: "instant" }));
+            await expect(heading).toBeInViewport({ ratio: 1 });
+            await expect(notice).toBeInViewport({ ratio: 1 });
+            await expect(recovery).toBeInViewport({ ratio: 1 });
+            await expect.poll(() => recovery.evaluate((link) => {
+              const { left, right, top, bottom } = link.getBoundingClientRect();
+              if (left < 0 || right > document.documentElement.clientWidth) return false;
+              // Intersection alone does not detect fixed overlays covering the tap target.
+              return [left + 1, (left + right) / 2, right - 1].every((x) =>
+                [top + 1, (top + bottom) / 2, bottom - 1].every((y) =>
+                  link.contains(document.elementFromPoint(x, y))));
+            }), { message: "The recovery link must fit horizontally and receive pointer input across its bounds" }).toBe(true);
+            const name = `related-products-unavailable-${viewport.width}px`;
+            const screenshot = testInfo.outputPath(`${name}.png`);
+            await page.screenshot({ path: screenshot, animations: "disabled" });
+            await testInfo.attach(name, { path: screenshot, contentType: "image/png" });
+            await recovery.click();
+            await expect(page).toHaveURL(`${BROWSER_ORIGIN}/products`);
+          }
         }
         expect(containment.unexpectedHttpViolations).toEqual([]);
         expect(containment.wsViolations).toEqual([]);
