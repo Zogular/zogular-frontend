@@ -12,7 +12,13 @@ const configuredOrigin = process.env.TEST_BASE_URL;
 const origin = configuredOrigin ? loopbackAuditOrigin(configuredOrigin) : undefined;
 const channel = process.env.PLAYWRIGHT_CHANNEL?.trim() || (process.platform === "win32" ? "msedge" : undefined);
 const mobile = { width: 320, height: 568 };
-const viewports = [mobile, { width: 390, height: 844 }, { width: 768, height: 1024 }, { width: 1440, height: 900 }];
+const viewports = [
+  mobile,
+  { width: 390, height: 844 },
+  { width: 768, height: 1024 },
+  { width: 1024, height: 768 },
+  { width: 1440, height: 900 },
+];
 const fullListCount = 12;
 const ordersPath = "/account/orders";
 const proxyPrefix = "/api/backend";
@@ -180,6 +186,59 @@ async function capture(page: Page, testInfo: TestInfo, name: string) {
   await page.screenshot({ path: testInfo.outputPath(`${name}.png`), animations: "disabled" });
 }
 
+async function expectConfiguredReceiptSupport(page: Page, testInfo: TestInfo) {
+  const main = page.getByRole("main");
+  const whatsapp = main.getByRole("link", { name: "WhatsApp Support", exact: true });
+  const call = main.getByRole("link", { name: "Call Support", exact: true });
+  const whatsappNumber = process.env.TEST_RECEIPT_SUPPORT_WHATSAPP_NUMBER;
+  const callNumber = process.env.TEST_RECEIPT_SUPPORT_CALL_NUMBER;
+  if (!whatsappNumber && !callNumber) {
+    await expect(whatsapp).toHaveCount(0);
+    await expect(call).toHaveCount(0);
+    return;
+  }
+  if (!whatsappNumber || !callNumber) throw new Error("Set both synthetic receipt support numbers for this check.");
+  const message = encodeURIComponent(`Hi Zogular, I need help with Order #${order.orderNumber}`);
+  await expect(whatsapp).toHaveAttribute("href", `https://wa.me/${whatsappNumber.replace(/\D/g, "")}?text=${message}`);
+  await expect(whatsapp).toHaveAttribute("target", "_blank");
+  await expect(whatsapp).toHaveAttribute("rel", "noopener noreferrer");
+  await expect(call).toHaveAttribute("href", `tel:${callNumber}`);
+  for (const link of [whatsapp, call]) {
+    await expect(link).toHaveJSProperty("tagName", "A");
+    await expect(link.locator("button, [role=button]")).toHaveCount(0);
+    await expect(link).toBeVisible();
+  }
+
+  const actions = whatsapp.locator("..");
+  await actions.evaluate((element) => element.scrollIntoView({ block: "center", behavior: "instant" }));
+  const [group, first, second] = await Promise.all([actions.boundingBox(), whatsapp.boundingBox(), call.boundingBox()]);
+  if (!group || !first || !second) throw new Error("Expected both support links and their container to be rendered.");
+  const viewport = page.viewportSize();
+  if (!viewport) throw new Error("Expected a fixed viewport for receipt support checks.");
+  for (const link of [first, second]) {
+    expect(link.x).toBeGreaterThanOrEqual(Math.max(0, group.x - 1));
+    expect(link.x + link.width).toBeLessThanOrEqual(Math.min(viewport.width, group.x + group.width + 1));
+  }
+  if (viewport.width < 640) {
+    expect(second.y).toBeGreaterThanOrEqual(first.y + first.height);
+  }
+  const totals = main.getByRole("region", { name: "Order totals" });
+  await expect(totals).toBeVisible();
+  const totalsFit = await totals.evaluate((element) => {
+    const panel = element.getBoundingClientRect();
+    const amounts = Array.from(element.querySelectorAll("span")).filter((span) => span.textContent?.trim().startsWith("K"));
+    return amounts.length >= 4 && panel.left >= 0 && panel.right <= document.documentElement.clientWidth + 1 &&
+      amounts.every((span) => {
+        const amount = span.getBoundingClientRect();
+        return amount.left >= panel.left - 1 && amount.right <= panel.right + 1;
+      });
+  });
+  expect(totalsFit, "Receipt totals and amount labels must fit inside the viewport").toBe(true);
+  await capture(page, testInfo, "receipt-support");
+  // Inspect links only; never navigate to a support channel.
+  await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+}
+
 async function expectSafeOrderError(page: Page, description: string) {
   await expect(page.getByRole("main").getByText(description, { exact: true })).toBeVisible();
   await expect(page.locator("body")).not.toContainText(/FIXTURE_INTERNAL_ORDER_DIAGNOSTIC|SyntheticOrderError|fixture\/orders\.ts|OrderListContractError/);
@@ -210,6 +269,7 @@ for (const viewport of viewports) {
         await expectReceipt(page);
         if (returnVia === "receipt link") {
           await capture(page, testInfo, "receipt");
+          await expectConfiguredReceiptSupport(page, testInfo);
           await auditPageLayout(page);
           const back = page.getByRole("link", { name: "Back to Orders", exact: true });
           const print = page.getByRole("button", { name: "View / Print Receipt", exact: true });
