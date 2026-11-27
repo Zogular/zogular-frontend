@@ -38,6 +38,11 @@ export function getCheckoutErrorMessage(
       : "Your order details could not be confirmed. Review them and try again.";
   }
   if (error instanceof ApiError) {
+    if (error.status === 409 && error.details && typeof error.details === "object" && "code" in error.details) {
+      if (error.details.code === "CHECKOUT_INTENT_CONFLICT") return "This cart was used for another checkout. Check its order status.";
+      if (error.details.code === "CHECKOUT_CART_CHANGED") return "Your cart changed. Check its order status before reviewing the latest cart.";
+      if (error.details.code === "CHECKOUT_RELOAD_REQUIRED") return "Refresh checkout and review the latest totals.";
+    }
     if (boundary === "create" && isCsrfError(error)) {
       return "Your order was not placed because your checkout verification expired. Select Place Order Now to try again.";
     }

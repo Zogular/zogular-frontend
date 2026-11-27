@@ -1,5 +1,6 @@
 import type { CartItem } from "@/types/cart";
 import { ApiError, apiClient } from "@/services/api";
+import { parseBackendCartResponse } from "@/services/cart";
 
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const PAYMENT_METHOD = "CASH_ON_DELIVERY";
@@ -22,6 +23,7 @@ export interface CheckoutDelivery {
 }
 
 export interface CheckoutQuote {
+  cartGeneration?: string;
   itemSubtotal: number;
   deliveryFeeAmount: number;
   cashDueOnDelivery: number;
@@ -32,6 +34,28 @@ export interface CheckoutQuote {
 }
 
 type AcceptedQuote = Pick<CheckoutQuote, "itemSubtotal" | "deliveryFeeAmount" | "grandTotalAmount">;
+
+// Frontend-first deployment compatibility. A present key is NEVER optional.
+export type GenerationMode = "frontend-first" | "required";
+export const FRONTEND_FIRST: GenerationMode = "frontend-first";
+export function checkoutGeneration(value: unknown): string {
+  if (typeof value !== "string" || value.length !== 36 || !/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value)) {
+    throw new CheckoutContractError("Invalid checkout generation.");
+  }
+  return value.toLowerCase();
+}
+
+function generationField(record: Record<string, unknown>, key: string, mode: GenerationMode) {
+  if (!Object.hasOwn(record, key) && mode === FRONTEND_FIRST) return undefined;
+  return checkoutGeneration(record[key]);
+}
+
+export async function readCheckoutCart(mode: GenerationMode, sessionBound = true) {
+  const payload = await apiClient<unknown>("/cart", { method: "GET", cache: "no-store", noAutoReplay: sessionBound });
+  const items = parseBackendCartResponse(payload);
+  if (!isRecord(payload) || !isRecord(payload.data) || !isRecord(payload.data.cart)) throw new CheckoutContractError("Invalid cart.");
+  return { items, generation: generationField(payload.data.cart, "generation", mode) };
+}
 
 export interface CreateCheckoutOrderInput {
   items: CartItem[];
@@ -144,7 +168,7 @@ function buildRequest(input: CreateCheckoutOrderInput, includeNotes: boolean) {
   };
 }
 
-export function parseCheckoutQuoteResponse(payload: unknown): CheckoutQuote {
+export function parseCheckoutQuoteResponse(payload: unknown, mode: GenerationMode = "required"): CheckoutQuote {
   if (!isRecord(payload) || payload.status !== "success" || !isRecord(payload.data)) {
     throw new CheckoutContractError("Checkout quote response is malformed.");
   }
@@ -164,7 +188,9 @@ export function parseCheckoutQuoteResponse(payload: unknown): CheckoutQuote {
     throw new CheckoutContractError("Checkout quote totals are inconsistent.");
   }
 
+  const cartGeneration = generationField(quote, "cartGeneration", mode);
   return {
+    ...(cartGeneration && { cartGeneration }),
     itemSubtotal,
     deliveryFeeAmount,
     cashDueOnDelivery,
@@ -254,33 +280,83 @@ export function parseCreatedOrderResponse(
   return { id, orderNumber };
 }
 
-export async function quoteCheckoutOrder(input: CreateCheckoutOrderInput): Promise<CheckoutQuote> {
+export async function quoteCheckoutOrder(input: CreateCheckoutOrderInput, mode: GenerationMode = FRONTEND_FIRST): Promise<CheckoutQuote> {
   const request = buildRequest(input, false);
   const response = await apiClient<unknown>("/orders/quote", {
     method: "POST",
     csrf: true,
     body: JSON.stringify(request),
   });
-  return parseCheckoutQuoteResponse(response);
+  return parseCheckoutQuoteResponse(response, mode);
 }
 
-export async function createCheckoutOrder(
+// A receipt identifies an already-created order. Payment/fulfilment may have
+// advanced since checkout; fresh-create invariants do not apply here.
+export function parseCheckoutReceipt(payload: unknown, owner: string, generation: string) {
+  if (!isRecord(payload) || payload.status !== "success" || !isRecord(payload.data)
+    || checkoutGeneration(payload.data.cartGeneration) !== checkoutGeneration(generation)
+    || !isRecord(payload.data.order) || !owner || payload.data.order.userId !== owner) {
+    throw new CheckoutContractError("Checkout receipt does not match.");
+  }
+  const order = payload.data.order;
+  if (!["PENDING", "CONFIRMED", "PROCESSING", "SHIPPED", "DELIVERED", "CANCELLED", "REFUNDED"].includes(requireString(order.status, "order status"))
+    || !Number.isFinite(Date.parse(requireString(order.createdAt, "creation time")))) {
+    throw new CheckoutContractError("Invalid order receipt.");
+  }
+  return { id: requireUuid(order.id, "order id"), orderNumber: requireString(order.orderNumber, "order number") };
+}
+
+export async function readCheckoutReceipt(owner: string, generation: string) {
+  const key = checkoutGeneration(generation);
+  try {
+    const payload = await apiClient<unknown>(`/orders/checkout-receipt/${key}`, { method: "GET", cache: "no-store", noAutoReplay: true });
+    return parseCheckoutReceipt(payload, owner, key);
+  } catch (error) {
+    if (error instanceof ApiError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+export async function inspectCheckoutOutcome(owner: string, generation: string, current: () => boolean) {
+  if (!current()) return null;
+  const receipt = await readCheckoutReceipt(owner, generation);
+  if (!current()) return null;
+  if (receipt) return { receipt, snapshot: null };
+  const snapshot = await readCheckoutCart("required");
+  if (!current()) return null;
+  // A miss can race a commit. The authoritative generation transition must
+  // precede the final receipt read, not be inferred from missing cart lines.
+  const finalReceipt = snapshot.generation !== generation ? await readCheckoutReceipt(owner, generation) : null;
+  return current() ? { receipt: finalReceipt, snapshot } : null;
+}
+
+export function prepareCheckoutOrder(
   input: CreateCheckoutOrderInput,
-  acceptedQuote: AcceptedQuote,
-): Promise<{ id: string; orderNumber: string }> {
+  acceptedQuote: AcceptedQuote & { cartGeneration?: string },
+  owner?: string,
+  mode: GenerationMode = "required",
+) {
   const request = buildRequest(input, true);
   const expectedQuote: AcceptedQuote = {
     itemSubtotal: acceptedQuote.itemSubtotal,
     deliveryFeeAmount: acceptedQuote.deliveryFeeAmount,
     grandTotalAmount: acceptedQuote.grandTotalAmount,
   };
+  const generation = generationField({ ...acceptedQuote }, "cartGeneration", mode);
+  if (generation && !owner) throw new CheckoutContractError("Checkout owner is required.");
+  const body = JSON.stringify({ ...request, expectedQuote, ...(generation && { cartGeneration: generation }) });
+  return () => sendPreparedOrder(body, request.items, expectedQuote, generation, owner);
+}
+
+async function sendPreparedOrder(body: string, items: ReturnType<typeof buildOrderItems>, expectedQuote: AcceptedQuote,
+  generation?: string, owner?: string) {
   let response: unknown;
   try {
     response = await apiClient<unknown>("/orders", {
       method: "POST",
       csrf: true,
       noAutoReplay: true,
-      body: JSON.stringify({ ...request, expectedQuote }),
+      body,
     });
   } catch (error) {
     if (
@@ -298,8 +374,16 @@ export async function createCheckoutOrder(
   }
 
   try {
-    return parseCreatedOrderResponse(response, request.items, expectedQuote);
+    if (generation && owner) parseCheckoutReceipt(response, owner, generation);
+    else if (isRecord(response) && isRecord(response.data) && "cartGeneration" in response.data) {
+      throw new CheckoutContractError("Unexpected checkout generation.");
+    }
+    return parseCreatedOrderResponse(response, items, expectedQuote);
   } catch (error) {
     throw new CheckoutOrderOutcomeUnknownError(error);
   }
+}
+
+export async function createCheckoutOrder(input: CreateCheckoutOrderInput, quote: AcceptedQuote & { cartGeneration?: string }, owner?: string) {
+  return prepareCheckoutOrder(input, quote, owner, FRONTEND_FIRST)();
 }

@@ -2,7 +2,10 @@ import Link from "next/link";
 import { AlertTriangle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
-export function UnknownOutcomeState({ onResume }: { onResume: () => void }) {
+export function UnknownOutcomeState({ onResume, modern, busy, message, onReview, onRetry }: {
+  onResume: () => void; modern?: boolean; busy?: boolean; message?: string | null;
+  onReview?: () => void; onRetry?: () => void;
+}) {
   return (
     <section role="alert" className="mb-6 rounded-2xl border border-amber-200 bg-amber-50 p-5 text-amber-950">
       <div className="flex items-start gap-3">
@@ -10,7 +13,7 @@ export function UnknownOutcomeState({ onResume }: { onResume: () => void }) {
         <div className="min-w-0">
           <h2 className="font-black">Order outcome not confirmed</h2>
           <p className="mt-1 text-sm font-medium leading-6">
-            Check your orders first. If no new order appears, return here before trying again.
+            {modern ? "Check for your receipt before placing another order." : "Check your orders first. If no new order appears, return here before trying again."}
           </p>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <Button asChild className="h-11 rounded-xl bg-zinc-950 px-5 font-bold text-white hover:bg-zinc-800">
@@ -19,10 +22,13 @@ export function UnknownOutcomeState({ onResume }: { onResume: () => void }) {
             <Button asChild variant="outline" className="h-11 rounded-xl border-amber-300 bg-white px-5 font-bold">
               <Link href="/help">Contact support</Link>
             </Button>
-            <Button type="button" variant="ghost" className="h-11 rounded-xl px-5 font-bold" onClick={onResume}>
-              I checked — try again
+            <Button type="button" variant="ghost" className="h-11 rounded-xl px-5 font-bold" disabled={busy} onClick={onResume}>
+              {modern ? "Check order status" : "I checked — try again"}
             </Button>
+            {onReview && <Button type="button" disabled={busy} onClick={onReview}>Review my updated cart</Button>}
+            {onRetry && <Button type="button" disabled={busy} onClick={onRetry}>Retry this exact order</Button>}
           </div>
+          {message && <p role="status" className="mt-2 text-sm">{message}</p>}
         </div>
       </div>
     </section>

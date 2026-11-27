@@ -41,7 +41,16 @@ function CheckoutContent({ auth }: { auth: ClientAuthState }) {
     );
   }
 
-  if (!flow.items.length) {
+  if (flow.held) {
+    if (flow.placing) return <main className="container mx-auto max-w-3xl px-4 py-8" role="status">Placing your order…</main>;
+    return <main className="container mx-auto max-w-3xl px-4 py-8">
+      <UnknownOutcomeState modern busy={flow.submitting || flow.held === "unavailable"} message={flow.submitError}
+        onResume={() => void flow.recover("check")}
+        onReview={flow.canReviewChanged ? () => void flow.recover("review") : undefined}
+        onRetry={flow.canRetryExact && !flow.canReviewChanged ? () => void flow.recover("retry") : undefined} />
+    </main>;
+  }
+  if (!flow.items.length && !flow.hasUnknownOutcome) {
     return (
       <main className="min-h-screen bg-[#f4fbf6] pb-24 pt-8">
         <div className="container mx-auto max-w-3xl px-4 md:px-6">

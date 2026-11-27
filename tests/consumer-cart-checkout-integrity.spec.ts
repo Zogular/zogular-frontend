@@ -12,11 +12,15 @@ import {
   CheckoutContractError,
   CheckoutOrderOutcomeUnknownError,
   createCheckoutOrder,
+  inspectCheckoutOutcome,
+  prepareCheckoutOrder,
+  parseCheckoutReceipt,
   parseCheckoutQuoteResponse,
   parseCreatedOrderResponse,
   type CreateCheckoutOrderInput,
 } from "../src/services/checkout";
-import { useCart, type CartItem } from "../src/hooks/use-cart";
+import { beginGeneration, checkoutMode, finishGeneration, heldGeneration, observeGeneration,
+  reviewChangedGeneration, useCart, type CartItem } from "../src/hooks/use-cart";
 
 const repoRoot = path.resolve(__dirname, "..");
 const readSource = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -145,6 +149,157 @@ function response(payload: unknown, status = 200): Response {
   });
 }
 
+const receiptFor = (key: string, owner = "owner-a") => ({ status: "success", data: {
+  cartGeneration: key, order: { ...createdOrderPayload({ userId: owner }).data.order, status: "DELIVERED", commitmentFeeStatus: "PAID" },
+} });
+
+test("generation: strict UUIDv4, omitted legacy field only and independent current-state receipt identity", () => {
+  expect(parseCheckoutQuoteResponse(quotePayload(), "frontend-first").cartGeneration).toBeUndefined();
+  expect(() => parseCheckoutQuoteResponse(quotePayload(), "required")).toThrow();
+  for (const key of [null, undefined, "", IDS.cart.replace("-4000-", "-1000-"), " " + IDS.cart]) {
+    expect(() => parseCheckoutQuoteResponse(quotePayload({ cartGeneration: key }), "frontend-first")).toThrow();
+  }
+  expect(parseCheckoutReceipt(receiptFor(IDS.cart), "owner-a", IDS.cart).id).toBe(IDS.order);
+  expect(() => parseCheckoutReceipt(receiptFor(IDS.cart), "owner-b", IDS.cart)).toThrow();
+  expect(() => parseCheckoutReceipt(receiptFor(IDS.order), "owner-a", IDS.cart)).toThrow();
+  expect(() => prepareCheckoutOrder(checkoutInput, acceptedQuote, "owner-a", "required")).toThrow();
+});
+
+test("generation: explicit retry preserves exact body and 200 replay uses the same owner and key as 201", async () => {
+  const previous = globalThis.fetch, bodies: string[] = [];
+  const input = structuredClone(checkoutInput);
+  const send = prepareCheckoutOrder(input, { ...acceptedQuote, cartGeneration: IDS.cart }, "owner-a");
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/auth/csrf-token")) return response({ data: { csrfToken: "synthetic" } });
+    expect(init?.method).toBe("POST");
+    bodies.push(String(init?.body));
+    const payload = { status: "success", data: { ...createdOrderPayload({ userId: "owner-a", status: "CONFIRMED" }).data, cartGeneration: IDS.cart } };
+    return response(payload, bodies.length === 1 ? 201 : 200);
+  };
+  try {
+    await send();
+    input.delivery.street = "Changed street";
+    await send();
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toBe(bodies[1]);
+    expect(JSON.parse(bodies[0])).toMatchObject({ cartGeneration: IDS.cart, expectedQuote: acceptedQuote });
+  } finally { globalThis.fetch = previous; }
+});
+
+test("generation: a receipt miss is rechecked after a changed authoritative cart, with GET only", async () => {
+  const previous = globalThis.fetch;
+  const reads: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("no-store");
+    const tail = String(url).split("/").pop()!;
+    reads.push(tail);
+    if (tail === "cart") return response(cartPayload({ generation: IDS.secondProduct }));
+    return reads.length === 1 ? response({},404) : response(receiptFor(IDS.cart));
+  };
+  try {
+    const result = await inspectCheckoutOutcome("owner-a", IDS.cart, () => true);
+    expect(result?.receipt?.id).toBe(IDS.order);
+    expect(reads).toEqual([IDS.cart,"cart",IDS.cart]);
+    let current = true;
+    globalThis.fetch = async () => { current = false; return response(receiptFor(IDS.cart)); };
+    expect(await inspectCheckoutOutcome("owner-a", IDS.cart, () => current)).toBeNull();
+  } finally { globalThis.fetch = previous; }
+});
+
+test("generation: explicit fenced review survives reload and stale competing tabs without clearing unrelated holds", async () => {
+  function storage() {
+    const map = new Map<string,string>();
+    return { get length() { return map.size; }, key: (i: number) => [...map.keys()][i] ?? null,
+      getItem: (k: string) => map.get(k) ?? null, setItem: (k: string,v: string) => map.set(k,v),
+      removeItem: (k: string) => map.delete(k), map };
+  }
+  const previous = (globalThis as { window?: unknown }).window;
+  const previousFetch = globalThis.fetch;
+  const localStorage = storage(), a = storage(), b = storage(), late = storage();
+  const tab = (sessionStorage: typeof a) => { (globalThis as {window?: unknown}).window = { localStorage, sessionStorage, dispatchEvent: () => true }; };
+  try {
+    seedOwnedCart("owner-a");
+    tab(a); observeGeneration("owner-a",IDS.cart); beginGeneration("owner-a",IDS.cart);
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    tab(b); expect(checkoutMode("owner-a")).toBe("required");
+    expect(() => observeGeneration("owner-a")).toThrow();
+    beginGeneration("owner-a",IDS.cart);
+    tab(late); beginGeneration("owner-a",IDS.cart);
+    tab(a); finishGeneration("owner-a",IDS.cart,"unknown");
+    tab(b); finishGeneration("owner-a",IDS.cart,"rejected");
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    expect(heldGeneration("owner-b")).toBeNull();
+    expect(reviewChangedGeneration("owner-a", IDS.cart, IDS.cart)).toBe(false);
+    expect([...localStorage.map.values()].every(v => v === IDS.cart)).toBe(true);
+    let active: string = IDS.cart;
+    const reads: string[] = [];
+    globalThis.fetch = async (url, init) => {
+      expect(init?.method).toBe("GET");
+      const name = String(url).split("/").pop()!;
+      reads.push(name);
+      return name === "cart" ? response(cartPayload({ generation: active })) : response({},404);
+    };
+    const inspect = () => inspectCheckoutOutcome("owner-a", IDS.cart, () => heldGeneration("owner-a") === IDS.cart);
+    const same = await inspect();
+    expect(reviewChangedGeneration("owner-a", IDS.cart, same!.snapshot!.generation!)).toBe(false);
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    active = IDS.secondProduct;
+    await inspect(); // checking is not consent to resume
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    const review = await inspect();
+    expect(review?.receipt).toBeNull();
+    expect(reads.slice(-3)).toEqual([IDS.cart,"cart",IDS.cart]);
+    const adopt = useCart.getState().prepareCartAdoption("owner-a", IDS.cart);
+    expect(adopt).not.toBeNull();
+    finishGeneration("owner-a", IDS.order, "unknown");
+    finishGeneration("owner-b", IDS.cart, "unknown");
+    expect(reviewChangedGeneration("owner-a", IDS.cart, review!.snapshot!.generation!)).toBe(true);
+    expect(localStorage.map.has("zg-checkout:owner-a:hold:" + IDS.cart)).toBe(false);
+    expect(localStorage.getItem("zg-checkout:owner-a:fenced:" + IDS.cart)).toBe(IDS.cart);
+    expect(adopt?.([])).toBe(false);
+    expect(useCart.getState().items).toEqual([cartItem]);
+    tab(late); // still has a tab-private sending marker for the fenced key
+    expect(heldGeneration("owner-a")).toBe(IDS.order);
+    finishGeneration("owner-a", IDS.cart, "unknown");
+    expect(localStorage.map.has("zg-checkout:owner-a:hold:" + IDS.cart)).toBe(false);
+    // Simulate an old writer that checked the fence just before it was published.
+    localStorage.setItem("zg-checkout:owner-a:hold:" + IDS.cart, IDS.cart);
+    tab(storage());
+    expect(heldGeneration("owner-b")).toBe(IDS.cart);
+    expect(heldGeneration("owner-a")).toBe(IDS.order);
+    finishGeneration("owner-a", IDS.order, "confirmed");
+    expect(heldGeneration("owner-a")).toBeNull();
+    expect(() => beginGeneration("owner-a", IDS.cart)).toThrow();
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previous === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as {window?: unknown}).window = previous;
+  }
+});
+
+test("generation: unchanged cart and 404 are inconclusive, malformed cart or wrong receipt fails closed", async () => {
+  const previous = globalThis.fetch;
+  let key: unknown = IDS.cart;
+  const reads: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    expect(init?.method).toBe("GET");
+    const name = String(url).split("/").pop()!;
+    reads.push(name);
+    return name === "cart" ? response(cartPayload({ generation: key })) : response({},404);
+  };
+  try {
+    const result = await inspectCheckoutOutcome("owner-a", IDS.cart, () => true);
+    expect(result?.receipt).toBeNull();
+    expect(result?.snapshot?.generation).toBe(IDS.cart);
+    expect(reads).toEqual([IDS.cart,"cart"]);
+    key = null;
+    await expect(inspectCheckoutOutcome("owner-a",IDS.cart,() => true)).rejects.toBeInstanceOf(CheckoutContractError);
+    globalThis.fetch = async () => response(receiptFor(IDS.order));
+    await expect(inspectCheckoutOutcome("owner-a",IDS.cart,() => true)).rejects.toBeInstanceOf(CheckoutContractError);
+  } finally { globalThis.fetch = previous; }
+});
+
 test("strict cart parser accepts one complete cart atomically", () => {
   expect(parseBackendCartResponse(cartPayload())).toEqual([
     expect.objectContaining({
@@ -202,7 +357,7 @@ for (const fixture of [
 }
 
 test("quote parser accepts exact backend-owned totals and payment state", () => {
-  expect(parseCheckoutQuoteResponse(quotePayload())).toEqual({
+  expect(parseCheckoutQuoteResponse(quotePayload(), "frontend-first")).toEqual({
     itemSubtotal: 500,
     deliveryFeeAmount: 50,
     cashDueOnDelivery: 500,
@@ -219,7 +374,7 @@ for (const fixture of [
   { name: "unsupported payment mode", value: quotePayload({ paymentMethod: "MOBILE_MONEY" }) },
 ] as const) {
   test(`quote parser rejects ${fixture.name}`, () => {
-    expect(() => parseCheckoutQuoteResponse(fixture.value)).toThrow(CheckoutContractError);
+    expect(() => parseCheckoutQuoteResponse(fixture.value, "frontend-first")).toThrow(CheckoutContractError);
   });
 }
 
@@ -373,6 +528,74 @@ function seedOwnedCart(ownerId: string, item: CartItem = cartItem) {
     pendingAnonymousMerge: [],
   });
 }
+
+test("generation: adoption requires the same idle owner and preserves unsyncable local lines", () => {
+  seedOwnedCart("owner-a");
+  const local = { ...cartItem, id: "local-line", variant: "local" };
+  useCart.setState({items: [cartItem, local]});
+  const stable = useCart.getState().prepareCartAdoption("owner-a");
+  expect(stable?.([])).toBe(true);
+  expect(useCart.getState().items).toEqual([local]);
+  expect(stable?.([])).toBe(false);
+  const beforeEdit = useCart.getState().prepareCartAdoption("owner-a");
+  useCart.setState({items: [cartItem]});
+  expect(beforeEdit?.([])).toBe(false);
+  const beforeSwitch = useCart.getState().prepareCartAdoption("owner-a");
+  seedOwnedCart("owner-b");
+  expect(beforeSwitch?.([])).toBe(false);
+  expect(useCart.getState().items).toEqual([cartItem]);
+});
+
+test("generation: pending clear, removal and merge are never consumed by receipt refresh", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected fetch"); };
+  try {
+    for (const pending of [{pendingClear:true}, {pendingDeletions:[IDS.product]},
+      {pendingAnonymousMerge:[{item:cartItem,targetQuantity:3}]}]) {
+      seedOwnedCart("owner-a");
+      const before = useCart.getState().prepareCartAdoption("owner-a");
+      useCart.setState(pending);
+      expect(before?.([])).toBe(false);
+      expect(useCart.getState().prepareCartAdoption("owner-a")).toBeNull();
+      await useCart.getState().refreshCartAfterReceipt("owner-a");
+      expect(useCart.getState()).toMatchObject({...pending, items:[cartItem], syncError:expect.stringContaining("kept")});
+    }
+    expect(calls).toBe(0);
+  } finally { globalThis.fetch = original; }
+});
+
+test("generation: a receipt read cannot overwrite changes made during its GET", async () => {
+  seedOwnedCart("owner-a");
+  const original = globalThis.fetch, started = deferred<void>(), reply = deferred<Response>();
+  globalThis.fetch = async (_, init) => { expect(init?.method).toBe("GET"); started.resolve(); return reply.promise; };
+  try {
+    const refresh = useCart.getState().refreshCartAfterReceipt("owner-a");
+    await started.promise;
+    useCart.setState({ items:[{...cartItem,quantity:3}], pendingDeletions:[IDS.secondProduct] });
+    reply.resolve(response(cartPayload({generation:IDS.cart})));
+    await refresh;
+    expect(useCart.getState()).toMatchObject({ items:[{quantity:3}], pendingDeletions:[IDS.secondProduct] });
+  } finally { globalThis.fetch = original; }
+});
+
+test("generation: receipt refresh does not invalidate or supersede queued synchronization", async () => {
+  seedOwnedCart("owner-a");
+  const original = globalThis.fetch, started = deferred<void>(), reply = deferred<Response>();
+  let reads = 0;
+  globalThis.fetch = async () => { reads++; started.resolve(); return reply.promise; };
+  try {
+    const sync = useCart.getState().syncWithBackend();
+    await started.promise;
+    expect(useCart.getState().prepareCartAdoption("owner-a")).toBeNull();
+    await useCart.getState().refreshCartAfterReceipt("owner-a");
+    expect(useCart.getState().syncStatus).toBe("syncing");
+    reply.resolve(response(cartPayload({items:[],summary:{subtotal:0,totalItems:0,uniqueItems:0}})));
+    await sync;
+    expect(reads).toBe(1);
+    expect(useCart.getState()).toMatchObject({items:[],syncStatus:"idle"});
+  } finally { globalThis.fetch = original; }
+});
 
 function cartPayloadFromItems(items: CartItem[]) {
   return {
