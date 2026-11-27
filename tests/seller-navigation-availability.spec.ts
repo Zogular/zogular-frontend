@@ -162,12 +162,12 @@ async function installNetworkContainment(context: BrowserContext): Promise<{
 }
 
 async function attachScreenshot(
-  page: { screenshot: (options?: { path?: string }) => Promise<Buffer> },
+  page: { screenshot: (options?: { path?: string; animations?: "disabled" }) => Promise<Buffer> },
   testInfo: TestInfo,
   name: string,
 ) {
   const screenshotPath = testInfo.outputPath(name);
-  await page.screenshot({ path: screenshotPath });
+  await page.screenshot({ path: screenshotPath, animations: "disabled" });
   await testInfo.attach(name, { path: screenshotPath, contentType: "image/png" });
 }
 
@@ -209,7 +209,7 @@ test.beforeAll(async () => {
               sellerType: "REGISTERED_BUSINESS",
               status: activeSellerStatus,
               ownerFullName: "Mwape Banda",
-              storeName: "Lusaka Solar Hub",
+              storeName: "Lusaka Solar Hub and Agricultural Equipment Supplies",
               legalBusinessName: "Lusaka Solar Hub Ltd",
               businessAddress: "Cairo Road, Lusaka",
               district: "Lusaka",
@@ -351,12 +351,61 @@ for (const status of SELLER_STATUSES) {
       await expect(bellLink).toHaveAttribute("href", "/seller/notifications");
       expect(await bellLink.locator("span").count()).toBe(0);
 
+      const header = page.getByRole("banner");
+      const primary = header.getByRole("link", { name: status === "PROVISIONAL" ? "Create draft" : "Add Product", exact: true });
+      await expect(primary).toHaveCount(1);
+      await expect(primary).toHaveAttribute("href", "/seller/products/new");
+      await expect(header.locator('a :is(a,button,input,select,textarea,[tabindex])')).toHaveCount(0);
+      for (const link of [primary, bellLink]) {
+        const target = await link.evaluate(el => {
+          const { x, y, width, height } = el.getBoundingClientRect();
+          return { width, height, hit: el.contains(document.elementFromPoint(x + width / 2, y + height / 2)) };
+        });
+        expect(target.width).toBeGreaterThanOrEqual(44);
+        expect(target.height).toBeGreaterThanOrEqual(44);
+        expect(target.hit).toBe(true);
+      }
+      if (viewport.width < 768) {
+        const title = header.getByRole("heading", { level: 1 });
+        await expect(title).toHaveText("Lusaka Solar Hub and Agricultural Equipment Supplies");
+        const nameBox = await title.boundingBox();
+        const actionBox = await primary.boundingBox();
+        expect(nameBox!.x + nameBox!.width).toBeLessThanOrEqual(actionBox!.x);
+        const logo = await header.getByRole("img").boundingBox();
+        expect(logo).toMatchObject({ width: 36, height: 36 });
+      }
+
+      await primary.focus();
+      await page.keyboard.press("Tab");
+      await expect(bellLink).toBeFocused();
+      await page.keyboard.press("Shift+Tab");
+      await expect(primary).toBeFocused();
+      await attachScreenshot(page, testInfo, `header-focus-${status.toLowerCase()}-${viewport.name}.png`);
+      await page.keyboard.press("Enter");
+      await expect(page).toHaveURL(`${BROWSER_ORIGIN}/seller/products/new`);
+      await page.goBack();
+      await expect(page).toHaveURL(`${BROWSER_ORIGIN}/seller/notifications`);
+      await expect(content.getByRole("heading", { name: "Notifications", exact: true })).toBeVisible();
+
       // Capability-gated View orders CTA on /seller/notifications.
       const supportLink = page.getByRole("link", { name: "Contact support", exact: true });
       await expect(supportLink).toHaveAttribute("href", "/seller/support");
 
       if (status === "APPROVED") {
-        await expect(page.getByRole("link", { name: "View orders", exact: true })).toHaveAttribute("href", "/seller/orders");
+        const ordersLink = content.getByRole("link", { name: "View orders", exact: true });
+        await expect(ordersLink).toHaveAttribute("href", "/seller/orders");
+        if (viewport.width === 320) {
+          await ordersLink.evaluate(el => el.scrollIntoView({ block: "center", behavior: "instant" }));
+          await supportLink.focus();
+          await page.keyboard.press("Tab");
+          await expect(ordersLink).toBeFocused();
+          await expect.poll(() => ordersLink.evaluate(el => {
+            const rect = el.getBoundingClientRect();
+            const x = rect.left + rect.width / 2;
+            return [rect.top + 1, rect.bottom - 1].every(y => el.contains(document.elementFromPoint(x, y)));
+          })).toBe(true);
+          await attachScreenshot(page, testInfo, "view-orders-focused-320.png");
+        }
       } else {
         await expect(page.getByRole("link", { name: "View orders", exact: true })).toHaveCount(0);
       }
