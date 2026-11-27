@@ -14,7 +14,7 @@ const API_ROOT = "/api/backend";
 const SESSION = `${API_ROOT}/user/me`;
 const APPLICATION = `${API_ROOT}/vendor/applications/me`;
 const COLLECTION = `${API_ROOT}/vendor/orders`;
-const OUTAGE = "Seller orders are temporarily unavailable.";
+const OUTAGE = "fixture_private_provider_trace_703";
 const STAMP = "2026-08-20T12:00:00.000Z";
 const seller = {
   id: "seller-fixture-user",
@@ -92,7 +92,7 @@ const viewports = [
   { width: 1440, height: 900 },
 ];
 
-type Scenario = "populated" | "empty" | "outage";
+type Scenario = "populated" | "empty" | "outage" | "conflict";
 type Read = { path: string; status: number };
 const instructions = "Use the side gate for collection.";
 const street = "Unit 4, 28 Longacres Commercial Access Road";
@@ -129,6 +129,9 @@ const test = base.extend<{ scenario: Scenario; deliveryCase: DeliveryCase | null
     }
     const reads: Read[] = [];
     const denied: string[] = [];
+    let conflict = false;
+    let failedRefresh = false;
+    let failedInitialRead = false;
     await containAuditNetwork(context, [origin]);
     // The browser must fulfill every API read here; no application proxy is contacted.
     await context.route("**/*", async (route) => {
@@ -145,7 +148,30 @@ const test = base.extend<{ scenario: Scenario; deliveryCase: DeliveryCase | null
         reads.push({ path: url.pathname, status });
         return route.fulfill({ status, json });
       };
+      if (scenario === "conflict" && url.origin === origin && !url.search && method === "PATCH" && url.pathname === `${DETAIL_API}/status`) {
+        expect(conflict, "Only one deliberate status decision is allowed").toBe(false);
+        expect(["CONFIRMED", "CANCELLED"]).toContain(request.postDataJSON().status);
+        conflict = true;
+        return fulfill({ status: "fail", message: OUTAGE }, 409);
+      }
       if (url.origin === origin && method === "GET") {
+        if (scenario === "conflict") {
+          if (url.pathname === `${API_ROOT}/auth/csrf-token` && !url.search) return fulfill({ data: { csrfToken: "fixture-csrf" } });
+          const list = url.pathname === COLLECTION && url.searchParams.size === COLLECTION_QUERY.size &&
+            [...COLLECTION_QUERY].every(([key, value]) => url.searchParams.get(key) === value);
+          if (list || (url.pathname === DETAIL_API && !url.search)) {
+            if (!failedInitialRead || (conflict && !failedRefresh)) {
+              if (conflict) failedRefresh = true;
+              failedInitialRead = true;
+              return fulfill({ status: "fail", message: OUTAGE }, 503);
+            }
+            const current = conflict ? order : { ...order, sellerStatus: "PENDING", allowedSellerTransitions: ["CONFIRMED", "CANCELLED"] };
+            if (!list) return fulfill({ status: "success", data: { order: current } });
+            const payload = collectionPayload(true);
+            return fulfill({ ...payload, results: 1, pagination: { ...payload.pagination, total: 1 },
+              data: { ...payload.data, orders: [current], summary: { ...payload.data.summary, totalOrders: 1 } } });
+          }
+        }
         if (url.pathname === SESSION && !url.search) {
           return fulfill({ status: "success", data: { user: seller } });
         }
@@ -204,6 +230,94 @@ async function expectApprovedSeller(page: Page, width: number) {
     const settings = page.getByRole("link", { name: "Open seller settings" });
     await expect(settings.getByText("FS", { exact: true })).toBeVisible();
     if (width >= 1024) await expect(settings.getByText("Approved seller", { exact: true })).toBeVisible();
+  }
+}
+
+for (const viewport of viewports.filter(({ width }) => width === 320 || width === 1440)) {
+  for (const surface of ["list", "detail"] as const) {
+    test.describe(`conflict recovery: ${surface} at ${viewport.width}px`, () => {
+      test.use({ scenario: "conflict", viewport });
+      test("requires a successful read and never repeats the decision", async ({ page, sellerReads }, info) => {
+        await page.goto(sellerReads.origin + (surface === "detail" ? DETAIL : LIST));
+        const alert = page.getByRole("alert").filter({ has: page.getByRole("heading") });
+        const canary = page.getByText(OUTAGE, { exact: false });
+        await expect(alert).toContainText("Order information is unavailable");
+        await expect(canary).toHaveCount(0);
+        await alert.getByRole("button", { name: "Try again" }).click();
+        const actions = page.getByRole("button", { name: `Actions for order ${order.orderNumber}` });
+        const accept = page.getByRole("button", { name: "Accept order", exact: true });
+        if (surface === "detail") await accept.click();
+        else {
+          await actions.click();
+          await page.getByRole("button", { name: "Cancel order", exact: true }).click();
+          await page.getByRole("dialog").getByRole("button", { name: "Cancel order" }).click();
+        }
+        const refresh = alert.getByRole("button", { name: "Refresh order" });
+        for (const title of ["Order changed", "Order refresh failed"]) {
+          await expect(alert.getByRole("heading", { name: title })).toBeVisible();
+          if (surface === "detail") await expect(page.getByRole("button", { name: "Back to seller orders" })).toBeEnabled();
+          else await expect(page.getByRole("main").getByRole("heading", { name: "Orders", exact: true })).toBeVisible();
+          await expect(canary).toHaveCount(0);
+          await expect(accept).toHaveCount(0);
+          await expect(actions).toHaveCount(0);
+          await expect(page.getByRole("dialog")).toHaveCount(0);
+          await auditPageLayout(page);
+          await screenshot(page, info, title === "Order changed" ? "conflict" : "failed-refresh");
+          await refresh.click();
+        }
+        if (surface === "detail") {
+          await expect(page.getByRole("heading", { name: order.orderNumber })).toBeVisible();
+          await expect(accept).toHaveCount(0);
+          await expect(page.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+        } else {
+          await expect(page.getByRole("table").getByText("Delivered")).toBeVisible();
+          await actions.click();
+          await expect(page.getByRole("button", { name: "Copy order number" })).toBeVisible();
+          await expect(page.getByRole("button", { name: "Cancel order", exact: true })).toHaveCount(0);
+          await page.keyboard.press("Escape");
+        }
+        await expect(canary).toHaveCount(0);
+        expect(sellerReads.reads.filter(({ path }) => path === (surface === "detail" ? DETAIL_API : COLLECTION)).map(({ status }) => status)).toEqual([503, 200, 503, 200]);
+        expect(sellerReads.reads.filter(({ path }) => path === `${DETAIL_API}/status`)).toHaveLength(1);
+        await screenshot(page, info, "refreshed");
+      });
+
+      test("hides private details on a forbidden decision", async ({ page, sellerReads }) => {
+        let patches = 0;
+        await page.route(sellerReads.origin + DETAIL_API + "/status", (route) => {
+          expect(route.request().method()).toBe("PATCH");
+          expect(route.request().postDataJSON().status).toBe(surface === "detail" ? "CONFIRMED" : "CANCELLED");
+          patches++;
+          return route.fulfill({ status: 403, json: { message: OUTAGE } });
+        });
+        await page.goto(sellerReads.origin + (surface === "detail" ? DETAIL : LIST));
+        await page.getByRole("button", { name: "Try again" }).click();
+        if (surface === "detail") await page.getByRole("button", { name: "Accept order" }).click();
+        else {
+          await page.getByRole("button", { name: `Actions for order ${order.orderNumber}` }).click();
+          await page.getByRole("button", { name: "Cancel order", exact: true }).click();
+          await page.getByRole("dialog").getByRole("button", { name: "Cancel order" }).click();
+        }
+        await expect(page.getByText("You do not have access to this seller action.")).toBeVisible();
+        await expect(page.getByText(OUTAGE)).toHaveCount(0);
+        expect(patches).toBe(1);
+      });
+
+      test("initial access denial exposes no order decision and sends no mutation", async ({ page, sellerReads }) => {
+        const endpoint = surface === "detail" ? DETAIL_API : COLLECTION;
+        const methods: string[] = [];
+        page.on("request", (request) => {
+          if (new URL(request.url()).pathname.startsWith(COLLECTION)) methods.push(request.method());
+        });
+        await page.route((url) => url.origin === sellerReads.origin && url.pathname === endpoint, (route) =>
+          route.fulfill({ status: 403, json: { message: OUTAGE } }));
+        await page.goto(sellerReads.origin + (surface === "detail" ? DETAIL : LIST));
+        await expect(page.getByRole("alert").getByText("You do not have access to this seller action.")).toBeVisible();
+        await expect(page.getByText(OUTAGE)).toHaveCount(0);
+        await expect(page.getByRole("button", { name: /Accept order|Cancel order|Actions for order/ })).toHaveCount(0);
+        expect(methods).toEqual(["GET"]);
+      });
+    });
   }
 }
 
@@ -351,9 +465,9 @@ for (const viewport of viewports) {
         await expectApprovedSeller(page, viewport.width);
         const main = page.getByRole("main");
         const error = main.getByRole("alert").filter({ hasText: "Orders could not be loaded" });
-        // The default query retry delays total seven seconds before rendering the error.
         await expect(error).toBeVisible({ timeout: 15_000 });
-        await expect(error.getByText(OUTAGE, { exact: true })).toBeVisible();
+        await expect(error.getByText("Order information is unavailable right now. Try again.")).toBeVisible();
+        await expect(page.getByText(OUTAGE)).toHaveCount(0);
         await expect(main.getByRole("heading", { name: "No orders yet" })).toHaveCount(0);
         await expect(main.getByRole("table", { name: "Seller orders" })).toHaveCount(0);
         await expect(main.getByRole("button", { name: "Export current page" })).toBeDisabled();
