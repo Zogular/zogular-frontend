@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Page, type Request } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { sanitizeInternalNextPath } from "../src/services/auth-intent";
@@ -745,9 +745,36 @@ type Diagnostics = {
 };
 
 interface ExpectedDiagnostics {
+  transitionedOrdersRequest?: () => Request | undefined;
   failedRequests?: ReadonlyArray<{ method: string; path: string; errorText?: string }>;
   badResponses?: ReadonlyArray<{ method: string; path: string; status: number }>;
 }
+
+type RequestIdentity = Pick<Request, "url" | "method" | "resourceType">;
+
+function isDeferredOrdersCancellation(
+  request: RequestIdentity, transitioned: RequestIdentity | undefined, errorText: string, fixtureUrl?: string,
+): boolean {
+  return request === transitioned && !!fixtureUrl && request.method() === "GET" && request.resourceType() === "fetch"
+    && errorText === "net::ERR_ABORTED" && request.url() === new URL("/api/backend/orders?page=1&limit=20", fixtureUrl).href;
+}
+
+test("only the deferred orders fetch from the prior owner qualifies as an expected cancellation", () => {
+  const origin = "http://127.0.0.1:3397";
+  const url = origin + "/api/backend/orders?page=1&limit=20";
+  const held = { method: () => "GET", resourceType: () => "fetch", url: () => url };
+  const aborted = "net::ERR_ABORTED";
+  expect(isDeferredOrdersCancellation(held, held, aborted, origin)).toBe(true);
+  expect(isDeferredOrdersCancellation(held, undefined, aborted, origin)).toBe(false);
+  expect(isDeferredOrdersCancellation({ ...held }, held, aborted, origin)).toBe(false);
+  expect(isDeferredOrdersCancellation(held, held, "net::ERR_FAILED", origin)).toBe(false);
+  for (const wrong of [
+    { ...held, url: () => url.replace("page=1", "page=2") },
+    { ...held, url: () => url.replace("3397", "3398") },
+    { ...held, url: () => url.replace("/orders?", "/wishlist?") },
+    { ...held, method: () => "POST" }, { ...held, resourceType: () => "document" },
+  ]) expect(isDeferredOrdersCancellation(wrong, wrong, aborted, origin)).toBe(false);
+});
 
 function requestPath(rawUrl: string): string {
   const url = new URL(rawUrl);
@@ -819,7 +846,8 @@ function collectDiagnostics(page: Page, expected: ExpectedDiagnostics = {}): Dia
       entry.method === request.method()
       && entry.path === path
       && (!entry.errorText || entry.errorText === errorText)
-      )) || isExpectedNextPrefetchCancellation({
+      )) || isDeferredOrdersCancellation(request, expected.transitionedOrdersRequest?.(), errorText, baseUrl)
+      || isExpectedNextPrefetchCancellation({
         rawUrl: request.url(),
         method: request.method(),
         resourceType: request.resourceType(),
@@ -886,9 +914,9 @@ test("diagnostics accept only the exact framework prefetch cancellation signatur
 test.describe("consumer auth and wishlist browser acceptance", () => {
   test.skip(!baseUrl, "CONSUMER_AUTH_BASE_URL is required for fixture-based visual QA.");
   test.use({ serviceWorkers: "block" });
-  test.beforeEach(async ({ page }) => {
+  test.beforeEach(async ({ page, context }) => {
     // A blocked worker cannot supply a registration; exercise the browser's no-worker path.
-    await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
+    await context.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
     const onePixelPng = Buffer.from(
       "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
       "base64",
@@ -1994,9 +2022,12 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       const staleResponseGate = deferred<void>();
       const staleRequestStarted = deferred<void>();
       let staleRequestObserved = false;
-      const diagnostics = collectDiagnostics(page);
+      let heldOrdersRequest: Request | undefined;
+      const diagnostics = collectDiagnostics(page, {
+        transitionedOrdersRequest: () => currentOwner === "account-b" ? heldOrdersRequest : undefined,
+      });
 
-      const maybeWaitForStaleRequest = async (pathname: string, requestOwner: string) => {
+      const maybeWaitForStaleRequest = async (pathname: string, requestOwner: string, request: Request) => {
         const isSettingsIdentityRead = identityCase.name === "settings"
           && pathname.endsWith("/user/me")
           && currentUserCalls > 1;
@@ -2004,6 +2035,7 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
           ? isSettingsIdentityRead
           : pathname.endsWith(identityCase.target);
         if (requestOwner === "account-a" && isTarget && !staleRequestObserved) {
+          if (identityCase.name === "orders") heldOrdersRequest = request;
           staleRequestObserved = true;
           staleRequestStarted.resolve();
           await staleResponseGate.promise;
@@ -2015,7 +2047,7 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
         const url = new URL(request.url());
         const requestOwner = currentOwner;
         if (url.pathname.endsWith("/user/me")) currentUserCalls += 1;
-        await maybeWaitForStaleRequest(url.pathname, requestOwner);
+        await maybeWaitForStaleRequest(url.pathname, requestOwner, request);
 
         const isB = requestOwner === "account-b";
         if (url.pathname.endsWith("/user/me")) {
@@ -2114,14 +2146,16 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
       const initialOverviewRequestsStarted = deferred<void>();
       const initialOverviewPaths = new Set<string>();
       let staleRequestObserved = false;
+      let heldOrdersRequest: Request | undefined;
       const diagnostics = collectDiagnostics(page, {
+        transitionedOrdersRequest: () => currentOwner === null ? heldOrdersRequest : undefined,
         badResponses: [
           { method: "GET", path: "/api/backend/user/me", status: 401 },
           { method: "POST", path: "/api/backend/auth/refresh-token", status: 401 },
         ],
       });
 
-      const maybeWaitForStaleRequest = async (pathname: string, requestOwner: string | null) => {
+      const maybeWaitForStaleRequest = async (pathname: string, requestOwner: string | null, request: Request) => {
         const isSettingsIdentityRead = identityCase.name === "settings"
           && pathname.endsWith("/user/me")
           && currentUserCalls > 1;
@@ -2129,6 +2163,7 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
           ? isSettingsIdentityRead
           : pathname.endsWith(identityCase.target);
         if (requestOwner === "account-a" && isTarget && !staleRequestObserved) {
+          if (identityCase.name === "orders") heldOrdersRequest = request;
           staleRequestObserved = true;
           staleRequestStarted.resolve();
           await staleResponseGate.promise;
@@ -2145,7 +2180,7 @@ test.describe("consumer auth and wishlist browser acceptance", () => {
           if (initialOverviewPaths.size === 3) initialOverviewRequestsStarted.resolve();
         }
         if (url.pathname.endsWith("/user/me")) currentUserCalls += 1;
-        await maybeWaitForStaleRequest(url.pathname, requestOwner);
+        await maybeWaitForStaleRequest(url.pathname, requestOwner, route.request());
 
         if (url.pathname.endsWith("/auth/csrf-token")) {
           await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
