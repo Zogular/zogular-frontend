@@ -38,6 +38,7 @@ import {
   withoutRecordKey,
 } from "../_lib/product-listing-studio";
 import { useSellerApplication } from "@/components/seller/SellerApplicationContext";
+import { SellerListingRevisionPanel } from "@/features/listing-revisions/components/SellerListingRevisionPanel";
 import {
   clearProductDraft,
   consumeProductSubmissionRecovery,
@@ -115,7 +116,21 @@ function categorySelectionFromProduct(product?: SellerProductListing): CategoryS
   };
 }
 
-export function ProductListingStudioForm({
+export function ProductListingStudioForm(props: ProductListingStudioFormProps) {
+  const { initialProduct, mode, backHref, canSubmitForReview = true } = props;
+  // Select the revision path before mounting any legacy draft persistence or upload handlers.
+  if (process.env.NEXT_PUBLIC_PRODUCT_LISTING_REVISIONS_ENABLED === "true" &&
+    mode === "edit" && initialProduct &&
+    (isSellerProductBuyerVisibleStatus(initialProduct.status) ||
+      initialProduct.status === "paused" || initialProduct.status === "suspended")) {
+    return <SellerListingRevisionPanel key={initialProduct.id} product={initialProduct}
+      backHref={backHref ?? "/seller/products"} canSubmit={canSubmitForReview &&
+        !initialProduct.isSold && initialProduct.status !== "suspended"} />;
+  }
+  return <LegacyProductListingStudioForm {...props} />;
+}
+
+function LegacyProductListingStudioForm({
   backHref = "/seller/products",
   initialProduct,
   mode,
