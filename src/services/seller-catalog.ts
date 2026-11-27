@@ -65,6 +65,12 @@ export interface SellerProductListing {
   subcategorySlug: string;
   backendCategory?: BackendCategoryRef;
   status: SellerProductStatus;
+  /** Raw edit authority facts; the display status can normalize unknown values to draft. */
+  revisionEditSource?: {
+    status: BackendProductStatus | null;
+    isApproved: boolean | null;
+    hasApprovalDate: boolean | null;
+  };
   price: number;
   salePrice: number | null;
   stock: number;
@@ -1027,6 +1033,12 @@ function normalizeBackendSellerProduct(product: BackendVendorProduct): SellerPro
       product.subcategorySlug || slugifySellerValue(subcategoryName),
     backendCategory: product.categoryRef ?? undefined,
     status,
+    revisionEditSource: {
+      status: status !== "draft" || product.status === "DRAFT" ? product.status : null,
+      isApproved: typeof product.isApproved === "boolean" ? product.isApproved : null,
+      hasApprovalDate: product.approvedAt === null ? false
+        : typeof product.approvedAt === "string" && Number.isFinite(Date.parse(product.approvedAt)) ? true : null,
+    },
     price: product.price,
     salePrice: product.salePrice ?? null,
     stock: product.stock ?? 0,
