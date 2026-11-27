@@ -1,4 +1,5 @@
 import {
+  BarChart3,
   FolderTree,
   LayoutDashboard,
   LifeBuoy,
@@ -13,6 +14,7 @@ import type { AdminCapabilityId } from "@/features/admin-platform";
 
 export const ADMIN_SHELL_ICONS = Object.freeze({
   overview: LayoutDashboard,
+  analytics_and_reports: BarChart3,
   sellers: Store,
   customers: Users,
   products_and_moderation: PackageSearch,
