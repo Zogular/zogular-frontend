@@ -5,7 +5,7 @@ import Image from "next/image";
 import { Minus, Plus, ShoppingCart, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { PurchaseProgress } from "@/components/checkout/PurchaseProgress";
-import { useCart, type CartItemIdentity } from "@/hooks/use-cart";
+import { CHECK_PRODUCT_STOCK, guestIncreaseBlock, useCart, type CartItemIdentity } from "@/hooks/use-cart";
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
@@ -15,6 +15,7 @@ export default function CartPage() {
   const {
     hasHydrated,
     identityResolved,
+    ownerId,
     items,
     itemCount,
     totalAmount,
@@ -60,8 +61,10 @@ export default function CartPage() {
           <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
             <section className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-sm">
               <div className="divide-y divide-zinc-100">
-                {items.map((item) => {
+                {items.map((item, index) => {
                   const identity: CartItemIdentity = { id: item.id, variant: item.variant };
+                  const block = guestIncreaseBlock({ items, ownerId, hasHydrated, identityResolved }, identity);
+                  const stockNoteId = `cart-line-stock-${index}`;
 
                   return (
                     <div key={`${item.id}-${item.variant ?? "default"}`} className="flex gap-4 p-4 md:p-5">
@@ -105,14 +108,20 @@ export default function CartPage() {
                             <button
                               type="button"
                               onClick={() => increaseQuantity(identity)}
-                              title="Increase quantity"
+                              disabled={Boolean(block)}
+                              aria-describedby={block ? stockNoteId : undefined}
                               aria-label="Increase quantity"
-                              className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-zinc-500 transition-colors hover:text-[#009E49] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49]"
+                              className="flex h-11 w-11 items-center justify-center rounded-lg bg-white text-zinc-500 transition-colors enabled:hover:text-[#009E49] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] disabled:opacity-40"
                             >
                               <Plus className="h-3.5 w-3.5" />
                             </button>
                           </div>
                         </div>
+                        {block && <p id={stockNoteId} className="mt-1 text-xs leading-5 text-zinc-600">
+                          {block === CHECK_PRODUCT_STOCK
+                            ? <Link href={`/product/${item.slug}`} className="inline-block py-1 underline underline-offset-2">{block}</Link>
+                            : block}
+                        </p>}
                       </div>
                     </div>
                   );

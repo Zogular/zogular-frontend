@@ -4,7 +4,8 @@ import { ShoppingBag, ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { toCartItem } from "@/lib/normalizers/cart";
 import { getProductTitle } from "@/lib/normalizers/product";
-import { useCart } from "@/hooks/use-cart";
+import { guestIncreaseBlock, useCart } from "@/hooks/use-cart";
+import { toast } from "sonner";
 import type { Product } from "@/types/product";
 
 type AddToCartButtonProps = {
@@ -28,7 +29,9 @@ export function AddToCartButton({
   disabled = false,
   disabledReason,
 }: AddToCartButtonProps) {
-  const { addItem } = useCart();
+  const item = toCartItem(product, { quantity, variant });
+  const addItem = useCart((state) => state.addItem);
+  const block = useCart((state) => guestIncreaseBlock(state, item, quantity, item));
   const productTitle = getProductTitle(product);
   const accessibleLabel = disabled && disabledReason
     ? `${disabledReason}: ${productTitle}`
@@ -41,11 +44,12 @@ export function AddToCartButton({
       className={className}
       disabled={disabled}
       aria-label={iconOnly ? accessibleLabel : undefined}
-      title={iconOnly ? accessibleLabel : undefined}
+      title={disabledReason ?? block ?? accessibleLabel}
       onClick={(event) => {
         event.preventDefault();
         event.stopPropagation();
-        addItem(toCartItem(product, { quantity, variant }));
+        const rejection = addItem(item);
+        if (rejection) toast.info(rejection);
       }}
     >
       {iconOnly ? (
