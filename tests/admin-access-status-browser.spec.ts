@@ -1,8 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
-import { readdirSync, realpathSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { resolve } from "node:path";
+import { prepareApplication, dispose, vacancy } from "./helpers/access-fixture-launcher.cjs";
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 const host = "127.0.0.1";
@@ -10,7 +9,6 @@ const appPort = 3244;
 const apiPort = 5044;
 const appOrigin = `http://${host}:${appPort}`;
 const apiOrigin = `http://${host}:${apiPort}`;
-const repo = resolve(__dirname, "..");
 const csrfToken = "fixture-access-csrf";
 const reason = "Quarterly access review completed.";
 const actorId = "actor-fixture";
@@ -99,54 +97,23 @@ async function handleFixture(req: IncomingMessage, res: ServerResponse) {
 }
 
 // Only these two loopback services participate in interactive acceptance.
-async function proveVacant(port: number) {
-  const probe = createServer();
-  probe.listen({ host, port, exclusive: true });
-  await once(probe, "listening");
-  const closed = once(probe, "close");
-  probe.close();
-  await closed;
-}
+// Build and serve the same fresh scratch with fixed fixture API settings.
 
-function scratchNextCli() {
-  const cli = resolve(repo, "node_modules/next/dist/bin/next");
-  if (readdirSync(repo).some((name) => /^(?:\.git$|\.env(?:\.|$))/i.test(name)) ||
-      [repo, cli, resolve(repo, ".next/BUILD_ID")].some((file) => realpathSync.native(file) !== file)) {
-    throw new Error("Access tests require a physical standalone build without checkout or dotenv files.");
-  }
-  return cli;
-}
-
-test.use({ serviceWorkers: "block", channel: process.env.PLAYWRIGHT_CHANNEL ?? (process.platform === "win32" ? "msedge" : undefined) });
+test.use({ serviceWorkers: "block", channel: "chrome" });
 test.describe.configure({ mode: "default", timeout: 60_000 });
 test.beforeAll(async () => {
-  const cli = scratchNextCli();
-  await proveVacant(appPort);
-  await proveVacant(apiPort);
+  test.setTimeout(360_000);
+  await vacancy(appPort);
+  await vacancy(apiPort);
+  const launch = prepareApplication();
+  await vacancy(appPort);
   access = createFixtureState();
   fixture = createServer((req, res) => {
     void handleFixture(req, res).catch(() => send(res, 500, { status: "error" }));
   });
   fixture.listen({ host, port: apiPort, exclusive: true });
   await once(fixture, "listening");
-  const apiUrl = `${apiOrigin}/api/v1`;
-  const child = spawn(process.execPath, [cli, "start",
-    "--hostname", host, "--port", String(appPort)], {
-    cwd: repo,
-    env: {
-      ...(process.platform === "win32" ? { SystemRoot: process.env.SystemRoot } : {}),
-      NODE_ENV: "production",
-      NO_COLOR: "1",
-      ADMIN_API_URL: apiUrl,
-      INTERNAL_BACKEND_URL: apiUrl,
-      NEXT_PUBLIC_API_URL: apiUrl,
-      NEXT_PUBLIC_API_PROXY_URL: "/api/backend",
-      ADMIN_AUTH_SESSION_ENDPOINT: "/user/me",
-      NEXT_TELEMETRY_DISABLED: "1",
-    },
-    stdio: ["ignore", "pipe", "ignore"],
-    windowsHide: true,
-  });
+  const child = launch();
   next = child;
   let failed = false;
   let listening = false;
@@ -176,20 +143,7 @@ test.beforeAll(async () => {
   throw new Error("Owned Access server did not become ready on the fixture endpoint.");
 });
 
-test.afterAll(async () => {
-  if (next && next.exitCode === null && next.signalCode === null && next.pid) {
-    const exited = once(next, "exit");
-    next.kill();
-    await exited;
-  }
-  if (fixture?.listening) {
-    const closed = once(fixture, "close");
-    fixture.close();
-    fixture.closeAllConnections();
-    await closed;
-  }
-  await Promise.all([proveVacant(appPort), proveVacant(apiPort)]);
-});
+test.afterAll(async () => { await dispose(next, fixture); });
 
 test.beforeEach(async ({ context }) => {
   access = createFixtureState();
