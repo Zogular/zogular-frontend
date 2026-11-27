@@ -1160,7 +1160,7 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
   test.skip(!baseUrl, "CONSUMER_CART_CHECKOUT_BASE_URL is required for fixture-based visual QA.");
   test.use({ serviceWorkers: "block" });
 
-  test.beforeEach(async ({ page }) => {
+    test.beforeEach(async ({ page }) => {
     // Test pages must never register a worker that could intercept checkout fixtures.
     await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
     await fulfillStaticDependencies(page);
@@ -1629,7 +1629,159 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
 
+  test("mounted mobile Review returns to focused address recovery after a same-owner refresh fails", async ({ page }) => {
+    test.skip(process.env.CHECKOUT_MOUNTED_ADDRESS_FIXTURE !== "1", "Requires the scratch-only mounted checkout fixture.");
+    if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) throw new Error("Private loopback fixture required.");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
+    });
+    const refreshStarted = Promise.withResolvers<void>();
+    const releaseFailure = Promise.withResolvers<void>();
+    let failRefresh = false;
+    let orderPosts = 0;
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [{ method: "GET", path: "/api/backend/user/addresses", status: 503 }],
+    });
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+      if (pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ json: cartPayload() });
+      if (pathname.endsWith("/user/addresses")) {
+        if (!failRefresh) return route.fulfill({ json: addressPayload() });
+        refreshStarted.resolve();
+        await releaseFailure.promise;
+        return route.fulfill({ status: 503, json: { status: "fail", message: "fixture internal address failure" } });
+      }
+      if (pathname.endsWith("/orders/quote")) return route.fulfill({ json: quotePayload() });
+      if (pathname.endsWith("/auth/csrf-token")) return route.fulfill({ json: { data: { csrfToken: "fixture-review-recovery" } } });
+      if (pathname.endsWith("/orders") && request.method() === "POST") {
+        orderPosts++;
+        return route.fulfill({ status: 500, json: { status: "fail" } });
+      }
+      return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+    });
+
+    try {
+      await page.goto(`${baseUrl}/checkout-address-revalidation-fixture`);
+      await expect(page.getByRole("radio")).toBeChecked();
+      await advanceMobileCheckoutToReview(page);
+      const placeOrder = page.getByRole("button", { name: "Place Order Now" });
+      const checkoutProgress = page.getByRole("progressbar", { name: "Checkout Progress" });
+      await expect(placeOrder).toBeEnabled();
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "80");
+
+      failRefresh = true;
+      await page.getByRole("button", { name: "Simulate same-owner address refresh" }).click();
+      await refreshStarted.promise;
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "80");
+      await expect(placeOrder).toBeDisabled();
+      releaseFailure.resolve();
+
+      const heading = page.getByRole("heading", { name: /Delivery Address/ });
+      const section = page.locator("section").filter({ has: heading });
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "40");
+      await expect(section.getByRole("alert")).toHaveText("This service is temporarily unavailable. Please try again in a moment.");
+      await expect(heading).toBeFocused();
+      await expect(heading).toBeInViewport();
+      await expect(placeOrder).toBeHidden();
+      await page.screenshot({ path: path.resolve("output/playwright/consumer-cart-checkout-integrity/address-refresh-from-review-390x844.png") });
+
+      failRefresh = false;
+      await section.getByRole("button", { name: "Try again" }).press("Enter");
+      await expect(section.getByRole("radio")).toBeChecked();
+      await expect(section.getByRole("alert")).toHaveCount(0);
+      await advanceMobileCheckoutToReview(page);
+      await expect(placeOrder).toBeEnabled();
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "80");
+      expect(orderPosts).toBe(0);
+      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+    } finally {
+      releaseFailure.resolve();
+    }
+  });
+
   for (const vp of [{ name: "390x844", width: 390, height: 844 }, { name: "1440x900", width: 1440, height: 900 }] as const) {
+    test(`address loading failure recovers without a stale submit alert or order write at ${vp.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.addInitScript(() => {
+        localStorage.clear();
+        localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
+      });
+      const releaseRetry = Promise.withResolvers<void>();
+      const retryStarted = Promise.withResolvers<void>();
+      const addressFailure = "This service is temporarily unavailable. Please try again in a moment.";
+      const privateDiagnostic = "fixture internal address failure";
+      let retryRequested = false;
+      let orderPosts = 0;
+      const diagnostics = collectDiagnostics(page, {
+        badResponses: [
+          { method: "GET", path: "/api/backend/user/addresses", status: 503 },
+          { method: "POST", path: "/api/backend/orders", status: 422 },
+        ],
+      });
+      await page.route("**/api/backend/**", async (route) => {
+        const request = route.request();
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+        if (pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ json: cartPayload() });
+        if (pathname.endsWith("/user/addresses")) {
+          if (!retryRequested) return route.fulfill({ status: 503, json: { status: "fail", message: privateDiagnostic } });
+          retryStarted.resolve();
+          await releaseRetry.promise;
+          return route.fulfill({ json: addressPayload() });
+        }
+        if (pathname.endsWith("/orders/quote")) return route.fulfill({ json: quotePayload() });
+        if (pathname.endsWith("/auth/csrf-token")) return route.fulfill({ json: { data: { csrfToken: "fixture-address-retry" } } });
+        if (pathname.endsWith("/orders") && request.method() === "POST") {
+          orderPosts++;
+          return route.fulfill({ status: 422, json: { status: "fail", message: "fixture internal order rejection" } });
+        }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+
+      try {
+        await page.goto(`${baseUrl}/checkout`, { waitUntil: "networkidle" });
+        const heading = page.getByRole("heading", { name: /Delivery Address/ });
+        const section = page.locator("section").filter({ has: heading });
+        const placeOrder = page.getByRole("button", { name: "Place Order Now" });
+        await expect(section.getByRole("alert")).toHaveText(addressFailure);
+        await expect(page.getByText(addressFailure, { exact: true })).toHaveCount(1);
+        await expect(page.getByText(privateDiagnostic)).toHaveCount(0);
+        if (vp.width >= 768) await expect(placeOrder).toBeDisabled();
+        await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/address-failed-${vp.name}.png`) });
+
+        retryRequested = true;
+        await section.getByRole("button", { name: "Try again" }).press("Enter");
+        await retryStarted.promise;
+        await expect(heading).toBeFocused();
+        await expect(section.getByRole("status")).toHaveText("Loading delivery addresses...");
+        await expect(section.getByRole("button", { name: "Try again" })).toHaveCount(0);
+        if (vp.width >= 768) await expect(placeOrder).toBeDisabled();
+
+        releaseRetry.resolve();
+        await expect(section.getByRole("radio")).toBeChecked();
+        await expect(page.getByText(addressFailure, { exact: true })).toHaveCount(0);
+        await advanceMobileCheckoutToReview(page);
+        await expect(placeOrder).toBeEnabled();
+        await placeOrder.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/address-recovered-${vp.name}.png`) });
+        expect(orderPosts).toBe(0);
+
+        // Only the deliberate submit reaches the synthetic order endpoint, which never creates an order.
+        await placeOrder.click();
+        await expect(page.getByText("Some cart details changed. Review your cart and try again.", { exact: true })).toBeVisible();
+        await expect(page.getByText("fixture internal order rejection")).toHaveCount(0);
+        await expect(page.getByText(addressFailure, { exact: true })).toHaveCount(0);
+        expect(orderPosts).toBe(1);
+        expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+      } finally {
+        releaseRetry.resolve();
+      }
+    });
+
     test(`CSRF 403 on order creation performs 1 POST, shows safe retry copy, and succeeds on second deliberate click at ${vp.name}`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.addInitScript(() => {
