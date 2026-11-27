@@ -14,8 +14,8 @@ const settingsSchema = z.object({
     city: z.string(), country: z.string(), taxNumber: z.string(),
   }),
   fulfillment: z.object({
-    deliveryEnabled: z.boolean(), pickupEnabled: z.boolean(), defaultDeliveryFee: z.number(),
-    freeDeliveryThreshold: z.number().nullable(), processingTimeDays: z.number(),
+    deliveryEnabled: z.boolean(), pickupEnabled: z.boolean(), defaultDeliveryFee: z.number().nonnegative(),
+    freeDeliveryThreshold: z.number().nonnegative().nullable(), processingTimeDays: z.number().int().nonnegative(),
   }),
   operations: z.object({
     storefrontVisible: z.boolean(), vacationMode: z.boolean(), autoAcceptOrders: z.boolean(),

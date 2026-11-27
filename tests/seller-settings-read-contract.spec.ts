@@ -20,7 +20,7 @@ async function read(payload: unknown) {
   globalThis.fetch = async (input, init) => {
     const req = new Request(input, init);
     const url = new URL(req.url);
-    requests.push(`${req.method} ${url.pathname.slice(-endpoint.length)}${url.search}`);
+    requests.push(`${req.method} ${url.pathname.replace(/^\/api\/v1(?=\/)/, "")}${url.search}`);
     return Response.json(payload);
   };
   try {
@@ -34,11 +34,15 @@ async function read(payload: unknown) {
 test("reads the controller envelope and tolerates additive fields without losing valid values", async () => {
   const payload = envelope({ ...settings, futureSection: {}, business: { ...settings.business, extra: true } });
   const actual = await read({ ...payload, requestReference: "fixture" });
-  // No-image wire strings have historically been normalized to null. Either represents no image.
-  expect({ ...actual, profile: { ...actual.profile, logo: actual.profile.logo ?? "", banner: actual.profile.banner ?? "" } })
-    .toMatchObject(settings);
-  const varied = { ...settings, fulfillment: { ...settings.fulfillment, pickupEnabled: true, freeDeliveryThreshold: 0, defaultDeliveryFee: 25 } };
+  expect(actual).toEqual({ ...settings, profile: { ...settings.profile, logo: null, banner: null } });
+  const varied = { ...settings, fulfillment: { ...settings.fulfillment, pickupEnabled: true, freeDeliveryThreshold: 0, defaultDeliveryFee: 25.5, processingTimeDays: 0 } };
   expect((await read(envelope(varied))).fulfillment).toEqual(varied.fulfillment);
+});
+
+test("rejects negative money and invalid processing-day counts without coercion", async () => {
+  for (const invalid of [{ defaultDeliveryFee: -1 }, { freeDeliveryThreshold: -1 }, { processingTimeDays: -1 }, { processingTimeDays: 1.5 }]) {
+    await expect(read(envelope({ ...settings, fulfillment: { ...settings.fulfillment, ...invalid } }))).rejects.toThrow();
+  }
 });
 
 for (const [name, payload] of Object.entries({
@@ -94,7 +98,8 @@ test.describe("seller settings in Chrome", () => {
           if (url.pathname === "/api/backend/vendor/applications/me") return route.fulfill({ json: { status: "success", data: { application } } });
           if (url.pathname === `/api/backend${endpoint}`) {
             reads++;
-            return route.fulfill({ json: envelope(recover ? settings : { ...settings, business: diagnostic }) });
+            const recovered = { ...settings, fulfillment: { ...settings.fulfillment, processingTimeDays: 4, defaultDeliveryFee: 25.5 } };
+            return route.fulfill({ json: envelope(recover ? recovered : { ...settings, business: diagnostic }) });
           }
         }
       }
@@ -124,6 +129,10 @@ test.describe("seller settings in Chrome", () => {
     await expect(page.locator('input[type="tel"]')).not.toBeEditable();
     await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
     await page.screenshot({ path: info.outputPath("settings-recovered.png") });
+    await page.getByRole("button", { name: "Fulfillment", exact: true }).click();
+    await expect(page.getByLabel("Planned Delivery Fee (K)", { exact: true })).toHaveValue("25.5");
+    await expect(page.getByLabel("Planned Processing Time")).toHaveValue("4");
+    await expect(page.getByLabel("Planned Processing Time").locator("option:checked")).toHaveText("4 Business Days");
     expect(reads).toBe(2);
     expect(denied).toEqual([]);
   });
