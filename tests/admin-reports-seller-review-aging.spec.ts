@@ -385,12 +385,50 @@ test.describe("admin reports operational seller-review aging browser acceptance"
 
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${FRONTEND_ORIGIN}/admin/dashboard`, { waitUntil: "networkidle" });
-    await page.getByRole("button", { name: "Open admin menu" }).click();
-    const mobileLink = page.getByRole("link", { name: "Operational Reports" });
+    const mobileMenuButton = page.getByRole("button", { name: "Open admin menu" });
+    await mobileMenuButton.click();
+
+    const mobileDrawer = page.locator("#admin-mobile-navigation");
+    const mobileBackdrop = page.locator('[data-slot="sheet-overlay"]');
+    const mobileLink = mobileDrawer.getByRole("link", { name: "Operational Reports" });
+    await expect(mobileDrawer).toBeVisible();
+    await expect(mobileDrawer).toHaveAttribute("data-state", "open");
+    await expect(mobileBackdrop).toBeVisible();
     await expect(mobileLink).toBeVisible();
+
+    await expect
+      .poll(async () =>
+        page.evaluate(() => {
+          const targets = [
+            document.querySelector("#admin-mobile-navigation"),
+            document.querySelector('[data-slot="sheet-overlay"]'),
+          ];
+          return targets.every(
+            (el) => el !== null && el.getAnimations().every((anim) => anim.playState === "finished")
+          );
+        })
+      )
+      .toBe(true);
+
+    await page.screenshot({
+      path: path.resolve("output/playwright/admin-reports/overview-mobile-drawer-open-390x844.png"),
+      fullPage: false,
+    });
+
     await mobileLink.click();
     await expect(page).toHaveURL(/\/admin\/reports/);
+    await expect(mobileDrawer).toHaveCount(0);
+    await expect(mobileBackdrop).toHaveCount(0);
+    await expect(mobileMenuButton).toHaveAttribute("aria-expanded", "false");
     await expect(page.getByRole("row", { name: /Total awaiting review/ }).getByRole("cell")).toHaveText("10");
+
+    const requestsBeforeRefresh = reportRequests;
+    const refreshButton = page.getByRole("button", { name: "Refresh" });
+    await expect(refreshButton).toBeEnabled();
+    await refreshButton.click();
+    await expect.poll(() => reportRequests).toBe(requestsBeforeRefresh + 1);
+    await expect(page.getByRole("row", { name: /Total awaiting review/ }).getByRole("cell")).toHaveText("10");
+
     await page.screenshot({
       path: path.resolve("output/playwright/admin-reports/overview-to-reports-mobile-390x844.png"),
       fullPage: false,
