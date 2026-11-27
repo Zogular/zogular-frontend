@@ -1,6 +1,12 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 import { BRAND_ATTRIBUTION } from "@/config/brand";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/about", "About Zogular", "Learn about Zogular, a Zambian marketplace connecting shoppers with local sellers.", await searchParams);
+}
+
 export default function AboutPage() {
   return (
     <ZogularInfoPage

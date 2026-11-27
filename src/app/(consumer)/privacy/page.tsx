@@ -1,6 +1,12 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 import { BRAND } from "@/config/brand";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/privacy", "Privacy Policy", "Read how Zogular handles buyer and seller information and how to raise a privacy concern.", await searchParams);
+}
+
 export default function PrivacyPage() {
   return (
     <ZogularInfoPage

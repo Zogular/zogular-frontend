@@ -558,11 +558,7 @@ function parseProductListPayload(
   return { rawProducts: payload.data.products, page, limit, total, pages };
 }
 
-async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Promise<{
-  products: Product[];
-  pagination: ProductPaginationMeta;
-}> {
-
+async function readPublicProductPage(params: FetchBackendProductsParams) {
   const payload = await apiClient<BackendProductListResponse>("/products", {
     method: "GET",
     authMode: "omit",
@@ -580,13 +576,28 @@ async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Pr
     },
   });
 
+  return parseProductListPayload(payload);
+}
+
+// Discovery must count raw records, not UI cards remaining after moderation filtering.
+export async function getPublicSearchPage(page: number, limit: number, timeout: number) {
+  const result = await readPublicProductPage({ page, limit, timeout });
+  return { page: result.page, limit: result.limit, total: result.total, pages: result.pages,
+    rows: result.rawProducts.map(row => ({ id: row.id, slug: row.slug, title: row.title, updatedAt: row.updatedAt,
+      eligible: getPublicProductStatusResolution(row) === "public" && row.isSold !== true })) };
+}
+
+async function fetchBackendProducts(params: FetchBackendProductsParams = {}): Promise<{
+  products: Product[];
+  pagination: ProductPaginationMeta;
+}> {
   const {
     rawProducts,
     page,
     limit,
     total,
     pages,
-  } = parseProductListPayload(payload);
+  } = await readPublicProductPage(params);
   const products = rawProducts
     .map(normalizePublicBackendProduct)
     .filter((product): product is Product => product !== null);

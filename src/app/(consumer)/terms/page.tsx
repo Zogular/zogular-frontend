@@ -1,6 +1,12 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 import { BRAND } from "@/config/brand";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/terms", "Terms and Conditions", "Read the terms for buying and selling on the Zogular marketplace.", await searchParams);
+}
+
 export default function TermsPage() {
   return (
     <ZogularInfoPage

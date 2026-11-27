@@ -1,6 +1,12 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 import { BRAND } from "@/config/brand";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/help", "Help Center", "Get help with orders, delivery, cancellation, account access and privacy requests on Zogular.", await searchParams);
+}
+
 export default function HelpPage() {
   return (
     <ZogularInfoPage

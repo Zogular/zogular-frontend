@@ -1,5 +1,11 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/returns", "Returns Policy", "Find out how to request a return, cancel an eligible purchase or report an order problem.", await searchParams);
+}
+
 export default function ReturnsPage() {
   return (
     <ZogularInfoPage

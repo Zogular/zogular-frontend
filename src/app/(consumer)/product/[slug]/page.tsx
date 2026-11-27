@@ -1,39 +1,29 @@
 import type { Metadata } from "next";
+import { cache } from "react";
+import { publicMetadata, searchLabel, safeSlug, unlisted, type SearchProps } from "@/lib/seo/public-search";
 import { notFound } from "next/navigation";
 import { ProductDetailsClient } from "@/components/product/ProductDetailsClient";
 import { getProductDetailBySlug, getRelatedProducts } from "@/services/products";
 
 export const dynamic = "force-dynamic";
 
-interface ProductDetailsPageProps {
+interface ProductDetailsPageProps extends SearchProps {
   params: Promise<{ slug: string }>;
 }
 
-export async function generateMetadata({ params }: ProductDetailsPageProps): Promise<Metadata> {
+const productForRequest = cache(getProductDetailBySlug);
+
+export async function generateMetadata({ params, searchParams }: ProductDetailsPageProps): Promise<Metadata> {
   const { slug } = await params;
-  let product = null;
-  try {
-    product = await getProductDetailBySlug(slug);
-  } catch {
-    // Allow error to be handled by the page component and error.tsx
-  }
-
-  if (!product) return {};
-
-  return {
-    title: `${product.title} | Zogular`,
-    description: product.description,
-    openGraph: {
-      title: `${product.title} | Zogular`,
-      description: product.description,
-      images: product.images.slice(0, 1),
-    },
-  };
+  if (!safeSlug(slug)) return unlisted;
+  const product = await productForRequest(slug);
+  const label = product && product.slug === slug && searchLabel(product.title);
+  return label ? publicMetadata("/product/" + slug, label, "View the " + label + " listing on Zogular, Zambia's online marketplace.", await searchParams) : unlisted;
 }
 
 export default async function ProductDetailsPage({ params }: ProductDetailsPageProps) {
   const { slug } = await params;
-  const productData = await getProductDetailBySlug(slug);
+  const productData = await productForRequest(slug);
 
   if (!productData) {
     notFound();
@@ -45,9 +35,8 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
   });
 
   return (
-    <ProductDetailsClient
-      productData={productData}
-      relatedProducts={relatedProducts}
-    />
+    <div data-nosnippet="">
+      <ProductDetailsClient productData={productData} relatedProducts={relatedProducts} />
+    </div>
   );
 }
