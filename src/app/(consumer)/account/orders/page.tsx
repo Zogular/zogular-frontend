@@ -1,21 +1,19 @@
 "use client";
 
-import * as React from "react";
+import { Suspense } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Package, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BuyerOrderStatusBadge } from "@/components/account/BuyerOrderStatusBadge";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
-import { rememberListScroll, useListScrollRestoration } from "@/hooks/use-list-scroll-restoration";
-import { appendOrderPage, getMyOrdersPage } from "@/services/orders";
-import type { OrderPage, OrderStatus } from "@/types/order";
+import { useBuyerOrderHistory } from "@/features/buyer-orders/hooks/use-buyer-order-history";
+import { orderHistoryHref, orderLinkId, parseOrderFilter, type OrderFilter } from "@/features/buyer-orders/lib/order-return-state";
 
-const ORDERS_PATH = "/account/orders";
-
-const TABS: { label: string; value: OrderStatus | "all" }[] = [
+const TABS: { label: string; value: OrderFilter }[] = [
   { label: "All Orders", value: "all" },
   { label: "Processing", value: "processing" },
   { label: "Shipped", value: "shipped" },
@@ -28,51 +26,24 @@ function formatCurrency(value: number) {
 }
 
 export default function OrdersPage() {
-  const [orderPage, setOrderPage] = React.useState<OrderPage | null>(null);
-  const orderPageRef = React.useRef<OrderPage | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [error, setError] = React.useState<unknown>(null);
-  const [loadingMore, setLoadingMore] = React.useState(false);
-  const [nextPageError, setNextPageError] = React.useState(false);
-  const loadMoreRequestRef = React.useRef(false);
-  const [activeTab, setActiveTab] = React.useState<OrderStatus | "all">("all");
-  const [search, setSearch] = React.useState("");
+  return (
+    <Suspense fallback={<OrderHistoryLoading />}>
+      <OrderHistory />
+    </Suspense>
+  );
+}
 
-  const loadOrders = React.useCallback(async (page = 1) => {
-    const append = page > 1;
-    if (append && loadMoreRequestRef.current) return;
-    try {
-      if (append) loadMoreRequestRef.current = true;
-      if (append) setLoadingMore(true);
-      else setLoading(true);
-      if (append) setNextPageError(false);
-      else setError(null);
-      const data = await getMyOrdersPage({ page });
-      if (append && !orderPageRef.current) {
-        throw new Error("Order history is not ready to load another page.");
-      }
-      const nextOrderPage = append
-        ? appendOrderPage(orderPageRef.current as OrderPage, data)
-        : data;
-      orderPageRef.current = nextOrderPage;
-      setOrderPage(nextOrderPage);
-    } catch (loadError) {
-      if (append) setNextPageError(true);
-      else setError(loadError);
-    } finally {
-      if (append) loadMoreRequestRef.current = false;
-      if (append) setLoadingMore(false);
-      else setLoading(false);
-    }
-  }, []);
+function OrderHistoryLoading() {
+  return <div className="py-16 text-center text-sm font-medium text-zinc-500">Loading your order history...</div>;
+}
 
+function OrderHistory() {
+  const router = useRouter();
+  const statuses = useSearchParams().getAll("status");
+  const activeTab = parseOrderFilter(statuses.length === 1 ? statuses[0] : null);
+  const { page: orderPage, error, loading, loadingMore, nextPageError, search, setSearch, loadMore, rememberOrder, retry } = useBuyerOrderHistory(activeTab);
   const orders = orderPage?.orders ?? [];
   const pagination = orderPage?.pagination ?? null;
-  useListScrollRestoration(ORDERS_PATH, !loading && !error && orderPage !== null);
-
-  React.useEffect(() => {
-    void loadOrders();
-  }, [loadOrders]);
 
   const filteredOrders = orders.filter((order) => {
     const matchTab = activeTab === "all" ? true : order.status === activeTab;
@@ -85,7 +56,7 @@ export default function OrdersPage() {
   });
 
   return (
-    <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
+    <div className="space-y-6 motion-safe:animate-in motion-safe:fade-in duration-500">
       <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
         <div>
           <h1 className="text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">
@@ -102,6 +73,7 @@ export default function OrdersPage() {
           </div>
           <Input
             value={search}
+            disabled={loading}
             onChange={(event) => setSearch(event.target.value)}
             placeholder="Search Order ID or Item..."
             className="h-11 rounded-xl border-zinc-200 bg-white pl-9 shadow-sm focus-visible:ring-[#009E49]"
@@ -112,8 +84,11 @@ export default function OrdersPage() {
       <div className="hide-scrollbar flex gap-2 overflow-x-auto pb-2">
         {TABS.map((tab) => (
           <button
+            type="button"
             key={tab.value}
-            onClick={() => setActiveTab(tab.value)}
+            aria-pressed={activeTab === tab.value}
+            disabled={loading}
+            onClick={() => router.replace(orderHistoryHref(tab.value), { scroll: false })}
             className={`min-h-11 shrink-0 rounded-full border px-5 py-2 text-sm font-bold transition-colors ${
               activeTab === tab.value
                 ? "border-zinc-900 bg-zinc-900 text-white shadow-md"
@@ -132,24 +107,26 @@ export default function OrdersPage() {
       ) : null}
 
       {loading ? (
-        <div className="py-16 text-center text-sm font-medium text-zinc-500">
-          Loading your order history...
-        </div>
+        <OrderHistoryLoading />
       ) : error ? (
-        <AccountLoadErrorState error={error} resource="orders" onRetry={() => loadOrders()} />
+        <AccountLoadErrorState error={error} resource="orders" onRetry={retry} />
       ) : filteredOrders.length === 0 ? (
         <FeedbackState
           icon={Package}
           title="No orders found"
           description={
             search
-              ? "We couldn't find anything matching your search."
-              : "You haven't placed any orders yet."
+              ? "No loaded orders match your search."
+              : activeTab === "all" ? "You haven't placed any orders yet." : "No loaded orders match this status."
           }
           action={
             search ? (
               <Button onClick={() => setSearch("")} variant="outline" className="rounded-xl">
                 Clear Search
+              </Button>
+            ) : activeTab !== "all" ? (
+              <Button onClick={() => router.replace(orderHistoryHref("all"), { scroll: false })} variant="outline" className="rounded-xl">
+                Show All Orders
               </Button>
             ) : (
               <Button asChild className="rounded-xl bg-zinc-900 text-white hover:bg-zinc-800">
@@ -159,7 +136,7 @@ export default function OrdersPage() {
           }
         />
       ) : (
-        <div className="space-y-4 md:space-y-6">
+        <div data-order-history-list="" className="space-y-4 md:space-y-6">
           {filteredOrders.map((order) => {
             return (
               <div key={order.id} className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_2px_15px_rgba(0,0,0,0.02)] transition-shadow hover:shadow-md">
@@ -211,7 +188,7 @@ export default function OrdersPage() {
                     </p>
 
                     <Button asChild className="h-11 w-full scroll-my-24 rounded-xl bg-zinc-100 text-sm font-bold text-zinc-900 hover:bg-[#009E49] hover:text-white sm:w-auto">
-                      <Link href={`${ORDERS_PATH}/${order.id}`} onClick={() => rememberListScroll(ORDERS_PATH)}>
+                      <Link id={orderLinkId(order.id)} href={orderHistoryHref(activeTab, order.id)} onNavigate={() => rememberOrder(order.id)}>
                         View Order Details
                       </Link>
                     </Button>
@@ -229,7 +206,7 @@ export default function OrdersPage() {
             type="button"
             variant="outline"
             disabled={loadingMore}
-            onClick={() => void loadOrders(pagination.page + 1)}
+            onClick={() => void loadMore()}
             className="h-11 min-w-36 rounded-xl font-bold"
           >
             {loadingMore ? "Loading..." : "Load More Orders"}

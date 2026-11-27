@@ -58,7 +58,41 @@ const earlierOrders = Array.from({ length: fullListCount - 1 }, (_, index) => ({
 }));
 const detailPath = `${ordersPath}/${order.id}`;
 
-type OrderFixture = { listStatus: 200 | 503 | "malformed"; detailStatus: 200 | 403 | 404 | 503; listCount: 0 | 1 | typeof fullListCount; listReads: number; detailReads: number };
+const returnSearch = "A1-RETURN";
+const returnPath = `${ordersPath}?status=processing`;
+const returnDetailPath = `${detailPath}?status=processing`;
+const returnPageSize = 20;
+const returnOrderIndex = 46;
+const returnOrders: readonly BackendOrder[] = Array.from({ length: 52 }, (_, index) => {
+  if (index === returnOrderIndex) return { ...order, orderNumber: `${returnSearch}-TARGET` };
+  return {
+    ...order,
+    id: `00000000-0000-4000-8000-${String(100 + index).padStart(12, "0")}`,
+    orderNumber: index === 1 ? "A1-OTHER-ORDER" : `${returnSearch}-${index}`,
+    status: index === 0 ? "SHIPPED" : "PROCESSING",
+  };
+});
+
+type PagedOrderFixture = { rows: readonly BackendOrder[]; reads: number[]; failPage?: number };
+type OrderFixture = {
+  listStatus: 200 | 503 | "malformed";
+  detailStatus: 200 | 403 | 404 | 503;
+  listCount: 0 | 1 | typeof fullListCount;
+  listReads: number;
+  detailReads: number;
+  paged?: PagedOrderFixture;
+};
+
+function pagedOrderResponse(fixture: PagedOrderFixture, page: number) {
+  const total = fixture.rows.length;
+  const pages = Math.ceil(total / returnPageSize);
+  if (!Number.isInteger(page) || page < 1 || page > pages) return null;
+  fixture.reads.push(page);
+  const start = (page - 1) * returnPageSize;
+  const orders = fixture.rows.slice(start, start + returnPageSize);
+  return { status: "success", results: orders.length, data: { orders },
+    pagination: { total, page, limit: returnPageSize, pages } };
+}
 
 // Only the named browser API reads below are allowed; unknown API routes and writes never reach Next's proxy.
 const test = base.extend<{ orderFixture: OrderFixture }>({
@@ -83,6 +117,16 @@ const test = base.extend<{ orderFixture: OrderFixture }>({
           case `${proxyPrefix}/user/me`:
             return ok({ status: "success", data: { user: buyer } });
           case `${proxyPrefix}/orders`:
+            if (fixture.paged) {
+              const requested = url.searchParams.get("page");
+              if (!requested || !/^[1-5]$/.test(requested) ||
+                  url.searchParams.get("limit") !== String(returnPageSize)) break;
+              const payload = pagedOrderResponse(fixture.paged, Number(requested));
+              if (!payload) break;
+              fixture.listReads += 1;
+              if (fixture.paged.failPage === Number(requested)) return fail(503);
+              return ok(payload);
+            }
             if (url.searchParams.get("page") !== "1" || url.searchParams.get("limit") !== "20") break;
             fixture.listReads += 1;
             if (fixture.listStatus === 503) return fail(503);
@@ -96,7 +140,7 @@ const test = base.extend<{ orderFixture: OrderFixture }>({
           case `${proxyPrefix}/orders/${order.id}`:
             fixture.detailReads += 1;
             return fixture.detailStatus === 200
-              ? ok({ status: "success", data: { order } })
+              ? ok({ status: "success", data: { order: fixture.paged?.rows.find(({ id }) => id === order.id) ?? order } })
               : fail(fixture.detailStatus);
           case `${proxyPrefix}/user/addresses`:
             return ok({ status: "success", data: { addresses: [] } });
@@ -285,6 +329,98 @@ for (const viewport of viewports) {
       }
       expect(orderFixture.detailReads).toBeGreaterThan(0);
     });
+  });
+}
+
+for (const returnVia of ["browser Back", "receipt link", "changed filtered composition",
+  "target moves to page five", "page three fails after anchor loaded"] as const) {
+  test(`A1 restores filtered page-three order and viewport offset via ${returnVia}`, async ({ page, orderFixture }) => {
+    const paged: PagedOrderFixture = { rows: returnOrders, reads: [] };
+    orderFixture.paged = paged;
+    await page.goto(ordersPath);
+    const search = page.getByPlaceholder("Search Order ID or Item...");
+    const processing = page.getByRole("button", { name: "Processing", exact: true });
+    const loadMore = page.getByRole("button", { name: "Load More Orders", exact: true });
+    const anchor = page.getByRole("link", { name: "View Order Details", exact: true })
+      .and(page.locator(`a[href="${detailPath}"], a[href^="${detailPath}?"]`));
+    const anchorOffset = () => anchor.evaluate((node) => node.getBoundingClientRect().top);
+    const scrollY = () => page.evaluate(() => window.scrollY);
+
+    await expect(page.getByText(`${returnSearch}-0`, { exact: true })).toBeVisible();
+    await expect(page.getByText("A1-OTHER-ORDER", { exact: true })).toBeVisible();
+    await processing.click();
+    await expect(page).toHaveURL(returnPath);
+    await expect(page.getByText(`${returnSearch}-0`, { exact: true })).toHaveCount(0);
+    await search.fill(returnSearch);
+    await expect(page.getByText("A1-OTHER-ORDER", { exact: true })).toHaveCount(0);
+    await expect(page).toHaveURL(returnPath);
+    await expect(anchor).toHaveCount(0);
+
+    await loadMore.click();
+    await expect(page.getByText(`${returnSearch}-20`, { exact: true })).toBeVisible();
+    await expect(anchor).toHaveCount(0);
+    await loadMore.click();
+    await expect(anchor).toBeVisible();
+    await expect(loadMore).toHaveCount(0);
+    expect(paged.reads).toEqual([1, 2, 3]);
+
+    await auditPageLayout(page);
+    await anchor.evaluate((node) => node.scrollIntoView({ block: "center", behavior: "instant" }));
+    await expect(anchor).toBeInViewport();
+    const originalTop = await anchorOffset();
+    const originalY = await scrollY();
+    expect(originalY).toBeGreaterThan(0);
+    await expect(anchor).toHaveJSProperty("tagName", "A");
+    await expect(anchor).toHaveAttribute("href", returnDetailPath);
+    await anchor.click();
+    await expect(page.getByRole("heading", { name: "RECEIPT", exact: true })).toBeVisible();
+    await expect(page).toHaveURL(returnDetailPath);
+    const back = page.getByRole("link", { name: "Back to Orders", exact: true });
+    await expect(back).toHaveAttribute("href", returnPath);
+    const startingRead = paged.reads.length;
+
+    if (returnVia === "changed filtered composition") {
+      // Preserve all raw IDs and their order; only the rendered rows above the target shrink.
+      paged.rows = paged.rows.map((row, index) => index >= 8 && index < 16 ? { ...row, status: "SHIPPED" } : row);
+    } else if (returnVia === "target moves to page five") {
+      const extra = Array.from({ length: 40 }, (_, index) => ({
+        ...order, id: `00000000-0000-4000-8000-${String(300 + index).padStart(12, "0")}`,
+        orderNumber: `${returnSearch}-EXTRA-${index}`,
+      }));
+      paged.rows = [...extra, ...paged.rows];
+    } else if (returnVia === "page three fails after anchor loaded") {
+      const reordered = [...paged.rows];
+      [reordered[30], reordered[returnOrderIndex]] = [reordered[returnOrderIndex], reordered[30]];
+      paged.rows = reordered;
+      paged.failPage = 3;
+    } else if (returnVia === "receipt link") {
+      // Shift the target four visible rows earlier without changing pagination metadata.
+      const reordered = [...paged.rows];
+      const [target] = reordered.splice(returnOrderIndex, 1);
+      reordered.splice(42, 0, target);
+      paged.rows = reordered;
+    }
+    if (returnVia === "browser Back") await page.goBack();
+    else await back.click();
+
+    await expect(page).toHaveURL(returnPath);
+    await expect(search).toHaveValue(returnSearch);
+    if (returnVia === "page three fails after anchor loaded") {
+      await expect(page.getByRole("alert").filter({ hasText: "More orders could not load" })).toBeVisible();
+      await expect(loadMore).toBeVisible();
+      await expect(page.locator("body")).not.toContainText(internalError);
+    } else if (returnVia === "changed filtered composition") {
+      await expect(page.getByText(`${returnSearch}-8`, { exact: true })).toHaveCount(0);
+    }
+    await expect(page.getByText(`${returnSearch}-0`, { exact: true })).toHaveCount(0);
+    await expect(page.getByText("A1-OTHER-ORDER", { exact: true })).toHaveCount(0);
+    await expect(anchor).toBeInViewport();
+    await expect.poll(async () => Math.abs(await anchorOffset() - originalTop),
+      { message: "The same order link must return to its original viewport offset" }).toBeLessThanOrEqual(2);
+    expect(paged.reads.slice(startingRead)).toEqual(returnVia === "target moves to page five" ? [1, 2, 3, 4, 5] : [1, 2, 3]);
+    if (returnVia !== "browser Back") {
+      expect(Math.abs(await scrollY() - originalY), "Reordered rows must not reuse the old pixel position").toBeGreaterThan(2);
+    }
   });
 }
 

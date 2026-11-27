@@ -166,13 +166,13 @@ function parseOrderPage(payload: unknown): OrderPage {
   }
 }
 
-export async function getMyOrdersPage(options: { page?: number; limit?: number } = {}): Promise<OrderPage> {
+export async function getMyOrdersPage(options: { page?: number; limit?: number; signal?: AbortSignal } = {}): Promise<OrderPage> {
   const page = options.page ?? 1;
   const limit = options.limit ?? ORDER_PAGE_LIMIT;
   if (!Number.isInteger(page) || page < 1 || !Number.isInteger(limit) || limit < 1 || limit > 100) {
     throw new OrderListContractError("Order page request is invalid.");
   }
-  const response = await apiClient<unknown>("/orders", { query: { page, limit } });
+  const response = await apiClient<unknown>("/orders", { query: { page, limit }, signal: options.signal });
   const parsed = parseOrderPage(response);
   if (parsed.pagination.page !== page || parsed.pagination.limit !== limit) {
     throw new OrderListContractError("Order pagination does not match the requested page.");
