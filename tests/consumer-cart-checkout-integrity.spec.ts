@@ -5,7 +5,8 @@ import {
   CartContractError,
   parseBackendCartResponse,
 } from "../src/services/cart";
-import { resetApiClientSecurityStateForTests } from "../src/services/api";
+import { ApiError, resetApiClientSecurityStateForTests } from "../src/services/api";
+import { getCheckoutErrorMessage } from "../src/features/checkout/lib/checkout-presentation";
 import {
   CheckoutContractError,
   CheckoutOrderOutcomeUnknownError,
@@ -280,6 +281,17 @@ test("malformed apparent create success is indeterminate and cannot be treated a
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("checkout error presenter distinguishes CSRF verification expiry from session expiry without leaking CSRF", () => {
+  const csrfMessage = getCheckoutErrorMessage(new ApiError("Invalid CSRF token", 403), "create");
+  expect(csrfMessage).toBe(
+    "Your order was not placed because your checkout verification expired. Select Place Order Now to try again.",
+  );
+  expect(csrfMessage).not.toMatch(/csrf/i);
+  expect(getCheckoutErrorMessage(new ApiError("Session expired", 401), "create")).toBe(
+    "Please sign in again to continue.",
+  );
 });
 
 test("createCheckoutOrder aborts with 0 POSTs if browser auth snapshot changes during CSRF bootstrap", async () => {
@@ -1404,13 +1416,14 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
   });
 
   for (const vp of [{ name: "390x844", width: 390, height: 844 }, { name: "1440x900", width: 1440, height: 900 }] as const) {
-    test(`CSRF 403 on order creation performs 1 POST, shows safe copy without raw CSRF, and retains cart at ${vp.name}`, async ({ page }) => {
+    test(`CSRF 403 on order creation performs 1 POST, shows safe retry copy, and succeeds on second deliberate click at ${vp.name}`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.addInitScript(() => {
         localStorage.clear();
         localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
       });
-      let orderPosts = 0;
+      let csrfIssued = 0;
+      const orderPosts: Array<string | undefined> = [];
       const diagnostics = collectDiagnostics(page, {
         badResponses: [{ method: "POST", path: "/api/backend/orders", status: 403 }],
       });
@@ -1421,31 +1434,59 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
         if (url.pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(cartPayload()) });
         if (url.pathname.endsWith("/user/addresses")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(addressPayload()) });
         if (url.pathname.endsWith("/orders/quote")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotePayload()) });
-        if (url.pathname.endsWith("/auth/csrf-token")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
+        if (url.pathname.endsWith("/auth/csrf-token")) {
+          csrfIssued += 1;
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: `fixture-csrf-${csrfIssued}` } }) });
+        }
         if (url.pathname.endsWith("/orders") && request.method() === "POST") {
-          orderPosts += 1;
-          return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ status: "fail", message: "Invalid CSRF token" }) });
+          const token = request.headers()["x-csrf-token"];
+          orderPosts.push(token);
+          if (orderPosts.length === 1) {
+            return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ status: "fail", message: "Invalid CSRF token" }) });
+          }
+          if (token === "fixture-csrf-2") {
+            return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(createdOrderPayload()) });
+          }
+          return route.fulfill({ status: 403, contentType: "application/json", body: JSON.stringify({ status: "fail", message: "Unexpected CSRF token" }) });
+        }
+        if (url.pathname.endsWith(`/orders/${IDS.order}`)) {
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") } }) });
         }
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
       });
 
       await page.goto(`${baseUrl}/checkout`, { waitUntil: "networkidle" });
       await advanceMobileCheckoutToReview(page);
-      await page.getByRole("button", { name: "Place Order Now" }).click();
-      await expect(page.getByText("Please sign in again to continue.")).toBeVisible();
-      await page.waitForTimeout(250);
-      expect(orderPosts).toBe(1);
+      const placeOrder = page.getByRole("button", { name: "Place Order Now" });
+      await placeOrder.click();
+
+      const retryCopy = page.getByText("Your order was not placed because your checkout verification expired. Select Place Order Now to try again.");
+      await expect(retryCopy).toBeVisible();
+      await expect(page.getByText("Please sign in again to continue.")).toHaveCount(0);
       await expect(page.getByText(/csrf/i)).toHaveCount(0);
+      await page.waitForTimeout(250);
+      expect(orderPosts).toEqual(["fixture-csrf-1"]);
       expect(await page.evaluate(() => {
         const stored = localStorage.getItem("zogular-cart-storage");
         return stored ? JSON.parse(stored).state.items : null;
       })).toEqual(expect.arrayContaining([expect.objectContaining({ id: IDS.product })]));
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
-      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+      await placeOrder.scrollIntoViewIfNeeded();
       await page.screenshot({
-        path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/csrf-403-no-resend-${vp.name}.png`),
-        fullPage: true,
+        path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/csrf-403-no-resend-viewport-${vp.name}.png`),
+        fullPage: false,
       });
+
+      await placeOrder.click();
+      await expect(page).toHaveURL(new RegExp(`/success\\?orderId=${IDS.order}$`));
+      await expect(page.getByRole("heading", { name: "Order confirmed by Zogular" })).toBeVisible();
+      expect(orderPosts).toEqual(["fixture-csrf-1", "fixture-csrf-2"]);
+      expect(csrfIssued).toBeGreaterThanOrEqual(2);
+      expect(await page.evaluate(() => {
+        const stored = localStorage.getItem("zogular-cart-storage");
+        return stored ? JSON.parse(stored).state.items : null;
+      })).toEqual([]);
+      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
     });
   }
 });

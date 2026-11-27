@@ -15,6 +15,14 @@ export class ApiError extends Error {
   }
 }
 
+export function isCsrfError(error: unknown): error is ApiError {
+  return (
+    error instanceof ApiError &&
+    error.status === 403 &&
+    error.message.toLowerCase().includes("csrf")
+  );
+}
+
 const REMOTE_BASE_URL =
   process.env.INTERNAL_BACKEND_URL ||
   process.env.NEXT_PUBLIC_API_URL ||
