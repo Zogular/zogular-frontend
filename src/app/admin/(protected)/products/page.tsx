@@ -14,6 +14,7 @@ import {
 } from "@/services/admin/products";
 import { adminIdentityHasPermission } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
+import { AdminListingRevisionQueue } from "@/features/listing-revisions/components/AdminListingRevisionQueue";
 import {
   getProductModerationStatusLabel,
   type ProductModerationAction,
@@ -642,6 +643,10 @@ export default function AdminProductsPage() {
         </div>
       </div>
 
+      {process.env.NEXT_PUBLIC_PRODUCT_LISTING_REVISIONS_ENABLED === "true" &&
+        adminIdentityHasPermission(identity, "view_all_products") && (
+          <AdminListingRevisionQueue canDecide={canModerate} />
+        )}
     </div>
   );
 }
