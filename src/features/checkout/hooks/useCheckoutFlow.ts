@@ -126,6 +126,7 @@ export function useCheckoutFlow(auth: ClientAuthState) {
       setSavedAddresses([]);
       setSelectedAddressId(null);
       setAddressLoadError(getCheckoutErrorMessage(error, "address"));
+      setCheckoutStage("details");
     } finally {
       if (isCurrentRequest()) setIsLoadingAddresses(false);
     }
