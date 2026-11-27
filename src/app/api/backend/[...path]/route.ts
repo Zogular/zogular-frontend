@@ -131,10 +131,37 @@ function copyRequestHeaders(request: Request): Headers {
   return headers;
 }
 
+function hasNoStoreDirective(cacheControl: string | null): boolean {
+  if (!cacheControl) return false;
+
+  const noStore = /^[ \t]*no-store[ \t]*$/i;
+  let start = 0;
+  let quoted = false;
+
+  // RFC 9111 directives are comma-separated, but quoted arguments can contain
+  // commas and escaped quotes. Only match a bare directive at the list level.
+  for (let index = 0; index < cacheControl.length; index++) {
+    const character = cacheControl[index];
+    if (quoted && character === "\\") {
+      index++;
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else if (!quoted && character === ",") {
+      if (noStore.test(cacheControl.slice(start, index))) return true;
+      start = index + 1;
+    }
+  }
+
+  return !quoted && noStore.test(cacheControl.slice(start));
+}
+
 function buildResponseHeaders(backendResponse: Response): Headers {
   const headers = new Headers();
   const contentType = backendResponse.headers.get("content-type");
   if (contentType) headers.set("Content-Type", contentType);
+  if (hasNoStoreDirective(backendResponse.headers.get("cache-control"))) {
+    headers.set("Cache-Control", "no-store");
+  }
 
   for (const cookie of getSetCookieHeaders(backendResponse.headers)) {
     headers.append("Set-Cookie", cookie);

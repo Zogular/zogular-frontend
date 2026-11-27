@@ -1,64 +1,75 @@
-import { throwBackendPendingFeature } from "@/services/backend-pending";
+import { z } from "zod";
+import { apiClient } from "@/services/api";
+import { campaignImagePathSchema, homepageBannerCopyShape, homepageBannerDestinations } from "@/services/homepage-banners";
 
-export type ContentStatus = "draft" | "scheduled" | "published" | "paused" | "archived";
+const endpoint = "/admin/content/homepage-banners";
+const destinationSchema = z.enum(homepageBannerDestinations);
+const bannerFields = z.object({
+  ...homepageBannerCopyShape,
+  destination: destinationSchema,
+  assetKey: z.string().min(1),
+  startsAt: z.iso.datetime(),
+  endsAt: z.iso.datetime(),
+});
+const adminBannerSchema = bannerFields.extend({
+  id: z.string().min(1),
+  state: z.enum(["DRAFT", "PUBLISHED", "PAUSED"]),
+  version: z.number().int().nonnegative(),
+});
+const campaignAssetSchema = z.object({
+  key: z.string().min(1),
+  mobileSrc: campaignImagePathSchema,
+  desktopSrc: campaignImagePathSchema,
+});
+const listResponseSchema = z.object({
+  status: z.literal("success"),
+  data: z.object({ items: z.array(adminBannerSchema), assets: z.array(campaignAssetSchema) }),
+});
+const mutationResponseSchema = z.object({
+  status: z.literal("success"),
+  data: z.object({ banner: adminBannerSchema }),
+});
 
-export interface AdminBanner {
-  id: string;
-  title: string;
-  placement: "homepage_hero" | "category_strip" | "checkout_notice";
-  status: ContentStatus;
-  audience: string;
-  startAt: string;
-  endAt: string;
-  clickTarget: string;
-  priority: number;
+export type HomepageBannerInput = z.infer<typeof bannerFields>;
+export type AdminHomepageBanner = z.infer<typeof adminBannerSchema>;
+export type HomepageBannerAsset = z.infer<typeof campaignAssetSchema>;
+
+async function writeBanner(path: string, method: "POST" | "PATCH", input: object) {
+  const response = await apiClient<unknown>(path, {
+    method,
+    body: JSON.stringify(input),
+    csrf: true,
+    cache: "no-store",
+  });
+  return mutationResponseSchema.parse(response).data.banner;
 }
 
-export interface FeaturedCollection {
-  id: string;
-  title: string;
-  status: ContentStatus;
-  productCount: number;
-  owner: string;
-  order: number;
-  updatedAt: string;
-}
-
-export interface Announcement {
-  id: string;
-  title: string;
-  body: string;
-  status: ContentStatus;
-  channel: "admin" | "marketplace" | "seller_portal";
-  scheduledAt: string;
-}
-
-export interface AdminContentWorkspace {
-  banners: AdminBanner[];
-  collections: FeaturedCollection[];
-  announcements: Announcement[];
+function confirmWrite(banner: AdminHomepageBanner, expected: {
+  state: AdminHomepageBanner["state"];
+  id?: string;
+  previousVersion?: number;
+}) {
+  if (banner.state !== expected.state || (expected.id && banner.id !== expected.id)
+    || (expected.previousVersion !== undefined && banner.version <= expected.previousVersion)) {
+    throw new Error("Unexpected homepage banner mutation response.");
+  }
+  return banner;
 }
 
 export const adminContentApi = {
-  async fetchWorkspace(): Promise<AdminContentWorkspace> {
-    return {
-      banners: [],
-      collections: [],
-      announcements: [],
-    };
+  async listHomepageBanners(signal?: AbortSignal) {
+    const response = await apiClient<unknown>(endpoint, { cache: "no-store", signal });
+    return listResponseSchema.parse(response).data;
   },
-  async updateBannerStatus(bannerId: string, status: ContentStatus): Promise<void> {
-    void bannerId;
-    void status;
-    throwBackendPendingFeature("Admin content banner status update");
+  async createHomepageBanner(input: HomepageBannerInput) {
+    return confirmWrite(await writeBanner(endpoint, "POST", input), { state: "DRAFT" });
   },
-  async reorderCollection(collectionId: string, direction: "up" | "down"): Promise<void> {
-    void collectionId;
-    void direction;
-    throwBackendPendingFeature("Admin content collection reorder");
+  async updateHomepageBanner(id: string, version: number, input: HomepageBannerInput) {
+    const banner = await writeBanner(`${endpoint}/${encodeURIComponent(id)}`, "PATCH", { ...input, version });
+    return confirmWrite(banner, { id, previousVersion: version, state: "DRAFT" });
   },
-  async publishAnnouncement(announcement: Omit<Announcement, "id" | "status">): Promise<Announcement> {
-    void announcement;
-    throwBackendPendingFeature("Admin content announcement scheduling");
+  async changeHomepageBannerState(id: string, version: number, action: "publish" | "pause") {
+    const banner = await writeBanner(`${endpoint}/${encodeURIComponent(id)}/${action}`, "POST", { version });
+    return confirmWrite(banner, { id, previousVersion: version, state: action === "publish" ? "PUBLISHED" : "PAUSED" });
   },
 };
