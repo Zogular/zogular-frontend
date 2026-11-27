@@ -52,8 +52,9 @@ export function FulfillmentSettings({
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-4 border-t border-zinc-100">
             <div className="space-y-1.5">
-              <label className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Planned Delivery Fee (K)</label>
+              <label htmlFor="planned-delivery-fee" className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">Planned Delivery Fee (K)</label>
               <Input
+                id="planned-delivery-fee"
                 type="number"
                 value={settings.fulfillment.defaultDeliveryFee}
                 onChange={(e) => updateSetting("fulfillment", "defaultDeliveryFee", Number(e.target.value))}
@@ -90,6 +91,9 @@ export function FulfillmentSettings({
                 <option value={2}>2 Business Days</option>
                 <option value={3}>3-5 Business Days</option>
                 <option value={7}>Pre-order (7+ Days)</option>
+                {![0, 1, 2, 3, 7].includes(settings.fulfillment.processingTimeDays) && (
+                  <option value={settings.fulfillment.processingTimeDays}>{settings.fulfillment.processingTimeDays} Business Days</option>
+                )}
               </select>
               <p className="text-[11px] font-medium text-zinc-500">This timing is not yet enforced as a live buyer-facing service promise.</p>
             </div>
