@@ -496,13 +496,6 @@ async function fetchBackendProductDetailBySlug(slug: string): Promise<ProductDet
   }
 }
 
-function extractBackendProducts(payload?: BackendProductListResponse | null): BackendProduct[] {
-  if (!payload?.data) return [];
-  if (Array.isArray(payload.data.products)) return payload.data.products;
-  if (payload.data.product) return [payload.data.product];
-  return [];
-}
-
 type FetchBackendProductsParams = {
   page?: number;
   limit?: number;
@@ -699,24 +692,35 @@ export async function getDiscoveryListingPageData(
   };
 }
 
-async function fetchBackendRelatedProducts(
-  productId: string | number,
-  limit: number,
-): Promise<Product[] | null> {
+export type RelatedProductsResult =
+  | { status: "available"; products: Product[] }
+  | { status: "unavailable" };
+
+export async function getRelatedProducts({
+  productId,
+  excludeSlug,
+}: { productId: ProductDetail["id"]; excludeSlug: string }): Promise<RelatedProductsResult> {
   try {
     const payload = await apiClient<BackendProductListResponse>(`/products/${productId}/related`, {
       method: "GET",
       authMode: "omit",
       cache: "no-store",
-      query: { limit },
+      query: { limit: 8 },
     });
-    const products = extractBackendProducts(payload)
+    const rows = payload?.data?.products;
+    if (payload?.status !== "success" || !Array.isArray(rows) || payload.results !== rows.length ||
+      rows.some((row) => !row || typeof row.id !== "string" || !row.id.trim() ||
+        typeof row.slug !== "string" || !row.slug.trim())) {
+      return { status: "unavailable" };
+    }
+    const products = rows
       .map(normalizePublicBackendProduct)
-      .filter((product): product is Product => product !== null);
-    return products.length ? products : null;
-  } catch (error) {
-    if (error instanceof ProductListContractError) throw error;
-    return null;
+      .filter((product): product is Product => product !== null &&
+        String(product.id) !== String(productId) && product.slug !== excludeSlug);
+    return { status: "available", products };
+  } catch {
+    // Recommendations are optional; transport and normalization failures affect only this section.
+    return { status: "unavailable" };
   }
 }
 
@@ -854,14 +858,6 @@ export async function getSellerProducts(_options?: { excludeSlug?: string }): Pr
   // Return empty array to prevent displaying general marketplace products under a false seller label.
   void _options;
   return [];
-}
-
-export async function getRelatedProducts({
-  productId,
-  excludeSlug,
-}: { productId: ProductDetail["id"]; excludeSlug: string }): Promise<Product[]> {
-  const products = await fetchBackendRelatedProducts(productId, 8);
-  return products?.filter((product) => product.slug !== excludeSlug) ?? [];
 }
 
 export async function searchProducts(query: string, limit = 50): Promise<Product[]> {

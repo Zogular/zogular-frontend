@@ -10,11 +10,12 @@ import { ProductInfoSections } from "./information/ProductInfoSections";
 import { ProductRatingsSummary } from "./ratings/ProductRatingsSummary";
 import { RelatedSection } from "./recommendations/RelatedSection";
 import { FulfillmentSellerRail } from "./summary/FulfillmentSellerRail";
-import type { Product, ProductDetail } from "@/types/product";
+import type { ProductDetail } from "@/types/product";
+import type { RelatedProductsResult } from "@/services/products";
 
 interface ProductDetailsClientProps {
   productData: ProductDetail;
-  relatedProducts: Product[];
+  relatedProducts: RelatedProductsResult;
 }
 
 export function ProductDetailsClient({
@@ -89,7 +90,7 @@ export function ProductDetailsClient({
             <ProductRatingsSummary productData={productData} />
           </div>
           <div className="mt-10 lg:mt-8">
-          <RelatedSection title="You might also like" products={relatedProducts} />
+          <RelatedSection title="You might also like" result={relatedProducts} />
           </div>
         </div>
       </div>

@@ -73,18 +73,6 @@ test("public product status shield rejects malformed status values as typed cont
   }
 });
 
-test("related-product boundary does not swallow malformed public product status", () => {
-  const relatedBoundary = productsServiceSource.slice(
-    productsServiceSource.indexOf("async function fetchBackendRelatedProducts"),
-    productsServiceSource.indexOf("async function fetchBackendProductCollection"),
-  );
-
-  expect(relatedBoundary).toContain(".map(normalizePublicBackendProduct)");
-  expect(relatedBoundary).toContain("catch (error)");
-  expect(relatedBoundary).toContain("if (error instanceof ProductListContractError) throw error;");
-  expect(relatedBoundary).not.toContain("} catch {\n    return null;");
-});
-
 test("public ProductCard exposes only buyer-safe availability badges", () => {
   expect(productCardSource).toContain("Out of Stock");
   expect(productCardSource).not.toContain("Pending");

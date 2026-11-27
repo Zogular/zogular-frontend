@@ -1,20 +1,32 @@
 import * as React from "react";
 import Link from "next/link";
 import { ProductCard } from "@/components/productCard";
-import type { Product } from "@/types/product";
+import type { RelatedProductsResult } from "@/services/products";
 
 export function RelatedSection({
   title,
   href,
   linkLabel,
-  products,
+  result,
 }: {
   title: string;
   href?: string;
   linkLabel?: string;
-  products: Product[];
+  result: RelatedProductsResult;
 }) {
-  if (!products || products.length === 0) return null;
+  if (result.status === "unavailable") {
+    return (
+      <section>
+        <h2 className="text-xl font-bold text-zinc-900">{title}</h2>
+        <p className="mt-2 text-sm text-zinc-700">We couldn&apos;t load related products.</p>
+        <Link href="/products" className="inline-flex min-h-11 items-center text-sm font-semibold text-emerald-800 underline">
+          Browse all products
+        </Link>
+      </section>
+    );
+  }
+  const { products } = result;
+  if (products.length === 0) return null;
 
   return (
     <section>
