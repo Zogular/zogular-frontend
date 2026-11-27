@@ -110,6 +110,7 @@ function AdminOrdersQueue({ canManageFulfillment }: { canManageFulfillment: bool
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [nextStatus, setNextStatus] = useState<AdminOrderStatus | "">("");
+  const [reviewedOrder, setReviewedOrder] = useState<Pick<AdminOrderRecord, "id" | "updatedAt"> | null>(null);
   const [trackingNumber, setTrackingNumber] = useState("");
   const [operationsNotes, setOperationsNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
@@ -187,9 +188,12 @@ function AdminOrdersQueue({ canManageFulfillment }: { canManageFulfillment: bool
   const lockedDraft = selectedOrder ? lockedOrders.get(selectedOrder.id) : undefined;
   const allowedStatuses = selectedOrder ? NEXT_STATUSES[selectedOrder.status] ?? [] : [];
   const fulfillmentDisabled = Boolean(lockedDraft) || submitting || refreshingOrder || loading;
+  const isReviewedVersion = Boolean(reviewedOrder && selectedOrder
+    && reviewedOrder.id === selectedOrder.id && reviewedOrder.updatedAt === selectedOrder.updatedAt);
 
   useEffect(() => {
     setNextStatus("");
+    setReviewedOrder(null);
     setTrackingNumber(selectedOrder?.trackingNumber ?? "");
     setOperationsNotes(selectedOrder?.notes ?? "");
     setMutationError(null);
@@ -197,13 +201,14 @@ function AdminOrdersQueue({ canManageFulfillment }: { canManageFulfillment: bool
 
   const handleOrderMutation = async () => {
     if (!selectedOrder || !nextStatus || !canManageFulfillment || fulfillmentDisabled
-      || !allowedStatuses.includes(nextStatus)) return;
+      || !reviewedOrder || !isReviewedVersion || !allowedStatuses.includes(nextStatus)) return;
 
     try {
       setSubmitting(true);
       setMutationError(null);
       const updated = await adminOrdersApi.updateOrder(selectedOrder.id, {
         status: nextStatus,
+        expectedUpdatedAt: reviewedOrder.updatedAt,
         ...(trackingNumber.trim() ? { trackingNumber: trackingNumber.trim() } : {}),
         ...(operationsNotes.trim() ? { notes: operationsNotes.trim() } : {}),
       });
@@ -675,7 +680,11 @@ function AdminOrdersQueue({ canManageFulfillment }: { canManageFulfillment: bool
                     <select
                       value={lockedDraft?.nextStatus ?? nextStatus}
                       disabled={fulfillmentDisabled}
-                      onChange={(event) => setNextStatus(event.target.value as AdminOrderStatus | "")}
+                      onChange={(event) => {
+                        const status = event.target.value as AdminOrderStatus | "";
+                        setNextStatus(status);
+                        setReviewedOrder(status ? { id: selectedOrder.id, updatedAt: selectedOrder.updatedAt } : null);
+                      }}
                       className="h-11 min-w-0 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold"
                     >
                       <option value="">Select an allowed transition</option>
@@ -722,7 +731,7 @@ function AdminOrdersQueue({ canManageFulfillment }: { canManageFulfillment: bool
                   ) : null}
                   {lockedDraft || allowedStatuses.length > 0 ? (
                     <Button
-                      disabled={!nextStatus || fulfillmentDisabled}
+                      disabled={!nextStatus || !isReviewedVersion || fulfillmentDisabled}
                       onClick={() => void handleOrderMutation()}
                       className="rounded-xl bg-zinc-950 font-black text-white"
                     >
