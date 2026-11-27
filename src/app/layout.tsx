@@ -5,7 +5,7 @@ import "./globals.css";
 import { cn } from "@/lib/utils";
 import { QueryProvider } from "@/components/query-provider";
 import { PwaRegistry } from "@/components/pwa/PwaRegistry";
-import { BRAND, BRAND_SITE_URL, BRAND_TITLE } from "@/config/brand";
+import { BRAND, BRAND_TITLE } from "@/config/brand";
 
 import { SpeedInsights } from "@vercel/speed-insights/next"
 import { Analytics } from "@vercel/analytics/next"
@@ -30,7 +30,7 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
-  metadataBase: new URL(BRAND_SITE_URL),
+  robots: { index: false, follow: false },
   title: BRAND_TITLE,
   description: BRAND.description,
   applicationName: BRAND.name,
@@ -49,19 +49,6 @@ export const metadata: Metadata = {
   },
   formatDetection: {
     telephone: false,
-  },
-  openGraph: {
-    title: BRAND_TITLE,
-    description: BRAND.description,
-    siteName: BRAND.name,
-    images: [
-      {
-        url: BRAND.assets.wordmarkLight,
-        width: 1341,
-        height: 754,
-        alt: BRAND.name,
-      },
-    ],
   },
 };
 

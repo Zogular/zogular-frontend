@@ -35,4 +35,4 @@ export const BRAND = {
 
 export const BRAND_TITLE = `${BRAND.name} | ${BRAND.tagline}`;
 export const BRAND_ATTRIBUTION = `${BRAND.name} by ${BRAND.businessName}`;
-export const BRAND_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? "https://zogular-frontend.vercel.app";
+export const BRAND_SITE_URL = process.env.NEXT_PUBLIC_SITE_URL;

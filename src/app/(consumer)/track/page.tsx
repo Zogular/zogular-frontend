@@ -2,6 +2,12 @@ import Link from "next/link";
 import { ArrowRight, CircleHelp, PackageSearch, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/track", "Order and Delivery Help", "Learn how to check an order or request a manual delivery update during the Lusaka pilot.", await searchParams);
+}
+
 export default function TrackOrderPage() {
   return (
     <main className="min-h-dvh bg-[#f4fbf6] px-4 py-10 md:py-16">

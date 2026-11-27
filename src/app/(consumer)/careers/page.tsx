@@ -1,6 +1,12 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
 import { BRAND } from "@/config/brand";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/careers", "Careers at Zogular", "Learn how Zogular works and where future hiring updates will appear.", await searchParams);
+}
+
 export default function CareersPage() {
   const careersEmail = BRAND.careersEmail;
   const sections = [

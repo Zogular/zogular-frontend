@@ -5,10 +5,15 @@ import { isDiscoveryListingFailure } from "@/features/consumer-discovery/listing
 import type { DiscoveryQueryInput } from "@/features/consumer-discovery/types/discovery.types";
 import { getDiscoveryListingPageData } from "@/services/products";
 import { getCategoryDirectory } from "@/services/categories";
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
 import type { ProductPaginationMeta } from "@/types/category";
 import type { Product } from "@/types/product";
 
 export const dynamic = "force-dynamic";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/products", "All Products in Zambia", "Browse product listings on Zogular and compare items from sellers in Zambia.", await searchParams);
+}
 
 export default async function AllProductsPage({
   searchParams,

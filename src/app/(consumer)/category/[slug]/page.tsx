@@ -1,4 +1,6 @@
 import { notFound } from "next/navigation";
+import { cache } from "react";
+import { publicMetadata, safeSlug, searchLabel, unlisted, type SearchProps } from "@/lib/seo/public-search";
 import { buildDiscoveryUrl, parseDiscoveryQuery, updateDiscoveryQuery } from "@/features/consumer-discovery/lib/discovery-query";
 import { DiscoveryListingPage } from "@/features/consumer-discovery/listing/DiscoveryListingPage";
 import type { DiscoveryListingStateKind } from "@/features/consumer-discovery/listing/DiscoveryListingState";
@@ -13,6 +15,21 @@ export const dynamic = "force-dynamic";
 
 type PageSearchParams = Record<string, string | string[] | undefined>;
 
+const categoryForRequest = cache(getCategoryMetaBySlug);
+
+export async function generateMetadata({ params, searchParams }: SearchProps & { params: Promise<{ slug: string }> }) {
+  const { slug } = await params;
+  if (!safeSlug(slug)) return unlisted;
+  try {
+    const label = searchLabel((await categoryForRequest(slug)).title);
+    return label ? publicMetadata("/category/" + slug, label + " in Zambia",
+      "Browse " + label + " listings from sellers in Zambia on Zogular.", await searchParams) : unlisted;
+  } catch (error) {
+    if (error instanceof CategoryNotFoundError || isDiscoveryListingFailure(error)) return unlisted;
+    throw error;
+  }
+}
+
 export default async function CategoryPage({
   params,
   searchParams,
@@ -25,7 +42,7 @@ export default async function CategoryPage({
 
   let meta;
   try {
-    meta = await getCategoryMetaBySlug(slug);
+    meta = await categoryForRequest(slug);
   } catch (error) {
     if (error instanceof CategoryNotFoundError) notFound();
     if (!isDiscoveryListingFailure(error)) throw error;

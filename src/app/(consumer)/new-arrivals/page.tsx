@@ -6,6 +6,12 @@ import type { Product } from "@/types/product";
 
 export const dynamic = "force-dynamic";
 
+import { publicMetadata, type SearchProps } from "@/lib/seo/public-search";
+
+export async function generateMetadata({ searchParams }: SearchProps) {
+  return publicMetadata("/new-arrivals", "New Arrivals in Zambia", "Browse newly listed products on Zogular in Zambia.", await searchParams);
+}
+
 export default async function NewArrivalsPage() {
   let products: Product[];
 
