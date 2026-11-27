@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import type { Address } from "@/types/address";
 import type { CheckoutStage } from "@/features/checkout/types/checkout.types";
@@ -31,6 +31,14 @@ export function AddressSection({
 }: AddressSectionProps) {
   const className = `${stage === "details" ? "block" : "hidden"} ${sectionClass}`;
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const previousStage = useRef(stage);
+  useEffect(() => {
+    const cameFromAnotherStep = previousStage.current !== "details";
+    previousStage.current = stage;
+    if (stage !== "details" || !cameFromAnotherStep || !loadError) return;
+    headingRef.current?.focus({ preventScroll: true });
+    headingRef.current?.scrollIntoView({ block: "center" });
+  }, [stage, loadError]);
 
   const heading = (
     <h2 ref={headingRef} tabIndex={-1} className="mb-1 flex items-center gap-2 text-lg font-bold text-zinc-900">

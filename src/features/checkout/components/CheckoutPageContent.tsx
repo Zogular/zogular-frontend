@@ -11,7 +11,7 @@ import { PaymentSection } from "@/features/checkout/components/PaymentSection";
 import { UnknownOutcomeState } from "@/features/checkout/components/UnknownOutcomeState";
 import { useCheckoutFlow } from "@/features/checkout/hooks/useCheckoutFlow";
 
-function CheckoutContent({ auth }: { auth: ClientAuthState }) {
+export function CheckoutContent({ auth }: { auth: ClientAuthState }) {
   const flow = useCheckoutFlow(auth);
 
   if (auth.status === "unavailable") {
