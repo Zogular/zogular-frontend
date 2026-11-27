@@ -4,10 +4,12 @@ import {
   listingRevisionDecisionSchema,
   listingRevisionProjections as projections,
   listingRevisionQueueQuerySchema,
+  listingRevisionReservationSchema,
   listingRevisionSubmissionSchema,
   type ListingCategoryRemediation,
   type ListingRevisionDecision,
   type ListingRevisionQueueQuery,
+  type ListingRevisionReservation,
   type ListingRevisionSubmission,
 } from "@/features/listing-revisions/types";
 import { ApiError, apiClient } from "@/services/api";
@@ -39,10 +41,11 @@ function safeRequestError(error: unknown): ApiError {
 async function request<S extends z.ZodType>(
   path: string,
   projection: S,
-  options: { signal?: AbortSignal; body?: object; query?: ListingRevisionQueueQuery },
+  options: { signal?: AbortSignal; body?: object; method?: "PUT"; query?: ListingRevisionQueueQuery | { submissionKey: string } },
   matches?: (data: z.output<S>) => boolean,
 ): Promise<z.output<S>> {
   const { signal, body, query } = options;
+  signal?.throwIfAborted();
   let response: unknown;
   try {
     response = await apiClient<unknown>(path, {
@@ -52,11 +55,13 @@ async function request<S extends z.ZodType>(
       skipAuthRefresh: true,
       ...(body === undefined
         ? { method: "GET" }
-        : { method: "POST", csrf: "header", noAutoReplay: true, body: JSON.stringify(body) }),
+        : { method: options.method ?? "POST", csrf: "header", noAutoReplay: true, body: JSON.stringify(body) }),
     });
   } catch (error) {
+    signal?.throwIfAborted();
     throw safeRequestError(error);
   }
+  signal?.throwIfAborted();
   const envelope = successEnvelope.safeParse(response);
   if (!envelope.success) throw invalidResponse();
   const parsed = projection.safeParse(envelope.data.data);
@@ -70,6 +75,29 @@ const adminPath = (productId: string, revisionId: string) =>
 const sameId = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 
 export const sellerListingRevisionsApi = {
+  async outstandingAttempt(productId: string, signal?: AbortSignal) {
+    const { attempt } = await request(`${sellerPath(productId)}/attempts`, projections.outstandingAttempt, { signal });
+    return attempt;
+  },
+  async exactAttempt(productId: string, submissionKey: string, signal?: AbortSignal) {
+    const key = input(id, submissionKey);
+    const { attempt } = await request(`${sellerPath(productId)}/attempts`, projections.exactAttempt,
+      { signal, query: { submissionKey: key } }, ({ attempt }) => sameId(attempt.submissionKey, key));
+    return attempt;
+  },
+  async reserveAttempt(productId: string, reservation: ListingRevisionReservation, signal?: AbortSignal) {
+    const body = input(listingRevisionReservationSchema, reservation);
+    const { attempt } = await request(`${sellerPath(productId)}/attempts`, projections.reserveAttempt, { signal, body },
+      ({ attempt }) => attempt.baseVersion === body.baseVersion);
+    return attempt;
+  },
+  async settleAttempt(productId: string, submissionKey: string, signal?: AbortSignal) {
+    const key = input(id, submissionKey);
+    const { attempt } = await request(`${sellerPath(productId)}/attempts/${key}/settlement`,
+      projections.settleAttempt, { signal, body: {}, method: "PUT" },
+      ({ attempt }) => sameId(attempt.submissionKey, key));
+    return attempt;
+  },
   async history(productId: string, signal?: AbortSignal) {
     return request(sellerPath(productId), projections.sellerHistory, { signal }, ({ product, revisions }) =>
       sameId(product.id, productId) && revisions.every((revision) => sameId(revision.productId, productId)));

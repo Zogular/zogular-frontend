@@ -2,11 +2,18 @@
 
 import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
-import { useEffect, useRef, useState, type FormEvent } from "react";
+import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
-import { listingRevisionSubmissionSchema, type ListingRevisionSubmission } from "@/features/listing-revisions/types";
+import { clearAttemptReceipt, getAttemptReceiptKey, readAttemptReceipt, reserveAttemptReceipt } from "@/features/listing-revisions/attempt-receipt";
+import {
+  listingRevisionReservationSchema,
+  type ListingRevisionReservation,
+  type ListingRevisionSubmission,
+  type OpenListingRevisionAttempt,
+  type SettledListingRevisionAttempt,
+} from "@/features/listing-revisions/types";
 import { ApiError } from "@/services/api";
 import { sellerListingRevisionsApi } from "@/services/listing-revisions";
 import type { SellerProductListing } from "@/services/seller-catalog";
@@ -16,13 +23,15 @@ type Fields = { title: string; description: string; price: string; salePrice: st
 type Attempt = {
   request: ListingRevisionSubmission;
   fields: Fields;
-  expected: Omit<History["product"], "id" | "listingVersion">;
-  priorIds: ReadonlySet<string>;
 };
-type LoadState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; history: History };
+type LoadState = { kind: "loading" } | { kind: "error"; message: string } | {
+  kind: "ready"; history: History; open: OpenListingRevisionAttempt | null;
+  receiptLocked: boolean; outcome?: SettledListingRevisionAttempt;
+};
 type Props = {
   product: Pick<SellerProductListing, "id" | "stock" | "images" | "status">;
   backHref: string;
+  sellerId?: string;
   canSubmit: boolean;
 };
 
@@ -35,39 +44,86 @@ function safeMessage(error: unknown, fallback: string) {
   return error instanceof ApiError ? error.message : fallback;
 }
 
-function hasDefinitiveRejection(error: unknown) {
-  return error instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(error.status);
+const outcomeLabel = {
+  PENDING_REVIEW: "Revision submitted for review.",
+  APPROVED: "The earlier revision was approved.",
+  NEEDS_CHANGES: "The earlier revision needs changes.",
+  WITHDRAWN: "The earlier revision was withdrawn.",
+  RETIRED: "The unused submission was retired.",
+} satisfies Record<SettledListingRevisionAttempt["status"], string>;
+
+function historyConfirmsOutcome(history: History, previousVersion: number, outcome: SettledListingRevisionAttempt) {
+  const version = history.product.listingVersion;
+  if (version < previousVersion || version < outcome.baseVersion) return false;
+  if (outcome.status === "RETIRED") return true;
+  if (outcome.status === "APPROVED" && version <= outcome.baseVersion) return false;
+  return history.revisions.some(({ id, status, baseVersion }) =>
+    id === outcome.revisionId && status === outcome.status && baseVersion === outcome.baseVersion);
 }
 
-export function SellerListingRevisionPanel({ product, backHref, canSubmit }: Props) {
+export function SellerListingRevisionPanel({ product, backHref, canSubmit, sellerId }: Props) {
   const [load, setLoad] = useState<LoadState>({ kind: "loading" });
   const [refresh, setRefresh] = useState(0);
   const uncertain = useRef<Attempt | null>(null);
+  const receiptKey = getAttemptReceiptKey(sellerId, product.id);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     const controller = new AbortController();
-    sellerListingRevisionsApi.history(product.id, controller.signal).then(
-      (history) => {
-        if (controller.signal.aborted) return;
-        const attempt = uncertain.current;
-        // History omits submission keys. An unchanged history cannot prove that a timed-out write did not commit.
-        if (attempt && (history.product.listingVersion !== attempt.request.baseVersion ||
-          history.revisions.some((revision) => !attempt.priorIds.has(revision.id) &&
-            revision.baseVersion === attempt.request.baseVersion &&
-            revision.payload.title === attempt.expected.title &&
-            revision.payload.description === attempt.expected.description &&
-            revision.payload.price === attempt.expected.price &&
-            revision.payload.salePrice === attempt.expected.salePrice))) {
-          uncertain.current = null;
+    async function loadListing(): Promise<Extract<LoadState, { kind: "ready" }>> {
+      const { signal } = controller;
+      let history = await sellerListingRevisionsApi.history(product.id, signal);
+      signal.throwIfAborted();
+      if (!canSubmit) return { kind: "ready", history, open: null, receiptLocked: false };
+      const receipt = readAttemptReceipt(receiptKey);
+      let open: OpenListingRevisionAttempt | null;
+      try {
+        open = await sellerListingRevisionsApi.outstandingAttempt(product.id, signal);
+      } catch {
+        return { kind: "ready", history, open: null, receiptLocked: true };
+      }
+      if (signal.aborted) return { kind: "ready", history, open, receiptLocked: true };
+      let receiptLocked = receipt === undefined;
+      let outcome: SettledListingRevisionAttempt | undefined;
+      if (receipt) {
+        try {
+          const exact = await sellerListingRevisionsApi.exactAttempt(product.id, receipt.submissionKey, signal);
+          if (signal.aborted) return { kind: "ready", history, open, receiptLocked: true };
+          const matchesOpen = open?.submissionKey === exact.submissionKey && open.baseVersion === exact.baseVersion;
+          if (exact.baseVersion !== receipt.baseVersion || (exact.status === "OPEN") !== matchesOpen) {
+            receiptLocked = true;
+          } else if (exact.status !== "OPEN") {
+            const refreshed = await sellerListingRevisionsApi.history(product.id, signal);
+            signal.throwIfAborted();
+            // Never clear the receipt or expose withdrawal using a snapshot taken before exact reconciliation.
+            if (historyConfirmsOutcome(refreshed, history.product.listingVersion, exact) &&
+              clearAttemptReceipt(receiptKey, receipt)) {
+              history = refreshed;
+              outcome = exact;
+            } else {
+              receiptLocked = true;
+            }
+          }
+        } catch {
+          // Exact-key 404 and transport failures do not prove the attempt was absent or closed.
+          receiptLocked = true;
         }
-        setLoad({ kind: "ready", history });
-      },
+      }
+      signal.throwIfAborted();
+      const retained = uncertain.current?.request;
+      if (!open || open.submissionKey !== retained?.submissionKey ||
+        open.baseVersion !== retained.baseVersion || history.product.listingVersion !== open.baseVersion) {
+        uncertain.current = null;
+      }
+      return { kind: "ready", history, open, receiptLocked, outcome };
+    }
+    loadListing().then(
+      (ready) => { if (!controller.signal.aborted) setLoad(ready); },
       (error: unknown) => {
         if (!controller.signal.aborted) setLoad({ kind: "error", message: safeMessage(error, "The listing could not be loaded.") });
       },
     );
     return () => controller.abort();
-  }, [product.id, refresh]);
+  }, [product.id, receiptKey, refresh, canSubmit]);
 
   function reload() {
     setLoad({ kind: "loading" });
@@ -83,30 +139,46 @@ export function SellerListingRevisionPanel({ product, backHref, canSubmit }: Pro
         <p role="alert">{load.message}</p>
         <Button type="button" variant="outline" onClick={reload}>Refresh listing</Button>
       </div>}
-      {load.kind === "ready" && <RevisionEditor key={refresh} history={load.history} product={product}
-        canSubmit={canSubmit} reload={reload} uncertain={uncertain} />}
+      {load.kind === "ready" && <RevisionEditor key={JSON.stringify([receiptKey, product.id, canSubmit, refresh])}
+        history={load.history} product={product}
+        canSubmit={canSubmit} reload={reload} uncertain={uncertain} receiptKey={receiptKey}
+        receiptLocked={load.receiptLocked} open={load.open} outcome={load.outcome} />}
     </section>
   );
 }
 
-function RevisionEditor({ history, product, canSubmit, reload, uncertain }: Omit<Props, "backHref"> & {
+function RevisionEditor({ history, product, canSubmit, reload, uncertain, receiptKey, receiptLocked, open, outcome }: Omit<Props, "backHref"> & {
   history: History;
   reload: () => void;
   uncertain: { current: Attempt | null };
+  receiptKey: string | null;
+  receiptLocked: boolean;
+  open: OpenListingRevisionAttempt | null;
+  outcome?: SettledListingRevisionAttempt;
 }) {
   const live = history.product;
   const [retainedAttempt] = useState(() => uncertain.current);
   const [fields, setFields] = useState(() => retainedAttempt?.fields ?? toFields(live));
-  const [pending, setPending] = useState(() => history.revisions.find(({ status }) => status === "PENDING_REVIEW"));
-  const [notice, setNotice] = useState<string>();
+  const pending = history.revisions.find(({ status }) => status === "PENDING_REVIEW");
   const [error, setError] = useState<string>();
   const [blocked, setBlocked] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmWithdraw, setConfirmWithdraw] = useState(false);
+  const [confirmRetire, setConfirmRetire] = useState(false);
   const inFlight = useRef(false);
+  const lifetime = useRef<AbortController | null>(null);
   const feedback = history.revisions[0]?.status === "NEEDS_CHANGES" ? history.revisions[0].sellerVisibleReason : null;
   const current = toFields(live);
   const unchanged = Object.keys(current).every((key) => fields[key as keyof Fields] === current[key as keyof Fields]);
+
+  useLayoutEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    return () => {
+      controller.abort();
+      lifetime.current = null;
+    };
+  }, [product.id, receiptKey, canSubmit]);
 
   function change(field: keyof Fields, value: string) {
     setFields((previous) => ({ ...previous, [field]: value }));
@@ -114,7 +186,7 @@ function RevisionEditor({ history, product, canSubmit, reload, uncertain }: Omit
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (!canSubmit || pending || blocked || inFlight.current || unchanged || retainedAttempt) return;
+    if (!canSubmit || pending || open || blocked || receiptLocked || inFlight.current || unchanged) return;
     const title = fields.title.trim();
     const description = fields.description.trim();
     const price = fields.price.trim() ? Number(fields.price) : NaN;
@@ -129,69 +201,100 @@ function RevisionEditor({ history, product, canSubmit, reload, uncertain }: Omit
       setError("Sale price must be lower than the regular price.");
       return;
     }
-    const result = listingRevisionSubmissionSchema.safeParse({
-      baseVersion: live.listingVersion, submissionKey: crypto.randomUUID(), changes,
-    });
+    const result = listingRevisionReservationSchema.safeParse({ baseVersion: live.listingVersion, changes });
     if (!result.success) {
       setError("Check the changed fields and enter at least one valid change.");
       return;
     }
-    await send({
-      request: result.data,
-      fields,
-      expected: { title, description, price, salePrice },
-      priorIds: new Set(history.revisions.map(({ id }) => id)),
-    });
+    await send(result.data);
   }
 
-  async function send(attempt: Attempt) {
-    if (!canSubmit || pending || blocked || inFlight.current) return;
+  async function send(reservation: ListingRevisionReservation, retry?: Attempt) {
+    const signal = lifetime.current?.signal;
+    if (!signal || signal.aborted || !canSubmit || pending || blocked || receiptLocked || inFlight.current) return;
     setError(undefined);
-    setNotice(undefined);
     inFlight.current = true;
     setBusy(true);
     try {
-      const { revision } = await sellerListingRevisionsApi.submit(product.id, attempt.request);
-      uncertain.current = null;
-      if (revision.status === "PENDING_REVIEW") {
-        setPending(revision);
-        setNotice("Revision submitted for review.");
-      } else {
-        setBlocked(true);
-        setNotice("This submission has already been processed. Refresh the listing for its current status.");
+      if (!retry && readAttemptReceipt(receiptKey) !== null) {
+        reload();
+        return;
       }
+      const outstanding = await sellerListingRevisionsApi.outstandingAttempt(product.id, signal);
+      signal.throwIfAborted();
+      if (retry ? outstanding?.submissionKey !== retry.request.submissionKey ||
+        outstanding.baseVersion !== retry.request.baseVersion : outstanding !== null) {
+        reload();
+        return;
+      }
+      const reserved = retry ? null : await sellerListingRevisionsApi.reserveAttempt(product.id, reservation, signal);
+      signal.throwIfAborted();
+      const attempt = reserved ? {
+        request: { ...reservation, submissionKey: reserved.submissionKey },
+        fields,
+      } : retry;
+      if (!attempt) return;
+      if (!reserveAttemptReceipt(receiptKey, attempt.request)) throw new Error("Attempt receipt unavailable");
+      uncertain.current = attempt;
+      await sellerListingRevisionsApi.submit(product.id, attempt.request, signal);
+      signal.throwIfAborted();
+      reload();
     } catch (failure) {
-      if (!hasDefinitiveRejection(failure)) {
-        uncertain.current = attempt;
-        setError("The submission could not be confirmed. Refresh the listing before trying again.");
-        setBlocked(true);
-      } else {
-        setError(safeMessage(failure, "The revision could not be submitted."));
-        if (retainedAttempt || (failure instanceof ApiError && [401, 403, 404, 409].includes(failure.status))) {
-          setBlocked(true);
-        }
-      }
+      if (signal.aborted) return;
+      setError(failure instanceof ApiError && [400, 401, 403, 404, 409, 422].includes(failure.status)
+        ? failure.message : "The submission could not be confirmed. Refresh the listing before trying again.");
+      setBlocked(true);
     } finally {
-      inFlight.current = false;
-      setBusy(false);
+      if (!signal.aborted) {
+        inFlight.current = false;
+        setBusy(false);
+      }
+    }
+  }
+
+  async function retire() {
+    const signal = lifetime.current?.signal;
+    if (!signal || signal.aborted || !open || !confirmRetire || blocked || receiptLocked || inFlight.current) return;
+    inFlight.current = true;
+    setBusy(true);
+    setError(undefined);
+    try {
+      if (!reserveAttemptReceipt(receiptKey, open)) throw new Error("Attempt receipt unavailable");
+      await sellerListingRevisionsApi.settleAttempt(product.id, open.submissionKey, signal);
+      signal.throwIfAborted();
+      reload();
+    } catch (failure) {
+      if (signal.aborted) return;
+      setError(safeMessage(failure, "Retirement could not be confirmed. Refresh the listing."));
+      setBlocked(true);
+    } finally {
+      if (!signal.aborted) {
+        inFlight.current = false;
+        setBusy(false);
+      }
     }
   }
 
   async function withdraw() {
-    if (!pending || !confirmWithdraw || blocked || inFlight.current) return;
+    const signal = lifetime.current?.signal;
+    if (!signal || signal.aborted || !pending || !confirmWithdraw || blocked || receiptLocked || inFlight.current) return;
     inFlight.current = true;
     setBusy(true);
     setError(undefined);
     try {
-      await sellerListingRevisionsApi.withdraw(product.id, pending.id);
+      await sellerListingRevisionsApi.withdraw(product.id, pending.id, signal);
+      signal.throwIfAborted();
       reload();
     } catch (failure) {
+      if (signal.aborted) return;
       setError(safeMessage(failure, "Withdrawal could not be confirmed. Refresh the listing."));
       setBlocked(true);
       setConfirmWithdraw(false);
     } finally {
-      inFlight.current = false;
-      setBusy(false);
+      if (!signal.aborted) {
+        inFlight.current = false;
+        setBusy(false);
+      }
     }
   }
 
@@ -203,11 +306,28 @@ function RevisionEditor({ history, product, canSubmit, reload, uncertain }: Omit
         <p>K{live.price}{live.salePrice !== null ? ` · Sale K${live.salePrice}` : ""}</p>
         <p>{product.stock} in stock · {product.images.length} photos</p>
       </section>
-      {notice && <p role="status" className="text-sm">{notice}</p>}
-      {feedback && <p className="break-words text-sm">{feedback}</p>}
+      {outcome && !receiptLocked && <p role="status" className="text-sm">{outcomeLabel[outcome.status]}</p>}
+      {feedback && !receiptLocked && <p className="break-words text-sm">{feedback}</p>}
       {error && <p role="alert" className="text-sm text-rose-700">{error}</p>}
       {blocked && <Button type="button" variant="outline" onClick={reload}>Refresh listing</Button>}
-      {pending ? (
+      {receiptLocked && <div className="space-y-2 text-sm">
+        <p role="status">A new revision is locked because the previous submission cannot be confirmed.</p>
+        {!blocked && <Button type="button" variant="outline" onClick={reload}>Refresh listing</Button>}
+      </div>}
+      {open && !pending && !receiptLocked && <section aria-label="Open submission" className="space-y-2 text-sm">
+        <p>{retainedAttempt ? "Retry the same changes or retire this submission." : "An unfinished submission is open. Retire it before starting new changes."}</p>
+        {!blocked && <div className="flex flex-wrap gap-2">
+          {confirmRetire ? <>
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirmRetire(false)}>Keep submission</Button>
+            <Button type="button" variant="destructive" disabled={busy} onClick={retire}>Confirm retirement</Button>
+          </> : <>
+            {retainedAttempt && canSubmit && <Button type="button" disabled={busy}
+              onClick={() => send(retainedAttempt.request, retainedAttempt)}>Retry same submission</Button>}
+            <Button type="button" variant="outline" disabled={busy} onClick={() => setConfirmRetire(true)}>Retire submission</Button>
+          </>}
+        </div>}
+      </section>}
+      {pending && !receiptLocked ? (
         <section aria-label="Pending revision" className="space-y-1 text-sm">
           <h2 className="font-semibold">Pending review</h2>
           <p className="break-words">{pending.payload.title}</p>
@@ -226,7 +346,7 @@ function RevisionEditor({ history, product, canSubmit, reload, uncertain }: Omit
         </section>
       ) : !canSubmit ? <p className="text-sm">This listing is not available for revision.</p> : (
         <form onSubmit={submit}>
-          <fieldset disabled={busy || blocked || Boolean(retainedAttempt)} className="min-w-0 space-y-3">
+          <fieldset disabled={busy || blocked || receiptLocked || Boolean(open)} className="min-w-0 space-y-3">
             <label className="block space-y-1 text-sm"><span>Title</span>
               <Input value={fields.title} onChange={(event) => change("title", event.target.value)} maxLength={200} required />
             </label>
@@ -243,10 +363,6 @@ function RevisionEditor({ history, product, canSubmit, reload, uncertain }: Omit
             </div>
             <Button type="submit" disabled={unchanged} className="w-full sm:w-auto">{busy ? "Submitting…" : "Submit revision for review"}</Button>
           </fieldset>
-          {retainedAttempt && !blocked && <div className="mt-3 space-y-2 text-sm">
-            <p>The submission is not visible yet. You can retry the same changes without creating another submission.</p>
-            <Button type="button" disabled={busy} onClick={() => send(retainedAttempt)}>Retry same submission</Button>
-          </div>}
         </form>
       )}
     </div>

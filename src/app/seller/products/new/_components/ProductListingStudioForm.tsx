@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { ProductContentPolicyFeedback } from "@/components/shared/ProductContentPolicyFeedback";
 import { fetchCategoryAttributes, fetchCategoryTree, type CategoryAttributeOption, type CategoryNode } from "@/services/categories-api";
 import { Toaster, toast } from "sonner";
-import { createSellerCatalogProduct, submitSellerProductForReview, type CreateSellerProductInput, type ProductCondition, type SellerProductListing, type SellerProductStatus } from "@/services/seller-catalog";
+import { createSellerCatalogProduct, isSellerLegacyDraftSnapshot, submitSellerProductForReview, type CreateSellerProductInput, type ProductCondition, type SellerProductListing, type SellerProductStatus } from "@/services/seller-catalog";
 import { isSellerProductBuyerVisibleStatus } from "@/services/product-moderation";
 import {
   focusProductContentPolicyIssue,
@@ -118,21 +118,20 @@ function categorySelectionFromProduct(product?: SellerProductListing): CategoryS
 
 export function ProductListingStudioForm(props: ProductListingStudioFormProps) {
   const { initialProduct, mode, backHref, canSubmitForReview = true } = props;
+  const { application } = useSellerApplication();
+  const sellerId = application?.userId ?? application?.user?.id;
   // Select the revision path before mounting any legacy draft persistence or upload handlers.
   if (process.env.NEXT_PUBLIC_PRODUCT_LISTING_REVISIONS_ENABLED === "true" && mode === "edit") {
     const source = initialProduct?.revisionEditSource;
     if (initialProduct && source && (source.status === "APPROVED" || source.status === "PUBLISHED" ||
       source.status === "PAUSED" || source.status === "SUSPENDED")) {
-      return <SellerListingRevisionPanel key={initialProduct.id} product={initialProduct}
+      return <SellerListingRevisionPanel key={JSON.stringify([sellerId, initialProduct.id])} product={initialProduct} sellerId={sellerId}
         backHref={backHref ?? "/seller/products"} canSubmit={canSubmitForReview && !initialProduct.isSold &&
           (source.status === "APPROVED" || source.status === "PUBLISHED" ||
             (source.status === "PAUSED" && source.isApproved === true))} />;
     }
-    const knownFirstReview = source &&
-      (source.status === "DRAFT" || source.status === "NEEDS_CHANGES" || source.status === "REJECTED") &&
-      source.isApproved === false && source.hasApprovalDate === false;
-    if (!knownFirstReview) {
-      return <p role="alert" className="text-sm text-rose-700">Editing is unavailable because the listing status could not be confirmed.</p>;
+    if (!initialProduct || !isSellerLegacyDraftSnapshot(initialProduct)) {
+      return <p role="alert" className="text-sm text-rose-700">Editing is unavailable because the listing state could not be confirmed.</p>;
     }
   }
   return <LegacyProductListingStudioForm {...props} />;

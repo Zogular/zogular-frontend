@@ -9,11 +9,13 @@ const reviewedFields = z.strictObject({
   salePrice: z.number().nonnegative().nullable(),
 });
 
-export const listingRevisionSubmissionSchema = z.strictObject({
+export const listingRevisionReservationSchema = z.strictObject({
   baseVersion: version,
-  submissionKey: z.uuid().transform((key) => key.toLowerCase()),
   changes: reviewedFields.partial().refine((changes) =>
     Object.values(changes).some((value) => value !== undefined)),
+});
+export const listingRevisionSubmissionSchema = listingRevisionReservationSchema.safeExtend({
+  submissionKey: z.uuid().transform((key) => key.toLowerCase()),
 });
 export const listingRevisionDecisionSchema = z.discriminatedUnion("decision", [
   z.strictObject({ decision: z.literal("approve") }),
@@ -48,10 +50,23 @@ const revision = revisionIdentity.extend({
   sellerVisibleReason: z.string().nullable(),
   decidedAt: z.iso.datetime().nullable(),
 });
+const attemptIdentity = z.strictObject({ submissionKey: z.uuid(), baseVersion: version });
+const openAttempt = attemptIdentity.extend({ status: z.literal("OPEN") });
+const settledAttempt = z.union([
+  attemptIdentity.extend({ status: z.literal("RETIRED") }),
+  attemptIdentity.extend({
+    status: revision.shape.status,
+    revisionId: z.uuid(),
+  }),
+]);
 
 export const listingRevisionProjections = {
   sellerHistory: z.strictObject({ product: liveProduct, revisions: z.array(revision).max(20) }),
   mutation: z.strictObject({ revision }),
+  reserveAttempt: z.strictObject({ attempt: openAttempt }),
+  outstandingAttempt: z.strictObject({ attempt: openAttempt.nullable() }),
+  exactAttempt: z.strictObject({ attempt: z.union([openAttempt, settledAttempt]) }),
+  settleAttempt: z.strictObject({ attempt: settledAttempt }),
   remediation: z.strictObject({ product: liveProduct.extend({ status: z.literal("DRAFT") }) }),
   adminDetail: z.strictObject({ product: liveProduct, revision }),
   adminQueue: z.strictObject({
@@ -64,6 +79,9 @@ export const listingRevisionProjections = {
 };
 
 export type ListingRevisionSubmission = z.input<typeof listingRevisionSubmissionSchema>;
+export type ListingRevisionReservation = z.input<typeof listingRevisionReservationSchema>;
+export type OpenListingRevisionAttempt = z.output<typeof openAttempt>;
+export type SettledListingRevisionAttempt = z.output<typeof settledAttempt>;
 export type ListingRevisionDecision = z.input<typeof listingRevisionDecisionSchema>;
 export type ListingCategoryRemediation = z.input<typeof listingCategoryRemediationSchema>;
 export type ListingRevisionQueueQuery = z.input<typeof listingRevisionQueueQuerySchema>;
