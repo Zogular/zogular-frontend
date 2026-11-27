@@ -1,4 +1,5 @@
 import { expect, test, type BrowserContext, type Page } from "@playwright/test";
+import { join } from "node:path";
 
 const baseUrl = process.env.TEST_BASE_URL;
 const productId = "fixture-product";
@@ -11,9 +12,11 @@ type OrderStatus = "PENDING" | "CONFIRMED" | "CANCELLED";
 test.use({ serviceWorkers: "block", viewport: { width: 1440, height: 900 } });
 test.skip(!baseUrl, "Set TEST_BASE_URL to an isolated loopback Next.js server.");
 
-async function installFixtures(context: BrowserContext) {
+async function installFixtures(context: BrowserContext, options: { legacySingleItem?: boolean } = {}) {
   const origin = new URL(baseUrl!).origin;
-  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin)) throw new Error("Only an explicit IPv4 loopback test origin is allowed.");
+  if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin) || new URL(origin).port === "3000") {
+    throw new Error("Use a dedicated IPv4 loopback test port, not port 3000.");
+  }
 
   const state = {
     stock: 4,
@@ -43,11 +46,12 @@ async function installFixtures(context: BrowserContext) {
   const product = () => ({
     id: productId, title: productTitle, slug: productId, description: "Synthetic fixture",
     price: 10, category: "ELECTRONICS", categorySlug: "electronics", condition: "NEW",
-    images: [], status: "PUBLISHED", stock: state.stock, isSold: false, lowStockThreshold: 2,
+    images: [], status: "PUBLISHED", stock: options.legacySingleItem ? null : state.stock, isSold: false, lowStockThreshold: 2,
     createdAt: timestamp, updatedAt: timestamp,
   });
 
   // Abort external traffic and fulfill every backend path here; no API write reaches the server.
+  await context.routeWebSocket("**/*", (socket) => socket.close());
   await context.route("**/*", async (route) => {
     const request = route.request();
     const url = new URL(request.url());
@@ -68,7 +72,9 @@ async function installFixtures(context: BrowserContext) {
     if (path === "/auth/csrf-token") return success({ csrfToken: "synthetic-csrf" });
     if (path === "/vendor/products" && request.method() === "GET") {
       state.productReads += 1;
-      const stock = { inStock: Number(state.stock > 2), lowStock: Number(state.stock > 0 && state.stock <= 2), outOfStock: Number(state.stock === 0) };
+      const stock = options.legacySingleItem
+        ? { inStock: 1, lowStock: 0, outOfStock: 0 }
+        : { inStock: Number(state.stock > 2), lowStock: Number(state.stock > 0 && state.stock <= 2), outOfStock: Number(state.stock === 0) };
       return route.fulfill({ json: { status: "success", pagination, data: {
         products: [product()],
         summary: { total: 1, buyerVisible: 1, pendingReview: 0, lowStock: stock.lowStock, outOfStock: stock.outOfStock },
@@ -107,6 +113,39 @@ async function installFixtures(context: BrowserContext) {
 
 function stockInput(page: Page) {
   return page.getByRole("spinbutton").filter({ visible: true });
+}
+
+for (const width of [320, 1440]) {
+  test(`available single item in seller Products at ${width}px`, async ({ context, page }, testInfo) => {
+    await page.setViewportSize({ width, height: width === 320 ? 800 : 900 });
+    const state = await installFixtures(context, { legacySingleItem: true });
+    await page.goto(new URL("/seller/inventory", baseUrl!).href);
+    await expect(stockInput(page)).toHaveValue("1");
+    await navigate(page, "Products");
+    await expect(page).toHaveURL((url) => url.pathname === "/seller/products");
+
+    for (const mode of ["grid", "list"] as const) {
+      const toggle = page.getByRole("button", { name: mode === "list" ? "List view" : "Grid view", exact: true });
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-pressed", "true");
+      await expect(page).toHaveURL((url) => url.pathname === "/seller/products" && (url.searchParams.get("view") ?? "list") === mode);
+      const region = page.getByRole("region", { name: `Seller products ${mode}` });
+      const item = region.locator("article").filter({ has: page.getByRole("heading", { name: productTitle, exact: true }) });
+      const label = item.getByText("1 in stock", { exact: true }).filter({ visible: true });
+      await expect(label).toBeVisible();
+      await expect(item.getByText("Out of stock", { exact: true })).toHaveCount(0);
+      await label.scrollIntoViewIfNeeded();
+      expect(await label.evaluate((el) => {
+        const bounds = el.getBoundingClientRect();
+        return el.scrollWidth <= el.clientWidth + 1 && bounds.left >= 0 && bounds.right <= window.innerWidth;
+      })).toBe(true);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+      const name = `seller-products-${width}-${mode}.png`;
+      const path = process.env.SELLER_STOCK_SCREENSHOT_DIR ? join(process.env.SELLER_STOCK_SCREENSHOT_DIR, name) : testInfo.outputPath(name);
+      await page.screenshot({ path, animations: "disabled" });
+    }
+    expect(state.attemptedStock).toEqual([]);
+  });
 }
 
 async function navigate(page: Page, label: "Inventory" | "Orders" | "Products") {
