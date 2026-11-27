@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import {
   ShoppingCart,
   Plus,
@@ -28,7 +28,7 @@ import {
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
-import { useCart, type CartItem } from "@/hooks/use-cart";
+import { CHECK_PRODUCT_STOCK, guestIncreaseBlock, useCart, type CartItem } from "@/hooks/use-cart";
 
 type CartDrawerProps = {
   children: ReactNode;
@@ -57,6 +57,8 @@ function CartItemRow({
   onRemove: (identity: CartIdentity) => void;
 }) {
   const identity: CartIdentity = { id: item.id, variant: item.variant };
+  const block = useCart((state) => guestIncreaseBlock(state, item));
+  const stockNoteId = useId();
 
   return (
     <div className="flex gap-4">
@@ -121,15 +123,21 @@ function CartItemRow({
 
             <button
               type="button"
-              title="Increase quantity"
+              disabled={Boolean(block)}
+              aria-describedby={block ? stockNoteId : undefined}
               onClick={() => onIncrease(identity)}
               aria-label={`Increase ${item.name} quantity`}
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all hover:text-[#009E49] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg bg-white text-zinc-600 transition-all enabled:hover:text-[#009E49] enabled:hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[#009E49] focus-visible:ring-offset-2 disabled:opacity-40"
             >
               <Plus className="h-3 w-3" />
             </button>
           </div>
         </div>
+        {block && <p id={stockNoteId} className="mt-1 text-xs leading-5 text-zinc-600">
+          {block === CHECK_PRODUCT_STOCK
+            ? <Link href={`/product/${item.slug}`} onClick={onNavigate} className="inline-block py-1 underline underline-offset-2">{block}</Link>
+            : block}
+        </p>}
       </div>
     </div>
   );

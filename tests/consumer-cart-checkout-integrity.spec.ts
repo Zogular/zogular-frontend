@@ -1,6 +1,7 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { createServer } from "node:http";
 import {
   CartContractError,
   parseBackendCartResponse,
@@ -355,6 +356,7 @@ function seedOwnedCart(ownerId: string, item: CartItem = cartItem) {
     itemCount: 0,
     totalAmount: 0,
     ownerId: null,
+    hasHydrated: true,
     identityResolved: true,
     checkoutOutcomeOwnerId: null,
     pendingDeletions: [],
@@ -467,6 +469,40 @@ function createCartBackendHarness(initialItems: CartItem[] = []) {
     getRemoteItems: () => remoteItems.map((item) => ({ ...item })),
   };
 }
+
+test("guest stock caps apply atomically across variants and preserve prior cart quantities", () => {
+  const previous = useCart.getState();
+  const { addItem, increaseQuantity, decreaseQuantity } = previous;
+  const line = { ...cartItem, quantity: 1, variant: "red" };
+  try {
+    useCart.setState({ items: [line], itemCount: 1, totalAmount: line.price, ownerId: null, identityResolved: true, hasHydrated: true });
+    for (const knownStock of [undefined, -1, 0.5, NaN, Infinity]) {
+      expect(addItem({ ...line, knownStock })).toBe("Check stock on product page");
+      increaseQuantity(line);
+      expect(useCart.getState().itemCount).toBe(1);
+    }
+    for (const quantity of [0, -1, 1.5, NaN, 100]) {
+      expect(addItem({ ...line, knownStock: 100, quantity })).toBeTruthy();
+    }
+    expect(addItem({ ...line, variant: "blue", knownStock: 3, quantity: 2 })).toBeUndefined();
+    expect(useCart.getState().items.map((row) => row.knownStock)).toEqual([3, 3]);
+    increaseQuantity(line);
+    expect(useCart.getState().totalAmount).toBe(3 * line.price);
+    expect(addItem({ ...line, knownStock: 0 })).toBe("Out of stock");
+    expect(useCart.getState().items.map((row) => row.knownStock)).toEqual([0, 0]);
+    decreaseQuantity({ ...line, variant: "blue" });
+    increaseQuantity(line);
+    expect(useCart.getState().itemCount).toBe(2);
+    for (const flags of [{ hasHydrated: false, identityResolved: true }, { hasHydrated: true, identityResolved: false }]) {
+      useCart.setState(flags);
+      expect(addItem({ ...line, knownStock: 10 })).toBe("Loading your cart");
+      expect(useCart.getState().items[0].knownStock).toBe(0);
+      expect(useCart.getState().itemCount).toBe(2);
+    }
+  } finally {
+    useCart.setState(previous, true);
+  }
+});
 
 test("rapid same-owner adds preserve every accepted product intent", async () => {
   seedOwnedCart("owner-a");
@@ -914,6 +950,184 @@ function isProtectedCheckoutRequest(request: Request): boolean {
 }
 
 const baseUrl = process.env.CONSUMER_CART_CHECKOUT_BASE_URL;
+
+test.describe("guest stock route", () => {
+  const web = process.env.GUEST_STOCK_WEB_ORIGIN;
+  const api = process.env.GUEST_STOCK_API_ORIGIN;
+  test.skip(!web || !api, "Requires an isolated frontend built against the synthetic loopback API.");
+  test.use({ serviceWorkers: "block" });
+  test.describe.configure({ mode: "serial" });
+  const products = [
+    { id: "legacy", title: "Single listing", stock: null },
+    { id: "counted", title: "Counted listing", stock: 3 },
+  ].map((item) => ({ ...item, slug: item.id, isSold: false, price: 250, category: "HOME", images: ["/file.svg"] }));
+  const writes: string[] = [];
+  const fixture = createServer((req, res) => {
+    const url = new URL(req.url ?? "/", "http://127.0.0.1");
+    const route = url.pathname.replace(/^\/api\/v1/, "");
+    const product = products.find((item) => route === `/products/${item.slug}`);
+    const related = products.find((item) => route === `/products/${item.id}/related`);
+    if (req.method !== "GET") writes.push(req.method ?? "unknown");
+    const body = route === "/products" ? { results: products.length, data: { products }, pagination: { page: 1, pages: 1, total: products.length, limit: Number(url.searchParams.get("limit")) } }
+      : product ? { data: { product } } : related ? { results: 1, data: { products: products.filter((item) => item !== related) } }
+      : route === "/categories" ? { data: { categories: [] } } : null;
+    res.writeHead(req.method !== "GET" ? 405 : body ? 200 : 404, { "Content-Type": "application/json" });
+    res.end(JSON.stringify({ status: "success", ...body }));
+  });
+  test.beforeAll(async () => {
+    for (const origin of [web!, api!]) {
+      if (!/^http:\/\/127\.0\.0\.1:\d+$/.test(origin) || Number(new URL(origin).port) < 1024 || new URL(origin).port === "3000") throw new Error("Private loopback origins required");
+    }
+    if (api === web) throw new Error("Distinct fixture ports required");
+    await new Promise<void>((resolve, reject) => fixture.once("error", reject).listen(Number(new URL(api!).port), "127.0.0.1", resolve));
+  });
+  test.afterAll(async () => {
+    if (fixture.listening) await new Promise<void>((resolve, reject) => fixture.close((err) => err ? reject(err) : resolve()));
+  });
+  for (const width of [320, 390, 1440]) {
+    test(`guest stock route at ${width}px`, async ({ page, context }, info) => {
+      await page.setViewportSize({ width, height: width <= 390 ? 844 : 900 });
+      await context.routeWebSocket("**/*", (ws) => ws.close());
+      await context.route("**/*", (route) => {
+        const request = route.request();
+        const url = new URL(request.url());
+        if (request.method() !== "GET" && request.method() !== "HEAD") writes.push(request.method());
+        if (url.origin !== web) return route.abort();
+        if (!url.pathname.startsWith("/api/")) return route.continue();
+        return route.fulfill(url.pathname.endsWith("/categories") ? { json: { data: { categories: [] } } }
+          : { status: url.pathname.endsWith("/user/me") ? 401 : 404, json: {} });
+      });
+      const photo = async (name: string) => {
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+        await page.screenshot({ path: info.outputPath(`${width}-${name}.png`), animations: "disabled" });
+      };
+      await page.goto(`${web}/products`);
+      const cardAdd = page.getByRole("button", { name: "Add Single listing to cart" });
+      await expect(cardAdd).not.toHaveAttribute("title", "Loading your cart");
+      await cardAdd.click();
+      await cardAdd.click();
+      await expect(page.getByText("Not enough stock to add more", { exact: true })).toBeVisible();
+      await photo("card-rejected");
+      await page.goto(`${web}/product/counted`);
+      const add = page.getByRole("button", { name: "Add", exact: true }).filter({ visible: true });
+      await expect(add).not.toHaveAttribute("title", "Loading your cart");
+      await add.click();
+      await page.getByRole("button", { name: "Increase quantity", exact: true }).filter({ visible: true }).click();
+      await page.getByRole("button", { name: "Increase quantity", exact: true }).filter({ visible: true }).click();
+      await add.click();
+      await expect(page.getByText("Not enough stock to add more", { exact: true })).toBeVisible();
+      await photo("detail");
+      await page.goto(`${web}/cart`);
+      const plus = page.getByRole("button", { name: "Increase quantity" });
+      const subtotal = page.getByTestId("cart-items-subtotal");
+      // Read Chrome's AX tree as well as checking that the actual text fits its clipping ancestors.
+      const verifyNote = async (button: typeof plus, label: string, artifact: string) => {
+        await expect(button).toHaveAccessibleDescription(label);
+        const noteId = await button.getAttribute("aria-describedby");
+        const note = page.locator(`[id="${noteId}"]`);
+        await expect(note).toHaveText(label);
+        await note.scrollIntoViewIfNeeded();
+        expect(await note.evaluate((el) => {
+          const range = document.createRange();
+          range.selectNodeContents(el);
+          const rects = Array.from(range.getClientRects());
+          return rects.length > 0 && rects.every((r) => {
+            if (r.left < 0 || r.top < 0 || r.right > innerWidth + 1 || r.bottom > innerHeight + 1) return false;
+            for (let p = el.parentElement; p; p = p.parentElement) {
+              const box = p.getBoundingClientRect();
+              const css = getComputedStyle(p);
+              if (css.overflowX !== "visible" && (r.left < box.left - 1 || r.right > box.right + 1)) return false;
+              if (css.overflowY !== "visible" && (r.top < box.top - 1 || r.bottom > box.bottom + 1)) return false;
+            }
+            return true;
+          });
+        })).toBe(true);
+        const cdp = await context.newCDPSession(page);
+        try {
+          const { nodes } = await cdp.send("Accessibility.getFullAXTree");
+          const evidence = nodes.filter((node) => !node.ignored && node.role?.value === "button"
+            && node.description?.value === label && node.properties?.some((p) => p.name === "disabled" && p.value.value === true));
+          expect(evidence.length).toBeGreaterThan(0);
+          fs.writeFileSync(info.outputPath(`${width}-${artifact}-ax.json`), JSON.stringify(evidence, null, 2));
+        } finally {
+          await cdp.detach();
+        }
+      };
+      await expect(subtotal).toHaveText("K500");
+      await expect(plus.first()).toBeDisabled();
+      await verifyNote(plus.first(), "Only 1 available", "cart-single");
+      await expect(plus.last()).not.toHaveAttribute("aria-describedby", /.+/);
+      await plus.last().click();
+      await expect(subtotal).toHaveText("K750");
+      {
+        await page.getByRole("button", { name: "Open cart" }).click();
+        const drawer = page.getByRole("dialog");
+        await expect(drawer.getByRole("button", { name: "Increase Single listing quantity" })).toBeDisabled();
+        const more = drawer.getByRole("button", { name: "Increase Counted listing quantity" });
+        await more.click();
+        await expect(more).toBeDisabled();
+        await verifyNote(drawer.getByRole("button", { name: "Increase Single listing quantity" }), "Only 1 available", "drawer-single");
+        await photo("drawer");
+        await drawer.getByRole("button", { name: "Close cart" }).click();
+      }
+      await page.reload();
+      await expect(subtotal).toHaveText("K1,000");
+      await expect(plus.last()).toBeDisabled();
+      await photo("cart-reload");
+      // Pre-snapshot cart rows survive hydration without acquiring invented stock.
+      await page.evaluate(() => {
+        const key = "zogular-cart-storage";
+        const persisted = JSON.parse(localStorage.getItem(key)!);
+        for (const row of persisted.state.items) delete row.knownStock;
+        localStorage.setItem(key, JSON.stringify(persisted));
+      });
+      await page.reload();
+      await expect(subtotal).toHaveText("K1,000");
+      await expect(plus.last()).toBeDisabled();
+      const action = "Check stock on product page";
+      await verifyNote(plus.last(), action, "cart-restored");
+      await photo("cart-restored");
+      await page.getByRole("button", { name: "Decrease quantity" }).click();
+      await expect(subtotal).toHaveText("K750");
+      await page.getByRole("button", { name: "Open cart" }).click();
+      const drawer = page.getByRole("dialog");
+      await verifyNote(drawer.getByRole("button", { name: "Increase Counted listing quantity" }), action, "drawer-restored");
+      await photo("drawer-restored");
+      await drawer.getByRole("link", { name: action }).and(drawer.locator('[href="/product/counted"]')).click();
+      await expect(page).toHaveURL(`${web}/product/counted`);
+      await expect(add).toHaveAttribute("title", "Add Counted listing to cart");
+      await add.click();
+      await page.goto(`${web}/cart`);
+      const recoveryLinks = page.getByRole("link", { name: action });
+      const savedLines = () => page.evaluate(() => {
+        const { state } = JSON.parse(localStorage.getItem("zogular-cart-storage")!);
+        return state.items.map(({ slug, quantity, knownStock }: CartItem) => [slug, quantity, knownStock ?? null]);
+      });
+      await expect(subtotal).toHaveText("K1,000");
+      await expect.poll(savedLines).toEqual([["legacy", 1, null], ["counted", 3, 3]]);
+      await expect(plus.last()).toBeDisabled();
+      await expect(plus.last()).toHaveAccessibleDescription("Only 3 available");
+      await expect(recoveryLinks).toHaveCount(1);
+      await expect(recoveryLinks).toHaveAttribute("href", "/product/legacy");
+      await photo("counted-recovered");
+
+      await recoveryLinks.click();
+      await expect(page).toHaveURL(`${web}/product/legacy`);
+      await expect(add).toHaveAttribute("title", "Not enough stock to add more");
+      await add.click();
+      await expect(page.getByText("Not enough stock to add more", { exact: true })).toBeVisible();
+      await page.goto(`${web}/cart`);
+      await expect(subtotal).toHaveText("K1,000");
+      await expect.poll(savedLines).toEqual([["legacy", 1, 1], ["counted", 3, 3]]);
+      await expect(plus.first()).toBeDisabled();
+      await expect(plus.first()).toHaveAccessibleDescription("Only 1 available");
+      await expect(plus.last()).toHaveAccessibleDescription("Only 3 available");
+      await expect(recoveryLinks).toHaveCount(0);
+      await photo("single-recovered");
+      expect(writes).toEqual([]);
+    });
+  }
+});
 const viewports = [
   { name: "320x568", width: 320, height: 568 },
   { name: "390x844", width: 390, height: 844 },

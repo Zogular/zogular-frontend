@@ -96,5 +96,6 @@ export function toProductFromDetail(product: ProductDetail): Product {
     image: product.images[0] ?? "",
     imageAlt: product.title,
     ownerId: product.ownerId,
+    stock: product.stock,
   });
 }

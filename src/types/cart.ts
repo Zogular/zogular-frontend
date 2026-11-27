@@ -6,6 +6,8 @@ export interface CartItem {
   price: number;
   image: string;
   quantity: number;
+  /** Last public product stock observed locally; absence is not zero. */
+  knownStock?: number;
   variant?: string | null;
 }
 

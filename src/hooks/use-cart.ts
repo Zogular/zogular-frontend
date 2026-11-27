@@ -12,6 +12,7 @@ import {
   updateBackendCartItem,
 } from "@/services/cart";
 import type { CartItem, CartItemIdentity } from "@/types/cart";
+import { isKnownStock } from "@/lib/normalizers/cart";
 
 export type { CartItem, CartItemIdentity } from "@/types/cart";
 
@@ -40,7 +41,8 @@ interface CartStore {
   setHasHydrated: (value: boolean) => void;
   suspendIdentity: () => void;
   reconcileIdentity: (ownerId: string | null) => void;
-  addItem: (item: CartItem) => void;
+  /** A rejection carries the buyer-facing reason from the exact state evaluated. */
+  addItem: (item: CartItem) => string | undefined;
   removeItem: (identity: CartItemIdentity) => void;
   increaseQuantity: (identity: CartItemIdentity) => void;
   decreaseQuantity: (identity: CartItemIdentity) => void;
@@ -72,6 +74,29 @@ function isSameCartLine(item: CartItem, identity: CartItemIdentity): boolean {
 
 function canSyncCartLine(item: Pick<CartItem, "id" | "variant">): boolean {
   return canSyncCartItem(item) && !item.variant;
+}
+
+type QuantityContext = Pick<CartStore, "items" | "ownerId" | "identityResolved" | "hasHydrated">;
+
+export const CHECK_PRODUCT_STOCK = "Check stock on product page";
+
+/** The public snapshot limits local guest intent only. Signed-in stock belongs to the API. */
+export function guestIncreaseBlock(
+  state: QuantityContext, identity: CartItemIdentity, quantity = 1, observation?: { knownStock?: number },
+): string | undefined {
+  if (!state.identityResolved || !state.hasHydrated) return "Loading your cart";
+  if (state.ownerId !== null) return;
+  if (!Number.isSafeInteger(quantity) || quantity < 1) return "Choose a valid quantity";
+  const rows = state.items.filter((item) => String(item.id) === String(identity.id));
+  const stock = observation ? observation.knownStock : rows.reduce<number | undefined>(
+    (min, row) => isKnownStock(row.knownStock) ? Math.min(min ?? row.knownStock, row.knownStock) : min, undefined,
+  );
+  if (!isKnownStock(stock)) return CHECK_PRODUCT_STOCK;
+  if (stock === 0) return "Out of stock";
+  if (rows.reduce((sum, row) => sum + row.quantity, quantity) > stock) {
+    return observation ? "Not enough stock to add more" : `Only ${stock} available`;
+  }
+  if ((rows.find((row) => isSameCartLine(row, identity))?.quantity ?? 0) + quantity > 99) return "Limit of 99 per cart line";
 }
 
 function calculateItemCount(items: CartItem[]): number {
@@ -496,7 +521,17 @@ export const useCart = create<CartStore>()(
 
       addItem: (newItem) => {
         const userId = getResolvedOwnerId(get);
-        const currentItems = get().items;
+        const state = get();
+        const blocked = guestIncreaseBlock(state, newItem, newItem.quantity, newItem);
+        // Refresh matching variants even when a lower observation rejects the requested quantity.
+        const refresh = state.hasHydrated && state.identityResolved && !userId && isKnownStock(newItem.knownStock)
+          && state.items.some((row) => String(row.id) === String(newItem.id) && row.knownStock !== newItem.knownStock);
+        const currentItems = refresh ? state.items.map((row) => String(row.id) === String(newItem.id)
+          ? { ...row, knownStock: newItem.knownStock } : row) : state.items;
+        if (blocked) {
+          if (refresh) set({ items: currentItems });
+          return blocked;
+        }
         const normalizedQuantity = Math.max(1, newItem.quantity || 1);
         const existingItem = currentItems.find((item) =>
           isSameCartLine(item, { id: newItem.id, variant: newItem.variant }),
@@ -556,6 +591,7 @@ export const useCart = create<CartStore>()(
       },
 
       increaseQuantity: (identity) => {
+        if (guestIncreaseBlock(get(), identity)) return;
         const userId = getResolvedOwnerId(get);
         const targetItem = get().items.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
