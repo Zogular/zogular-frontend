@@ -55,7 +55,11 @@ export function DiscoveryListingState({ kind, query, clearHref = "/products", tr
           </Button>
         ) : kind === "true-empty" ? <>
           <Button asChild className="min-h-11 rounded-xl bg-[#009E49] px-4 font-bold text-white hover:bg-[#007d3a]">
-            <Link href="/products" prefetch={false}>Browse all products</Link>
+            {trueEmptyScope === "catalog" ? (
+              <Link href="/categories" prefetch={false}>Browse categories</Link>
+            ) : (
+              <Link href="/products" prefetch={false}>Browse all products</Link>
+            )}
           </Button>
           <Button asChild variant="outline" className="min-h-11 rounded-xl px-4 font-bold">
             <Link href="/search" prefetch={false}><Search aria-hidden="true" />Search</Link>

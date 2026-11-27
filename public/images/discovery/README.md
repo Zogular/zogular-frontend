@@ -26,3 +26,11 @@ Both files use lossy WebP quality 80. Next.js may create smaller responsive deri
 - Do not present the pictured goods as real listings.
 - Do not add promotional badges, prices, countdowns, seller claims, delivery claims, or embedded text to these files.
 - Missing asset behavior must remain an honest non-image composition.
+## Category artwork
+
+`category-artwork.webp` is one generated studio contact sheet optimized for
+decorative thumbnail use. Its four quadrants map to exact catalog slugs:
+electronics, fashion, health-and-beauty, and home-and-living. These scenes are
+illustrations of departments, not inventory, brands, or seller product photos.
+The existing icon remains underneath each supported thumbnail and is the only
+visual for unmapped slugs. No asset URL comes from category text or metadata.

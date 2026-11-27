@@ -60,6 +60,7 @@ function mapOrderSummary(order: BackendOrder): OrderSummary {
       typeof item.lineTotal === "number" ? item.lineTotal : (item.price || 0) * (item.quantity || 1);
 
     const computedSubtotal = order.items.reduce((acc, item) => acc + getOrderItemLineTotal(item), 0);
+    const estimate = typeof order.estimatedDelivery === "string" ? new Date(order.estimatedDelivery) : null;
 
     return {
       id: order.id,
@@ -72,9 +73,9 @@ function mapOrderSummary(order: BackendOrder): OrderSummary {
       itemSubtotal: order.totalAmount ?? computedSubtotal,
       total: isLegacyIncomplete ? null : (order.grandTotalAmount ?? order.totalAmount ?? computedSubtotal),
       status: mapBackendStatusToFrontend(order.status),
-      estDelivery: order.estimatedDelivery 
-        ? new Date(order.estimatedDelivery).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-        : "Pending",
+      estDelivery: estimate && Number.isFinite(estimate.getTime())
+        ? estimate.toLocaleDateString("en-US", { month: "short", day: "numeric" })
+        : null,
       items: order.items.map((item) => ({
         name: item.product?.title || item.product?.name || "Unknown Product",
         image: getBackendProductImage(item.product),

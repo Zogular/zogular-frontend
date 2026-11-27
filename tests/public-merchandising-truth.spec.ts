@@ -1,7 +1,11 @@
-import { expect, test, type Page, type Request } from "@playwright/test";
+import { expect, test, type BrowserContext, type Locator, type Page, type Request } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
+import { spawn, type ChildProcess } from "node:child_process";
+import { once } from "node:events";
+import { createServer, type Server } from "node:http";
 import { ApiError } from "../src/services/api";
+import { auditPageLayout, containAuditNetwork, loopbackAuditOrigin } from "./helpers/ui-audit-checks";
 import {
   getHomeNewArrivals,
   ProductListContractError,
@@ -431,14 +435,530 @@ test("diagnostics isolate only exact store 404 and framework-prefetch signatures
   }
 });
 
-const browserBaseUrl = process.env.PUBLIC_MERCHANDISING_BASE_URL;
-const fixtureControlUrl = process.env.PUBLIC_MERCHANDISING_FIXTURE_URL;
+const useLocalFixture = process.env.PUBLIC_MERCHANDISING_LOCAL_FIXTURE === "1";
+const localAppOrigin = "http://127.0.0.1:3259";
+const localFixtureOrigin = "http://127.0.0.1:5059";
+const browserBaseUrl = useLocalFixture ? localAppOrigin : process.env.PUBLIC_MERCHANDISING_BASE_URL;
+const fixtureControlUrl = useLocalFixture ? localFixtureOrigin : process.env.PUBLIC_MERCHANDISING_FIXTURE_URL;
+const fixtureImagePath = "/__storefront-fixture/arrival.svg";
+const rawCategoryDiagnostic = "FIXTURE_CATEGORY_UPSTREAM_503 correlation=synthetic-581";
+const longCategoryName = "AccessoriesAndEquipmentForHomeElectronicsAndProfessionalAudioSystems";
+const longSubcategoryName = "ReplacementComponentsAndMountingAccessoriesForHomeAudioSystems";
+const fixtureCategory = {
+  id: "accessories", slug: "accessories", name: longCategoryName, description: "Home and audio accessories",
+  icon: null, parentId: null, isActive: true, sortOrder: 1, _count: { products: 1 },
+};
+const fixtureCategories = [{
+  ...fixtureCategory,
+  children: [{ ...fixtureCategory, id: "components", slug: "components", name: longSubcategoryName, parentId: fixtureCategory.id }],
+}];
+const standardCategories = [{ ...fixtureCategory, name: "Accessories" }];
+
+test.use({ channel: process.env.PLAYWRIGHT_CHANNEL, serviceWorkers: "block" });
+
+let localApi: Server | undefined;
+let localNext: ChildProcess | undefined;
+
+// Keep the existing fixture-control URL contract and run the production app on loopback.
+test.beforeAll(async () => {
+  if (!useLocalFixture) return;
+  let arrivalsMode = "success";
+  let categoriesMode = "standard";
+  localApi = createServer((request, response) => {
+    const url = new URL(request.url ?? "/", localFixtureOrigin);
+    const send = (status: number, value: unknown) => {
+      response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+      response.end(JSON.stringify(value));
+    };
+    if (request.method !== "GET") return send(405, { status: "fail" });
+    switch (url.pathname) {
+      case "/__fixture": {
+        const mode = url.searchParams.get("mode");
+        const categoryMode = url.searchParams.get("categories");
+        if (mode) {
+          arrivalsMode = mode;
+          categoriesMode = "standard";
+        }
+        if (categoryMode) categoriesMode = categoryMode;
+        return send(200, { arrivalsMode, categoriesMode });
+      }
+      case "/api/v1/categories": {
+        if (categoriesMode === "unavailable") return send(503, { status: "fail", message: rawCategoryDiagnostic });
+        const categories = categoriesMode === "empty" ? [] : categoriesMode === "standard" ? standardCategories : fixtureCategories;
+        return send(200, { status: "success", results: categories.length, data: { categories } });
+      }
+      case "/api/v1/user/me":
+        return send(200, { status: "success", data: { user: {
+          id: "storefront-buyer", firstName: "Fixture", lastName: "Buyer", email: "buyer@example.test", role: "buyer",
+        } } });
+      case "/api/v1/cart":
+        return send(200, { status: "success", data: { cart: {
+          id: "00000000-0000-4000-8000-000000000001", items: [],
+          summary: { totalItems: 0, uniqueItems: 0, subtotal: 0 },
+        } } });
+      case "/api/v1/wishlist":
+        return send(200, { status: "success", results: 0, data: { items: [] },
+          pagination: { page: 1, limit: 100, total: 0, pages: 0 } });
+      case "/api/v1/products/new-arrivals":
+        if (arrivalsMode === "unavailable") return send(503, { status: "fail", message: "Synthetic arrivals failure" });
+        return send(200, collectionResponse(arrivalsMode === "empty" ? [] : [{
+          ...backendProduct, images: backendProduct.images.map((image) => ({ ...image, url: fixtureImagePath })),
+        }]));
+      default:
+        return send(404, { status: "fail", message: "Fixture route not found" });
+    }
+  });
+  localApi.listen(5059, "127.0.0.1");
+  await once(localApi, "listening");
+
+  const cwd = path.resolve(__dirname, "..");
+  const apiBase = `${localFixtureOrigin}/api/v1`;
+  localNext = spawn(process.execPath, [path.resolve(cwd, "node_modules/next/dist/bin/next"), "start",
+    "--hostname", "127.0.0.1", "--port", "3259"], {
+    cwd,
+    env: { ...process.env, INTERNAL_BACKEND_URL: apiBase, NEXT_PUBLIC_API_URL: apiBase, NEXT_PUBLIC_API_PROXY_URL: "/api/backend" },
+    stdio: ["ignore", "pipe", "pipe"],
+  });
+  let logs = "";
+  for (const stream of [localNext.stdout, localNext.stderr]) {
+    stream?.on("data", (chunk: Buffer) => { logs = (logs + chunk.toString()).slice(-3500); });
+  }
+  for (let attempt = 0; attempt < 60; attempt++) {
+    if (localNext.exitCode !== null) break;
+    const response = await originalFetch(`${localAppOrigin}/categories`, { signal: AbortSignal.timeout(500) }).catch(() => null);
+    if (response?.ok) return;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  throw new Error(`Merchandising fixture needs a runnable production build.\n${logs}`);
+});
+
+test.afterAll(async () => {
+  if (localNext && localNext.exitCode === null && localNext.signalCode === null && localNext.pid) {
+    const exited = once(localNext, "exit");
+    localNext.kill();
+    await exited;
+  }
+  if (localApi?.listening) {
+    const closed = once(localApi, "close");
+    localApi.close();
+    localApi.closeAllConnections();
+    await closed;
+  }
+});
+
+async function containMerchandisingContext(context: BrowserContext, origin: string) {
+  await containAuditNetwork(context, [origin]);
+  if (useLocalFixture) {
+    await context.route(`${origin}${fixtureImagePath}`, (route) => route.fulfill({
+      contentType: "image/svg+xml",
+      body: '<svg xmlns="http://www.w3.org/2000/svg" width="90" height="120"><rect width="90" height="120" fill="#065f46"/></svg>',
+    }));
+  }
+}
+
 const browserViewports = [
   { name: "320x568", width: 320, height: 568 },
   { name: "390x844", width: 390, height: 844 },
   { name: "768x1024", width: 768, height: 1024 },
   { name: "1440x900", width: 1440, height: 900 },
 ] as const;
+
+for (const viewport of browserViewports.filter(({ width }) => width !== 768)) {
+  test(`category discovery separates empty, search miss and recovery at ${viewport.name}`, async ({ page, request }, testInfo) => {
+    test.skip(!useLocalFixture, "Category discovery requires the isolated merchandising fixture.");
+    const origin = loopbackAuditOrigin(browserBaseUrl!);
+    await containMerchandisingContext(page.context(), origin);
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    const setCategories = async (mode: "success" | "empty" | "unavailable") => {
+      await expect(await request.get(`${localFixtureOrigin}/__fixture?categories=${mode}`)).toBeOK();
+    };
+    const categoryResponse = (status: number) => page.waitForResponse((response) =>
+      response.url() === `${origin}/api/backend/categories` && response.status() === status,
+    );
+
+    await setCategories("success");
+    await page.goto(`${origin}/categories`);
+    const directory = page.getByRole("main");
+    await expect(page.locator("main")).toHaveCount(1);
+    const search = directory.getByRole("textbox", { name: "Search categories" });
+    const category = directory.getByRole("link", { name: longCategoryName, exact: true });
+    const subcategory = directory.getByRole("link", { name: longSubcategoryName, exact: true });
+    const viewAll = directory.getByRole("link", { name: `View All ${longCategoryName}`, exact: true });
+    await expect(category).toHaveAttribute("href", "/category/accessories");
+    await expect(subcategory).toHaveAttribute("href", "/category/accessories?subcategory=components");
+    await expect(viewAll).toHaveAttribute("href", "/category/accessories");
+    for (const link of [category, subcategory, viewAll]) {
+      expect(await link.evaluate((element) => {
+        const tile = element.closest(".group");
+        if (!tile) return false;
+        const range = document.createRange();
+        range.selectNodeContents(element);
+        const tileBounds = tile.getBoundingClientRect();
+        return [...range.getClientRects()].every((rect) =>
+          rect.left >= tileBounds.left - 1 && rect.right <= tileBounds.right + 1,
+        );
+      }), "long link text stays inside the category tile").toBe(true);
+    }
+    await auditPageLayout(page);
+    await viewAll.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("categories-long-labels.png"), animations: "disabled" });
+
+    await search.fill("  replacementcomponents  ");
+    await expect(category).toBeVisible();
+    const unmatched = "UnmatchedCategory".repeat(5);
+    await search.fill(`  ${unmatched}  `);
+    await expect(directory.getByRole("heading", { name: "No matching categories" })).toBeVisible();
+    await expect(directory.getByText(`No categories match "${unmatched}". Try a different search term.`, { exact: true })).toBeVisible();
+    await expect(directory.getByRole("heading", { name: "No categories are available yet" })).toHaveCount(0);
+    await auditPageLayout(page);
+    await page.screenshot({ path: testInfo.outputPath("categories-search-miss.png"), animations: "disabled" });
+    await directory.getByRole("button", { name: "Clear Search" }).click();
+    await expect(search).toHaveValue("");
+    await expect(category).toBeVisible();
+
+    await setCategories("empty");
+    await Promise.all([categoryResponse(200), page.reload()]);
+    await expect(directory.getByRole("heading", { name: "No categories are available yet" })).toBeVisible();
+    await search.fill("electronics");
+    await expect(directory.getByRole("heading", { name: "No categories are available yet" })).toBeVisible();
+    await expect(directory.getByRole("button", { name: "Clear Search" })).toHaveCount(0);
+    await expect(directory.getByRole("button", { name: "Retry" })).toHaveCount(0);
+    const browse = directory.getByRole("link", { name: "Browse all products", exact: true });
+    await expect(browse).toHaveAttribute("href", "/products");
+    await browse.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("categories-empty.png"), animations: "disabled" });
+
+    await setCategories("unavailable");
+    const [failed] = await Promise.all([categoryResponse(503), page.reload()]);
+    expect(await failed.text()).toContain(rawCategoryDiagnostic);
+    const unavailable = directory.getByRole("heading", { name: "Categories are temporarily unavailable" });
+    await expect(unavailable).toBeVisible();
+    await expect(directory.getByText("We couldn't load categories. Try again to see what's available.", { exact: true })).toBeVisible();
+    await expect(page.getByText(rawCategoryDiagnostic, { exact: false })).toHaveCount(0);
+    await expect(directory.getByRole("heading", { name: "No categories are available yet" })).toHaveCount(0);
+    const retry = directory.getByRole("button", { name: "Retry" });
+    await retry.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath("categories-unavailable.png"), animations: "disabled" });
+
+    await setCategories("success");
+    await Promise.all([categoryResponse(200), retry.click()]);
+    await expect(category).toBeVisible();
+    await expect(unavailable).toHaveCount(0);
+  });
+}
+
+async function textOverflowsControl(locator: Locator) {
+  return locator.evaluate((element) => {
+    const control = element.getBoundingClientRect();
+    const range = document.createRange();
+    range.selectNodeContents(element);
+    return Array.from(range.getClientRects()).some((rect) => rect.left < control.left - 1 || rect.right > control.right + 1);
+  });
+}
+
+test("recent orders show the customer reference without changing the detail route", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Recent order references require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  const orderId = "account-order-fixture";
+  const orderNumber = "ZG-FIXTURE-001";
+  const legacyId = "legacy-account-order";
+  const summary = { status: "PENDING", createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [] };
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) =>
+    route.fulfill({
+      json: {
+        status: "success",
+        results: 2,
+        data: { orders: [{ ...summary, id: orderId, orderNumber }, { ...summary, id: legacyId }] },
+        pagination: { page: 1, limit: 100, total: 2, pages: 1 },
+      },
+    }),
+  );
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    const heading = page.getByRole("heading", { name: orderNumber, exact: true });
+    await expect(heading).toBeVisible();
+    await expect(page.getByRole("heading", { name: orderId, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("heading", { name: legacyId, exact: true })).toBeVisible();
+    for (const id of [orderId, legacyId]) {
+      await expect(page.getByRole("link", { name: "Track", exact: true })
+        .and(page.locator(`a[href="/account/orders/${id}"]`))).toHaveCount(1);
+    }
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    await heading.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`recent-order-reference-${viewport.width}.png`), animations: "disabled" });
+  }
+});
+
+test("VIS-06 mobile category drawer contains category labels at 320px", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success&categories=success`)).toBeOK();
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${origin}/new-arrivals`);
+  const menu = page.getByRole("button", { name: "Open menu", exact: true });
+  await menu.click();
+  const drawer = page.getByRole("dialog", { name: "Shop menu", exact: true });
+  const topLink = drawer.getByRole("link", { name: longCategoryName, exact: true });
+  await expect(topLink).toHaveAttribute("href", "/category/accessories");
+  await topLink.scrollIntoViewIfNeeded();
+  await auditPageLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("navbar-mobile-drawer-320.png"), animations: "disabled" });
+  expect.soft(await textOverflowsControl(topLink), "Top Categories link text stays inside its tile").toBe(false);
+
+  await drawer.getByRole("button", { name: new RegExp(`^${longCategoryName}`) }).click();
+  const browse = drawer.getByText(`Browse ${longCategoryName}`, { exact: true });
+  const shop = drawer.getByRole("link", { name: `Shop all ${longCategoryName}`, exact: true });
+  const child = drawer.getByRole("link", { name: longSubcategoryName, exact: true });
+  const back = drawer.getByRole("button", { name: "Back to categories" });
+  await expect(shop).toHaveAttribute("href", "/category/accessories");
+  await expect(child).toHaveAttribute("href", "/category/accessories?subcategory=components");
+  await auditPageLayout(page);
+  await page.screenshot({ path: testInfo.outputPath("navbar-mobile-category-320.png"), animations: "disabled" });
+  expect.soft(await textOverflowsControl(browse), "active category heading stays inside its panel").toBe(false);
+  expect.soft(await textOverflowsControl(shop), "Shop all text stays inside its link").toBe(false);
+  expect.soft((await shop.locator("svg").boundingBox())?.width, "Shop all chevron keeps its width").toBeGreaterThanOrEqual(15);
+  expect.soft((await back.boundingBox())?.width, "category back button keeps its width").toBeGreaterThanOrEqual(35);
+  await back.click();
+  await expect(topLink).toBeInViewport();
+  await page.keyboard.press("Escape");
+  await expect(drawer).toBeHidden();
+  await expect(menu).toBeFocused();
+});
+
+async function installGuestSessionFixture(page: Page, origin: string) {
+  const guestSessionUrl = `${origin}/api/backend/user/me`;
+  await page.route(guestSessionUrl, (route) => route.fulfill({
+    status: 401,
+    json: { status: "fail", message: "Fixture guest has no session" },
+  }));
+  return guestSessionUrl;
+}
+
+test("guest seller entry explains application and product approval in plain language", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Guest seller entry requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  const guestSessionUrl = await installGuestSessionFixture(page, origin);
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await test.step(`guest at ${viewport.width}px`, async () => {
+      await page.setViewportSize(viewport);
+      const guestResponse = page.waitForResponse((response) =>
+        response.url() === guestSessionUrl && response.status() === 401,
+      );
+      await page.goto(`${origin}/sell`);
+      await guestResponse;
+      await settleRenderedNavigation(page);
+      await expect(page).toHaveURL(`${origin}/sell`);
+
+      const main = page.getByRole("main");
+      await expect(main.getByRole("heading", { level: 1, name: "Sell your products on ZOGULAR" })).toBeVisible();
+      await expect(main.getByText(/verify your email, and apply to sell as an individual or a registered business/)).toBeVisible();
+      await expect(main.getByText(/If you receive limited access, you can draft listings, but you can only submit them for product review after your seller application is approved/)).toBeVisible();
+      await expect(main.getByText(/Each product must be reviewed and approved before shoppers can see it/)).toBeVisible();
+      await expect(main.getByText(/NRC number and photos of both sides of the card/)).toBeVisible();
+      await expect(main.getByText(/Payouts are not available yet/)).toBeVisible();
+      await expect(main).not.toContainText(/auth-first|status-led|\bVENDOR\b|APPROVED seller status|review submit/i);
+
+      for (const [name, href] of [
+        ["Create account", "/seller/register?next=%2Fseller%2Fonboarding%3Fstart%3D1"],
+        ["Sign in", "/seller/login?next=%2Fseller"],
+      ]) {
+        const links = main.getByRole("link", { name, exact: true });
+        await expect(links).toHaveCount(2);
+        for (const link of await links.all()) {
+          await expect(link).toHaveAttribute("href", href);
+          await link.scrollIntoViewIfNeeded();
+          await expect(link).toBeInViewport({ ratio: 1 });
+        }
+      }
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+      await page.screenshot({
+        path: testInfo.outputPath(`sell-guest-${viewport.width}.png`),
+        animations: "disabled",
+        fullPage: true,
+      });
+    });
+  }
+});
+
+test("mobile seller entry and login provide a storefront exit and one main landmark", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Storefront entry checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installGuestSessionFixture(page, origin);
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${origin}/sell`);
+  const store = page.getByRole("navigation", { name: "Storefront", exact: true });
+  const back = store.getByRole("link", { name: "Back to shop", exact: true });
+  await expect(back).toBeInViewport({ ratio: 1 });
+  await expect(page.getByRole("main")).toHaveCount(1);
+  await expect(page.locator("main")).toHaveCount(1);
+  await expect(page.locator("a button, button a")).toHaveCount(0);
+  await page.screenshot({ path: testInfo.outputPath("seller-entry-320.png"), animations: "disabled" });
+  await back.click();
+  await expect(page).toHaveURL(`${origin}/`);
+
+  for (const [width, height] of [[320, 568], [1440, 900]]) {
+    await page.setViewportSize({ width, height });
+    await page.goto(`${origin}/auth/login`);
+    await expect(page).toHaveURL(`${origin}/auth/login`);
+    await expect(page.getByRole("main")).toHaveCount(1);
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("a button, button a")).toHaveCount(0);
+    await expect(page.getByRole("link", { name: "Go back", exact: true })).toHaveAttribute("href", "/");
+    await page.screenshot({ path: testInfo.outputPath(`buyer-login-${width}.png`), animations: "disabled" });
+  }
+});
+
+test("All Categories shows the complete active category name without internal copy", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Category navigation requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success&categories=success`)).toBeOK();
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto(`${origin}/new-arrivals`);
+  await page.getByRole("button", { name: "All Categories", exact: true }).hover();
+  const heading = page.getByRole("heading", { name: longCategoryName, exact: true });
+  await expect(heading).toBeVisible();
+  expect(await heading.evaluate((node) => node.scrollWidth <= node.clientWidth)).toBe(true);
+  await expect(page.getByText(/without opening a giant menu/)).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Shop All", exact: true })).toHaveAttribute("href", "/category/accessories");
+  await page.screenshot({ path: testInfo.outputPath("all-categories-1280.png"), animations: "disabled" });
+});
+
+test("buyer order estimates distinguish real dates from unavailable data", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Delivery estimate checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  const orders = [undefined, "unrecorded-date", "2026-11-28T12:00:00.000Z"].map((estimatedDelivery, index) => ({
+    id: `estimate-order-${index}`, orderNumber: `ZG-ESTIMATE-${index}`,
+    status: index === 2 ? "DELIVERED" : "SHIPPED",
+    createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [], estimatedDelivery,
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) => {
+    const limit = Number(new URL(route.request().url()).searchParams.get("limit"));
+    return route.fulfill({
+      json: {
+        status: "success", results: orders.length, data: { orders },
+        pagination: { page: 1, limit, total: orders.length, pages: 1 },
+      },
+    });
+  });
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    for (const [path, view] of [["/account", "overview"], ["/account/orders", "history"]]) {
+      await page.goto(`${origin}${path}`);
+      const estimates = page.getByText("Estimated delivery: Not available", { exact: true });
+      await expect(estimates).toHaveCount(2);
+      await expect(page.getByText("Estimated delivery: Nov 28", { exact: true })).toBeVisible();
+      await expect(page.getByText(/Delivered on:|Invalid Date/)).toHaveCount(0);
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+      await estimates.first().scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath(`buyer-estimate-${view}-${viewport.width}.png`), animations: "disabled" });
+    }
+  }
+});
+
+test("VIS-06 category navbar contains long labels without clipping ordinary links", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Navbar containment requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success&categories=success`)).toBeOK();
+
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.goto(`${origin}/new-arrivals`);
+  const categoryNav = page.locator("header nav").filter({ has: page.locator('a[href="/new-arrivals"]') });
+  const longLink = categoryNav.getByRole("link", { name: longCategoryName, exact: true });
+  await expect(longLink).toBeVisible();
+
+  for (const width of [768, 820, 1440, 767, 320]) {
+    await test.step(`long category at ${width}px`, async () => {
+      await page.setViewportSize({ width, height: width === 320 ? 568 : width === 1440 ? 900 : 1024 });
+      await settleRenderedNavigation(page);
+      await page.screenshot({ path: testInfo.outputPath(`navbar-long-${width}.png`), animations: "disabled" });
+      await expect(page.locator("html")).toHaveJSProperty("scrollWidth", width);
+      if (width < 768) {
+        await expect(categoryNav).toBeHidden();
+        await expect(page.getByRole("navigation", { name: "Mobile navigation" })).toBeVisible();
+        return;
+      }
+      await expect(longLink).toHaveAttribute("href", "/category/accessories");
+      await expect(longLink).toHaveAttribute("title", longCategoryName);
+      await expect(longLink).toHaveCSS("text-overflow", "ellipsis");
+      expect(await longLink.evaluate((link) => link.scrollWidth > link.clientWidth)).toBe(true);
+      for (const link of [
+        categoryNav.getByRole("link", { name: "All Products", exact: true }),
+        categoryNav.getByRole("link", { name: "New Arrivals", exact: true }),
+        longLink,
+      ]) {
+        await expect(link).toBeInViewport({ ratio: 1 });
+        await link.focus();
+        await expect(link).toBeFocused();
+      }
+    });
+  }
+
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success`)).toBeOK();
+  await page.setViewportSize({ width: 768, height: 1024 });
+  await page.reload();
+  const ordinaryLink = categoryNav.getByRole("link", { name: "Accessories", exact: true });
+  await expect(ordinaryLink).toHaveAttribute("href", "/category/accessories");
+  for (const width of [768, 820, 1440]) {
+    await page.setViewportSize({ width, height: 1024 });
+    await expect(ordinaryLink).toBeInViewport({ ratio: 1 });
+    expect(await ordinaryLink.evaluate((link) => link.scrollWidth <= link.clientWidth)).toBe(true);
+  }
+
+  await test.step("VIS-07 desktop search fits and works by keyboard at 768px", async () => {
+    await page.setViewportSize({ width: 768, height: 1024 });
+    await settleRenderedNavigation(page);
+    const desktopSearch = page.locator("#desktop-navbar-search");
+    const input = desktopSearch.getByRole("searchbox", { name: "Search products", exact: true });
+    const submit = desktopSearch.getByRole("button", { name: "Search", exact: true });
+    await expect(input).toHaveAttribute("aria-label", "Search products");
+    await expect(input).toHaveAttribute("placeholder", "Search products");
+    await expect(input).toHaveValue("");
+    await expect(input).toBeInViewport({ ratio: 1 });
+    const fit = await input.evaluate((element: HTMLInputElement) => {
+      const style = getComputedStyle(element);
+      const placeholderStyle = getComputedStyle(element, "::placeholder");
+      const context = document.createElement("canvas").getContext("2d");
+      if (!context) throw new Error("Cannot measure storefront search text.");
+      context.font = placeholderStyle.font;
+      context.letterSpacing = placeholderStyle.letterSpacing === "normal" ? "0px" : placeholderStyle.letterSpacing;
+      return {
+        textWidth: context.measureText(element.placeholder).width,
+        contentWidth: element.clientWidth - parseFloat(style.paddingLeft) - parseFloat(style.paddingRight),
+      };
+    });
+    await testInfo.attach("desktop-search-fit-768", { body: JSON.stringify(fit), contentType: "application/json" });
+    expect(fit.textWidth).toBeLessThanOrEqual(fit.contentWidth);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", 768);
+    await page.screenshot({ path: testInfo.outputPath("navbar-search-768.png"), animations: "disabled" });
+
+    await input.focus();
+    await expect(input).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(submit).toBeFocused();
+    await page.keyboard.press("Space");
+    await expect(page).toHaveURL(`${origin}/search`);
+    await expect(page.getByRole("heading", { name: "Search products", exact: true })).toBeVisible();
+  });
+});
 
 for (const viewport of browserViewports) {
   test(`source-aligned merchandising routes are truthful at ${viewport.name}`, async ({
@@ -448,6 +968,7 @@ for (const viewport of browserViewports) {
   }) => {
     test.skip(!browserBaseUrl || !fixtureControlUrl, "Source-aligned fixture runtime is not active.");
     const browserOrigin = new URL(browserBaseUrl!).origin;
+    await containMerchandisingContext(page.context(), browserOrigin);
     let phase = "initial";
     const diagnostics = collectDiagnostics(page, browserOrigin, () => phase);
     await installLocalTelemetryFixtureRoutes(page, browserOrigin);
@@ -505,10 +1026,10 @@ for (const viewport of browserViewports) {
       fullPage: false,
     });
 
+    expect(diagnostics.badResponses).toEqual([]);
     expect(diagnostics.consoleErrors).toEqual([]);
     expect(diagnostics.pageErrors).toEqual([]);
     expect(diagnostics.failedRequests).toEqual([]);
-    expect(diagnostics.badResponses).toEqual([]);
     expect(diagnostics.expectedStoreDocument404s).toEqual([]);
     await test.info().attach(`new-arrivals-prefetch-${viewport.name}`, {
       body: Buffer.from(JSON.stringify(diagnostics.frameworkPrefetchCancellations, null, 2)),
@@ -522,7 +1043,9 @@ for (const viewport of browserViewports) {
 
     const retryContext = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
+      serviceWorkers: "block",
     });
+    await containMerchandisingContext(retryContext, browserOrigin);
     const retryPage = await retryContext.newPage();
     const retryPrefetchTracker = createFrameworkPrefetchTracker(retryPage, browserOrigin);
     let retryPhase = "unavailable-navigation";
@@ -582,7 +1105,9 @@ for (const viewport of browserViewports) {
 
     const storeContext = await browser.newContext({
       viewport: { width: viewport.width, height: viewport.height },
+      serviceWorkers: "block",
     });
+    await containMerchandisingContext(storeContext, browserOrigin);
     const storePage = await storeContext.newPage();
     const storeDiagnostics = collectDiagnostics(storePage, browserOrigin);
     await installLocalTelemetryFixtureRoutes(storePage, browserOrigin);
@@ -625,3 +1150,199 @@ for (const viewport of browserViewports) {
 
   });
 }
+
+test("buyer order badges use the same status labels on the overview and history", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Buyer order status checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  const orders = ["SHIPPED", "CANCELLED", "REFUNDED", "PENDING", "DELIVERED"].map((status, index) => ({
+    id: `status-order-${index}`, orderNumber: `ZG-STATUS-${index}`, status,
+    createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [],
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) => {
+    const limit = Number(new URL(route.request().url()).searchParams.get("limit"));
+    return route.fulfill({
+      json: {
+        status: "success", results: orders.length, data: { orders },
+        pagination: { page: 1, limit, total: orders.length, pages: 1 },
+      },
+    });
+  });
+  const badges = page.locator("main [data-slot=badge]");
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    await expect(badges).toHaveText(["In Transit", "Cancelled", "Cancelled"]);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    await badges.first().scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath(`buyer-overview-status-${viewport.width}.png`), animations: "disabled" });
+    await page.goto(`${origin}/account/orders`);
+    await expect(badges).toHaveText(["In Transit", "Cancelled", "Cancelled", "Processing", "Delivered"]);
+  }
+});
+
+test("storefront business attribution and policy FAQs remain readable on mobile and desktop", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Policy verification requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  const routes = [
+    { path: "about", title: "About Zogular", text: /Zogular by Vendara Enterprises is/ },
+    { path: "careers", title: "Careers at Zogular", text: "Where will open roles appear?" },
+    { path: "help", title: "Help Center", text: "How do I pay for my order?" },
+    { path: "privacy", title: "Privacy Policy", text: "How do I make a privacy request?" },
+    { path: "returns", title: "Returns Policy", text: /within seven days after receiving them/ },
+    { path: "terms", title: "Terms and Conditions", text: /do not limit rights you have under Zambian law/ },
+  ];
+
+  for (const width of [320, 1440]) {
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+    for (const { path, title, text } of routes) {
+      await page.goto(`${origin}/${path}`);
+      const main = page.getByRole("main", { includeHidden: true });
+      await expect(main.getByRole("heading", { name: title, exact: true })).toBeVisible();
+      await expect(page.locator("main"), `/${path} at ${width}px should have one <main>`).toHaveCount(1);
+      await expect(main, `/${path} at ${width}px should expose one main landmark`).toHaveCount(1);
+      await expect(main.getByRole("region", { name: "Frequently asked questions" })).toBeVisible();
+      await expect(page.getByText(text, { exact: typeof text === "string" })).toBeVisible();
+      await expect(page.getByRole("contentinfo")).toContainText("Zogular by Vendara Enterprises");
+      await auditPageLayout(page);
+      if (path === "help") {
+        await page.getByRole("heading", { name: "Frequently asked questions" }).scrollIntoViewIfNeeded();
+        await page.screenshot({ path: testInfo.outputPath(`help-faq-${width}.png`), animations: "disabled" });
+      }
+    }
+  }
+});
+
+test("buyer account navigation uses single links for profile, order tracking, and address", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Account control checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) =>
+    route.fulfill({
+      json: {
+        status: "success",
+        results: 1,
+        data: { orders: [{
+          id: "account-order-fixture", orderNumber: "ZG-FIXTURE-001", status: "PENDING",
+          createdAt: "2026-11-25T09:00:00.000Z", totalAmount: 120, items: [],
+        }] },
+        pagination: { page: 1, limit: 100, total: 1, pages: 1 },
+      },
+    }),
+  );
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    const content = page.locator("main").first();
+    await expect(content.getByRole("heading", { name: "Welcome back, Fixture!" })).toBeVisible();
+    for (const [name, href] of [
+      ["Edit Profile", "/account/settings"],
+      ["Track", "/account/orders/account-order-fixture"],
+      ["Add Address", "/account/addresses"],
+    ]) {
+      const link = content.getByRole("link", { name, exact: true }).and(content.locator(`a[href="${href}"]`));
+      await expect(link).toHaveCount(1);
+      await expect(link).toHaveAttribute("href", href);
+      await expect(content.getByRole("button", { name, exact: true })).toHaveCount(0);
+    }
+    await expect(page.locator("main a button, main button a")).toHaveCount(0);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    const profile = page.getByRole("link", { name: "Edit Profile", exact: true });
+    await profile.focus();
+    await expect(profile).toBeFocused();
+    await page.screenshot({ path: testInfo.outputPath(`buyer-account-links-${viewport.width}.png`), animations: "disabled" });
+    await page.keyboard.press("Enter");
+    await expect(page).toHaveURL(`${origin}/account/settings`);
+  }
+});
+
+test("VIS-04 storefront footer uses plain payment copy at mobile and desktop widths", async ({ page, request }, testInfo) => {
+  test.skip(!useLocalFixture, "Footer verification requires the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await expect(await request.get(`${localFixtureOrigin}/__fixture?mode=success`)).toBeOK();
+
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto(`${origin}/new-arrivals`);
+  const footer = page.getByRole("contentinfo");
+  const cashOnDelivery = footer.getByText("Cash on delivery", { exact: true });
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await test.step(`footer at ${viewport.width}px`, async () => {
+      await page.setViewportSize(viewport);
+      await expect(cashOnDelivery).toBeVisible();
+      await expect(footer.getByRole("link", { name: "Careers", exact: true })).toHaveCount(0);
+      for (const [name, href] of [["About Zogular", "/about"], ["Become a Seller", "/sell"], ["Terms & Conditions", "/terms"]]) {
+        const companyLink = footer.getByRole("link", { name, exact: true });
+        await expect(companyLink).toBeVisible();
+        await expect(companyLink).toHaveAttribute("href", href);
+      }
+      await expect(footer).not.toContainText(/backend[- ]quoted|\bCOD\b/i);
+      await cashOnDelivery.scrollIntoViewIfNeeded();
+      await expect(cashOnDelivery).toBeInViewport({ ratio: 1 });
+      expect(await footer.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+      await auditPageLayout(page);
+      await page.screenshot({ path: testInfo.outputPath(`footer-payment-${viewport.width}.png`), animations: "disabled" });
+    });
+  }
+});
+
+test("buyer account keeps a single main landmark after loading", async ({ page }, testInfo) => {
+  test.skip(!useLocalFixture, "Account landmark checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.route(`${origin}/api/backend/user/addresses`, (route) => route.fulfill({
+    json: { status: "success", data: { addresses: [] } },
+  }));
+  await page.route((url) => url.origin === origin && url.pathname === "/api/backend/orders", (route) =>
+    route.fulfill({
+      json: { status: "success", results: 0, data: { orders: [] }, pagination: { page: 1, limit: 100, total: 0, pages: 0 } },
+    }),
+  );
+
+  for (const viewport of [{ width: 320, height: 568 }, { width: 1440, height: 900 }]) {
+    await page.setViewportSize(viewport);
+    await page.goto(`${origin}/account`);
+    await expect(page.getByRole("heading", { name: "Welcome back, Fixture!" })).toBeVisible();
+    await expect(page.getByRole("main")).toHaveCount(1);
+    await expect(page.locator("main")).toHaveCount(1);
+    await expect(page.locator("html")).toHaveJSProperty("scrollWidth", viewport.width);
+    await page.screenshot({ path: testInfo.outputPath(`buyer-account-${viewport.width}.png`), animations: "disabled" });
+  }
+});
+
+test("buyer account preserves sign-in routing and the single landmark during a session outage", async ({ page }) => {
+  test.skip(!useLocalFixture, "Account landmark checks require the isolated merchandising fixture.");
+  const origin = loopbackAuditOrigin(browserBaseUrl!);
+  await containMerchandisingContext(page.context(), origin);
+  await installLocalTelemetryFixtureRoutes(page, origin);
+  await page.setViewportSize({ width: 320, height: 568 });
+  const sessionUrl = `${origin}/api/backend/user/me`;
+  await page.route(sessionUrl, (route) => route.fulfill({
+    status: 503,
+    json: { status: "fail", message: "FIXTURE_PRIVATE_SESSION_DIAGNOSTIC" },
+  }));
+  await page.goto(`${origin}/account`);
+  const main = page.getByRole("main");
+  await expect(main.getByRole("heading", { name: "Account could not load" })).toBeVisible();
+  await expect(main.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(main).not.toContainText("FIXTURE_PRIVATE_SESSION_DIAGNOSTIC");
+  await expect(main).toHaveCount(1);
+  await expect(page.locator("main")).toHaveCount(1);
+
+  await page.unroute(sessionUrl);
+  await page.route(sessionUrl, (route) => route.fulfill({ status: 401, json: { status: "fail" } }));
+  await page.goto(`${origin}/account`);
+  await expect(page).toHaveURL(`${origin}/auth/login?next=%2Faccount`);
+  await expect(page.getByRole("main")).toHaveCount(1);
+});

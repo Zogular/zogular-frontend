@@ -40,8 +40,8 @@ export default async function ProductDetailsPage({ params }: ProductDetailsPageP
   }
 
   const relatedProducts = await getRelatedProducts({
+    productId: productData.id,
     excludeSlug: productData.slug,
-    categoryName: productData.category.name,
   });
 
   return (

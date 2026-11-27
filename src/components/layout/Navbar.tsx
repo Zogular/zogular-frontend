@@ -320,7 +320,7 @@ function AccountDropdown({
           >
             <User className="h-6 w-6 text-zinc-800 transition-colors group-hover:text-[#009E49]" />
             <div className="hidden flex-col items-start leading-none lg:flex">
-              <span className="text-[10px] font-medium text-zinc-500">{isLoggedIn ? "Welcome back" : "Sign In"}</span>
+              {isLoggedIn ? <span className="text-[10px] font-medium text-zinc-500">Welcome back</span> : null}
               <span className="flex items-center gap-1 text-sm font-bold text-zinc-900">
                 {isLoggedIn ? "My Account" : "Sign In"}
                 <ChevronDown className={cn("h-3 w-3 text-zinc-400 transition-transform", isOpen && "rotate-180 text-[#009E49]")} />
@@ -371,7 +371,7 @@ function AccountDropdown({
 function CartButton({ itemCount, total }: { itemCount: number; total: string }) {
   return (
     <CartDrawer>
-      <button className="group relative flex items-center gap-2 rounded-2xl border border-transparent p-2 text-left transition-all hover:border-white/35 hover:bg-white/35 hover:backdrop-blur-xl">
+      <button type="button" aria-label="Open cart" className="group relative flex items-center gap-2 rounded-2xl border border-transparent p-2 text-left transition-all hover:border-white/35 hover:bg-white/35 hover:backdrop-blur-xl">
         <div className="relative">
           <ShoppingCart className="h-6 w-6 text-zinc-800 transition-colors group-hover:text-[#009E49]" />
           {itemCount > 0 ? (
@@ -511,14 +511,11 @@ function CategoryBar({
                           </div>
                           <div className="min-w-0">
                             <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-zinc-500">Category</p>
-                            <h3 className="truncate text-lg font-black text-zinc-900">
+                            <h3 className="wrap-anywhere text-lg font-black text-zinc-900">
                               {activeCategory.label}
                             </h3>
                           </div>
                         </div>
-                        <p className="mt-2 max-w-xl text-sm leading-6 text-zinc-600">
-                          Jump straight into the most useful sections without opening a giant menu.
-                        </p>
                       </div>
                       <Link
                         href={activeCategory.href}
@@ -575,22 +572,28 @@ function CategoryBar({
           </div>
         </div>
 
-        <nav className="flex flex-1 items-center justify-center gap-5 text-[13px] font-bold text-zinc-700 lg:gap-6 lg:text-sm xl:gap-8">
-          {primaryLinks.map(({ label, href }) => (
-            <Link
-              key={href}
-              href={href}
-              prefetch={false}
-              className={cn(
-                "transition-colors",
-                href === "/new-arrivals"
-                  ? "text-[#FF6B00] hover:text-[#e66000]"
-                  : "hover:text-[#009E49]",
-              )}
-            >
-              {label}
-            </Link>
-          ))}
+        <nav className="flex min-w-0 flex-1 items-center justify-center gap-5 text-[13px] font-bold text-zinc-700 lg:gap-6 lg:text-sm xl:gap-8">
+          {primaryLinks.map(({ label, href }, index) => {
+            const isCategoryLink = index >= PRIMARY_NAV_LINKS.length;
+
+            return (
+              <Link
+                key={href}
+                href={href}
+                prefetch={false}
+                title={isCategoryLink ? label : undefined}
+                className={cn(
+                  "transition-colors",
+                  isCategoryLink ? "min-w-0 max-w-36 truncate lg:max-w-48" : "shrink-0 whitespace-nowrap",
+                  href === "/new-arrivals"
+                    ? "text-[#FF6B00] hover:text-[#e66000]"
+                    : "hover:text-[#009E49]",
+                )}
+              >
+                {label}
+              </Link>
+            );
+          })}
         </nav>
       </div>
     </div>
@@ -669,7 +672,7 @@ function MobileDrawer({
                 type="button"
                 aria-label="Back to categories"
                 onClick={() => onCategoryViewChange("root")}
-                className="flex h-9 w-9 items-center justify-center rounded-full border border-white/45 bg-white/32 text-zinc-600 backdrop-blur-xl transition-colors hover:bg-white/52"
+                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full border border-white/45 bg-white/32 text-zinc-600 backdrop-blur-xl transition-colors hover:bg-white/52"
               >
                 <ArrowLeft className="h-4 w-4" />
               </button>
@@ -700,7 +703,7 @@ function MobileDrawer({
                         prefetch={false}
                         onClick={onClose}
                         className={cn(
-                          "rounded-xl border px-3 py-2.5 text-[13px] font-semibold leading-tight transition-colors",
+                          "min-w-0 rounded-xl border px-3 py-2.5 text-[13px] font-semibold leading-tight wrap-anywhere transition-colors",
                           href === "/new-arrivals"
                             ? "border-[#FF6B00]/25 bg-[#FF6B00]/12 text-[#FF6B00] backdrop-blur-xl"
                             : "border-white/55 bg-white/36 text-zinc-800 backdrop-blur-xl hover:border-white/70 hover:bg-white/56",
@@ -773,17 +776,17 @@ function MobileDrawer({
 
             <div className="w-1/2 overflow-y-auto px-4 pt-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
               <div className="rounded-2xl border border-white/55 bg-[linear-gradient(180deg,rgba(255,255,255,0.5),rgba(255,255,255,0.34))] p-4 backdrop-blur-2xl">
-                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500">
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-zinc-500 wrap-anywhere">
                   Browse {activeCategory.label}
                 </p>
                 <Link
                   href={activeCategory.href}
                   prefetch={false}
                   onClick={onClose}
-                  className="mt-3 flex items-center justify-between rounded-xl border border-white/60 bg-white/48 px-3 py-2.5 text-sm font-semibold text-zinc-900 shadow-sm backdrop-blur-xl transition-colors hover:text-[#009E49]"
+                  className="mt-3 flex items-center justify-between gap-2 rounded-xl border border-white/60 bg-white/48 px-3 py-2.5 text-sm font-semibold text-zinc-900 shadow-sm backdrop-blur-xl transition-colors hover:text-[#009E49]"
                 >
-                  <span>Shop all {activeCategory.label}</span>
-                  <ChevronRight className="h-4 w-4 text-zinc-400" />
+                  <span className="min-w-0 wrap-anywhere">Shop all {activeCategory.label}</span>
+                  <ChevronRight className="h-4 w-4 shrink-0 text-zinc-400" />
                 </Link>
               </div>
 

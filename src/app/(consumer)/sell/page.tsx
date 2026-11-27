@@ -4,6 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import {
+  ArrowLeft,
   ArrowRight,
   BadgeCheck,
   ChevronRight,
@@ -32,18 +33,18 @@ const SELLER_LOGIN_PATH = appendNextPath(
 
 const HIGHLIGHTS = [
   {
-    title: "Reach Lusaka-first buyers",
-    body: "Launch into a marketplace shaped around Zambia, compact mobile UX, and trust-led seller growth from day one.",
+    title: "Reach buyers in Lusaka",
+    body: "Give shoppers in Lusaka a place to discover your store and products online.",
     icon: Store,
   },
   {
-    title: "Structured seller review",
-    body: "Seller approval and product approval stay separate, so platform trust remains strong while you prepare listings safely.",
+    title: "Know what gets reviewed",
+    body: "We review your seller application first. Each product is reviewed separately before shoppers can see it.",
     icon: ShieldCheck,
   },
   {
-    title: "Provisional workspace access",
-    body: "Approved later, but productive earlier. Start onboarding, monitor status, and prepare product drafts once provisional access opens.",
+    title: "Prepare listings before approval",
+    body: "Track your application and start drafting listings if you receive limited access while you wait for full approval.",
     icon: Sparkles,
   },
 ];
@@ -51,58 +52,58 @@ const HIGHLIGHTS = [
 const SELLER_FLOW = [
   {
     mobile: "Create or sign in",
-    desktop: "Create or sign in to your ZOGULAR account",
+    desktop: "Create an account or sign in to ZOGULAR",
   },
   {
     mobile: "Verify email",
-    desktop: "Verify email before seller access continues",
+    desktop: "Verify your email address",
   },
   {
     mobile: "Start application",
-    desktop: "Start a draft seller application",
+    desktop: "Start your seller application",
   },
   {
     mobile: "Choose seller type",
     desktop: "Choose individual or registered business",
   },
   {
-    mobile: "Add docs and payout",
-    desktop: "Add documents and payout destination",
+    mobile: "Add documents and payment details",
+    desktop: "Add your documents and details for receiving payouts",
   },
   {
     mobile: "Submit for review",
-    desktop: "Submit for admin review",
+    desktop: "Send your application for review",
   },
   {
-    mobile: "Track seller status",
-    desktop: "Track status from the seller hub",
+    mobile: "Track your application",
+    desktop: "Check your application in your seller dashboard",
   },
   {
-    mobile: "Create draft products",
-    desktop: "Create draft products once provisional access is granted",
+    mobile: "Draft listings with limited access",
+    desktop: "Draft product listings if you receive limited access",
   },
 ];
 
 const REQUIREMENTS = [
-  "Verified email account before seller access",
-  "Zambian phone contact and store identity details",
-  "NRC document links for the seller owner",
-  "PACRA details for registered businesses",
-  "Payout destination details for future seller settlements",
+  "A verified email address",
+  "A Zambian phone number and your store details",
+  "The store owner's NRC number and photos of both sides of the card",
+  "PACRA registration details for registered businesses",
+  "Details for where to send your payouts",
 ];
 
 const FAQS = [
   {
     question: "Can I start as an individual seller?",
-    answer: "Yes. ZOGULAR supports both informal individual sellers and fully registered businesses in the same trust framework.",
+    answer: "Yes. You can apply as an individual or as a registered business.",
   },
   {
-    question: "Does seller approval make products live automatically?",
-    answer: "No. Seller approval unlocks seller capabilities. Each product still goes through its own product review flow before it can go live.",
+    question: "Will my products go live when my seller account is approved?",
+    answer: "No. Each product must be reviewed and approved before shoppers can see it.",
   },
   {
     question: "What happens after I submit the seller application?",
-    answer: "You move into seller review. If approved as provisional, you can prepare draft products. Full product review submission opens only after APPROVED seller status.",
+    answer: "We review your application. If you receive limited access, you can draft listings, but you can only submit them for product review after your seller application is approved.",
   },
 ];
 
@@ -128,7 +129,13 @@ export default function SellOnZogularPage() {
   }, [router]);
 
   return (
-    <main className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
+    <div className="bg-[#06110a] text-white selection:bg-[#009E49] selection:text-white">
+      <nav aria-label="Storefront" className="border-b border-white/10 px-4 pt-safe md:hidden">
+        <Link href="/" className="inline-flex min-h-11 items-center gap-2 text-sm font-semibold text-white">
+          <ArrowLeft aria-hidden="true" className="size-4" />
+          Back to shop
+        </Link>
+      </nav>
       <section className="relative overflow-hidden border-b border-white/10 bg-[radial-gradient(circle_at_top,rgba(0,158,73,0.28),transparent_36%),linear-gradient(135deg,#06110a_0%,#0a1710_46%,#08120c_100%)]">
         <div className="absolute inset-0 bg-[linear-gradient(120deg,rgba(255,255,255,0.08),transparent_28%,transparent_72%,rgba(255,255,255,0.03))]" />
         <div className="absolute left-[14%] top-16 h-44 w-44 rounded-full bg-[#00d663]/10 blur-[110px]" />
@@ -145,37 +152,37 @@ export default function SellOnZogularPage() {
               <div className="relative mt-5 max-w-3xl">
                 <div className="absolute -left-4 top-3 hidden h-20 w-20 rounded-full border border-white/10 bg-white/5 blur-[2px] lg:block" />
                 <h1 className="relative text-[2.35rem] font-black leading-[0.9] tracking-[-0.055em] text-white sm:text-[3.35rem] lg:text-[4.35rem]">
-                  Start selling with an auth-first trust flow built for Zambia.
+                  Sell your products on ZOGULAR
                 </h1>
               </div>
 
               <p className="mt-4 max-w-2xl text-[13px] font-medium leading-6 text-zinc-300 sm:text-[15px] sm:leading-7 lg:text-base">
-                Join ZOGULAR through a proper seller onboarding path: create your account, verify identity, submit your seller application, then unlock the right seller capabilities as review moves forward.
+                Reach shoppers in Lusaka. Create an account, verify your email, and apply to sell as an individual or a registered business.
               </p>
             </div>
 
             <div className="mt-7 flex flex-col gap-3 sm:max-w-xl sm:flex-row">
-              <Link href={primaryHref} className="sm:flex-1">
-                <Button className="group h-12 w-full rounded-[1.35rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_42px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:h-13 sm:text-[13px]">
+              <Button asChild className="group h-12 w-full rounded-[1.35rem] border border-emerald-300/20 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white shadow-[0_18px_42px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:h-13 sm:text-[13px] sm:flex-1">
+                <Link href={primaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full bg-white/85 shadow-[0_0_16px_rgba(255,255,255,0.8)] transition-transform duration-300 group-hover:scale-125" />
-                  Create seller account
+                  Create account
                   <ArrowRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
-              <Link href={secondaryHref} className="sm:flex-1">
-                <Button className="group h-12 w-full rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:h-13 sm:text-[13px]">
+                </Link>
+              </Button>
+              <Button asChild className="group h-12 w-full rounded-[1.35rem] border border-white/12 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] px-5 text-[12px] font-black uppercase tracking-[0.2em] text-white backdrop-blur-xl shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:border-white/18 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:h-13 sm:text-[13px] sm:flex-1">
+                <Link href={secondaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full border border-white/45 bg-white/15 transition-colors duration-300 group-hover:bg-white/8" />
-                  Sign in to continue
-                </Button>
-              </Link>
+                  Sign in
+                </Link>
+              </Button>
             </div>
 
             <div className="mt-6 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-              <MetricCard value="Auth-first" label="Seller account creation flow" />
-              <MetricCard value="2 tracks" label="Individual and business paths" />
+              <MetricCard value="Account" label="Sign up and verify your email" />
+              <MetricCard value="Seller types" label="Individual or registered business" />
               <MetricCard
-                value="Status-led"
-                label="Permissions after onboarding"
+                value="Approval"
+                label="Apply before you can sell"
                 className="col-span-2 sm:col-span-1"
               />
             </div>
@@ -204,7 +211,7 @@ export default function SellOnZogularPage() {
                     </div>
                     <div className="mt-2 flex items-center justify-between">
                       <p className="text-[13px] font-black tracking-[-0.03em] text-white sm:text-[14px]">
-                        Provisional opens draft workflow.
+                        Before and after approval
                       </p>
                       <div className="ml-3 h-9 w-9 rounded-2xl border border-white/10 bg-white/10" />
                     </div>
@@ -215,7 +222,7 @@ export default function SellOnZogularPage() {
                         Product drafts
                       </div>
                       <div className="mt-1 text-[11px] font-semibold text-white">
-                        Enabled at provisional
+                        With limited access
                       </div>
                     </div>
                     <div className="sell-float-panel rounded-[1rem] border border-white/10 bg-[linear-gradient(180deg,rgba(255,255,255,0.15),rgba(255,255,255,0.05))] px-3 py-2.5 shadow-[0_16px_30px_rgba(0,0,0,0.16)] [animation-delay:-3.1s]">
@@ -223,7 +230,7 @@ export default function SellOnZogularPage() {
                         Approved only
                       </div>
                       <div className="mt-1 text-[11px] font-semibold text-white">
-                        Review submit, orders, payouts
+                        Send listings for review and manage orders
                       </div>
                     </div>
                   </div>
@@ -250,7 +257,7 @@ export default function SellOnZogularPage() {
                 ))}
               </div>
               <div className="mt-4 rounded-[1.2rem] border border-amber-300/16 bg-[linear-gradient(135deg,rgba(255,179,0,0.1),rgba(255,193,7,0.04))] px-3.5 py-2.5 text-[11px] font-medium leading-5 text-amber-100 sm:rounded-[1.35rem] sm:px-4 sm:py-3 sm:text-[13px] sm:leading-5.5">
-                Seller approval and product approval are separate. Approved sellers still need product review before anything goes live.
+                Approval to sell does not publish your listings. Each product must be approved separately.
               </div>
             </div>
           </div>
@@ -313,22 +320,22 @@ export default function SellOnZogularPage() {
                 <FileCheck2 className="h-4.5 w-4.5" />
               </div>
               <h3 className="mt-4 text-lg font-black tracking-tight text-white sm:text-[1.15rem]">
-                Trust and safety by default
+                Apply before you sell
               </h3>
               <p className="mt-2.5 text-[13px] font-medium leading-6 text-zinc-300">
-                ZOGULAR does not treat the `VENDOR` role as automatic selling permission. Seller capability opens only through application status, keeping the marketplace safer for buyers and more predictable for legitimate sellers.
+                Creating an account does not let you sell right away. We review your application before you can submit products for review.
               </p>
             </div>
 
             <TrustCard
               icon={PhoneCall}
               title="Identity checks"
-              body="Email verification already sits in the flow, with room for stronger phone verification in later phases."
+              body="Verify your email and provide your contact details and documents when you apply."
             />
             <TrustCard
               icon={Wallet}
-              title="Payout readiness"
-              body="Payout details are collected early so the trust review covers operational readiness too."
+              title="Payout details"
+              body="Add your payout details when you apply. Payouts are not available yet."
             />
           </div>
         </div>
@@ -365,26 +372,26 @@ export default function SellOnZogularPage() {
               Ready to begin?
             </p>
             <h2 className="relative mt-3 text-[2rem] font-black leading-[0.95] tracking-[-0.045em] text-white sm:text-[2.2rem] lg:text-[2.4rem]">
-              Start the seller flow the right way.
+              Apply to sell on ZOGULAR
             </h2>
             <p className="relative mt-3 text-[13px] font-medium leading-6 text-zinc-300">
-              Create your seller-ready account, complete the application, and move through review with the correct permissions at each stage.
+              Create an account or sign in to get started. You can check your application after you submit it.
             </p>
 
             <div className="relative mt-5 grid gap-3">
-              <Link href={primaryHref}>
-                <Button className="group h-12 w-full rounded-[1.25rem] border border-emerald-300/18 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[0_20px_46px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:text-[13px]">
+              <Button asChild className="group h-12 w-full rounded-[1.25rem] border border-emerald-300/18 bg-[linear-gradient(135deg,#00aa4d_0%,#08bb56_55%,#13d261_100%)] px-5 text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[0_20px_46px_rgba(0,158,73,0.3)] transition-all duration-300 hover:-translate-y-0.5 hover:shadow-[0_24px_54px_rgba(0,158,73,0.38)] sm:text-[13px]">
+                <Link href={primaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full bg-white/90 shadow-[0_0_16px_rgba(255,255,255,0.72)] transition-transform duration-300 group-hover:scale-125" />
-                  Create seller account
+                  Create account
                   <ChevronRight className="ml-2 h-4 w-4 transition-transform duration-300 group-hover:translate-x-1" />
-                </Button>
-              </Link>
-              <Link href={secondaryHref}>
-                <Button className="group h-12 w-full rounded-[1.25rem] border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:text-[13px]">
+                </Link>
+              </Button>
+              <Button asChild className="group h-12 w-full rounded-[1.25rem] border border-white/14 bg-[linear-gradient(180deg,rgba(255,255,255,0.09),rgba(255,255,255,0.04))] text-[12px] font-black uppercase tracking-[0.22em] text-white shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.05))] sm:text-[13px]">
+                <Link href={secondaryHref}>
                   <span className="mr-2 h-2 w-2 rounded-full border border-white/40 bg-white/12" />
-                  Sign in to seller access
-                </Button>
-              </Link>
+                  Sign in
+                </Link>
+              </Button>
             </div>
           </div>
         </div>
@@ -440,7 +447,7 @@ export default function SellOnZogularPage() {
           }
         }
       `}</style>
-    </main>
+    </div>
   );
 }
 

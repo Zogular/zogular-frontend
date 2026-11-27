@@ -4,12 +4,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CircleHelp, Mail, Package, ReceiptText, ShieldCheck, Store, Truck } from "lucide-react";
 import { BrandLogo } from "@/components/brand/BrandLogo";
-import { BRAND } from "@/config/brand";
+import { BRAND, BRAND_ATTRIBUTION } from "@/config/brand";
 
 // --- DATA ARRAYS ---
 const COMPANY_LINKS = [
   { label: "About Zogular", href: "/about" },
-  { label: "Careers", href: "/careers" },
   { label: "Become a Seller", href: "/sell" }, // Fixed route
   { label: "Terms & Conditions", href: "/terms" },
 ];
@@ -130,12 +129,12 @@ export function Footer() {
         {/* Bottom Bar: Copyright & Payments */}
         <div className="flex flex-col md:flex-row items-center justify-between pt-6 border-t border-zinc-900 gap-4">
           <p className="text-[10px] md:text-xs text-zinc-500">
-            &copy; {new Date().getFullYear()} Zogular. All rights reserved.
+            &copy; {new Date().getFullYear()} {BRAND_ATTRIBUTION}
           </p>
           
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5 text-[10px] md:text-xs font-semibold text-zinc-400 bg-zinc-900 px-2 py-1 md:px-3 md:py-1.5 rounded-lg">
-              <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" /> Backend-quoted COD
+              <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" /> Cash on delivery
             </div>
             
             <div className="flex items-center gap-2 text-zinc-500">

@@ -79,7 +79,7 @@ export function ZogularInfoPage({
   const featureList = highlights.length > 0 ? highlights : sections.map((section) => section.title);
 
   return (
-    <main className="min-h-screen overflow-hidden bg-[#f4fbf6] pb-24 text-zinc-950">
+    <div className="min-h-screen overflow-hidden bg-[#f4fbf6] pb-24 text-zinc-950">
       <section className={cn("relative border-b border-white/70 bg-linear-to-br", toneStyles[tone])}>
         <div className="absolute inset-x-0 top-0 h-24 bg-white/58 backdrop-blur-3xl" />
         <div className="absolute right-0 top-16 hidden h-72 w-72 rounded-full border border-white/60 bg-white/22 blur-3xl lg:block" />
@@ -212,7 +212,8 @@ export function ZogularInfoPage({
             ) : null}
 
             {faqs.length > 0 ? (
-              <section className="grid gap-3 md:col-span-2 md:grid-cols-2">
+              <section id="faq" aria-labelledby="faq-heading" className="grid gap-3 md:col-span-2 md:grid-cols-2">
+                <h2 id="faq-heading" className="text-xl font-black text-zinc-950 md:col-span-2">Frequently asked questions</h2>
                 {faqs.map((faq) => (
                   <div key={faq.question} className="rounded-[22px] border border-white/75 bg-white/78 p-5 shadow-[0_14px_34px_rgba(15,23,42,0.05)] backdrop-blur-xl">
                     <div className="mb-3 flex h-9 w-9 items-center justify-center rounded-xl bg-[#FF6B00]/10 text-[#FF6B00]">
@@ -243,6 +244,6 @@ export function ZogularInfoPage({
           </div>
         </div>
       </section>
-    </main>
+    </div>
   );
 }

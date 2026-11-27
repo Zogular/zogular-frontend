@@ -17,16 +17,16 @@ export default function ConsumerError({ reset }: { error: Error & { digest?: str
   };
 
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-[#f4fbf6] px-4 py-12">
+    <div className="flex min-h-[60svh] items-center justify-center bg-[#f4fbf6] px-4 py-8 sm:py-12">
       <section className="w-full max-w-xl rounded-[2rem] border border-white/80 bg-white p-7 text-center shadow-[0_24px_70px_rgba(15,23,42,0.08)]">
         <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-amber-100 text-amber-700"><AlertTriangle className="h-6 w-6" /></div>
-        <h1 className="mt-5 text-2xl font-black tracking-tight text-zinc-950">Marketplace data is temporarily unavailable</h1>
-        <p className="mt-3 text-sm font-medium leading-6 text-zinc-600">Zogular could not load this backend-backed page. No empty catalog or missing product result has been assumed.</p>
+        <h1 className="mt-5 text-2xl font-black tracking-tight text-zinc-950">We couldn&apos;t load this page</h1>
+        <p className="mt-3 text-sm font-medium leading-6 text-zinc-600">Please try again in a moment.</p>
         <Button onClick={handleRetry} disabled={isPending} className="mt-6 h-11 rounded-xl bg-zinc-950 px-5 font-bold text-white hover:bg-zinc-800">
           <RefreshCw className={`mr-2 h-4 w-4 ${isPending ? "animate-spin" : ""}`} />
           {isPending ? "Retrying..." : "Retry"}
         </Button>
       </section>
-    </main>
+    </div>
   );
 }

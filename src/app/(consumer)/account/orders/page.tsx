@@ -3,16 +3,9 @@
 import * as React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import {
-  CheckCircle2,
-  Clock,
-  Package,
-  Search,
-  Truck,
-  XCircle,
-} from "lucide-react";
+import { Package, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { BuyerOrderStatusBadge } from "@/components/account/BuyerOrderStatusBadge";
 import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
@@ -21,29 +14,6 @@ import { appendOrderPage, getMyOrdersPage } from "@/services/orders";
 import type { OrderPage, OrderStatus } from "@/types/order";
 
 const ORDERS_PATH = "/account/orders";
-
-const STATUS_CONFIG = {
-  processing: {
-    label: "Processing",
-    icon: Clock,
-    className: "bg-amber-100 text-amber-700",
-  },
-  shipped: {
-    label: "In Transit",
-    icon: Truck,
-    className: "bg-blue-100 text-blue-700",
-  },
-  delivered: {
-    label: "Delivered",
-    icon: CheckCircle2,
-    className: "bg-[#009E49]/10 text-[#009E49]",
-  },
-  cancelled: {
-    label: "Cancelled",
-    icon: XCircle,
-    className: "bg-red-100 text-red-700",
-  },
-} as const;
 
 const TABS: { label: string; value: OrderStatus | "all" }[] = [
   { label: "All Orders", value: "all" },
@@ -191,9 +161,6 @@ export default function OrdersPage() {
       ) : (
         <div className="space-y-4 md:space-y-6">
           {filteredOrders.map((order) => {
-            const config = STATUS_CONFIG[order.status];
-            const Icon = config.icon;
-
             return (
               <div key={order.id} className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_2px_15px_rgba(0,0,0,0.02)] transition-shadow hover:shadow-md">
                 <div className="flex flex-col gap-4 border-b border-zinc-100 bg-zinc-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -213,10 +180,7 @@ export default function OrdersPage() {
                     </div>
                   </div>
 
-                  <Badge className={`flex w-fit items-center gap-1.5 border-none px-3 py-1 text-xs shadow-none ${config.className}`}>
-                    <Icon className="h-3.5 w-3.5" />
-                    {config.label}
-                  </Badge>
+                  <BuyerOrderStatusBadge status={order.status} />
                 </div>
 
                 <div className="p-5">
@@ -242,8 +206,8 @@ export default function OrdersPage() {
 
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                     <p className="text-sm font-medium text-zinc-600">
-                      {order.status === "delivered" ? "Delivered on:" : "Est. Delivery:"}{" "}
-                      <span className="font-bold text-zinc-900">{order.estDelivery}</span>
+                      Estimated delivery:{" "}
+                      <span className="font-bold text-zinc-900">{order.estDelivery ?? "Not available"}</span>
                     </p>
 
                     <Button asChild className="h-11 w-full scroll-my-24 rounded-xl bg-zinc-100 text-sm font-bold text-zinc-900 hover:bg-[#009E49] hover:text-white sm:w-auto">

@@ -1,4 +1,5 @@
 import { ZogularInfoPage } from "@/components/consumer/ZogularInfoPage";
+import { BRAND } from "@/config/brand";
 
 export default function TermsPage() {
   return (
@@ -6,13 +7,8 @@ export default function TermsPage() {
       title="Terms and Conditions"
       eyebrow="Platform rules"
       tone="policy"
-      description="These terms govern how buyers and sellers use Zogular. By using the platform, you agree to platform rules around account usage, transactions, and acceptable conduct."
+      description={`These terms explain how buyers and sellers use Zogular, the marketplace by ${BRAND.businessName}.`}
       highlights={["Account responsibility", "Transparent checkout", "Fair platform conduct", "Seller and buyer safeguards"]}
-      stats={[
-        { value: "Fair", label: "Conduct" },
-        { value: "Clear", label: "Orders" },
-        { value: "Safe", label: "Usage" },
-      ]}
       sections={[
         {
           title: "Account Responsibility",
@@ -20,7 +16,11 @@ export default function TermsPage() {
         },
         {
           title: "Orders and Payments",
-          body: "Checkout totals, shipping fees, and payment status are shown before order confirmation. Completed orders are subject to each product's listed fulfillment and return conditions.",
+          body: "Review the items, seller, total price, delivery fees, and payment instructions before placing an order. You can correct mistakes or leave checkout before placing it. Contact support if the price, payment, or delivery details do not match what you agreed to.",
+        },
+        {
+          title: "Consumer rights",
+          body: "These terms and any seller conditions do not limit rights you have under Zambian law, including applicable rights to cancel an online transaction or obtain a remedy for faulty or misdescribed goods. The Returns Policy explains how to get help.",
         },
         {
           title: "Platform Conduct",
@@ -48,7 +48,7 @@ export default function TermsPage() {
         },
         {
           question: "Do seller policies still apply?",
-          answer: "Yes. Product, delivery, and return expectations remain tied to the relevant listing and platform rules.",
+          answer: "Seller terms can apply where they are consistent with your rights under Zambian law.",
         },
       ]}
       ctaLabel="Read Privacy Policy"

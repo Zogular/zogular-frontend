@@ -14,8 +14,11 @@ import {
 } from "../src/services/products";
 import type { CategoryNode } from "../src/services/categories-api";
 import type { Product } from "../src/types/product";
+import { containAuditNetwork, loopbackAuditOrigin } from "./helpers/ui-audit-checks";
 
 const originalFetch = globalThis.fetch;
+
+test.use({ channel: process.env.PLAYWRIGHT_CHANNEL, serviceWorkers: "block" });
 
 test.afterEach(() => {
   globalThis.fetch = originalFetch;
@@ -329,9 +332,12 @@ async function resetScrollAndWaitForNavbar(page: Page) {
 
 test.describe("Package 3 fixture-based Hybrid C homepage", () => {
   test.skip(!browserBaseUrl, "PACKAGE3_BASE_URL is required for fixture-based visual QA.");
+  test.beforeEach(async ({ context }) => {
+    await containAuditNetwork(context, [loopbackAuditOrigin(browserBaseUrl!)]);
+  });
 
   for (const viewport of viewports) {
-    test(`${viewport.name} preserves truthful compact discovery and clean diagnostics`, async ({ page }) => {
+    test(`${viewport.name} preserves truthful compact discovery and clean diagnostics`, async ({ page }, testInfo) => {
       await page.setViewportSize(viewport);
       await page.emulateMedia({ reducedMotion: "reduce" });
       await page.route("**/_vercel/**", (route) => route.fulfill({
@@ -348,8 +354,15 @@ test.describe("Package 3 fixture-based Hybrid C homepage", () => {
       await page.goto(browserBaseUrl!, { waitUntil: "networkidle" });
       await resetScrollAndWaitForNavbar(page);
 
-      await expect(page.getByTestId("home-editorial-intro")).toBeVisible();
-      await expect(page.getByTestId("home-editorial-intro").locator(":scope > [aria-hidden='true']")).toHaveCount(0);
+      const intro = page.getByTestId("home-editorial-intro");
+      await expect(intro).toBeVisible();
+      await expect(intro.locator(":scope > [aria-hidden='true']")).toHaveCount(0);
+      await expect(intro.getByRole("heading", { name: "New arrivals", exact: true })).toBeVisible();
+      const campaignAction = intro.getByRole("link", { name: "View collection", exact: true });
+      await expect(campaignAction).toHaveAttribute("href", "/new-arrivals");
+      await expect(campaignAction).toBeInViewport({ ratio: 1 });
+      await expect.poll(() => intro.getByTestId("home-editorial-image")
+        .evaluate((image: HTMLImageElement) => image.naturalWidth)).toBeGreaterThan(0);
       await expect(page.getByTestId("home-categories")).toBeVisible();
       await expect(page.getByTestId("home-new-arrivals")).toBeVisible();
       await expect(page.getByTestId("home-most-viewed")).toBeVisible();
@@ -361,7 +374,8 @@ test.describe("Package 3 fixture-based Hybrid C homepage", () => {
       const firstProduct = page.locator("[data-testid='home-new-arrivals'] [data-testid='product-card']").first();
       const firstProductBox = await firstProduct.boundingBox();
       expect(firstProductBox).not.toBeNull();
-      const newArrivalsHeading = page.getByRole("heading", { name: "New Arrivals", exact: true });
+      const newArrivalsHeading = page.getByTestId("home-new-arrivals")
+        .getByRole("heading", { name: "New Arrivals", exact: true });
       const headingBox = await newArrivalsHeading.boundingBox();
       expect(headingBox).not.toBeNull();
       const chromeGeometry = await page.evaluate(() => {
@@ -435,6 +449,13 @@ test.describe("Package 3 fixture-based Hybrid C homepage", () => {
         path: path.join(screenshotDirectory, `hybrid-home-full-${viewport.name}.png`),
         fullPage: true,
       });
+      if (viewport.width === 320 || viewport.width === 1440) {
+        await campaignAction.click();
+        await expect(page).toHaveURL(`${loopbackAuditOrigin(browserBaseUrl!)}/new-arrivals`);
+        await expect(page.getByRole("heading", { name: "New Arrivals", exact: true })).toBeVisible();
+        await expect(page.getByTestId("product-card")).toHaveCount(5);
+        await page.screenshot({ path: testInfo.outputPath("new-arrivals-collection.png"), animations: "disabled" });
+      }
     });
   }
 
@@ -442,6 +463,10 @@ test.describe("Package 3 fixture-based Hybrid C homepage", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto(`${browserBaseUrl!}?omit=new-arrivals`, { waitUntil: "networkidle" });
     await expect(page.getByTestId("home-new-arrivals")).toHaveCount(0);
+    const intro = page.getByTestId("home-editorial-intro");
+    await expect(intro.getByRole("heading", { name: "Find what you need.", exact: true })).toBeVisible();
+    await expect(intro.getByRole("link", { name: "Shop now", exact: true })).toHaveAttribute("href", "/products");
+    await expect(intro.getByRole("link", { name: "View collection", exact: true })).toHaveCount(0);
     await expect(page.getByTestId("home-most-viewed")).toBeVisible();
     await expect(page.getByTestId("home-explore-more")).toBeVisible();
 

@@ -21,7 +21,7 @@ export function AdminHeader({
 }) {
   return (
     <header className="flex min-h-16 shrink-0 items-center justify-between gap-2 border-b border-[color:rgba(184,135,70,0.32)] bg-[var(--admin-surface-cream)] px-3 pt-safe shadow-[inset_0_-1px_0_rgba(255,248,236,0.75)] sm:gap-3 sm:px-5 lg:px-6 xl:px-8">
-      <div className="flex min-w-0 items-center gap-2.5">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5">
         <SheetTrigger asChild>
           <Button
             type="button"
@@ -36,17 +36,17 @@ export function AdminHeader({
             <Menu />
           </Button>
         </SheetTrigger>
-        <div className="min-w-0">
-          <p className="truncate text-[0.6875rem] font-semibold uppercase tracking-[0.11em] text-[var(--admin-canopy)]">
+        <div className="min-w-0 flex-1 py-2">
+          <p className="sr-only text-[0.6875rem] font-semibold uppercase text-[var(--admin-canopy)] sm:not-sr-only sm:wrap-anywhere">
             {routeContext?.groupLabel ?? "Admin"}
           </p>
-          <p className="truncate text-sm font-semibold text-[var(--admin-ink)]">
+          <p className="wrap-anywhere text-sm leading-tight font-semibold text-[var(--admin-ink)]">
             {routeContext?.capabilityLabel ?? "Workspace"}
           </p>
         </div>
       </div>
 
-      <div className="flex min-w-0 items-center gap-1.5 sm:gap-2">
+      <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
         <Button
           type="button"
           variant="ghost"

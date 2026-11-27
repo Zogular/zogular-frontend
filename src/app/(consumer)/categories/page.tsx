@@ -17,6 +17,7 @@ import {
   Tv,
 } from "lucide-react";
 import { buildCategorySubcategoryHref, getCategoryDirectory } from "@/services/categories";
+import { CategoryArtwork } from "@/features/categories/CategoryArtwork";
 import type { CategorySummary } from "@/types/category";
 
 const CATEGORY_ICONS = {
@@ -57,17 +58,19 @@ export default function CategoriesDirectoryPage() {
     setRequestVersion((version) => version + 1);
   };
 
+  const searchTerm = searchQuery.trim();
+  const query = searchTerm.toLowerCase();
   const filteredCategories = categories.filter((category) => {
-    const query = searchQuery.toLowerCase();
     const matchesCategory = category.name.toLowerCase().includes(query);
     const matchesSubcategory = category.children.some((subcategory) =>
       subcategory.name.toLowerCase().includes(query),
     );
     return matchesCategory || matchesSubcategory;
   });
+  const isSearchMiss = categories.length > 0 && query.length > 0 && filteredCategories.length === 0;
 
   return (
-    <main className="min-h-dvh bg-[#f4fbf6] pb-24 pt-8 md:pt-12">
+    <div className="min-h-dvh bg-[#f4fbf6] pb-24 pt-8 md:pt-12">
       <div className="container mx-auto max-w-7xl px-4 md:px-6">
         <div className="mb-10 flex flex-col gap-6 md:flex-row md:items-end md:justify-between">
           <div className="max-w-2xl">
@@ -75,7 +78,7 @@ export default function CategoriesDirectoryPage() {
               All Categories
             </h1>
             <p className="mt-3 text-sm font-medium text-zinc-500 md:text-base">
-              Browse products across electronics, fashion, groceries, and more.
+              Explore the categories available on Zogular.
             </p>
             <Link href="/products" className="mt-5 inline-flex h-11 items-center justify-center rounded-2xl bg-zinc-900 px-5 text-sm font-black text-white shadow-md transition-colors hover:bg-zinc-800">
               Shop All Products
@@ -88,6 +91,7 @@ export default function CategoriesDirectoryPage() {
             </div>
             <input
               type="text"
+              aria-label="Search categories"
               placeholder="Search categories..."
               value={searchQuery}
               onChange={(event) => setSearchQuery(event.target.value)}
@@ -104,8 +108,8 @@ export default function CategoriesDirectoryPage() {
           <div className="flex min-h-64 flex-col items-center justify-center rounded-3xl border border-amber-200 bg-amber-50 px-6 text-center">
             <AlertTriangle className="h-8 w-8 text-amber-700" />
             <h2 className="mt-4 text-xl font-black text-zinc-950">Categories are temporarily unavailable</h2>
-            <p className="mt-2 max-w-md text-sm font-medium leading-6 text-zinc-600">Zogular could not reach the catalog service. No empty category result has been assumed.</p>
-            <button onClick={retry} className="mt-5 rounded-xl bg-zinc-950 px-6 py-3 text-sm font-bold text-white hover:bg-zinc-800">Retry</button>
+            <p className="mt-2 max-w-md text-sm font-medium leading-6 text-zinc-600">We couldn&apos;t load categories. Try again to see what&apos;s available.</p>
+            <button type="button" onClick={retry} className="mt-5 rounded-xl bg-zinc-950 px-6 py-3 text-sm font-bold text-white hover:bg-zinc-800">Retry</button>
           </div>
         ) : filteredCategories.length > 0 ? (
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 md:gap-6">
@@ -119,11 +123,11 @@ export default function CategoriesDirectoryPage() {
                   className="group flex flex-col rounded-3xl border border-zinc-200/80 bg-white p-5 shadow-sm transition-all hover:border-[#009E49]/40 hover:shadow-md"
                 >
                   <div className="mb-4 flex items-center gap-4">
-                    <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl transition-transform duration-300 group-hover:scale-110 ${category.colorClass}`}>
+                    <CategoryArtwork slug={category.slug} className={`size-12 rounded-2xl transition-transform duration-300 group-hover:scale-110 ${category.colorClass}`}>
                       <Icon className="h-6 w-6" />
-                    </div>
-                    <div>
-                      <Link href={categoryUrl} className="text-base font-bold text-zinc-900 transition-colors hover:text-[#009E49]">
+                    </CategoryArtwork>
+                    <div className="min-w-0">
+                      <Link href={categoryUrl} className="wrap-anywhere text-base font-bold text-zinc-900 transition-colors hover:text-[#009E49]">
                         {category.name}
                       </Link>
                       <p className="line-clamp-1 text-[11px] font-medium text-zinc-500">
@@ -137,16 +141,16 @@ export default function CategoriesDirectoryPage() {
                       <Link
                         key={subcategory.slug}
                         href={buildCategorySubcategoryHref(category.slug, subcategory.slug)}
-                        className="flex items-center justify-between text-sm font-medium text-zinc-600 transition-colors hover:text-[#009E49]"
+                        className="flex items-center justify-between gap-2 text-sm font-medium text-zinc-600 transition-colors hover:text-[#009E49]"
                       >
-                        {subcategory.name}
-                        <ChevronRight className="h-3 w-3 opacity-0 transition-all group-hover:opacity-100" />
+                        <span className="min-w-0 wrap-anywhere">{subcategory.name}</span>
+                        <ChevronRight className="h-3 w-3 shrink-0 opacity-0 transition-all group-hover:opacity-100" />
                       </Link>
                     ))}
                   </div>
 
                   <div className="mt-5 pt-1">
-                    <Link href={categoryUrl} className="flex h-10 w-full items-center justify-center rounded-xl bg-zinc-50 text-xs font-bold text-zinc-700 transition-colors hover:bg-[#009E49] hover:text-white">
+                    <Link href={categoryUrl} className="flex min-h-10 w-full items-center justify-center rounded-xl bg-zinc-50 px-2 py-2 text-center wrap-anywhere text-xs font-bold text-zinc-700 transition-colors hover:bg-[#009E49] hover:text-white">
                       View All {category.name}
                     </Link>
                   </div>
@@ -155,23 +159,34 @@ export default function CategoriesDirectoryPage() {
             })}
           </div>
         ) : (
-          <div className="flex flex-col items-center justify-center rounded-3xl border border-zinc-200 border-dashed bg-white py-24 text-center shadow-sm">
+          <div className="flex flex-col items-center justify-center rounded-3xl border border-zinc-200 border-dashed bg-white px-6 py-24 text-center shadow-sm">
             <div className="mb-4 flex h-16 w-16 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400">
               <Search className="h-7 w-7" />
             </div>
-            <h3 className="text-xl font-black text-zinc-900">No categories found</h3>
-            <p className="mt-2 max-w-sm text-sm font-medium text-zinc-500">
-              We couldn&apos;t find any category matching &quot;{searchQuery}&quot;. Try a different search term.
+            <h2 className="text-xl font-black text-zinc-900">
+              {isSearchMiss ? "No matching categories" : "No categories are available yet"}
+            </h2>
+            <p className="mt-2 max-w-sm wrap-anywhere text-sm font-medium text-zinc-500">
+              {isSearchMiss
+                ? `No categories match "${searchTerm}". Try a different search term.`
+                : "Check back later for more categories."}
             </p>
-            <button
-              onClick={() => setSearchQuery("")}
-              className="mt-6 rounded-xl bg-zinc-900 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-zinc-800"
-            >
-              Clear Search
-            </button>
+            {isSearchMiss ? (
+              <button
+                type="button"
+                onClick={() => setSearchQuery("")}
+                className="mt-6 rounded-xl bg-zinc-900 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-zinc-800"
+              >
+                Clear Search
+              </button>
+            ) : (
+              <Link href="/products" className="mt-6 rounded-xl bg-zinc-900 px-6 py-3 text-sm font-bold text-white transition-colors hover:bg-zinc-800">
+                Browse all products
+              </Link>
+            )}
           </div>
         )}
       </div>
-    </main>
+    </div>
   );
 }

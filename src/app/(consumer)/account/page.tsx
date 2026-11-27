@@ -3,9 +3,7 @@
 import * as React from "react";
 import Link from "next/link";
 import {
-  CheckCircle2,
   ChevronRight,
-  Clock,
   Heart,
   MapPin,
   Package,
@@ -17,7 +15,7 @@ import {
   Phone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
+import { BuyerOrderStatusBadge } from "@/components/account/BuyerOrderStatusBadge";
 import { Separator } from "@/components/ui/separator";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { useWishlist } from "@/hooks/use-wishlist";
@@ -79,11 +77,11 @@ export default function AccountOverviewPage() {
             Manage your orders, track deliveries, and secure your account.
           </p>
         </div>
-        <Link href="/account/settings">
-          <Button variant="outline" className="flex h-11 w-full items-center gap-2 rounded-xl border-zinc-200 px-5 text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900 md:w-auto">
+        <Button asChild variant="outline" className="flex h-11 w-full items-center gap-2 rounded-xl border-zinc-200 px-5 text-zinc-700 shadow-sm transition-colors hover:bg-zinc-50 hover:text-zinc-900 md:w-auto">
+          <Link href="/account/settings">
             <User className="h-4 w-4" /> Edit Profile
-          </Button>
-        </Link>
+          </Link>
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 gap-3 animate-in fade-in slide-in-from-bottom-4 fill-mode-both duration-500 md:grid-cols-3 md:gap-4" style={{ animationDelay: "100ms" }}>
@@ -167,7 +165,7 @@ export default function AccountOverviewPage() {
                 <div key={order.id} className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-4 transition-colors hover:border-zinc-300 md:p-5">
                   <div className="mb-4 flex flex-col justify-between gap-4 md:flex-row md:items-center">
                     <div>
-                      <h3 className="font-bold text-zinc-900">{order.id}</h3>
+                      <h3 className="font-bold text-zinc-900">{order.orderNumber}</h3>
                       <p className="mt-0.5 text-xs font-medium text-zinc-500">
                         {order.date} • {order.items.reduce((sum, item) => sum + item.qty, 0)} Item{order.items.length === 1 ? "" : "s"}
                       </p>
@@ -176,15 +174,7 @@ export default function AccountOverviewPage() {
                       <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : "Total"}</span>
                       <span className="font-black text-zinc-900">{order.isLegacyIncomplete ? `K${order.itemSubtotal.toLocaleString()}` : `K${order.total?.toLocaleString()}`}</span>
                       {order.isLegacyIncomplete && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Payment breakdown unavailable</span>}
-                      {order.status === "processing" ? (
-                        <Badge className="mt-1 gap-1 border-none bg-amber-100 px-2 shadow-none text-amber-700 hover:bg-amber-100">
-                          <Clock className="h-3 w-3" /> Processing
-                        </Badge>
-                      ) : (
-                        <Badge className="mt-1 gap-1 border-none bg-emerald-100 px-2 shadow-none text-emerald-700 hover:bg-emerald-100">
-                          <CheckCircle2 className="h-3 w-3" /> Delivered
-                        </Badge>
-                      )}
+                      <BuyerOrderStatusBadge status={order.status} compact />
                     </div>
                   </div>
 
@@ -192,13 +182,14 @@ export default function AccountOverviewPage() {
 
                   <div className="flex items-center justify-between text-sm">
                     <span className="flex items-center gap-1.5 font-medium text-zinc-600">
-                      <Truck className="h-4 w-4 text-zinc-400" /> {order.estDelivery}
+                      <Truck className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                      <span>Estimated delivery: {order.estDelivery ?? "Not available"}</span>
                     </span>
-                    <Link href={`/account/orders/${order.id}`}>
-                      <Button variant="ghost" size="sm" className="h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]">
+                    <Button asChild variant="ghost" size="sm" className="h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]">
+                      <Link href={`/account/orders/${order.id}`}>
                         Track
-                      </Button>
-                    </Link>
+                      </Link>
+                    </Button>
                   </div>
                 </div>
               ))
@@ -234,11 +225,11 @@ export default function AccountOverviewPage() {
               <div className="rounded-2xl border border-dashed border-zinc-200 bg-zinc-50/80 p-6 text-center">
                 <p className="text-sm font-bold text-zinc-900">No default address</p>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-500">Add your first delivery address.</p>
-                <Link href="/account/addresses">
-                  <Button variant="outline" className="mt-3 h-8 text-xs font-bold text-[#009E49] hover:bg-[#009E49]/10">
+                <Button asChild variant="outline" className="mt-3 h-8 text-xs font-bold text-[#009E49] hover:bg-[#009E49]/10">
+                  <Link href="/account/addresses">
                     Add Address
-                  </Button>
-                </Link>
+                  </Link>
+                </Button>
               </div>
             )}
           </div>
@@ -255,20 +246,20 @@ export default function AccountOverviewPage() {
               ) : (
                 <div className="flex flex-col gap-3">
                   {SUPPORT_WHATSAPP_NUMBER && (
-                    <a href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
-                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10">
+                    <Button asChild variant="outline" className="h-10 w-full justify-start rounded-xl border-[#25D366]/20 bg-[#25D366]/5 text-[#128C7E] hover:bg-[#25D366]/10">
+                      <a href={`https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}`} target="_blank" rel="noopener noreferrer">
                         <MessageCircle className="mr-2 h-4 w-4" />
                         WhatsApp Support
-                      </Button>
-                    </a>
+                      </a>
+                    </Button>
                   )}
                   {SUPPORT_CALL_NUMBER && (
-                    <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
-                      <Button variant="outline" className="h-10 w-full justify-start rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
+                    <Button asChild variant="outline" className="h-10 w-full justify-start rounded-xl border-zinc-200 text-zinc-700 hover:bg-zinc-50">
+                      <a href={`tel:${SUPPORT_CALL_NUMBER}`}>
                         <Phone className="mr-2 h-4 w-4" />
                         Call Support
-                      </Button>
-                    </a>
+                      </a>
+                    </Button>
                   )}
                 </div>
               )}

@@ -94,6 +94,15 @@ const viewports = [
 
 type Scenario = "populated" | "empty" | "outage";
 type Read = { path: string; status: number };
+const instructions = "Use the side gate for collection.";
+const street = "Unit 4, 28 Longacres Commercial Access Road";
+const deliveryFixtures = {
+  missing: { shipping: { ...order.shipping, instructions }, lines: ["No delivery address provided."] },
+  partial: { shipping: { ...order.shipping, addressLine: " ", city: " Lusaka ", instructions }, lines: ["Lusaka"] },
+  full: { shipping: { ...order.shipping, addressLine: street, district: "Longacres", city: "Lusaka", instructions },
+    lines: [street, "Longacres, Lusaka"] },
+};
+type DeliveryCase = keyof typeof deliveryFixtures;
 
 function collectionPayload(populated: boolean) {
   const total = populated ? populatedOrders.length : 0;
@@ -109,9 +118,10 @@ function collectionPayload(populated: boolean) {
   };
 }
 
-const test = base.extend<{ scenario: Scenario; sellerReads: { origin: string; reads: Read[] } }>({
+const test = base.extend<{ scenario: Scenario; deliveryCase: DeliveryCase | null; sellerReads: { origin: string; reads: Read[] } }>({
   scenario: ["populated", { option: true }],
-  sellerReads: async ({ context, scenario }, provide, testInfo) => {
+  deliveryCase: [null, { option: true }],
+  sellerReads: async ({ context, scenario, deliveryCase }, provide, testInfo) => {
     const baseUrl = new URL(process.env.TEST_BASE_URL ?? "");
     const origin = loopbackAuditOrigin(baseUrl.href);
     if (baseUrl.pathname !== "/" || baseUrl.search || baseUrl.hash) {
@@ -149,7 +159,8 @@ const test = base.extend<{ scenario: Scenario; sellerReads: { origin: string; re
             : fulfill(collectionPayload(scenario === "populated"));
         }
         if (url.pathname === DETAIL_API && !url.search && scenario === "populated") {
-          return fulfill({ status: "success", data: { order } });
+          const detail = deliveryCase ? { ...order, shipping: deliveryFixtures[deliveryCase].shipping } : order;
+          return fulfill({ status: "success", data: { order: detail } });
         }
       }
       denied.push(`${method} ${url.origin}${url.pathname}${url.search}`);
@@ -168,6 +179,9 @@ const test = base.extend<{ scenario: Scenario; sellerReads: { origin: string; re
 test.skip(!process.env.TEST_BASE_URL, "Set TEST_BASE_URL to the approved loopback frontend origin.");
 test.use({
   channel: process.env.PLAYWRIGHT_CHANNEL ?? (process.platform === "win32" ? "msedge" : undefined),
+  launchOptions: { args: [
+    "--disable-background-networking", "--no-proxy-server", "--host-resolver-rules=MAP * ~NOTFOUND, EXCLUDE 127.0.0.1",
+  ] },
   serviceWorkers: "block",
   contextOptions: { reducedMotion: "reduce" },
   storageState: { cookies: [], origins: [] },
@@ -190,6 +204,28 @@ async function expectApprovedSeller(page: Page, width: number) {
     const settings = page.getByRole("link", { name: "Open seller settings" });
     await expect(settings.getByText("FS", { exact: true })).toBeVisible();
     if (width >= 1024) await expect(settings.getByText("Approved seller", { exact: true })).toBeVisible();
+  }
+}
+
+for (const viewport of viewports.filter(({ width }) => width === 320 || width === 1440)) {
+  for (const deliveryCase of ["missing", "partial", "full"] as const) {
+    test.describe(`${deliveryCase} delivery address at ${viewport.width}px`, () => {
+      test.use({ viewport, deliveryCase });
+
+      test("shows only available address lines and keeps instructions", async ({ page, sellerReads }, testInfo) => {
+        await page.goto(`${sellerReads.origin}${DETAIL}`);
+        await expect(page.getByRole("heading", { name: order.orderNumber, exact: true })).toBeVisible();
+        const delivery = page.getByRole("region", { name: "Delivery", exact: true });
+        await expect(delivery.locator("p")).toHaveText([...deliveryFixtures[deliveryCase].lines, instructions]);
+        await expect(delivery.getByText(/^Not provided$/i)).toHaveCount(0);
+        await auditPageLayout(page);
+        expect(await delivery.evaluate((section) => section.scrollWidth - section.clientWidth)).toBe(0);
+        await delivery.scrollIntoViewIfNeeded();
+        await screenshot(page, testInfo, `seller-delivery-${deliveryCase}`);
+        await delivery.screenshot({ path: testInfo.outputPath(`seller-delivery-${deliveryCase}-panel.png`) });
+        expect(sellerReads.reads).toContainEqual({ path: DETAIL_API, status: 200 });
+      });
+    });
   }
 }
 
@@ -236,6 +272,41 @@ for (const viewport of viewports) {
       await auditPageLayout(page);
       const back = main.getByRole("button", { name: "Back to seller orders", exact: true });
       await auditAction(back);
+      const toolbar = main.locator("header").filter({
+        has: page.getByRole("heading", { name: order.orderNumber, exact: true }),
+      });
+      if (viewport.width < 768) {
+        await test.step("VIS-08 joins the sticky seller header and order toolbar while scrolling", async () => {
+          const storeHeading = page.getByRole("heading", { name: application.storeName, exact: true });
+          const shellHeader = page.locator("header").filter({ has: storeHeading });
+          await page.evaluate(() => window.scrollTo({ top: 0, behavior: "instant" }));
+          await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+          const start = await toolbar.boundingBox();
+          if (!start) throw new Error("Seller order toolbar is not visible.");
+          await page.evaluate(() => window.scrollTo({ top: 160, behavior: "instant" }));
+          await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(64);
+          const shell = await shellHeader.boundingBox();
+          const detail = await toolbar.boundingBox();
+          if (!shell || !detail) throw new Error("Sticky seller headers are not visible.");
+          await screenshot(page, testInfo, "seller-order-sticky-headers");
+          await testInfo.attach("seller-order-sticky-bounds", {
+            body: JSON.stringify({ shell, detail, gap: detail.y - (shell.y + shell.height) }),
+            contentType: "application/json",
+          });
+          expect(detail.y, "The toolbar must move into its sticky position").toBeLessThan(start.y);
+          expect(Math.abs(shell.y)).toBeLessThanOrEqual(1);
+          expect(Math.abs(detail.y - (shell.y + shell.height))).toBeLessThanOrEqual(1);
+          for (const header of [shellHeader, toolbar]) {
+            expect(await header.evaluate((element) => element.scrollWidth - element.clientWidth)).toBe(0);
+          }
+          await expect(shellHeader.getByRole("link", { name: "Open notifications" })).toBeInViewport({ ratio: 1 });
+          await expect(back).toBeInViewport({ ratio: 1 });
+          await auditPageLayout(page);
+        });
+      } else {
+        await expect(toolbar).toHaveCSS("position", "sticky");
+        await expect(toolbar).toHaveCSS("top", "0px");
+      }
       await back.click();
 
       await expect(page).toHaveURL(`${origin}${LIST}`);

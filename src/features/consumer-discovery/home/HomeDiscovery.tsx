@@ -11,7 +11,7 @@ export function HomeDiscovery({ categories, newArrivals, mostViewed, exploreMore
   return (
     <main className="min-h-screen bg-[#f4fbf6] pb-24 md:pb-12" data-testid="home-discovery">
       <div className="mx-auto max-w-[1176px] space-y-3 px-4 pt-2 max-[340px]:space-y-2 sm:space-y-6 sm:pt-4 md:space-y-8 md:px-6 md:pt-6">
-        <EditorialDiscoveryIntro hasProducts={hasProducts} />
+        <EditorialDiscoveryIntro hasProducts={hasProducts} hasNewArrivals={newArrivals.length > 0} />
         <HomeCategoryRail categories={categories} />
         <HomeProductSection title="New Arrivals" products={newArrivals} href="/new-arrivals" />
         <HomeProductSection title="Most Viewed" products={mostViewed} />
