@@ -115,7 +115,11 @@ test.beforeAll(async () => {
     } else if (privileged && request.method === "PATCH" && url.pathname === "/api/v1/admin/orders/order-fixture/status") {
       let body = "";
       for await (const chunk of request) body += String(chunk);
-      const input = JSON.parse(body) as { notes?: string };
+      const input = JSON.parse(body) as { notes?: string; expectedUpdatedAt?: string };
+      if (input.expectedUpdatedAt !== timestamp) {
+        response.writeHead(400).end(JSON.stringify({ status: "fail", message: "Missing reviewed version" }));
+        return;
+      }
       if (input.notes === conflictNote) {
         conflictPatchCount += 1;
         response.writeHead(409).end(JSON.stringify({ status: "fail", message: internalDiagnostic }));
