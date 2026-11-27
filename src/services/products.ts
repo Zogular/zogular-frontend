@@ -209,6 +209,14 @@ function positiveDimension(value: unknown): number | null {
   return parsed > 0 ? parsed : null;
 }
 
+// Null stock denotes one available legacy item only when the API explicitly says it is unsold.
+function publicStock({ stock, isSold }: Pick<BackendProduct, "stock" | "isSold">): number {
+  if (stock === null) return isSold === false ? 1 : 0;
+  if (isSold !== undefined && isSold !== false) return 0;
+  const count = typeof stock === "string" && /^\d+$/.test(stock.trim()) ? Number(stock) : stock;
+  return typeof count === "number" && Number.isSafeInteger(count) && count > 0 && count <= 2_147_483_647 ? count : 0;
+}
+
 function parseBackendImageEntry(
   value: unknown,
   sourceIndex: number,
@@ -402,7 +410,7 @@ export function normalizeBackendProduct(product: BackendProduct): Product {
     badge: discount && discount > 0 ? `${discount}% OFF` : undefined,
     isNew: false,
     storeName: undefined,
-    stock: product.isSold ? 0 : toNumber(product.stock, 0),
+    stock: publicStock(product),
     moderationStatus: parseModerationStatus(product.moderationStatus),
     sellerVisibility: parseSellerVisibility(product.sellerVisibility),
   });
@@ -468,7 +476,7 @@ export function normalizeBackendProductDetail(product: BackendProduct): ProductD
     ownerId: summary.ownerId,
     seller: undefined,
     condition: asString(product.condition),
-    stock: product.isSold ? 0 : toNumber(product.stock, 0),
+    stock: summary.stock ?? 0,
     images: images.length ? images.map((image) => image.url) : [PRODUCT_IMAGE_PLACEHOLDER],
     variants: buildBackendProductVariants(),
     description: asString(product.description) ?? "No description provided.",

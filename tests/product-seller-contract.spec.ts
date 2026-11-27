@@ -17,6 +17,23 @@ const baseProduct: BackendProduct = {
   reviews: [{ rating: 4 }],
 };
 
+test("cards and details share fail-closed public availability", () => {
+  const cases: Array<[Partial<Pick<BackendProduct, "stock" | "isSold">>, number]> = [
+    [{ stock: null, isSold: false }, 1], [{ stock: null, isSold: true }, 0],
+    [{ stock: null }, 0], [{ stock: null, isSold: null }, 0], [{}, 0], [{ isSold: false }, 0],
+    [{ stock: 4 }, 4], [{ stock: "4" }, 4], [{ stock: 4, isSold: false }, 4],
+    [{ stock: "4", isSold: true }, 0], [{ stock: 4, isSold: null }, 0],
+    [{ stock: 0 }, 0], [{ stock: -1 }, 0], [{ stock: 0.5 }, 0], [{ stock: NaN }, 0],
+    [{ stock: Infinity }, 0], [{ stock: 2_147_483_648 }, 0], [{ stock: " " }, 0],
+    [{ stock: "broken" }, 0], [{ stock: "0x10" }, 0], [{ stock: "1e2" }, 0],
+  ];
+  for (const [availability, expected] of cases) {
+    const dto = { ...baseProduct, stock: undefined, ...availability };
+    expect(normalizeBackendProduct(dto).stock).toBe(expected);
+    expect(normalizeBackendProductDetail(dto).stock).toBe(expected);
+  }
+});
+
 test("preserves an opaque owner ID without fabricating a public seller identity", () => {
   const detail = normalizeBackendProductDetail({
     ...baseProduct,
