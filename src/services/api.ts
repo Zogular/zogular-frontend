@@ -32,6 +32,7 @@ interface FetchOptions extends RequestInit {
   authMode?: "include" | "omit";
   csrf?: boolean | CsrfMode;
   skipAuthRefresh?: boolean;
+  noAutoReplay?: boolean;
 }
 
 let csrfTokenPromise: Promise<string> | null = null;
@@ -262,12 +263,14 @@ async function prepareRequest(
     query,
     csrf,
     skipAuthRefresh,
+    noAutoReplay,
     headers,
     body,
     ...fetchOptions
   } = options;
   void timeout;
   void skipAuthRefresh;
+  void noAutoReplay;
 
   const resolvedHeaders = new Headers(headers);
   if (!resolvedHeaders.has("Accept")) {
@@ -328,6 +331,7 @@ export async function apiClient<T>(
   options: FetchOptions = {},
 ): Promise<T> {
   const timeout = options.timeout ?? 10_000;
+  const noAutoReplay = Boolean(options.noAutoReplay);
   let didRefresh = false;
   let didRefreshCsrf = false;
   let requestSessionRevision = authSessionRevision;
@@ -336,6 +340,13 @@ export async function apiClient<T>(
   while (true) {
     try {
       const { url, init } = await prepareRequest(endpoint, options);
+      if (
+        noAutoReplay &&
+        (requestSessionRevision !== authSessionRevision ||
+          requestAuthSnapshot !== getAuthSessionSnapshot())
+      ) {
+        throw new ApiError("Your session changed. Please sign in again.", 401);
+      }
       const { response, responseData } = await fetchWithTimeout(url, init, timeout, async (response) => ({
         response,
         responseData: await parseResponse(response),
@@ -350,6 +361,7 @@ export async function apiClient<T>(
 
       if (
         response.status === 401 &&
+        !noAutoReplay &&
         options.authMode !== "omit" &&
         !options.skipAuthRefresh &&
         !didRefresh &&
@@ -382,7 +394,9 @@ export async function apiClient<T>(
       ) {
         didRefreshCsrf = true;
         csrfTokenPromise = null;
-        continue;
+        if (!noAutoReplay) {
+          continue;
+        }
       }
 
       throw new ApiError(message, response.status, responseData);
