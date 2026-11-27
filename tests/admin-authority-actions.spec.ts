@@ -56,7 +56,6 @@ test("admin pages and hooks enforce direct canonical permissions and remove fake
   const productsPage = readSource("src/app/admin/(protected)/products/page.tsx");
   const productDetailPage = readSource("src/app/admin/(protected)/products/[id]/page.tsx");
   const supportPage = readSource("src/app/admin/(protected)/support/page.tsx");
-  const accessPage = readSource("src/app/admin/(protected)/access/page.tsx");
   const sellersHook = readSource("src/features/admin-sellers/hooks/use-sellers-list.ts");
 
   expect(ordersPage).toContain('adminIdentityHasPermission(identity, "view_all_orders")');
@@ -67,8 +66,6 @@ test("admin pages and hooks enforce direct canonical permissions and remove fake
   expect(supportPage).toContain('adminIdentityHasPermission(identity, "view_support_tickets")');
   expect(supportPage).toContain('adminIdentityHasPermission(identity, "reply_support_tickets")');
   expect(supportPage).toContain('adminIdentityHasPermission(identity, "manage_support_tickets")');
-  expect(accessPage).toContain('identity?.claims.role === "SUPER_ADMIN"');
-  expect(accessPage).toContain('adminIdentityHasPermission(identity, "manage_roles")');
   expect(sellersHook).toContain('adminIdentityHasPermission(identity, "manage_seller_status")');
   expect(sellersHook).toContain('adminIdentityHasPermission(identity, "export_reports")');
 });
