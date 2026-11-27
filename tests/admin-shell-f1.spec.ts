@@ -27,6 +27,7 @@ const readSource = (relativePath: string) =>
 
 const operationalDestinations = [
   ["home", "Home", "overview", "Overview", "/admin/dashboard"],
+  ["home", "Home", "analytics_and_reports", "Operational Reports", "/admin/reports"],
   ["marketplace", "Marketplace", "sellers", "Sellers", "/admin/sellers"],
   ["marketplace", "Marketplace", "customers", "Customers", "/admin/buyers"],
   ["marketplace", "Marketplace", "products_and_moderation", "Products and Moderation", "/admin/products"],
@@ -106,8 +107,27 @@ test("contract-gated and experience-ready capabilities remain absent for super a
   expect(gatedIds.length).toBeGreaterThan(0);
   expect(gatedIds.every((id) => !visibleIds.has(id))).toBe(true);
   expect(visibleIds).not.toContain("alerts_and_assigned_work");
-  expect(visibleIds).not.toContain("analytics_and_reports");
+  expect(visibleIds).toContain("analytics_and_reports");
   expect(visibleIds).not.toContain("finance_overview");
+
+  // Operational Reports requires access_admin_panel AND view_all_reports AND review_sellers
+  for (const partialPermissions of [
+    ["access_admin_panel"],
+    ["access_admin_panel", "view_all_reports"],
+    ["access_admin_panel", "review_sellers"],
+  ] as AdminIdentity["claims"]["permissions"][]) {
+    const partialIds = flattenAdminShellNavigation(
+      buildAdminShellNavigation(identity(partialPermissions)),
+    ).map((item) => item.id);
+    expect(partialIds).not.toContain("analytics_and_reports");
+  }
+
+  const eligibleIds = flattenAdminShellNavigation(
+    buildAdminShellNavigation(
+      identity(["access_admin_panel", "view_all_reports", "review_sellers"]),
+    ),
+  ).map((item) => item.id);
+  expect(eligibleIds).toContain("analytics_and_reports");
 });
 
 test("every visible operational destination has an explicit icon", () => {

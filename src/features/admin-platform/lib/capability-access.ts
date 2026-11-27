@@ -55,7 +55,11 @@ export function evaluateCapabilityNavigation(
   if (capability.data.frontendPermissionHints.length === 0) return hidden("permission_hint_missing");
 
   const permissions = new Set(identity.data.permissions);
-  if (!capability.data.frontendPermissionHints.some((permission) => permissions.has(permission))) {
+  const matches =
+    capability.data.permissionMatch === "all"
+      ? capability.data.frontendPermissionHints.every((permission) => permissions.has(permission))
+      : capability.data.frontendPermissionHints.some((permission) => permissions.has(permission));
+  if (!matches) {
     return hidden("permission_hint_not_present");
   }
 

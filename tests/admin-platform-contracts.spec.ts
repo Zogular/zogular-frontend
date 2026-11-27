@@ -612,6 +612,7 @@ test("gated modules remain hidden for a super-admin-shaped identity and backend 
   const visible = getNavigationEligibleCapabilities(superAdmin);
   expect(visible.map((capability) => capability.id)).toEqual([
     "overview",
+    "analytics_and_reports",
     "sellers",
     "customers",
     "products_and_moderation",

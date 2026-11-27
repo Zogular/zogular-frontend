@@ -367,4 +367,50 @@ test.describe("admin reports operational seller-review aging browser acceptance"
     await expect(page.getByText("Seller review aging report is unavailable for your current permissions.")).toBeVisible();
     expect(reportRequests).toBe(0);
   });
+
+  test("eligible admin navigates Overview -> Operational Reports by desktop and mobile click", async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await signInAsAdmin(page);
+    await expect(page).toHaveURL(/\/admin\/dashboard/);
+
+    const desktopLink = page.getByRole("link", { name: "Operational Reports" });
+    await expect(desktopLink).toBeVisible();
+    await desktopLink.click();
+    await expect(page).toHaveURL(/\/admin\/reports/);
+    await expect(page.getByRole("row", { name: /Total awaiting review/ }).getByRole("cell")).toHaveText("10");
+    await page.screenshot({
+      path: path.resolve("output/playwright/admin-reports/overview-to-reports-desktop-1440x900.png"),
+      fullPage: false,
+    });
+
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto(`${FRONTEND_ORIGIN}/admin/dashboard`, { waitUntil: "networkidle" });
+    await page.getByRole("button", { name: "Open admin menu" }).click();
+    const mobileLink = page.getByRole("link", { name: "Operational Reports" });
+    await expect(mobileLink).toBeVisible();
+    await mobileLink.click();
+    await expect(page).toHaveURL(/\/admin\/reports/);
+    await expect(page.getByRole("row", { name: /Total awaiting review/ }).getByRole("cell")).toHaveText("10");
+    await page.screenshot({
+      path: path.resolve("output/playwright/admin-reports/overview-to-reports-mobile-390x844.png"),
+      fullPage: false,
+    });
+  });
+
+  for (const ineligiblePermissions of [
+    ["access_admin_panel", "view_all_reports"],
+    ["access_admin_panel", "review_sellers"],
+  ]) {
+    test(`ineligible admin (${ineligiblePermissions.join("+")}) sees zero Operational Reports links on desktop and mobile`, async ({ page }) => {
+      currentPermissions = ineligiblePermissions;
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await signInAsAdmin(page);
+      await expect(page).toHaveURL(/\/admin\/dashboard/);
+      await expect(page.getByRole("link", { name: "Operational Reports" })).toHaveCount(0);
+
+      await page.setViewportSize({ width: 390, height: 844 });
+      await page.getByRole("button", { name: "Open admin menu" }).click();
+      await expect(page.getByRole("link", { name: "Operational Reports" })).toHaveCount(0);
+    });
+  }
 });

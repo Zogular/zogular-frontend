@@ -129,6 +129,7 @@ export const AdminCapabilityDefinitionSchema = z
       .nullable(),
     routeEvidence: z.string().min(1).max(500),
     frontendPermissionHints: z.array(FrontendPermissionHintSchema).max(12),
+    permissionMatch: z.enum(["any", "all"]).optional(),
     backendPermissionEvidence: AdminBackendPermissionEvidenceSchema,
     completionLevel: AdminCapabilityCompletionSchema,
     navigationEligible: z.boolean(),
