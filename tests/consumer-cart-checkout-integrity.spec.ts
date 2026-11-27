@@ -1476,6 +1476,93 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     });
   }
 
+  for (const { width, closedStatus } of [
+    { width: 320, closedStatus: "CANCELLED" },
+    { width: 1440, closedStatus: "REFUNDED" },
+  ]) {
+    test(`success readback replaces processing with neutral ${closedStatus} at ${width}px`, async ({ page }) => {
+      if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) throw new Error("Private loopback fixture required.");
+      await page.setViewportSize({ width, height: 900 });
+      const closedId = "00000000-0000-4000-8000-000000000009";
+      const mismatchId = "00000000-0000-4000-8000-000000000010";
+      const closedRead = deferred<void>();
+      const releaseClosed = deferred<void>();
+      const orderReads: string[] = [];
+      const mutations: string[] = [];
+      await page.route("**/api/backend/**", async (route) => {
+        const request = route.request();
+        const { pathname } = new URL(request.url());
+        if (request.method() !== "GET" && request.method() !== "HEAD") {
+          mutations.push(`${request.method()} ${pathname}`);
+          return route.fulfill({ status: 405 });
+        }
+        if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+        if (pathname.endsWith("/cart")) return route.fulfill({ json: cartPayload() });
+        if (pathname.endsWith(`/orders/${IDS.order}`)) {
+          orderReads.push(IDS.order);
+          const order = { ...detailOrderPayload("owner-a", "ZG-PROCESSING"), status: "PROCESSING" };
+          return route.fulfill({ json: { status: "success", data: { order } } });
+        }
+        if (pathname.endsWith(`/orders/${closedId}`)) {
+          orderReads.push(closedId);
+          closedRead.resolve();
+          await releaseClosed.promise;
+          const order = { ...detailOrderPayload("owner-a", "ZG-CLOSED"), id: closedId, status: closedStatus };
+          return route.fulfill({ json: { status: "success", data: { order } } });
+        }
+        if (pathname.endsWith(`/orders/${mismatchId}`)) {
+          orderReads.push(mismatchId);
+          const order = { ...detailOrderPayload("owner-a", "ZG-WRONG-ID"), status: "PROCESSING" };
+          return route.fulfill({ json: { status: "success", data: { order } } });
+        }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+
+      await page.goto(`${baseUrl}/success?orderId=${IDS.order}`);
+      const main = page.locator("main:not(:has(main))");
+      const confirmed = main.getByRole("heading", { name: "Order confirmed by Zogular" });
+      const cashDue = main.getByText("Cash due on delivery", { exact: true });
+      const screenshotDir = "output/playwright/consumer-cart-checkout-integrity";
+      await expect(confirmed).toBeVisible();
+      await expect(cashDue).toBeVisible();
+      await expect(main.getByRole("link", { name: "View order" })).toHaveAttribute("href", `/account/orders/${IDS.order}`);
+      await main.screenshot({ path: path.resolve(screenshotDir, `success-processing-${width}.png`) });
+
+      try {
+        await page.evaluate((id) => window.history.pushState(null, "", `/success?orderId=${id}`), closedId);
+        await closedRead.promise;
+        await expect(main.getByRole("heading", { name: "Confirming your order" })).toBeVisible();
+        await expect(confirmed).toHaveCount(0);
+        await expect(main.getByText("Order ZG-PROCESSING", { exact: true })).toHaveCount(0);
+        await expect(main.getByRole("link", { name: "View order" })).toHaveCount(0);
+      } finally {
+        releaseClosed.resolve();
+      }
+
+      const closed = main.getByRole("heading", { name: "Order closed" });
+      const viewOrder = main.getByRole("link", { name: "View order" });
+      await expect(closed).toBeVisible();
+      await expect(closed).toBeFocused();
+      await expect(viewOrder).toHaveAttribute("href", `/account/orders/${closedId}`);
+      await page.keyboard.press("Tab");
+      await expect(viewOrder).toBeFocused();
+      const bounds = await viewOrder.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      expect(await main.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(width);
+      await expect(main).not.toContainText(/confirmed|cash due|delivery updates|refund|K500/i);
+      await main.screenshot({ path: path.resolve(screenshotDir, `success-closed-${width}.png`) });
+
+      await page.evaluate((id) => window.history.pushState(null, "", `/success?orderId=${id}`), mismatchId);
+      await expect(main.getByRole("heading", { name: "Order confirmation could not be verified" })).toBeVisible();
+      await expect(viewOrder).toHaveCount(0);
+      await expect(main).not.toContainText("ZG-WRONG-ID");
+      expect(orderReads).toEqual([IDS.order, closedId, mismatchId]);
+      expect(mutations).toEqual([]);
+    });
+  }
+
   for (const viewport of viewports) {
     test(`${viewport.name} guest checkout and confirmation issue zero protected requests`, async ({ page }) => {
       await page.setViewportSize(viewport);
