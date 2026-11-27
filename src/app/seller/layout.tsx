@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import {
   Bell, CircleHelp, LayoutDashboard, LogOut, Package,
   Plus, Settings, ShoppingCart, Store, TrendingUp, Wallet, Boxes, PanelLeftClose, PanelLeftOpen, MoreHorizontal, X, FileCheck2,
@@ -15,8 +15,8 @@ import { SellerApplicationContext } from "@/components/seller/SellerApplicationC
 import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { getSellerSafeErrorMessage } from "@/lib/seller-error";
-import { getCurrentUser, logout } from "@/services/auth";
-import { AUTH_SESSION_CHANGED_EVENT } from "@/services/auth-session";
+import { getCurrentUser, isLocalLogoutPending, logout } from "@/services/auth";
+import { getAuthSessionSnapshot, storeAuthSession, subscribeToAuthSession } from "@/services/auth-session";
 import { ApiError } from "@/services/api";
 import {
   getMyVendorApplication,
@@ -223,6 +223,14 @@ function getSellerDisplayRole(application: VendorApplication | null) {
 }
 
 export default function SellerLayout({ children }: { children: ReactNode }) {
+  const session = useSyncExternalStore(subscribeToAuthSession, getAuthSessionSnapshot, () => "");
+  const [hadSession, setHadSession] = useState(false);
+  if (session && !hadSession) setHadSession(true);
+  // A cold tab can recover HttpOnly cookies. Losing a known identity is a logout, not a cold tab.
+  return <SellerWorkspace key={session} session={session} signedOut={hadSession && !session}>{children}</SellerWorkspace>;
+}
+
+function SellerWorkspace({ children, session, signedOut }: { children: ReactNode; session: string; signedOut: boolean }) {
   const pathname = usePathname() || "";
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
@@ -258,29 +266,37 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           : { href: "/seller/status", label: "View status", icon: FileCheck2 };
   const PrimaryActionIcon = primaryAction.icon;
 
+  const generation = useRef<symbol | null>(null);
+  const activePath = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    activePath.current = pathname;
+    return () => { activePath.current = null; generation.current = null; };
+  }, [pathname]);
+
   const refreshApplication = useCallback(async () => {
-    if (isAuthRoute) return; // auth pages handle their own auth
+    if (isAuthRoute || activePath.current !== pathname || getAuthSessionSnapshot() !== session) return;
+    const request = Symbol();
+    generation.current = request;
+    const current = () => request === generation.current && getAuthSessionSnapshot() === session;
+    const login = () => router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
+    if (signedOut || isLocalLogoutPending()) { login(); return; }
 
     try {
       setApplicationLoading(true);
       setApplicationError(null);
 
-      try {
-        await getCurrentUser();
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          setApplication(null);
-          if (isAuthRoute) return;
-          router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-          return;
-        }
-        throw error;
-      }
+      const user = await getCurrentUser({ persist: false });
+      if (!current()) return;
+      storeAuthSession({ user });
+      if (!current()) return; // A recovered or updated identity starts its own scoped read.
 
       try {
         const nextApplication = await getMyVendorApplication();
+        if (!current()) return;
+        if (nextApplication.userId && nextApplication.userId !== user.id) throw new Error("Seller identity mismatch");
         setApplication(nextApplication);
       } catch (error) {
+        if (!current()) return;
         if (error instanceof ApiError && error.status === 404) {
           setApplication(null);
           return;
@@ -288,26 +304,25 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         throw error;
       }
     } catch (error) {
+      if (!current()) return;
+      setApplication(null);
+      if (error instanceof ApiError && error.status === 401) {
+        generation.current = null; // Keep the loading cover until the login navigation commits.
+        login();
+        return;
+      }
       setApplicationError(getSellerSafeErrorMessage(error, "workspace"));
     } finally {
-      setApplicationLoading(false);
+      if (current()) setApplicationLoading(false);
     }
-  }, [isAuthRoute, pathname, router]);
+  }, [isAuthRoute, pathname, router, session, signedOut]);
 
   useEffect(() => {
-    refreshApplication();
-
-    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, refreshApplication);
-    window.addEventListener("storage", refreshApplication);
-
-    return () => {
-      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, refreshApplication);
-      window.removeEventListener("storage", refreshApplication);
-    };
+    void refreshApplication();
   }, [refreshApplication]);
 
   useEffect(() => {
-    if (applicationLoading) return;
+    if (applicationLoading || getAuthSessionSnapshot() !== session || activePath.current !== pathname) return;
     if (isAuthRoute) return; // auth pages manage their own session state
     if (applicationError) return;
 
@@ -352,7 +367,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       router.replace("/seller");
       return;
     }
-  }, [application, applicationError, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, pathname, router]);
+  }, [application, applicationError, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, pathname, router, session]);
 
   const handleSidebarToggle = () => {
     setSidebarCollapsed((current) => {
@@ -364,7 +379,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     await logout();
-    router.push("/seller/login");
+    if (!getAuthSessionSnapshot()) router.replace("/seller/login");
   };
 
   const contextValue = useMemo(
