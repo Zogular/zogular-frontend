@@ -11,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { FeedbackState } from "@/components/states/FeedbackState";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
 import { useBuyerOrderHistory } from "@/features/buyer-orders/hooks/use-buyer-order-history";
-import { orderHistoryHref, orderLinkId, parseOrderFilter, type OrderFilter } from "@/features/buyer-orders/lib/order-return-state";
+import { isClosedOrderStatus, orderHistoryHref, orderLinkId, parseOrderFilter, type OrderFilter } from "@/features/buyer-orders/lib/order-return-state";
 
 const TABS: { label: string; value: OrderFilter }[] = [
   { label: "All Orders", value: "all" },
@@ -19,6 +19,7 @@ const TABS: { label: string; value: OrderFilter }[] = [
   { label: "Shipped", value: "shipped" },
   { label: "Delivered", value: "delivered" },
   { label: "Cancelled", value: "cancelled" },
+  { label: "Refunded", value: "refunded" },
 ];
 
 function formatCurrency(value: number) {
@@ -63,7 +64,7 @@ function OrderHistory() {
             My Orders
           </h1>
           <p className="mt-1 text-sm font-medium text-zinc-500">
-            Track, return, or buy items again.
+            View your order history and delivery updates.
           </p>
         </div>
 
@@ -138,6 +139,7 @@ function OrderHistory() {
       ) : (
         <div data-order-history-list="" className="space-y-4 md:space-y-6">
           {filteredOrders.map((order) => {
+            const isClosed = isClosedOrderStatus(order.status);
             return (
               <div key={order.id} className="overflow-hidden rounded-3xl border border-zinc-200/60 bg-white shadow-[0_2px_15px_rgba(0,0,0,0.02)] transition-shadow hover:shadow-md">
                 <div className="flex flex-col gap-4 border-b border-zinc-100 bg-zinc-50/50 p-5 sm:flex-row sm:items-center sm:justify-between">
@@ -147,7 +149,7 @@ function OrderHistory() {
                       <p className="text-sm font-bold text-zinc-900">{order.date}</p>
                     </div>
                     <div className="flex flex-col">
-                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : "Total"}</p>
+                      <p className="text-[11px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : isClosed ? "Order total" : "Total"}</p>
                       <p className="text-sm font-bold text-zinc-900">{order.isLegacyIncomplete ? formatCurrency(order.itemSubtotal) : formatCurrency(order.total as number)}</p>
                       {order.isLegacyIncomplete && <p className="text-[10px] font-bold text-orange-600 mt-0.5">Payment breakdown unavailable</p>}
                     </div>
@@ -182,12 +184,14 @@ function OrderHistory() {
                   </div>
 
                   <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <p className="text-sm font-medium text-zinc-600">
-                      Estimated delivery:{" "}
-                      <span className="font-bold text-zinc-900">{order.estDelivery ?? "Not available"}</span>
-                    </p>
+                    {!isClosed && (
+                      <p className="text-sm font-medium text-zinc-600">
+                        Estimated delivery:{" "}
+                        <span className="font-bold text-zinc-900">{order.estDelivery ?? "Not available"}</span>
+                      </p>
+                    )}
 
-                    <Button asChild className="h-11 w-full scroll-my-24 rounded-xl bg-zinc-100 text-sm font-bold text-zinc-900 hover:bg-[#009E49] hover:text-white sm:w-auto">
+                    <Button asChild className="h-11 w-full scroll-my-24 rounded-xl bg-zinc-100 text-sm font-bold text-zinc-900 hover:bg-[#00853D] hover:text-white sm:ml-auto sm:w-auto">
                       <Link id={orderLinkId(order.id)} href={orderHistoryHref(activeTab, order.id)} onNavigate={() => rememberOrder(order.id)}>
                         View Order Details
                       </Link>

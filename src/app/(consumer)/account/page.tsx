@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { BuyerOrderStatusBadge } from "@/components/account/BuyerOrderStatusBadge";
 import { Separator } from "@/components/ui/separator";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
+import { isClosedOrderStatus } from "@/features/buyer-orders/lib/order-return-state";
 import { useWishlist } from "@/hooks/use-wishlist";
 import { useCart } from "@/hooks/use-cart";
 import { useHydratedValue } from "@/hooks/use-hydrated-value";
@@ -161,38 +162,45 @@ export default function AccountOverviewPage() {
             {data.recentOrders.length === 0 ? (
               <p className="text-sm text-zinc-500">No recent orders found.</p>
             ) : (
-              data.recentOrders.map((order) => (
-                <div key={order.id} className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-4 transition-colors hover:border-zinc-300 md:p-5">
-                  <div className="mb-4 flex flex-col justify-between gap-4 md:flex-row md:items-center">
-                    <div>
-                      <h3 className="font-bold text-zinc-900">{order.orderNumber}</h3>
-                      <p className="mt-0.5 text-xs font-medium text-zinc-500">
-                        {order.date} • {order.items.reduce((sum, item) => sum + item.qty, 0)} Item{order.items.length === 1 ? "" : "s"}
-                      </p>
+              data.recentOrders.map((order) => {
+                const isClosed = isClosedOrderStatus(order.status);
+                return (
+                  <article key={order.id} className="rounded-2xl border border-zinc-100 bg-zinc-50/50 p-4 transition-colors hover:border-zinc-300 md:p-5">
+                    <div className="mb-4 flex flex-col justify-between gap-4 md:flex-row md:items-center">
+                      <div>
+                        <h3 className="font-bold text-zinc-900">{order.orderNumber}</h3>
+                        <p className="mt-0.5 text-xs font-medium text-zinc-500">
+                          {order.date} • {order.items.reduce((sum, item) => sum + item.qty, 0)} Item{order.items.length === 1 ? "" : "s"}
+                        </p>
+                      </div>
+                      <div className="flex flex-col md:items-end">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : isClosed ? "Order total" : "Total"}</span>
+                        <span className="font-black text-zinc-900">{order.isLegacyIncomplete ? `K${order.itemSubtotal.toLocaleString()}` : `K${order.total?.toLocaleString()}`}</span>
+                        {order.isLegacyIncomplete && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Payment breakdown unavailable</span>}
+                        <BuyerOrderStatusBadge status={order.status} compact />
+                      </div>
                     </div>
-                    <div className="flex flex-col md:items-end">
-                      <span className="text-[10px] font-bold uppercase tracking-wider text-zinc-500">{order.isLegacyIncomplete ? "Item subtotal" : "Total"}</span>
-                      <span className="font-black text-zinc-900">{order.isLegacyIncomplete ? `K${order.itemSubtotal.toLocaleString()}` : `K${order.total?.toLocaleString()}`}</span>
-                      {order.isLegacyIncomplete && <span className="text-[10px] text-orange-600 font-bold mt-0.5">Payment breakdown unavailable</span>}
-                      <BuyerOrderStatusBadge status={order.status} compact />
+
+                    <Separator className="mb-4 bg-zinc-200/60" />
+
+                    <div className="flex items-center justify-between text-sm">
+                      {!isClosed && (
+                        <span className="flex items-center gap-1.5 font-medium text-zinc-600">
+                          <Truck className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
+                          <span>Estimated delivery: {order.estDelivery ?? "Not available"}</span>
+                        </span>
+                      )}
+                      <Button asChild variant="ghost" size="sm" className={isClosed
+                        ? "ml-auto min-h-11 font-bold text-zinc-700 hover:bg-zinc-100 hover:text-zinc-900"
+                        : "h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]"}>
+                        <Link href={`/account/orders/${order.id}`}>
+                          {isClosed ? "View Order Details" : "Track"}
+                        </Link>
+                      </Button>
                     </div>
-                  </div>
-
-                  <Separator className="mb-4 bg-zinc-200/60" />
-
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="flex items-center gap-1.5 font-medium text-zinc-600">
-                      <Truck className="h-4 w-4 shrink-0 text-zinc-400" aria-hidden="true" />
-                      <span>Estimated delivery: {order.estDelivery ?? "Not available"}</span>
-                    </span>
-                    <Button asChild variant="ghost" size="sm" className="h-8 font-bold text-[#009E49] hover:bg-[#009E49]/10 hover:text-[#009E49]">
-                      <Link href={`/account/orders/${order.id}`}>
-                        Track
-                      </Link>
-                    </Button>
-                  </div>
-                </div>
-              ))
+                  </article>
+                );
+              })
             )}
           </div>
         </div>
