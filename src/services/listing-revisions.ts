@@ -55,7 +55,7 @@ async function request<S extends z.ZodType>(
       skipAuthRefresh: true,
       ...(body === undefined
         ? { method: "GET" }
-        : { method: options.method ?? "POST", csrf: "header", noAutoReplay: true, body: JSON.stringify(body) }),
+        : { method: options.method ?? "POST", csrf: "header", noAutoReplay: true, redirect: "error", body: JSON.stringify(body) }),
     });
   } catch (error) {
     signal?.throwIfAborted();

@@ -50,7 +50,8 @@ test("reads seller history, admin detail and the bounded admin queue", async () 
   await expect(seller.history(productId)).resolves.toEqual({ product, revisions: [revision] });
   await expect(admin.detail(productId, revisionId)).resolves.toEqual({ product, revision });
   await expect(admin.queue({ cursor: revisionId, limit: 5 })).resolves.toMatchObject({ nextCursor: null });
-  expect(calls.map(({ init }) => [init?.method, init?.cache])).toEqual(Array(3).fill(["GET", "no-store"]));
+  expect(calls.map(({ init }) => [init?.method, init?.cache, init?.redirect]))
+    .toEqual(Array(3).fill(["GET", "no-store", undefined]));
   expect(calls[2].url.searchParams.toString()).toBe(`cursor=${revisionId}&limit=5`);
 });
 
@@ -73,8 +74,8 @@ test("uses only the four A5 POST routes, with header CSRF and explicit remediati
     expect.stringMatching(new RegExp(`/vendor/products/${productId}/listing-revisions/remediate-category$`)),
     expect.stringMatching(new RegExp(`/admin/products/${productId}/listing-revisions/${revisionId}/decisions$`)),
   ]);
-  expect(calls.map(({ init }) => [init?.method, new Headers(init?.headers).get("X-CSRF-Token")]))
-    .toEqual(Array(4).fill(["POST", "fixture-csrf"]));
+  expect(calls.map(({ init }) => [init?.method, init?.redirect, new Headers(init?.headers).get("X-CSRF-Token")]))
+    .toEqual(Array(4).fill(["POST", "error", "fixture-csrf"]));
   expect(calls.map(({ init }) => JSON.parse(String(init?.body)))).toEqual([
     submission, {}, { baseVersion: 2, confirmTakeOffline: true }, { decision: "needs_changes", reason: "Update the listing." },
   ]);
@@ -107,6 +108,7 @@ for (const status of [401, 403, 404, 409, 500]) {
     expect(String(failure)).not.toContain("internal-only");
     expect(calls).toHaveLength(1);
     expect(calls[0].url.pathname).toMatch(/\/vendor\/products\/[^/]+\/listing-revisions$/);
+    expect(calls[0].init).toMatchObject({ method: "POST", redirect: "error" });
   });
 }
 
@@ -120,6 +122,7 @@ test("reads an absent or OPEN outstanding attempt with no-store and no exact-key
   expect(requests).toEqual(Array(2).fill(`GET /api/v1${attemptsPath}`));
   for (const { init } of calls) {
     expect(init).toMatchObject({ cache: "no-store" });
+    expect(init?.redirect).toBeUndefined();
     expect(init?.body).toBeUndefined();
   }
 });
@@ -135,7 +138,10 @@ test("looks up the exact UUID query and rejects a mismatched returned attempt ke
   await expect(seller.exactAttempt(productId, `${key}&submissionKey=${revisionId}`))
     .rejects.toMatchObject({ status: 400 });
   expect(requests).toEqual(Array(2).fill(`GET /api/v1${attemptsPath}?${new URLSearchParams({ submissionKey: key })}`));
-  for (const { init } of calls) expect(init?.cache).toBe("no-store");
+  for (const { init } of calls) {
+    expect(init?.cache).toBe("no-store");
+    expect(init?.redirect).toBeUndefined();
+  }
 });
 
 test("reserves with changes and base only and rejects malformed or mismatched reservations", async () => {
@@ -151,6 +157,7 @@ test("reserves with changes and base only and rejects malformed or mismatched re
   await expect(seller.reserveAttempt(productId, submission)).rejects.toMatchObject({ status: 400 });
   expect(requests).toEqual(["GET /api/v1/auth/csrf-token", ...Array(3).fill(`POST /api/v1${attemptsPath}`)]);
   for (const { init } of calls) {
+    expect(init).toMatchObject({ method: "POST", redirect: "error" });
     expect(JSON.parse(String(init?.body))).toEqual(reservation);
     expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("fixture-csrf");
   }
@@ -174,6 +181,7 @@ test("settles the exact attempt by PUT with CSRF and validates the final receipt
   }
   expect(requests).toEqual(["GET /api/v1/auth/csrf-token", ...Array(5).fill(`PUT /api/v1${path}`)]);
   for (const { init } of calls) {
+    expect(init).toMatchObject({ method: "PUT", redirect: "error" });
     expect(JSON.parse(String(init?.body))).toEqual({});
     expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("fixture-csrf");
   }
@@ -182,7 +190,7 @@ test("settles the exact attempt by PUT with CSRF and validates the final receipt
 for (const status of [401, 403, 409, 500, "transport"] as const) {
   test(`settlement ${status} sanitizes the failure without refresh or retry`, async () => {
     const requests: string[] = [];
-    mockApi(() => {
+    const calls = mockApi(() => {
       if (status === "transport") throw new TypeError("internal-only transport diagnostic");
       return Response.json({ message: "csrf internal-only", stack: "internal-only" }, { status });
     }, requests);
@@ -190,5 +198,7 @@ for (const status of [401, 403, 409, 500, "transport"] as const) {
     expect(failure).toMatchObject({ status: status === "transport" ? 503 : status, details: undefined });
     expect(String(failure)).not.toContain("internal-only");
     expect(requests).toEqual(["GET /api/v1/auth/csrf-token", `PUT /api/v1${attemptsPath}/${submissionKey}/settlement`]);
+    expect(calls).toHaveLength(1);
+    expect(calls[0].init).toMatchObject({ method: "PUT", redirect: "error" });
   });
 }
