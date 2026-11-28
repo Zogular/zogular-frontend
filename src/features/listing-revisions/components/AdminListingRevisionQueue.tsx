@@ -89,7 +89,7 @@ function RevisionReview({ entry, canDecide, close, onDecided }: {
   const [confirmed, setConfirmed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [authorityDenied, setAuthorityDenied] = useState(false);
-  const [notice, setNotice] = useState("");
+  const [decisionError, setDecisionError] = useState<number | "unknown" | null>(null);
   const pending = useRef(false);
   const lifecycle = useRef<AbortController | null>(null);
 
@@ -113,6 +113,13 @@ function RevisionReview({ entry, canDecide, close, onDecided }: {
   const isPending = snapshot?.revision.status === "PENDING_REVIEW";
   // Only approval writes the live listing; requesting changes closes the pending revision.
   const versionMatches = snapshot !== null && snapshot.product.listingVersion === snapshot.revision.baseVersion;
+  const reviewStatus = !snapshot ? "" : !isPending ? "This revision is no longer pending."
+    : !versionMatches ? "The listing version has changed. This revision cannot be approved." : "";
+  const decisionNotice = decisionError === null ? ""
+    : decisionError === 409 ? (reviewStatus ? "" : "This revision changed. Review the latest details before deciding.")
+    : decisionError === 401 ? "Sign in again before deciding."
+    : decisionError === 403 ? "You do not have permission to decide this revision."
+    : "The decision could not be confirmed. Review the latest details before trying again.";
 
   async function decide(decision: ListingRevisionDecision) {
     const signal = lifecycle.current?.signal;
@@ -120,7 +127,7 @@ function RevisionReview({ entry, canDecide, close, onDecided }: {
       (decision.decision === "approve" && (!versionMatches || !confirmed))) return;
     pending.current = true;
     setBusy(true);
-    setNotice("");
+    setDecisionError(null);
     try {
       await api.decide(entry.productId, entry.id, decision, signal);
       if (!signal.aborted) onDecided(decision.decision);
@@ -129,10 +136,7 @@ function RevisionReview({ entry, canDecide, close, onDecided }: {
       // A failed request can have an unknown outcome. Invalidate the snapshot and never replay it.
       const status = error instanceof ApiError ? error.status : null;
       if (status === 401 || status === 403) setAuthorityDenied(true);
-      setNotice(status === 409 ? "This revision changed. Review the latest details before deciding."
-        : status === 401 ? "Sign in again before deciding."
-        : status === 403 ? "You do not have permission to decide this revision."
-        : "The decision could not be confirmed. Review the latest details before trying again.");
+      setDecisionError(status ?? "unknown");
       reload();
     } finally {
       pending.current = false;
@@ -144,7 +148,7 @@ function RevisionReview({ entry, canDecide, close, onDecided }: {
     <AdminDetailSheet open contained onOpenChange={(open) => { if (!open && !pending.current) close(); }}
       title="Review listing revision" description="Compare the current listing with the seller's proposed changes.">
       <div className="space-y-4">
-        {notice && <p role="alert" className="text-sm text-amber-800">{notice}</p>}
+        {decisionNotice && <p role="alert" className="text-sm text-amber-800">{decisionNotice}</p>}
         {detail.state === "loading" && <p role="status" className="text-sm">Loading revision details...</p>}
         {detail.state === "error" && (
           <>
@@ -159,11 +163,7 @@ function RevisionReview({ entry, canDecide, close, onDecided }: {
               <ListingValues title="Current listing" values={snapshot.product} />
               <ListingValues title="Proposed listing" values={snapshot.revision.payload} />
             </div>
-            {(!isPending || !versionMatches) && <p role="status" className="text-sm text-amber-800">
-              {isPending
-                ? "The listing version has changed. This revision cannot be approved."
-                : "This revision is no longer pending."}
-            </p>}
+            {reviewStatus && <p role="status" className="text-sm text-amber-800">{reviewStatus}</p>}
             {canDecide && !authorityDenied && isPending && (
               <fieldset disabled={busy} className="min-w-0 space-y-3 border-t border-zinc-200 pt-4">
                 {versionMatches && (

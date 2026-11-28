@@ -32,8 +32,13 @@ async function prepare(context: BrowserContext) {
   return origin;
 }
 
-for (const width of [390, 1440]) {
-  test(`a conflict forces a fresh read without replay at ${width}px`, async ({ context, page }, testInfo) => {
+for (const { width, status, stale } of [
+  { width: 390, status: 409, stale: true },
+  { width: 1440, status: 409, stale: true },
+  { width: 390, status: 409, stale: false },
+  { width: 390, status: 500, stale: true },
+]) {
+  test(`decision ${status} refreshes without replay (${stale ? "stale" : "current"}, ${width}px)`, async ({ context, page }, testInfo) => {
     const app = await prepare(context);
     await page.setViewportSize({ width, height: 900 });
     let detailReads = 0;
@@ -47,7 +52,7 @@ for (const width of [390, 1440]) {
     await page.route((url) => url.pathname === detail, (route) => {
       detailReads++;
       return route.fulfill({ json: { status: "success", data: {
-        product: { ...product, listingVersion: writes.length === 0 ? 3 : 4 }, revision,
+        product: { ...product, listingVersion: writes.length > 0 && stale ? 4 : 3 }, revision,
       } } });
     });
     await page.route("**/api/backend/auth/csrf-token", (route) => route.fulfill({
@@ -63,7 +68,7 @@ for (const width of [390, 1440]) {
           ...revision, status: "NEEDS_CHANGES", sellerVisibleReason: decision.reason, decidedAt: entry.createdAt,
         } } } });
       }
-      return route.fulfill({ status: 409, json: { status: "fail", message: "internal fixture canary" } });
+      return route.fulfill({ status, json: { status: "fail", message: "internal fixture canary" } });
     });
     await page.goto(`${app}/admin/products`);
     await expect(page.getByRole("heading", { name: "Product Moderation" })).toBeVisible();
@@ -74,8 +79,10 @@ for (const width of [390, 1440]) {
     await dialog.getByRole("checkbox", { name: "Confirm applying the proposed values to the listing" }).check();
     const readsBeforeDecision = detailReads;
     await dialog.getByRole("button", { name: "Approve revision" }).click();
-    await expect(dialog.getByText("Current version 4 / submitted against version 3")).toBeVisible();
-    await expect(dialog.getByText("The listing version has changed. This revision cannot be approved.")).toBeVisible();
+    await expect(dialog.getByText(`Current version ${stale ? 4 : 3} / submitted against version 3`)).toBeVisible();
+    await expect(dialog.getByText("The listing version has changed. This revision cannot be approved.")).toHaveCount(stale ? 1 : 0);
+    await expect(dialog.getByText("This revision changed. Review the latest details before deciding.")).toHaveCount(status === 409 && !stale ? 1 : 0);
+    await expect(dialog.getByText("The decision could not be confirmed. Review the latest details before trying again.")).toHaveCount(status === 500 ? 1 : 0);
     await expect(dialog.getByRole("button", { name: "Approve revision" })).toBeDisabled();
     await expect(dialog.getByText("internal fixture canary")).toHaveCount(0);
     expect(detailReads).toBe(readsBeforeDecision + 1);
