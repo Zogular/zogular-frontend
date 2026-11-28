@@ -39,6 +39,16 @@ type RouteContext = {
   params: Promise<{ path?: string[] }>;
 };
 
+function isCampaignWrite(method: string, path: string[]): boolean {
+  const [area, feature, resource, id, action] = path;
+  // Express matches fixed route segments case-insensitively; leave the banner ID untouched.
+  if (!/^admin$/i.test(area) || !/^content$/i.test(feature) || !/^homepage-banners$/i.test(resource)) return false;
+  if (path.length === 3) return method === "POST";
+  if (!id || id === "." || id === ".." || /[\\/]/.test(id)) return false;
+  return (path.length === 4 && method === "PATCH")
+    || (path.length === 5 && method === "POST" && /^(publish|pause)$/i.test(action));
+}
+
 function buildBackendUrl(path: string[], search: string, isAdmin: boolean): string {
   const base = getBaseUrl(isAdmin).replace(/\/$/, "");
   const endpoint = path.map(encodeURIComponent).join("/");
@@ -131,10 +141,37 @@ function copyRequestHeaders(request: Request): Headers {
   return headers;
 }
 
+function hasNoStoreDirective(cacheControl: string | null): boolean {
+  if (!cacheControl) return false;
+
+  const noStore = /^[ \t]*no-store[ \t]*$/i;
+  let start = 0;
+  let quoted = false;
+
+  // RFC 9111 directives are comma-separated, but quoted arguments can contain
+  // commas and escaped quotes. Only match a bare directive at the list level.
+  for (let index = 0; index < cacheControl.length; index++) {
+    const character = cacheControl[index];
+    if (quoted && character === "\\") {
+      index++;
+    } else if (character === '"') {
+      quoted = !quoted;
+    } else if (!quoted && character === ",") {
+      if (noStore.test(cacheControl.slice(start, index))) return true;
+      start = index + 1;
+    }
+  }
+
+  return !quoted && noStore.test(cacheControl.slice(start));
+}
+
 function buildResponseHeaders(backendResponse: Response): Headers {
   const headers = new Headers();
   const contentType = backendResponse.headers.get("content-type");
   if (contentType) headers.set("Content-Type", contentType);
+  if (hasNoStoreDirective(backendResponse.headers.get("cache-control"))) {
+    headers.set("Cache-Control", "no-store");
+  }
 
   for (const cookie of getSetCookieHeaders(backendResponse.headers)) {
     headers.append("Set-Cookie", cookie);
@@ -240,7 +277,13 @@ async function handler(request: Request, context: RouteContext) {
   const backendUrl = buildBackendUrl(path, requestUrl.search, isAdminBackendPath);
   const supportReply = isSupportReplyPost(method, path);
   const listingRevisionWrite = isListingRevisionWrite(method, path);
-  const rejectRedirect = supportReply || listingRevisionWrite;
+  const campaignWrite = isCampaignWrite(method, path);
+  if (campaignWrite) {
+    const expectedActor = request.headers.get("X-Campaign-Expected-Actor");
+    // Backend validates the client-captured actor, including missing or coalesced duplicate values.
+    if (expectedActor !== null) headers.set("X-Campaign-Expected-Actor", expectedActor);
+  }
+  const rejectRedirect = supportReply || listingRevisionWrite || campaignWrite;
   let backendResponse: Response;
   try {
     backendResponse = await fetch(backendUrl, {
@@ -252,6 +295,12 @@ async function handler(request: Request, context: RouteContext) {
     });
   } catch (error) {
     if (!rejectRedirect) throw error;
+    if (campaignWrite) {
+      return NextResponse.json(
+        { status: "fail", message: "We could not confirm whether the banner change completed." },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
+      );
+    }
     return NextResponse.json(
       { status: "fail", message: supportReply
         ? "We could not confirm whether your reply was sent."
@@ -260,10 +309,23 @@ async function handler(request: Request, context: RouteContext) {
     );
   }
 
+  const responseHeaders = buildResponseHeaders(backendResponse);
+  if (campaignWrite && (backendResponse.status === 412 || backendResponse.status === 428)) {
+    // A confirmed actor precondition must reach the editor even if upstream sent an unreadable body.
+    responseHeaders.set("Content-Type", "application/json");
+    responseHeaders.set("Cache-Control", "no-store");
+    // Discard the unread body without letting cancellation change the confirmed status.
+    void backendResponse.body?.cancel().catch(() => undefined);
+    return NextResponse.json(
+      { status: "fail", message: "Refresh the campaign editor before making another change." },
+      { status: backendResponse.status, headers: responseHeaders },
+    );
+  }
+
   return new NextResponse(backendResponse.body, {
     status: backendResponse.status,
     statusText: backendResponse.statusText,
-    headers: buildResponseHeaders(backendResponse),
+    headers: responseHeaders,
   });
 }
 

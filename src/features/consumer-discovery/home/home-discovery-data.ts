@@ -1,4 +1,5 @@
 import { getHomeCategories } from "@/services/categories";
+import { getHomepageBanner, type PublicHomepageBanner } from "@/services/homepage-banners";
 import {
   getHomeExploreMore,
   getHomeMostViewed,
@@ -8,6 +9,7 @@ import type { HomeCategorySummary } from "@/types/category";
 import type { Product } from "@/types/product";
 
 export type HomeDiscoveryData = {
+  campaign: PublicHomepageBanner | null;
   categories: readonly HomeCategorySummary[];
   newArrivals: readonly Product[];
   mostViewed: readonly Product[];
@@ -15,6 +17,7 @@ export type HomeDiscoveryData = {
 };
 
 export type HomeDiscoveryDependencies = {
+  campaign?: () => Promise<PublicHomepageBanner | null>;
   categories: () => Promise<HomeCategorySummary[]>;
   newArrivals: () => Promise<Product[]>;
   mostViewed: () => Promise<Product[]>;
@@ -34,6 +37,7 @@ export class RequiredHomeDiscoveryError extends Error {
 }
 
 const defaultDependencies: HomeDiscoveryDependencies = {
+  campaign: getHomepageBanner,
   categories: getHomeCategories,
   newArrivals: () => getHomeNewArrivals(10),
   mostViewed: () => getHomeMostViewed(10),
@@ -60,12 +64,13 @@ function addProductKeys(target: Set<string>, products: readonly Product[]) {
 export async function loadHomeDiscoveryData(
   dependencies: HomeDiscoveryDependencies = defaultDependencies,
 ): Promise<HomeDiscoveryData> {
-  const [categoriesResult, newArrivalsResult, mostViewedResult, exploreMoreResult] =
+  const [categoriesResult, newArrivalsResult, mostViewedResult, exploreMoreResult, campaignResult] =
     await Promise.allSettled([
       dependencies.categories(),
       dependencies.newArrivals(),
       dependencies.mostViewed(),
       dependencies.exploreMore(),
+      dependencies.campaign?.(),
     ] as const);
 
   if (categoriesResult.status === "rejected") {
@@ -85,7 +90,13 @@ export async function loadHomeDiscoveryData(
 
   const exploreMore = preferUnseenProducts(exploreMoreResult.value, seen, 4);
 
+  if (campaignResult.status === "rejected") {
+    // Keep diagnostics server-side without logging an upstream response or URL.
+    console.warn("[storefront] Homepage campaign unavailable; using editorial content.");
+  }
+
   return {
+    campaign: campaignResult.status === "fulfilled" ? campaignResult.value ?? null : null,
     categories: categoriesResult.value,
     newArrivals,
     mostViewed,
