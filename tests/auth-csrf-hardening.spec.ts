@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { POST as proxyPost } from "../src/app/api/backend/[...path]/route";
+import { GET as proxyGet, PATCH as proxyPatch, POST as proxyPost } from "../src/app/api/backend/[...path]/route";
 import { login } from "../src/services/auth";
 import {
   apiClient,
@@ -14,6 +14,7 @@ type FetchCall = {
   method: string;
   headers: Headers;
   body?: BodyInit | null;
+  redirect?: RequestRedirect;
 };
 
 type Deferred<T> = {
@@ -55,7 +56,7 @@ function installFetchMock(handler: (url: URL, init: RequestInit) => Promise<Resp
       for (const [key, value] of new Headers(init.headers)) headers.set(key, value);
     }
     const method = (init?.method ?? request?.method ?? "GET").toUpperCase();
-    calls.push({ url: url.toString(), method, headers, body: init?.body ?? null });
+    calls.push({ url: url.toString(), method, headers, body: init?.body ?? null, redirect: init?.redirect });
     return handler(url, init ?? {});
   }) as typeof fetch;
 
@@ -243,6 +244,87 @@ test("proxy uses incoming CSRF pair without duplicate bootstrap and forwards the
     );
     expect(response.status).toBe(200);
     expect(fetchMock.calls.map((call) => `${call.method} ${new URL(call.url).pathname}`)).toEqual(["POST /api/v1/cart/items"]);
+  } finally {
+    fetchMock.restore();
+  }
+});
+
+const supportReplyPath = ["admin", "support", "tickets", "ticket-1", "messages"];
+
+function supportProxyRequest(method: string, segments = supportReplyPath) {
+  const path = segments.map(encodeURIComponent).join("/");
+  return new Request(`http://frontend.test/api/backend/${path}`, {
+    method,
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: "_csrf=incoming-csrf",
+      "X-CSRF-Token": "incoming-csrf",
+    },
+    body: method === "GET" ? undefined : JSON.stringify({ message: "Synthetic support reply" }),
+  });
+}
+
+test("proxy Support reply rejects upstream redirects and preserves 201 and 409 responses", async () => {
+  for (const [status, payload] of [
+    [201, { status: "success", data: { message: { id: "reply-1" } } }],
+    [409, { status: "fail", message: "Ticket changed before the reply was recorded" }],
+  ] as const) {
+    const fetchMock = installFetchMock((url, init) => {
+      expect(url.pathname).toBe("/api/v1/admin/support/tickets/ticket-1/messages");
+      expect(init.redirect).toBe("error");
+      expect(new Headers(init.headers).get("X-CSRF-Token")).toBe("incoming-csrf");
+      expect(JSON.parse(new TextDecoder().decode(init.body as ArrayBuffer))).toEqual({ message: "Synthetic support reply" });
+      return jsonResponse(payload, status);
+    });
+
+    try {
+      const response = await proxyPost(supportProxyRequest("POST"), { params: Promise.resolve({ path: supportReplyPath }) });
+      expect(response.status).toBe(status);
+      expect(await response.json()).toEqual(payload);
+      expect(fetchMock.calls.map(({ method }) => method)).toEqual(["POST"]);
+    } finally {
+      fetchMock.restore();
+    }
+  }
+});
+
+test("proxy Support reply returns a sanitized unknown outcome on upstream fetch rejection", async () => {
+  const fetchMock = installFetchMock(() => {
+    throw new TypeError("Synthetic private upstream diagnostic");
+  });
+  try {
+    const response = await proxyPost(supportProxyRequest("POST"), { params: Promise.resolve({ path: supportReplyPath }) });
+    expect(response.status).toBe(502);
+    expect(response.headers.get("Location")).toBeNull();
+    expect(await response.json()).toEqual({ status: "fail", message: "We could not confirm whether your reply was sent." });
+    expect(fetchMock.calls.map(({ method, redirect }) => ({ method, redirect }))).toEqual([
+      { method: "POST", redirect: "error" },
+    ]);
+  } finally {
+    fetchMock.restore();
+  }
+});
+
+test("proxy leaves redirect behavior unchanged outside the exact Support reply POST", async () => {
+  const scope = [
+    ["GET", supportReplyPath, proxyGet],
+    ["PATCH", [...supportReplyPath.slice(0, -1), "status"], proxyPatch],
+    ["POST", ["vendor", ...supportReplyPath.slice(1)], proxyPost],
+    ["POST", ["admin/support", ...supportReplyPath.slice(2)], proxyPost],
+    ["POST", [...supportReplyPath, "extra"], proxyPost],
+  ] as const;
+  const fetchMock = installFetchMock((_url, init) => {
+    expect(init.redirect).toBeUndefined();
+    return jsonResponse({ status: "success" });
+  });
+
+  try {
+    for (const [method, segments, handler] of scope) {
+      const path = [...segments];
+      const response = await handler(supportProxyRequest(method, path), { params: Promise.resolve({ path }) });
+      expect(response.status).toBe(200);
+    }
+    expect(fetchMock.calls.map(({ method }) => method)).toEqual(scope.map(([method]) => method));
   } finally {
     fetchMock.restore();
   }

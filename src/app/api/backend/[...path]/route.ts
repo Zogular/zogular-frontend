@@ -152,6 +152,13 @@ function stripAuthCookies(cookieHeader: string): string {
     .trim();
 }
 
+function isSupportReplyPost(method: string, path: string[]): boolean {
+  const [area, feature, resource, ticketId, action] = path;
+  return method === "POST" && path.length === 5 && area === "admin" &&
+    feature === "support" && resource === "tickets" && action === "messages" &&
+    Boolean(ticketId && ticketId !== "." && ticketId !== ".." && !/[\\/]/.test(ticketId));
+}
+
 async function handler(request: Request, context: RouteContext) {
   const params = await context.params;
   const path = params.path ?? [];
@@ -207,12 +214,23 @@ async function handler(request: Request, context: RouteContext) {
     : await request.arrayBuffer();
 
   const backendUrl = buildBackendUrl(path, requestUrl.search, isAdminBackendPath);
-  const backendResponse = await fetch(backendUrl, {
-    method,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  const supportReply = isSupportReplyPost(method, path);
+  let backendResponse: Response;
+  try {
+    backendResponse = await fetch(backendUrl, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      ...(supportReply ? { redirect: "error" } : {}),
+    });
+  } catch (error) {
+    if (!supportReply) throw error;
+    return NextResponse.json(
+      { status: "fail", message: "We could not confirm whether your reply was sent." },
+      { status: 502 },
+    );
+  }
 
   return new NextResponse(backendResponse.body, {
     status: backendResponse.status,
