@@ -17,16 +17,21 @@ const ok = (data: unknown, status = 200) => Response.json({ status: "success", d
 const originalFetch = globalThis.fetch;
 
 // Exercise the shared transport without a real server or authenticated session.
-function mockApi(respond: (url: URL, init?: RequestInit) => Response) {
+function mockApi(respond: (url: URL, init?: RequestInit) => Response, requests?: string[]) {
   const calls: Array<{ url: URL; init?: RequestInit }> = [];
   globalThis.fetch = async (input, init) => {
     const url = new URL(String(input));
+    requests?.push(`${init?.method ?? "GET"} ${url.pathname}${url.search}`);
     if (url.pathname.endsWith("/auth/csrf-token")) return Response.json({ csrfToken: "fixture-csrf" });
     calls.push({ url, init });
     return respond(url, init);
   };
   return calls;
 }
+
+const attemptsPath = `/vendor/products/${productId}/listing-revisions/attempts`;
+const openAttempt = { submissionKey, baseVersion: 2, status: "OPEN" };
+const settledAttempt = { ...openAttempt, status: "PENDING_REVIEW", revisionId };
 
 test.beforeEach(resetApiClientSecurityStateForTests);
 test.afterEach(() => { globalThis.fetch = originalFetch; });
@@ -102,5 +107,88 @@ for (const status of [401, 403, 404, 409, 500]) {
     expect(String(failure)).not.toContain("internal-only");
     expect(calls).toHaveLength(1);
     expect(calls[0].url.pathname).toMatch(/\/vendor\/products\/[^/]+\/listing-revisions$/);
+  });
+}
+
+test("reads an absent or OPEN outstanding attempt with no-store and no exact-key query", async () => {
+  let attempt: typeof openAttempt | null = null;
+  const requests: string[] = [];
+  const calls = mockApi(() => ok({ attempt }), requests);
+  await expect(seller.outstandingAttempt(productId)).resolves.toBeNull();
+  attempt = openAttempt;
+  await expect(seller.outstandingAttempt(productId)).resolves.toEqual(openAttempt);
+  expect(requests).toEqual(Array(2).fill(`GET /api/v1${attemptsPath}`));
+  for (const { init } of calls) {
+    expect(init).toMatchObject({ cache: "no-store" });
+    expect(init?.body).toBeUndefined();
+  }
+});
+
+test("looks up the exact UUID query and rejects a mismatched returned attempt key", async () => {
+  const key = submissionKey.toUpperCase();
+  let attempt = settledAttempt;
+  const requests: string[] = [];
+  const calls = mockApi(() => ok({ attempt }), requests);
+  await expect(seller.exactAttempt(productId, key)).resolves.toEqual(settledAttempt);
+  attempt = { ...settledAttempt, submissionKey: revisionId };
+  await expect(seller.exactAttempt(productId, key)).rejects.toMatchObject({ status: 502, details: undefined });
+  await expect(seller.exactAttempt(productId, `${key}&submissionKey=${revisionId}`))
+    .rejects.toMatchObject({ status: 400 });
+  expect(requests).toEqual(Array(2).fill(`GET /api/v1${attemptsPath}?${new URLSearchParams({ submissionKey: key })}`));
+  for (const { init } of calls) expect(init?.cache).toBe("no-store");
+});
+
+test("reserves with changes and base only and rejects malformed or mismatched reservations", async () => {
+  const reservation = { changes: { price: 130 }, baseVersion: 2 };
+  let attempt = openAttempt;
+  const requests: string[] = [];
+  const calls = mockApi(() => ok({ attempt }, 201), requests);
+  await expect(seller.reserveAttempt(productId, reservation)).resolves.toEqual(openAttempt);
+  attempt = { ...openAttempt, submissionKey: "invalid" };
+  await expect(seller.reserveAttempt(productId, reservation)).rejects.toMatchObject({ status: 502 });
+  attempt = { ...openAttempt, baseVersion: 3 };
+  await expect(seller.reserveAttempt(productId, reservation)).rejects.toMatchObject({ status: 502 });
+  await expect(seller.reserveAttempt(productId, submission)).rejects.toMatchObject({ status: 400 });
+  expect(requests).toEqual(["GET /api/v1/auth/csrf-token", ...Array(3).fill(`POST /api/v1${attemptsPath}`)]);
+  for (const { init } of calls) {
+    expect(JSON.parse(String(init?.body))).toEqual(reservation);
+    expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("fixture-csrf");
+  }
+});
+
+test("settles the exact attempt by PUT with CSRF and validates the final receipt", async () => {
+  const path = `${attemptsPath}/${submissionKey}/settlement`;
+  let attempt: unknown = settledAttempt;
+  const requests: string[] = [];
+  const calls = mockApi(() => ok({ attempt }), requests);
+  await expect(seller.settleAttempt(productId, submissionKey)).resolves.toEqual(settledAttempt);
+  attempt = { ...openAttempt, status: "RETIRED" };
+  await expect(seller.settleAttempt(productId, submissionKey)).resolves.toEqual(attempt);
+  for (const bad of [
+    openAttempt,
+    { ...settledAttempt, submissionKey: revisionId },
+    { ...openAttempt, status: "PENDING_REVIEW" },
+  ]) {
+    attempt = bad;
+    await expect(seller.settleAttempt(productId, submissionKey)).rejects.toMatchObject({ status: 502, details: undefined });
+  }
+  expect(requests).toEqual(["GET /api/v1/auth/csrf-token", ...Array(5).fill(`PUT /api/v1${path}`)]);
+  for (const { init } of calls) {
+    expect(JSON.parse(String(init?.body))).toEqual({});
+    expect(new Headers(init?.headers).get("X-CSRF-Token")).toBe("fixture-csrf");
+  }
+});
+
+for (const status of [401, 403, 409, 500, "transport"] as const) {
+  test(`settlement ${status} sanitizes the failure without refresh or retry`, async () => {
+    const requests: string[] = [];
+    mockApi(() => {
+      if (status === "transport") throw new TypeError("internal-only transport diagnostic");
+      return Response.json({ message: "csrf internal-only", stack: "internal-only" }, { status });
+    }, requests);
+    const failure = await seller.settleAttempt(productId, submissionKey).catch((error: unknown) => error);
+    expect(failure).toMatchObject({ status: status === "transport" ? 503 : status, details: undefined });
+    expect(String(failure)).not.toContain("internal-only");
+    expect(requests).toEqual(["GET /api/v1/auth/csrf-token", `PUT /api/v1${attemptsPath}/${submissionKey}/settlement`]);
   });
 }
