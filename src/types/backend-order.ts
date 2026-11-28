@@ -66,4 +66,7 @@ export interface BackendOrder {
   createdAt: string;
   updatedAt: string;
   items: BackendOrderItem[];
+  buyerActions?: {
+    canCancel?: unknown;
+  };
 }
