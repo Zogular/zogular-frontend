@@ -134,7 +134,7 @@ export default function CartPage() {
               <div className="mt-4 space-y-2.5 text-sm">
                 <div className="flex items-baseline justify-between gap-3 font-medium text-zinc-500">
                   <span>Items subtotal ({itemCount} {itemCount === 1 ? "item" : "items"})</span>
-                  <span data-testid="cart-items-subtotal" className="text-base font-black text-[#FF6B00]">{formatCurrency(totalAmount)}</span>
+                  <span data-testid="cart-items-subtotal" className="text-base font-black text-zinc-900">{formatCurrency(totalAmount)}</span>
                 </div>
                 <div className="flex items-baseline justify-between gap-3 font-medium text-zinc-500">
                   <span>Delivery</span>
@@ -144,7 +144,7 @@ export default function CartPage() {
                   Items subtotal only. Final delivery fee and any checkout charges are confirmed at checkout after you choose your delivery area.
                 </p>
               </div>
-              <Button asChild className="mt-5 h-11 w-full rounded-xl bg-[#009E49] font-bold text-white hover:bg-[#00853d]">
+              <Button asChild className="mt-5 h-11 w-full rounded-xl bg-[#00853d] font-bold text-white hover:bg-[#007d3a]">
                 <Link href="/checkout">Proceed to checkout</Link>
               </Button>
             </aside>

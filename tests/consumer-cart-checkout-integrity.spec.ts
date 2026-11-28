@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Request } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { createServer } from "node:http";
@@ -940,6 +940,54 @@ async function advanceMobileCheckoutToReview(page: Page) {
   if (await reviewOrder.isVisible()) await reviewOrder.click();
 }
 
+async function expectTextContrast(text: Locator) {
+  await expect(text).toBeVisible();
+  await expect.poll(() => text.evaluate((element) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const pixel = canvas.getContext("2d", { willReadFrequently: true });
+    if (!pixel) throw new Error("A browser color sample is required.");
+    const solidLayers: string[] = [];
+    const foreground = getComputedStyle(element).color;
+    let opacity = 1;
+    const paint = (color: string) => {
+      pixel.fillStyle = color;
+      pixel.fillRect(0, 0, 1, 1);
+    };
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.backgroundImage !== "none") throw new Error("Contrast fixture expects solid CSS background layers.");
+      opacity *= Number(style.opacity);
+      solidLayers.push(style.backgroundColor);
+      pixel.clearRect(0, 0, 1, 1);
+      paint(style.backgroundColor);
+      if (pixel.getImageData(0, 0, 1, 1).data[3] === 255 || style.backdropFilter !== "none") break;
+    }
+    const luminance = () => {
+      const [red, green, blue] = pixel.getImageData(0, 0, 1, 1).data;
+      const linear = (channel: number) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+    };
+    // A translucent drawer can sit over arbitrary content: bound its surface with both backdrop extremes.
+    const samples = ["#000", "#fff"].map((backdrop) => {
+      paint(backdrop);
+      for (const color of [...solidLayers].reverse()) paint(color);
+      const background = luminance();
+      pixel.globalAlpha = opacity;
+      paint(foreground);
+      pixel.globalAlpha = 1;
+      return { background, text: luminance() };
+    });
+    if ((samples[0].text - samples[0].background) * (samples[1].text - samples[1].background) <= 0) return 1;
+    return Math.min(...samples.map(({ background, text: foreground }) =>
+      (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05),
+    ));
+  }), { message: "Visible text must contrast at least 4.5:1 against its rendered surface." }).toBeGreaterThanOrEqual(4.5);
+}
+
 function isProtectedCheckoutRequest(request: Request): boolean {
   const url = new URL(request.url());
   return url.pathname.endsWith("/user/addresses")
@@ -1054,6 +1102,8 @@ test.describe("guest stock route", () => {
         }
       };
       await expect(subtotal).toHaveText("K500");
+      await expectTextContrast(subtotal);
+      await expectTextContrast(page.getByRole("link", { name: "Proceed to checkout", exact: true }));
       await expect(plus.first()).toBeDisabled();
       await verifyNote(plus.first(), "Only 1 available", "cart-single");
       await expect(plus.last()).not.toHaveAttribute("aria-describedby", /.+/);
@@ -1080,6 +1130,9 @@ test.describe("guest stock route", () => {
         await expect(drawerSubtotal).toHaveText("K1,000");
         await expect(drawer.getByText("K1,000", { exact: true })).toHaveCount(1);
         await expect(checkout).toHaveAttribute("href", "/checkout");
+        await page.mouse.move(0, 0);
+        await expectTextContrast(drawerSubtotal);
+        await expectTextContrast(checkout);
         await checkout.focus();
         await expect(checkout).toBeFocused();
         const bounds = await drawer.boundingBox();
@@ -1282,13 +1335,22 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
         localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
       });
       const diagnostics = collectDiagnostics(page);
+      const inspectQuoteStates = viewport.width === 1440;
+      const releaseAddresses = deferred<void>();
+      const releaseQuote = deferred<void>();
       await page.route("**/api/backend/**", async (route) => {
         const request = route.request();
         const url = new URL(request.url());
         if (url.pathname.endsWith("/user/me")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(userPayload()) });
         if (url.pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(cartPayload()) });
-        if (url.pathname.endsWith("/user/addresses")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(addressPayload()) });
-        if (url.pathname.endsWith("/orders/quote")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotePayload()) });
+        if (url.pathname.endsWith("/user/addresses")) {
+          if (inspectQuoteStates) await releaseAddresses.promise;
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(addressPayload()) });
+        }
+        if (url.pathname.endsWith("/orders/quote")) {
+          if (inspectQuoteStates) await releaseQuote.promise;
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotePayload()) });
+        }
         if (url.pathname.endsWith("/wishlist")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", results: 0, pagination: { total: 0, page: 1, limit: 100, pages: 0 }, data: { items: [] } }) });
         if (url.pathname.endsWith("/auth/csrf-token")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
@@ -1304,8 +1366,21 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
       }
       await page.getByRole("link", { name: "Proceed to Checkout" }).focus();
       await expect(page.getByRole("link", { name: "Proceed to Checkout" })).toBeFocused();
-      await page.goto(`${baseUrl}/checkout`, { waitUntil: "networkidle" });
-      await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
+      const dueNow = page.getByTestId("checkout-delivery-due-now");
+      try {
+        await page.goto(`${baseUrl}/checkout`, { waitUntil: inspectQuoteStates ? "domcontentloaded" : "networkidle" });
+        await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
+        if (inspectQuoteStates) {
+          await expect(dueNow).toHaveText("Pending");
+          await expectTextContrast(dueNow);
+          releaseAddresses.resolve();
+          await expect(dueNow).toHaveText("...");
+          await expectTextContrast(dueNow);
+        }
+      } finally {
+        releaseAddresses.resolve();
+        releaseQuote.resolve();
+      }
       await advanceMobileCheckoutToReview(page);
       await expect.poll(async () => page.getByText("K550", { exact: true }).evaluateAll((elements) => (
         elements.filter((element) => {
@@ -1314,6 +1389,12 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
           return rectangle.width > 0 && rectangle.height > 0 && style.visibility !== "hidden";
         }).length
       ))).toBeGreaterThan(0);
+      await expect(dueNow).toHaveText("K50");
+      await expectTextContrast(dueNow);
+      const placeOrder = page.getByRole("button", { name: "Place Order Now", exact: true });
+      await expect(placeOrder).toBeEnabled();
+      await page.mouse.move(0, 0);
+      await expectTextContrast(placeOrder);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
       await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/checkout-${viewport.name}.png`), fullPage: true });
