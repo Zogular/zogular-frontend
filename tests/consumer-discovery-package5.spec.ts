@@ -279,9 +279,33 @@ test.describe("Storefront navbar and empty catalog", () => {
     await expect(empty.locator('a[href="/products"]')).toHaveCount(0);
     const categories = empty.getByRole("link", { name: "Browse categories" });
     await expect(categories).toHaveAttribute("href", "/categories");
+    const bottomNav = page.getByRole("navigation", { name: "Mobile navigation" });
+    await expect(bottomNav).toBeVisible();
+    const actionClearsNav = async () => {
+      const navBounds = await bottomNav.boundingBox();
+      if (!navBounds) return false;
+      return categories.evaluate((link, navTop) => {
+        const box = link.getBoundingClientRect();
+        const hit = document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2);
+        return box.top >= 0 && box.bottom <= navTop && link.contains(hit);
+      }, navBounds.y);
+    };
     await categories.scrollIntoViewIfNeeded();
+    await expect.poll(actionClearsNav).toBe(true);
+    const navBounds = await bottomNav.boundingBox();
+    if (!navBounds) throw new Error("Expected the fixed mobile navigation");
+    // A target under the bar is still inside the browser viewport.
+    await categories.evaluate((link, navTop) => {
+      window.scrollBy(0, link.getBoundingClientRect().top - navTop - 4);
+    }, navBounds.y);
+    await expect.poll(actionClearsNav).toBe(false);
+    await page.getByRole("button", { name: /^Sort/ })
+      .evaluate(button => button.focus({ preventScroll: true }));
+    await page.keyboard.press("Tab");
+    await expect(categories).toBeFocused();
+    await expect.poll(actionClearsNav).toBe(true);
     await page.screenshot({ path: testInfo.outputPath("empty-catalog-320.png"), animations: "disabled" });
-    await categories.click();
+    await page.keyboard.press("Enter");
     await expect(page).toHaveURL(`${frontendBaseUrl}/categories`);
   });
 });
