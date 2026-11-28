@@ -250,6 +250,7 @@ test("proxy uses incoming CSRF pair without duplicate bootstrap and forwards the
 });
 
 const supportReplyPath = ["admin", "support", "tickets", "ticket-1", "messages"];
+const supportReplyAlias = ["AdMiN", "SuPpOrT", "TiCkEtS", "Ticket-Ab%2F9", "MeSsAgEs"];
 
 function supportProxyRequest(method: string, segments = supportReplyPath) {
   const path = segments.map(encodeURIComponent).join("/");
@@ -293,12 +294,15 @@ test("proxy Support reply returns a sanitized unknown outcome on upstream fetch 
     throw new TypeError("Synthetic private upstream diagnostic");
   });
   try {
-    const response = await proxyPost(supportProxyRequest("POST"), { params: Promise.resolve({ path: supportReplyPath }) });
-    expect(response.status).toBe(502);
-    expect(response.headers.get("Location")).toBeNull();
-    expect(await response.json()).toEqual({ status: "fail", message: "We could not confirm whether your reply was sent." });
-    expect(fetchMock.calls.map(({ method, redirect }) => ({ method, redirect }))).toEqual([
-      { method: "POST", redirect: "error" },
+    for (const path of [supportReplyPath, supportReplyAlias]) {
+      const response = await proxyPost(supportProxyRequest("POST", path), { params: Promise.resolve({ path }) });
+      expect(response.status).toBe(502);
+      expect(response.headers.get("Location")).toBeNull();
+      expect(await response.json()).toEqual({ status: "fail", message: "We could not confirm whether your reply was sent." });
+    }
+    expect(fetchMock.calls.map(({ url, method, redirect }) => ({ path: new URL(url).pathname, method, redirect }))).toEqual([
+      { path: "/api/v1/admin/support/tickets/ticket-1/messages", method: "POST", redirect: "error" },
+      { path: "/api/v1/AdMiN/SuPpOrT/TiCkEtS/Ticket-Ab%252F9/MeSsAgEs", method: "POST", redirect: "error" },
     ]);
   } finally {
     fetchMock.restore();
@@ -308,10 +312,13 @@ test("proxy Support reply returns a sanitized unknown outcome on upstream fetch 
 test("proxy leaves redirect behavior unchanged outside the exact Support reply POST", async () => {
   const scope = [
     ["GET", supportReplyPath, proxyGet],
+    ["GET", supportReplyAlias, proxyGet],
     ["PATCH", [...supportReplyPath.slice(0, -1), "status"], proxyPatch],
     ["POST", ["vendor", ...supportReplyPath.slice(1)], proxyPost],
-    ["POST", ["admin/support", ...supportReplyPath.slice(2)], proxyPost],
-    ["POST", [...supportReplyPath, "extra"], proxyPost],
+    ["POST", ["AdMiN/SuPpOrT", ...supportReplyAlias.slice(2)], proxyPost],
+    ["POST", ["AdMiN", "%53uPpOrT", ...supportReplyAlias.slice(2)], proxyPost],
+    ["POST", ["AdMiN", "SuPpOrT", "tic\u212Aets", ...supportReplyAlias.slice(3)], proxyPost],
+    ["POST", [...supportReplyAlias, "extra"], proxyPost],
   ] as const;
   const fetchMock = installFetchMock((_url, init) => {
     expect(init.redirect).toBeUndefined();
