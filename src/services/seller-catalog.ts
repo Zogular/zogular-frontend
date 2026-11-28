@@ -1,4 +1,5 @@
 import { ApiError, apiClient } from "@/services/api";
+import { z } from "zod";
 import { type ProductAttributeInput } from "@/services/categories-api";
 import {
   isSellerProductBuyerVisibleStatus,
@@ -65,6 +66,12 @@ export interface SellerProductListing {
   subcategorySlug: string;
   backendCategory?: BackendCategoryRef;
   status: SellerProductStatus;
+  /** Raw edit authority facts; the display status can normalize unknown values to draft. */
+  revisionEditSource?: {
+    status: BackendProductStatus | null;
+    isApproved: boolean | null;
+    hasApprovalDate: boolean | null;
+  };
   price: number;
   salePrice: number | null;
   stock: number;
@@ -96,6 +103,15 @@ export interface SellerProductListing {
 }
 
 export type SellerProductStockState = "in_stock" | "low_stock" | "out_of_stock";
+const sellerSnapshotTimestamp = z.iso.datetime();
+
+export function isSellerLegacyDraftSnapshot(product: Pick<SellerProductListing, "updatedAt" | "revisionEditSource">) {
+  const source = product.revisionEditSource;
+  return Boolean(source &&
+    (source.status === "DRAFT" || source.status === "NEEDS_CHANGES" || source.status === "REJECTED") &&
+    source.isApproved === false && source.hasApprovalDate === false &&
+    sellerSnapshotTimestamp.safeParse(product.updatedAt).success);
+}
 export type SellerProductStatusGroup = "needs_changes";
 export type SellerProductSortField = "createdAt" | "updatedAt" | "title" | "price" | "stock";
 export type SellerProductSortOrder = "asc" | "desc";
@@ -754,6 +770,11 @@ export async function updateSellerCatalogProduct(
 ): Promise<SellerProductListing> {
   const currentProduct = await fetchSellerCatalogProductById(productId);
   const editSnapshot = options?.editSnapshot;
+  if (process.env.NEXT_PUBLIC_PRODUCT_LISTING_REVISIONS_ENABLED === "true" && editSnapshot &&
+    (!isSellerLegacyDraftSnapshot(currentProduct) || !sellerSnapshotTimestamp.safeParse(editSnapshot.updatedAt).success ||
+      editSnapshot.status !== currentProduct.status || editSnapshot.updatedAt !== currentProduct.updatedAt)) {
+    throw new ApiError("This listing changed or could not be confirmed. Reopen it before saving.", 409);
+  }
   const submitPublicEdit = !!editSnapshot && isSellerProductBuyerVisibleStatus(editSnapshot.status);
   if (
     editSnapshot &&
@@ -1027,6 +1048,12 @@ function normalizeBackendSellerProduct(product: BackendVendorProduct): SellerPro
       product.subcategorySlug || slugifySellerValue(subcategoryName),
     backendCategory: product.categoryRef ?? undefined,
     status,
+    revisionEditSource: {
+      status: status !== "draft" || product.status === "DRAFT" ? product.status : null,
+      isApproved: typeof product.isApproved === "boolean" ? product.isApproved : null,
+      hasApprovalDate: product.approvedAt === null ? false
+        : typeof product.approvedAt === "string" && Number.isFinite(Date.parse(product.approvedAt)) ? true : null,
+    },
     price: product.price,
     salePrice: product.salePrice ?? null,
     stock: product.stock ?? 0,
