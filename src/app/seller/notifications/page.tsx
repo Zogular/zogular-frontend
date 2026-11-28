@@ -9,21 +9,16 @@ export default function SellerNotificationsPage() {
   const canReceiveOrders = useSellerCapability("canReceiveOrders");
 
   return (
-    <div className="mx-auto flex min-w-0 max-w-250 animate-in flex-col gap-6 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:pb-12">
-      <div>
-        <h1 className="flex items-center gap-3 text-2xl font-black tracking-tight text-zinc-900 md:text-3xl">
-          Notifications
-        </h1>
-        <p className="mt-1 text-sm font-medium text-zinc-500">
-          Seller alerts will appear here when Zogular enables notifications.
-        </p>
-      </div>
+    <div className="mx-auto flex min-w-0 max-w-250 animate-in flex-col gap-4 fade-in slide-in-from-bottom-4 duration-500 pb-24 md:gap-6 md:pb-12">
+      <h1 className="text-2xl font-black text-zinc-900 md:text-3xl">
+        Notifications
+      </h1>
 
       <section
         aria-labelledby="seller-notifications-pending-title"
-        className="rounded-3xl border border-dashed border-zinc-200 bg-white/70 p-6 text-center shadow-sm md:p-10"
+        className="rounded-3xl border border-dashed border-zinc-200 bg-white/70 p-4 text-center shadow-sm md:p-10"
       >
-        <div className="mx-auto mb-4 flex h-14 w-14 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400">
+        <div aria-hidden="true" className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-2xl bg-zinc-100 text-zinc-400 md:mb-4 md:h-14 md:w-14">
           <Inbox className="h-6 w-6" />
         </div>
         <h2 id="seller-notifications-pending-title" className="text-base font-black text-zinc-900">
@@ -32,7 +27,7 @@ export default function SellerNotificationsPage() {
         <p className="mx-auto mt-2 max-w-lg text-sm font-medium leading-relaxed text-zinc-500">
           Order, payout, inventory, and support alerts will show here after notifications are connected.
         </p>
-        <div className="mt-5 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        <div className="mt-4 flex flex-col items-center justify-center gap-2 sm:flex-row md:mt-5 md:gap-3">
           <Button asChild className="h-11 rounded-xl bg-zinc-900 px-5 text-sm font-bold text-white hover:bg-zinc-800">
             <Link href="/seller/support">
               <LifeBuoy className="mr-2 h-4 w-4" />

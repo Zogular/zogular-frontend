@@ -395,7 +395,14 @@ for (const status of SELLER_STATUSES) {
         const ordersLink = content.getByRole("link", { name: "View orders", exact: true });
         await expect(ordersLink).toHaveAttribute("href", "/seller/orders");
         if (viewport.width === 320) {
-          await ordersLink.evaluate(el => el.scrollIntoView({ block: "center", behavior: "instant" }));
+          for (const action of [supportLink, ordersLink]) {
+            await expect.poll(() => action.evaluate(el => {
+              const { left, width, top, bottom } = el.getBoundingClientRect();
+              const x = left + width / 2;
+              return window.scrollY === 0 && [top + 1, bottom - 1].every(y => el.contains(document.elementFromPoint(x, y)));
+            })).toBe(true);
+          }
+          await attachScreenshot(page, testInfo, "notification-actions-initial-320.png");
           await supportLink.focus();
           await page.keyboard.press("Tab");
           await expect(ordersLink).toBeFocused();
