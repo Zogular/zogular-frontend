@@ -175,6 +175,15 @@ body:has(.auth-viewport) {
   background: #071c13;
 }
 
+@media (width < 48rem) {
+  html:has(.consumer-mobile-bottom-nav) {
+    --consumer-mobile-nav-height: 4rem;
+    --consumer-mobile-nav-clearance: calc(var(--consumer-mobile-nav-height) + 1px + env(safe-area-inset-bottom));
+    /* Keep focused links and browser scroll targets above the fixed bar. */
+    scroll-padding-bottom: var(--consumer-mobile-nav-clearance);
+  }
+}
+
 .auth-viewport {
   height: 100dvh;
   min-height: 100svh;
