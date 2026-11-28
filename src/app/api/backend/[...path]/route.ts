@@ -39,6 +39,16 @@ type RouteContext = {
   params: Promise<{ path?: string[] }>;
 };
 
+function isCampaignWrite(method: string, path: string[]): boolean {
+  const [area, feature, resource, id, action] = path;
+  // Express matches fixed route segments case-insensitively; leave the banner ID untouched.
+  if (!/^admin$/i.test(area) || !/^content$/i.test(feature) || !/^homepage-banners$/i.test(resource)) return false;
+  if (path.length === 3) return method === "POST";
+  if (!id || id === "." || id === ".." || /[\\/]/.test(id)) return false;
+  return (path.length === 4 && method === "PATCH")
+    || (path.length === 5 && method === "POST" && /^(publish|pause)$/i.test(action));
+}
+
 function buildBackendUrl(path: string[], search: string, isAdmin: boolean): string {
   const base = getBaseUrl(isAdmin).replace(/\/$/, "");
   const endpoint = path.map(encodeURIComponent).join("/");
@@ -179,6 +189,37 @@ function stripAuthCookies(cookieHeader: string): string {
     .trim();
 }
 
+function isOpaqueSegment(segment: string | undefined): boolean {
+  return Boolean(segment && segment !== "." && segment !== ".." && !/[\\/]/.test(segment));
+}
+
+function isSupportReplyPost(method: string, path: string[]): boolean {
+  if (method !== "POST" || path.length !== 5) return false;
+  const [area, feature, resource, ticketId, action] = path;
+  // Express matches the fixed route segments case-insensitively; the ticket ID is opaque.
+  return /^admin$/i.test(area) && /^support$/i.test(feature) &&
+    /^tickets$/i.test(resource) && /^messages$/i.test(action) &&
+    isOpaqueSegment(ticketId);
+}
+
+function isListingRevisionWrite(method: string, path: string[]): boolean {
+  const [area, resource, productId, revisions, action, target, suffix] = path;
+  if (!/^products$/i.test(resource) || !/^listing-revisions$/i.test(revisions) || !isOpaqueSegment(productId)) {
+    return false;
+  }
+  if (/^admin$/i.test(area)) {
+    return method === "POST" && path.length === 6 && isOpaqueSegment(action) && /^decisions$/i.test(target);
+  }
+  if (!/^vendor$/i.test(area)) return false;
+  if (method === "PUT") {
+    return path.length === 7 && /^attempts$/i.test(action) && isOpaqueSegment(target) && /^settlement$/i.test(suffix);
+  }
+  if (method !== "POST") return false;
+  return path.length === 4
+    || (path.length === 5 && /^(attempts|remediate-category)$/i.test(action))
+    || (path.length === 6 && isOpaqueSegment(action) && /^withdraw$/i.test(target));
+}
+
 async function handler(request: Request, context: RouteContext) {
   const params = await context.params;
   const path = params.path ?? [];
@@ -234,17 +275,57 @@ async function handler(request: Request, context: RouteContext) {
     : await request.arrayBuffer();
 
   const backendUrl = buildBackendUrl(path, requestUrl.search, isAdminBackendPath);
-  const backendResponse = await fetch(backendUrl, {
-    method,
-    headers,
-    body,
-    cache: "no-store",
-  });
+  const supportReply = isSupportReplyPost(method, path);
+  const listingRevisionWrite = isListingRevisionWrite(method, path);
+  const campaignWrite = isCampaignWrite(method, path);
+  if (campaignWrite) {
+    const expectedActor = request.headers.get("X-Campaign-Expected-Actor");
+    // Backend validates the client-captured actor, including missing or coalesced duplicate values.
+    if (expectedActor !== null) headers.set("X-Campaign-Expected-Actor", expectedActor);
+  }
+  const rejectRedirect = supportReply || listingRevisionWrite || campaignWrite;
+  let backendResponse: Response;
+  try {
+    backendResponse = await fetch(backendUrl, {
+      method,
+      headers,
+      body,
+      cache: "no-store",
+      ...(rejectRedirect ? { redirect: "error" } : {}),
+    });
+  } catch (error) {
+    if (!rejectRedirect) throw error;
+    if (campaignWrite) {
+      return NextResponse.json(
+        { status: "fail", message: "We could not confirm whether the banner change completed." },
+        { status: 502, headers: { "Cache-Control": "no-store" } },
+      );
+    }
+    return NextResponse.json(
+      { status: "fail", message: supportReply
+        ? "We could not confirm whether your reply was sent."
+        : "We could not confirm whether this listing revision action completed." },
+      { status: 502 },
+    );
+  }
+
+  const responseHeaders = buildResponseHeaders(backendResponse);
+  if (campaignWrite && (backendResponse.status === 412 || backendResponse.status === 428)) {
+    // A confirmed actor precondition must reach the editor even if upstream sent an unreadable body.
+    responseHeaders.set("Content-Type", "application/json");
+    responseHeaders.set("Cache-Control", "no-store");
+    // Discard the unread body without letting cancellation change the confirmed status.
+    void backendResponse.body?.cancel().catch(() => undefined);
+    return NextResponse.json(
+      { status: "fail", message: "Refresh the campaign editor before making another change." },
+      { status: backendResponse.status, headers: responseHeaders },
+    );
+  }
 
   return new NextResponse(backendResponse.body, {
     status: backendResponse.status,
     statusText: backendResponse.statusText,
-    headers: buildResponseHeaders(backendResponse),
+    headers: responseHeaders,
   });
 }
 
