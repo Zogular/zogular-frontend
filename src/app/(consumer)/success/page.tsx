@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useState } from "react";
+import { Suspense, useEffect, useRef, useState, type Ref } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { AlertTriangle, CheckCircle2, LockKeyhole, Package } from "lucide-react";
@@ -37,6 +37,14 @@ function OrderConfirmation({
   const router = useRouter();
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [retryCount, setRetryCount] = useState(0);
+  const closedHeadingRef = useRef<HTMLHeadingElement>(null);
+  const isClosed = state.status === "success" && state.order.status === "cancelled";
+
+  useEffect(() => {
+    if (!isClosed) return;
+    const heading = closedHeadingRef.current;
+    if (heading && document.activeElement !== heading) heading.focus();
+  }, [isClosed]);
 
   const handleRetry = () => {
     setState({ status: "loading" });
@@ -57,7 +65,12 @@ function OrderConfirmation({
 
     getInvoiceById(orderId, auth.user, abortController.signal)
       .then((order) => {
-        if (active) setState({ status: "success", order });
+        if (!active) return;
+        if (order.id.toLowerCase() !== orderId.toLowerCase()) {
+          setState({ status: "error" });
+          return;
+        }
+        setState({ status: "success", order });
       })
       .catch((error: unknown) => {
         if (!active) return;
@@ -164,6 +177,17 @@ function OrderConfirmation({
   }
 
   const { order } = state;
+  const orderHref = `/account/orders/${order.id}`;
+  if (order.status === "cancelled") {
+    return (
+      <OrderState headingRef={closedHeadingRef} title="Order closed" description="This order is no longer active. View the order for its latest details.">
+        <Button asChild className="h-12 rounded-xl bg-zinc-950 px-6 font-bold text-white hover:bg-zinc-800">
+          <Link href={orderHref}>View order</Link>
+        </Button>
+      </OrderState>
+    );
+  }
+
   return (
     <main className="min-h-dvh bg-[#f4fbf6] px-4 py-10 md:py-14">
       <div className="mx-auto max-w-2xl">
@@ -203,7 +227,7 @@ function OrderConfirmation({
           <p className="mt-5 text-sm font-medium leading-6 text-zinc-600">Check your order for the latest delivery updates.</p>
           <div className="mt-6 grid gap-3 sm:grid-cols-2">
             <Button asChild className="h-12 w-full rounded-xl bg-[#009E49] px-6 font-bold text-white hover:bg-[#00853d]">
-              <Link href={`/account/orders/${order.id}`}>View order</Link>
+              <Link href={orderHref}>View order</Link>
             </Button>
             <Button asChild variant="outline" className="h-12 w-full rounded-xl border-zinc-200 px-6 font-bold">
               <Link href="/categories">Continue shopping</Link>
@@ -219,23 +243,30 @@ function SuccessContent() {
   const searchParams = useSearchParams();
   const auth = useAuthSession();
   const orderId = searchParams.get("orderId")?.trim() || null;
-  const identityKey = auth.status === "authenticated" ? auth.user.id : auth.status;
+  // Reset synchronously when the verified buyer or requested order changes.
+  const readKey = JSON.stringify([auth.status, auth.user?.id, orderId]);
 
   return (
     <OrderConfirmation
-      key={`${identityKey}:${orderId ?? "missing"}`}
+      key={readKey}
       auth={auth}
       orderId={orderId}
     />
   );
 }
 
-function OrderState({ title, description, icon: Icon = Package, children }: { title: string; description: string; icon?: typeof Package; children?: React.ReactNode }) {
+function OrderState({ title, description, icon: Icon = Package, children, headingRef }: {
+  title: string;
+  description: string;
+  icon?: typeof Package;
+  children?: React.ReactNode;
+  headingRef?: Ref<HTMLHeadingElement>;
+}) {
   return (
     <main className="flex min-h-dvh items-center justify-center bg-[#f4fbf6] px-4 py-10">
       <section className="w-full max-w-2xl rounded-[2rem] border border-white/80 bg-white p-6 text-center shadow-[0_24px_70px_rgba(15,23,42,0.08)] md:p-10">
         <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-zinc-100 text-zinc-500"><Icon className="h-7 w-7" /></div>
-        <h1 className="mt-5 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">{title}</h1>
+        <h1 ref={headingRef} tabIndex={headingRef ? -1 : undefined} className="mt-5 text-2xl font-black tracking-tight text-zinc-950 md:text-3xl">{title}</h1>
         <p className="mx-auto mt-3 max-w-lg text-sm font-medium leading-6 text-zinc-600">{description}</p>
         {children ? <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">{children}</div> : null}
       </section>

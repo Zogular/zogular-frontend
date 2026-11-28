@@ -12,11 +12,15 @@ import {
   CheckoutContractError,
   CheckoutOrderOutcomeUnknownError,
   createCheckoutOrder,
+  inspectCheckoutOutcome,
+  prepareCheckoutOrder,
+  parseCheckoutReceipt,
   parseCheckoutQuoteResponse,
   parseCreatedOrderResponse,
   type CreateCheckoutOrderInput,
 } from "../src/services/checkout";
-import { useCart, type CartItem } from "../src/hooks/use-cart";
+import { beginGeneration, checkoutMode, preserveLegacySending, settleGeneration, rejectGenerationAttempt, heldGeneration, observeGeneration,
+  reviewChangedGeneration, useCart, type CartItem } from "../src/hooks/use-cart";
 
 const repoRoot = path.resolve(__dirname, "..");
 const readSource = (relativePath: string) => fs.readFileSync(path.join(repoRoot, relativePath), "utf8");
@@ -145,6 +149,187 @@ function response(payload: unknown, status = 200): Response {
   });
 }
 
+const receiptFor = (key: string, owner = "owner-a") => ({ status: "success", data: {
+  cartGeneration: key, order: { ...createdOrderPayload({ userId: owner }).data.order, status: "DELIVERED", commitmentFeeStatus: "PAID" },
+} });
+
+test("generation: strict UUIDv4, omitted legacy field only and independent current-state receipt identity", () => {
+  expect(parseCheckoutQuoteResponse(quotePayload(), "frontend-first").cartGeneration).toBeUndefined();
+  expect(() => parseCheckoutQuoteResponse(quotePayload(), "required")).toThrow();
+  for (const key of [null, undefined, "", IDS.cart.replace("-4000-", "-1000-"), " " + IDS.cart]) {
+    expect(() => parseCheckoutQuoteResponse(quotePayload({ cartGeneration: key }), "frontend-first")).toThrow();
+  }
+  expect(parseCheckoutReceipt(receiptFor(IDS.cart), "owner-a", IDS.cart).id).toBe(IDS.order);
+  expect(() => parseCheckoutReceipt(receiptFor(IDS.cart), "owner-b", IDS.cart)).toThrow();
+  expect(() => parseCheckoutReceipt(receiptFor(IDS.order), "owner-a", IDS.cart)).toThrow();
+  expect(() => prepareCheckoutOrder(checkoutInput, acceptedQuote, "owner-a", "required")).toThrow();
+});
+
+test("generation: explicit retry preserves exact body and 200 replay uses the same owner and key as 201", async () => {
+  const previous = globalThis.fetch, bodies: string[] = [];
+  const input = structuredClone(checkoutInput);
+  const send = prepareCheckoutOrder(input, { ...acceptedQuote, cartGeneration: IDS.cart }, "owner-a");
+  globalThis.fetch = async (url, init) => {
+    if (String(url).endsWith("/auth/csrf-token")) return response({ data: { csrfToken: "synthetic" } });
+    expect(init?.method).toBe("POST");
+    bodies.push(String(init?.body));
+    const payload = { status: "success", data: { ...createdOrderPayload({ userId: "owner-a", status: "CONFIRMED" }).data, cartGeneration: IDS.cart } };
+    return response(payload, bodies.length === 1 ? 201 : 200);
+  };
+  try {
+    await send();
+    input.delivery.street = "Changed street";
+    await send();
+    expect(bodies).toHaveLength(2);
+    expect(bodies[0]).toBe(bodies[1]);
+    expect(JSON.parse(bodies[0])).toMatchObject({ cartGeneration: IDS.cart, expectedQuote: acceptedQuote });
+  } finally { globalThis.fetch = previous; }
+});
+
+test("generation: a receipt miss is rechecked after a changed authoritative cart, with GET only", async () => {
+  const previous = globalThis.fetch;
+  const reads: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    expect(init?.method).toBe("GET");
+    expect(init?.cache).toBe("no-store");
+    const tail = String(url).split("/").pop()!;
+    reads.push(tail);
+    if (tail === "cart") return response(cartPayload({ generation: IDS.secondProduct }));
+    return reads.length === 1 ? response({},404) : response(receiptFor(IDS.cart));
+  };
+  try {
+    const result = await inspectCheckoutOutcome("owner-a", IDS.cart, () => true);
+    expect(result?.receipt?.id).toBe(IDS.order);
+    expect(reads).toEqual([IDS.cart,"cart",IDS.cart]);
+    let current = true;
+    globalThis.fetch = async () => { current = false; return response(receiptFor(IDS.cart)); };
+    expect(await inspectCheckoutOutcome("owner-a", IDS.cart, () => current)).toBeNull();
+  } finally { globalThis.fetch = previous; }
+});
+
+test("generation: explicit fenced review survives reload and stale competing tabs without clearing unrelated holds", async () => {
+  function storage() {
+    const map = new Map<string,string>();
+    return { get length() { return map.size; }, key: (i: number) => [...map.keys()][i] ?? null,
+      getItem: (k: string) => map.get(k) ?? null, setItem: (k: string,v: string) => map.set(k,v),
+      removeItem: (k: string) => map.delete(k), map };
+  }
+  const previous = (globalThis as { window?: unknown }).window;
+  const previousFetch = globalThis.fetch;
+  const localStorage = storage(), a = storage(), b = storage(), late = storage();
+  let notices = 0;
+  const tab = (sessionStorage: typeof a) => { (globalThis as {window?: unknown}).window = { localStorage, sessionStorage, dispatchEvent: () => { notices++; return true; } }; };
+  try {
+    seedOwnedCart("owner-a");
+    tab(a); observeGeneration("owner-a",IDS.cart);
+    const put = localStorage.setItem;
+    localStorage.setItem = () => { throw new Error("storage full"); };
+    expect(() => beginGeneration("owner-a", IDS.cart)).toThrow();
+    expect(heldGeneration("owner-a")).toBeNull();
+    // Interleave at the first write, after both tabs can pass the empty check.
+    let competing = "";
+    localStorage.setItem = (name, value) => {
+      localStorage.setItem = put;
+      tab(b); competing = beginGeneration("owner-a", IDS.cart);
+      tab(a); return put(name, value);
+    };
+    const pending = beginGeneration("owner-a", IDS.cart);
+    expect(competing).not.toBe(pending);
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    tab(b); expect(checkoutMode("owner-a")).toBe("required");
+    expect(() => observeGeneration("owner-a")).toThrow();
+    expect(() => beginGeneration("owner-a",IDS.cart)).toThrow();
+    rejectGenerationAttempt("owner-a", IDS.cart, competing);
+    tab(storage()); // neither sending tab's session is needed
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    expect(heldGeneration("owner-b")).toBeNull();
+    expect(reviewChangedGeneration("owner-a", IDS.cart, IDS.cart)).toBe(false);
+    expect([...localStorage.map.values()].every(v => v === IDS.cart)).toBe(true);
+    let active: string = IDS.cart;
+    const reads: string[] = [];
+    globalThis.fetch = async (url, init) => {
+      expect(init?.method).toBe("GET");
+      const name = String(url).split("/").pop()!;
+      reads.push(name);
+      return name === "cart" ? response(cartPayload({ generation: active })) : response({},404);
+    };
+    const inspect = () => inspectCheckoutOutcome("owner-a", IDS.cart, () => heldGeneration("owner-a") === IDS.cart);
+    const same = await inspect();
+    expect(reviewChangedGeneration("owner-a", IDS.cart, same!.snapshot!.generation!)).toBe(false);
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    active = IDS.secondProduct;
+    await inspect(); // checking is not consent to resume
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    const review = await inspect();
+    expect(review?.receipt).toBeNull();
+    expect(reads.slice(-3)).toEqual([IDS.cart,"cart",IDS.cart]);
+    const adopt = useCart.getState().prepareCartAdoption("owner-a", IDS.cart);
+    expect(adopt).not.toBeNull();
+    localStorage.setItem = () => { throw new Error("Cannot publish fence"); };
+    expect(reviewChangedGeneration("owner-a", IDS.cart, review!.snapshot!.generation!)).toBe(false);
+    expect(heldGeneration("owner-a")).toBe(IDS.cart);
+    localStorage.setItem = put;
+    localStorage.setItem("zg-checkout:owner-a:hold:" + IDS.order, IDS.order);
+    localStorage.setItem("zg-checkout:owner-b:hold:" + IDS.cart, IDS.cart);
+    const remove = localStorage.removeItem, beforeSettlement = notices;
+    localStorage.removeItem = () => { throw new Error("Cannot clean up old records"); };
+    expect(reviewChangedGeneration("owner-a", IDS.cart, review!.snapshot!.generation!)).toBe(true);
+    localStorage.removeItem = remove;
+    expect(notices).toBe(beforeSettlement + 1);
+    expect(localStorage.map.has("zg-checkout:owner-a:attempt:" + IDS.cart + ":" + pending)).toBe(true);
+    expect(localStorage.map.has("zg-checkout:owner-a:hold:" + IDS.cart)).toBe(false);
+    expect(localStorage.getItem("zg-checkout:owner-a:fenced:" + IDS.cart)).toBe(IDS.cart);
+    expect(adopt?.([])).toBe(false);
+    expect(useCart.getState().items).toEqual([cartItem]);
+    late.setItem("zg-checkout:owner-a:sending", IDS.cart);
+    tab(late); // an older client still has a tab-private sending marker
+    expect(heldGeneration("owner-a")).toBe(IDS.order);
+    rejectGenerationAttempt("owner-a", IDS.cart, pending);
+    expect(localStorage.map.has("zg-checkout:owner-a:hold:" + IDS.cart)).toBe(false);
+    // Simulate an old writer that checked the fence just before it was published.
+    localStorage.setItem("zg-checkout:owner-a:hold:" + IDS.cart, IDS.cart);
+    tab(storage());
+    expect(heldGeneration("owner-b")).toBe(IDS.cart);
+    expect(heldGeneration("owner-a")).toBe(IDS.order);
+    settleGeneration("owner-a", IDS.order);
+    expect(heldGeneration("owner-a")).toBeNull();
+    expect(() => beginGeneration("owner-a", IDS.cart)).toThrow();
+    a.setItem("zg-checkout:legacy-owner:sending", IDS.order);
+    tab(a);
+    expect(heldGeneration("legacy-owner")).toBe(IDS.order);
+    preserveLegacySending("legacy-owner", IDS.order);
+    expect(a.getItem("zg-checkout:legacy-owner:sending")).toBeNull();
+    tab(storage());
+    expect(heldGeneration("legacy-owner")).toBe(IDS.order);
+  } finally {
+    globalThis.fetch = previousFetch;
+    if (previous === undefined) delete (globalThis as { window?: unknown }).window;
+    else (globalThis as {window?: unknown}).window = previous;
+  }
+});
+
+test("generation: unchanged cart and 404 are inconclusive, malformed cart or wrong receipt fails closed", async () => {
+  const previous = globalThis.fetch;
+  let key: unknown = IDS.cart;
+  const reads: string[] = [];
+  globalThis.fetch = async (url, init) => {
+    expect(init?.method).toBe("GET");
+    const name = String(url).split("/").pop()!;
+    reads.push(name);
+    return name === "cart" ? response(cartPayload({ generation: key })) : response({},404);
+  };
+  try {
+    const result = await inspectCheckoutOutcome("owner-a", IDS.cart, () => true);
+    expect(result?.receipt).toBeNull();
+    expect(result?.snapshot?.generation).toBe(IDS.cart);
+    expect(reads).toEqual([IDS.cart,"cart"]);
+    key = null;
+    await expect(inspectCheckoutOutcome("owner-a",IDS.cart,() => true)).rejects.toBeInstanceOf(CheckoutContractError);
+    globalThis.fetch = async () => response(receiptFor(IDS.order));
+    await expect(inspectCheckoutOutcome("owner-a",IDS.cart,() => true)).rejects.toBeInstanceOf(CheckoutContractError);
+  } finally { globalThis.fetch = previous; }
+});
+
 test("strict cart parser accepts one complete cart atomically", () => {
   expect(parseBackendCartResponse(cartPayload())).toEqual([
     expect.objectContaining({
@@ -202,7 +387,7 @@ for (const fixture of [
 }
 
 test("quote parser accepts exact backend-owned totals and payment state", () => {
-  expect(parseCheckoutQuoteResponse(quotePayload())).toEqual({
+  expect(parseCheckoutQuoteResponse(quotePayload(), "frontend-first")).toEqual({
     itemSubtotal: 500,
     deliveryFeeAmount: 50,
     cashDueOnDelivery: 500,
@@ -219,7 +404,7 @@ for (const fixture of [
   { name: "unsupported payment mode", value: quotePayload({ paymentMethod: "MOBILE_MONEY" }) },
 ] as const) {
   test(`quote parser rejects ${fixture.name}`, () => {
-    expect(() => parseCheckoutQuoteResponse(fixture.value)).toThrow(CheckoutContractError);
+    expect(() => parseCheckoutQuoteResponse(fixture.value, "frontend-first")).toThrow(CheckoutContractError);
   });
 }
 
@@ -373,6 +558,74 @@ function seedOwnedCart(ownerId: string, item: CartItem = cartItem) {
     pendingAnonymousMerge: [],
   });
 }
+
+test("generation: adoption requires the same idle owner and preserves unsyncable local lines", () => {
+  seedOwnedCart("owner-a");
+  const local = { ...cartItem, id: "local-line", variant: "local" };
+  useCart.setState({items: [cartItem, local]});
+  const stable = useCart.getState().prepareCartAdoption("owner-a");
+  expect(stable?.([])).toBe(true);
+  expect(useCart.getState().items).toEqual([local]);
+  expect(stable?.([])).toBe(false);
+  const beforeEdit = useCart.getState().prepareCartAdoption("owner-a");
+  useCart.setState({items: [cartItem]});
+  expect(beforeEdit?.([])).toBe(false);
+  const beforeSwitch = useCart.getState().prepareCartAdoption("owner-a");
+  seedOwnedCart("owner-b");
+  expect(beforeSwitch?.([])).toBe(false);
+  expect(useCart.getState().items).toEqual([cartItem]);
+});
+
+test("generation: pending clear, removal and merge are never consumed by receipt refresh", async () => {
+  const original = globalThis.fetch;
+  let calls = 0;
+  globalThis.fetch = async () => { calls++; throw new Error("unexpected fetch"); };
+  try {
+    for (const pending of [{pendingClear:true}, {pendingDeletions:[IDS.product]},
+      {pendingAnonymousMerge:[{item:cartItem,targetQuantity:3}]}]) {
+      seedOwnedCart("owner-a");
+      const before = useCart.getState().prepareCartAdoption("owner-a");
+      useCart.setState(pending);
+      expect(before?.([])).toBe(false);
+      expect(useCart.getState().prepareCartAdoption("owner-a")).toBeNull();
+      await useCart.getState().refreshCartAfterReceipt("owner-a");
+      expect(useCart.getState()).toMatchObject({...pending, items:[cartItem], syncError:expect.stringContaining("kept")});
+    }
+    expect(calls).toBe(0);
+  } finally { globalThis.fetch = original; }
+});
+
+test("generation: a receipt read cannot overwrite changes made during its GET", async () => {
+  seedOwnedCart("owner-a");
+  const original = globalThis.fetch, started = deferred<void>(), reply = deferred<Response>();
+  globalThis.fetch = async (_, init) => { expect(init?.method).toBe("GET"); started.resolve(); return reply.promise; };
+  try {
+    const refresh = useCart.getState().refreshCartAfterReceipt("owner-a");
+    await started.promise;
+    useCart.setState({ items:[{...cartItem,quantity:3}], pendingDeletions:[IDS.secondProduct] });
+    reply.resolve(response(cartPayload({generation:IDS.cart})));
+    await refresh;
+    expect(useCart.getState()).toMatchObject({ items:[{quantity:3}], pendingDeletions:[IDS.secondProduct] });
+  } finally { globalThis.fetch = original; }
+});
+
+test("generation: receipt refresh does not invalidate or supersede queued synchronization", async () => {
+  seedOwnedCart("owner-a");
+  const original = globalThis.fetch, started = deferred<void>(), reply = deferred<Response>();
+  let reads = 0;
+  globalThis.fetch = async () => { reads++; started.resolve(); return reply.promise; };
+  try {
+    const sync = useCart.getState().syncWithBackend();
+    await started.promise;
+    expect(useCart.getState().prepareCartAdoption("owner-a")).toBeNull();
+    await useCart.getState().refreshCartAfterReceipt("owner-a");
+    expect(useCart.getState().syncStatus).toBe("syncing");
+    reply.resolve(response(cartPayload({items:[],summary:{subtotal:0,totalItems:0,uniqueItems:0}})));
+    await sync;
+    expect(reads).toBe(1);
+    expect(useCart.getState()).toMatchObject({items:[],syncStatus:"idle"});
+  } finally { globalThis.fetch = original; }
+});
 
 function cartPayloadFromItems(items: CartItem[]) {
   return {
@@ -921,6 +1174,24 @@ async function setBrowserIdentity(page: Page, ownerId: string | null) {
   }, ownerId);
 }
 
+async function failCheckoutStorage(page: Page, failure: "fence" | "cleanup") {
+  await page.evaluate(mode => {
+    const put = Storage.prototype.setItem, remove = Storage.prototype.removeItem;
+    Storage.prototype.setItem = function (name, value) {
+      if (mode === "fence" && this === localStorage && name.startsWith("zg-checkout:owner-a:fenced:")) {
+        throw new DOMException("Synthetic fence failure", "QuotaExceededError");
+      }
+      return put.call(this, name, value);
+    };
+    Storage.prototype.removeItem = function (name) {
+      if (mode === "cleanup" && this === localStorage && name.startsWith("zg-checkout:owner-a:attempt:")) {
+        throw new DOMException("Synthetic cleanup failure", "SecurityError");
+      }
+      return remove.call(this, name);
+    };
+  }, failure);
+}
+
 async function fulfillStaticDependencies(page: Page) {
   const pixel = Buffer.from(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=",
@@ -1291,6 +1562,93 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     });
   }
 
+  for (const { width, closedStatus } of [
+    { width: 320, closedStatus: "CANCELLED" },
+    { width: 1440, closedStatus: "REFUNDED" },
+  ]) {
+    test(`success readback replaces processing with neutral ${closedStatus} at ${width}px`, async ({ page }) => {
+      if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) throw new Error("Private loopback fixture required.");
+      await page.setViewportSize({ width, height: 900 });
+      const closedId = "00000000-0000-4000-8000-000000000009";
+      const mismatchId = "00000000-0000-4000-8000-000000000010";
+      const closedRead = deferred<void>();
+      const releaseClosed = deferred<void>();
+      const orderReads: string[] = [];
+      const mutations: string[] = [];
+      await page.route("**/api/backend/**", async (route) => {
+        const request = route.request();
+        const { pathname } = new URL(request.url());
+        if (request.method() !== "GET" && request.method() !== "HEAD") {
+          mutations.push(`${request.method()} ${pathname}`);
+          return route.fulfill({ status: 405 });
+        }
+        if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+        if (pathname.endsWith("/cart")) return route.fulfill({ json: cartPayload() });
+        if (pathname.endsWith(`/orders/${IDS.order}`)) {
+          orderReads.push(IDS.order);
+          const order = { ...detailOrderPayload("owner-a", "ZG-PROCESSING"), status: "PROCESSING" };
+          return route.fulfill({ json: { status: "success", data: { order } } });
+        }
+        if (pathname.endsWith(`/orders/${closedId}`)) {
+          orderReads.push(closedId);
+          closedRead.resolve();
+          await releaseClosed.promise;
+          const order = { ...detailOrderPayload("owner-a", "ZG-CLOSED"), id: closedId, status: closedStatus };
+          return route.fulfill({ json: { status: "success", data: { order } } });
+        }
+        if (pathname.endsWith(`/orders/${mismatchId}`)) {
+          orderReads.push(mismatchId);
+          const order = { ...detailOrderPayload("owner-a", "ZG-WRONG-ID"), status: "PROCESSING" };
+          return route.fulfill({ json: { status: "success", data: { order } } });
+        }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+
+      await page.goto(`${baseUrl}/success?orderId=${IDS.order}`);
+      const main = page.locator("main:not(:has(main))");
+      const confirmed = main.getByRole("heading", { name: "Order confirmed by Zogular" });
+      const cashDue = main.getByText("Cash due on delivery", { exact: true });
+      const screenshotDir = "output/playwright/consumer-cart-checkout-integrity";
+      await expect(confirmed).toBeVisible();
+      await expect(cashDue).toBeVisible();
+      await expect(main.getByRole("link", { name: "View order" })).toHaveAttribute("href", `/account/orders/${IDS.order}`);
+      await main.screenshot({ path: path.resolve(screenshotDir, `success-processing-${width}.png`) });
+
+      try {
+        await page.evaluate((id) => window.history.pushState(null, "", `/success?orderId=${id}`), closedId);
+        await closedRead.promise;
+        await expect(main.getByRole("heading", { name: "Confirming your order" })).toBeVisible();
+        await expect(confirmed).toHaveCount(0);
+        await expect(main.getByText("Order ZG-PROCESSING", { exact: true })).toHaveCount(0);
+        await expect(main.getByRole("link", { name: "View order" })).toHaveCount(0);
+      } finally {
+        releaseClosed.resolve();
+      }
+
+      const closed = main.getByRole("heading", { name: "Order closed" });
+      const viewOrder = main.getByRole("link", { name: "View order" });
+      await expect(closed).toBeVisible();
+      await expect(closed).toBeFocused();
+      await expect(viewOrder).toHaveAttribute("href", `/account/orders/${closedId}`);
+      await page.keyboard.press("Tab");
+      await expect(viewOrder).toBeFocused();
+      const bounds = await viewOrder.boundingBox();
+      expect(bounds).not.toBeNull();
+      expect(bounds!.x).toBeGreaterThanOrEqual(0);
+      expect(bounds!.x + bounds!.width).toBeLessThanOrEqual(width);
+      expect(await main.evaluate((el) => el.scrollWidth)).toBeLessThanOrEqual(width);
+      await expect(main).not.toContainText(/confirmed|cash due|delivery updates|refund|K500/i);
+      await main.screenshot({ path: path.resolve(screenshotDir, `success-closed-${width}.png`) });
+
+      await page.evaluate((id) => window.history.pushState(null, "", `/success?orderId=${id}`), mismatchId);
+      await expect(main.getByRole("heading", { name: "Order confirmation could not be verified" })).toBeVisible();
+      await expect(viewOrder).toHaveCount(0);
+      await expect(main).not.toContainText("ZG-WRONG-ID");
+      expect(orderReads).toEqual([IDS.order, closedId, mismatchId]);
+      expect(mutations).toEqual([]);
+    });
+  }
+
   for (const viewport of viewports) {
     test(`${viewport.name} guest checkout and confirmation issue zero protected requests`, async ({ page }) => {
       await page.setViewportSize(viewport);
@@ -1398,6 +1756,430 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
       await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/checkout-${viewport.name}.png`), fullPage: true });
+    });
+  }
+
+  for (const scenario of ["review", "concurrent edit", "buyer switch", "late hold", "create conflict"] as const) {
+    test(`quote recovery boundary: ${scenario}`, async ({ page }, info) => {
+      const mobile = scenario === "review";
+      await page.setViewportSize(mobile ? { width: 390, height: 844 } : { width: 1440, height: 900 });
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      const line = cartPayload().data.cart.items[0];
+      const latest = cartPayload({ generation: IDS.secondProduct, items: [{
+        ...line, id: IDS.secondCartItem, productId: IDS.secondProduct,
+        product: { ...line.product, id: IDS.secondProduct, title: "Updated cart item", slug: "updated-cart-item" },
+      }] });
+      const started = deferred<void>(), release = deferred<void>();
+      let review = false, reads = 0, quotes = 0, receipts = 0, creates = 0;
+      let buyer = "owner-a";
+      const unexpected: string[] = [];
+      const conflict = { status: "fail", code: "CHECKOUT_CART_CHANGED", message: "private fixture detail" };
+      await page.route("**/api/backend/**", async route => {
+        const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+        const method = route.request().method();
+        if (path === "/user/me") return route.fulfill({ json: userPayload(buyer) });
+        if (path === "/user/addresses") return route.fulfill({ json: addressPayload(buyer) });
+        if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (path === "/cart" && method === "GET") {
+          if (buyer === "owner-b") return route.fulfill({ json: cartPayload({ generation: IDS.secondProduct,
+            items: [], summary: { subtotal: 0, totalItems: 0, uniqueItems: 0 } }) });
+          if (!review) return route.fulfill({ json: cartPayload(mobile ? {} : { generation: IDS.cart }) });
+          reads++;
+          if ((mobile && reads === 1) || (!mobile && reads > 1)) return route.fulfill({ status: 503, json: {} });
+          started.resolve();
+          await release.promise;
+          return route.fulfill({ json: latest });
+        }
+        if (path === "/orders/quote" && method === "POST") {
+          quotes++;
+          if (mobile && quotes === 1) return route.fulfill({ status: 503, json: {} });
+          if (scenario === "create conflict") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+          return route.fulfill({ status: 409, json: conflict });
+        }
+        if (path === "/orders" && method === "POST") {
+          creates++;
+          return route.fulfill({ status: 409, json: conflict });
+        }
+        if (path === "/orders/checkout-receipt/" + IDS.cart && method === "GET") {
+          receipts++;
+          return route.fulfill({ status: 404, json: {} });
+        }
+        if (method !== "GET" || path.startsWith("/orders")) unexpected.push(method + " " + path);
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+      try {
+        await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+        await advanceMobileCheckoutToReview(page);
+        const action = page.getByRole("button", { name: "Review cart", exact: true });
+        const alert = page.locator("form").getByRole("alert");
+        if (scenario === "create conflict") {
+          await page.getByRole("button", { name: "Place Order Now" }).click();
+          await expect(page.getByRole("heading", { name: "Order outcome not confirmed" })).toBeVisible();
+          await expect(action).toHaveCount(0);
+          await page.getByRole("button", { name: "Check order status" }).click();
+          await expect(page.getByText("No receipt is available yet.", { exact: false })).toBeVisible();
+          expect([creates, receipts]).toEqual([1, 1]);
+          expect(unexpected).toEqual([]);
+          return;
+        }
+        if (mobile) {
+          const retry = page.getByRole("button", { name: "Refresh order total" });
+          await expect(retry).toBeVisible();
+          await expect(action).toHaveCount(0);
+          await retry.click();
+        }
+        await expect(alert).toHaveText("Your cart changed. Review your updated cart before checking out.");
+        await expect(page.getByRole("button", { name: "Place Order Now" })).toBeDisabled();
+        await expect(page.getByRole("button", { name: "Refresh order total" })).toHaveCount(0);
+        await expect(page.getByText(/private fixture detail|CHECKOUT_CART_CHANGED|check its order status/i)).toHaveCount(0);
+        await action.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: info.outputPath("quote-conflict.png") });
+        const issued = () => page.evaluate(() => localStorage.getItem("zg-checkout:owner-a:issued"));
+        expect(await issued()).toBe(mobile ? null : IDS.cart);
+        review = true;
+        if (mobile) {
+          await action.click();
+          await expect(alert).toHaveText("Your cart could not be refreshed. Try reviewing it again.");
+          await expect(action).toBeEnabled();
+          expect(await issued()).toBeNull();
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        }
+        await action.click();
+        await started.promise;
+        await expect(action).toBeDisabled();
+        if (scenario === "late hold") {
+          // Publish the existing owner-scoped unknown marker from a second tab
+          // while the first tab's deliberate cart read is still outstanding.
+          const other = await page.context().newPage();
+          try {
+            await other.goto(baseUrl + "/icon.png");
+            await other.evaluate(key => localStorage.setItem("zg-checkout:owner-a:hold:" + key, key), IDS.cart);
+          } finally { await other.close(); }
+          const check = page.getByRole("button", { name: "Check order status" });
+          await expect(check).toBeVisible();
+          const stale = page.waitForResponse(r => r.url().endsWith("/api/backend/cart") && r.status() === 200);
+          release.resolve();
+          await (await stale).finished();
+          await expect(check).toBeVisible();
+          expect(await issued()).toBe(IDS.cart);
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        } else if (scenario === "buyer switch") {
+          buyer = "owner-b";
+          await setBrowserIdentity(page, buyer);
+          const empty = page.getByRole("heading", { name: "Your cart is empty" });
+          await expect(empty).toBeVisible();
+          const stale = page.waitForResponse(r => r.url().endsWith("/api/backend/cart") && r.status() === 200);
+          release.resolve();
+          await (await stale).finished();
+          await expect(empty).toBeVisible();
+          await expect(page.getByText("Updated cart item", { exact: true })).toHaveCount(0);
+          expect(await issued()).toBe(IDS.cart);
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        } else if (scenario === "concurrent edit") {
+          await page.getByRole("button", { name: "Open cart" }).click();
+          await page.getByRole("button", { name: /Decrease Samsung Galaxy A55 5G quantity/ }).click();
+          const kept = page.getByRole("button", { name: "Remove Samsung Galaxy A55 5G", exact: true });
+          await expect(kept).toBeVisible();
+          const stale = page.waitForResponse(r => r.url().endsWith("/api/backend/cart") && r.status() === 200);
+          release.resolve();
+          await (await stale).finished();
+          await expect(kept).toBeVisible();
+          await page.keyboard.press("Escape");
+          const previousReads = reads;
+          await action.click();
+          await expect(alert).toHaveText("Your cart changes were kept. Open your cart and review them before checking out.");
+          expect(reads).toBe(previousReads);
+          expect(await issued()).toBe(IDS.cart);
+          expect(new URL(page.url()).pathname).toBe("/checkout");
+        } else {
+          release.resolve();
+          await expect(page).toHaveURL(baseUrl + "/cart");
+          await expect(page.getByText("Updated cart item", { exact: true })).toBeVisible();
+          await expect(page.getByText("Samsung Galaxy A55 5G", { exact: true })).toHaveCount(0);
+          expect(reads).toBe(2);
+          expect(await issued()).toBe(IDS.secondProduct);
+        }
+        expect([creates, receipts]).toEqual([0, 0]);
+      } finally { release.resolve(); }
+      expect(unexpected).toEqual([]);
+    });
+  }
+
+  test("closing the submitting tab before its response preserves owner receipt recovery", async ({ page, context }, info) => {
+    const dispatched = deferred<void>();
+    let posts = 0, receipts = 0, committed = false;
+    await context.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+      id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+    })));
+    await context.route("**/api/backend/**", async route => {
+      const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+      if (path === "/user/me") return route.fulfill({ json: userPayload() });
+      if (path === "/user/addresses") return route.fulfill({ json: addressPayload() });
+      if (path === "/cart") return route.fulfill({ json: cartPayload({ generation: IDS.cart }) });
+      if (path === "/orders/quote") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+      if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+      if (path === "/orders" && route.request().method() === "POST") {
+        expect(route.request().postDataJSON().cartGeneration).toBe(IDS.cart);
+        posts++;
+        dispatched.resolve();
+        return; // Leave the request paused until Chrome closes the originating tab.
+      }
+      if (path === "/orders/checkout-receipt/" + IDS.cart && route.request().method() === "GET") {
+        receipts++;
+        return route.fulfill(committed ? { json: receiptFor(IDS.cart) } : { status: 404, json: {} });
+      }
+      if (path === "/orders/" + IDS.order) return route.fulfill({ json: {
+        status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") },
+      } });
+      return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+    });
+    await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+    await advanceMobileCheckoutToReview(page);
+    const place = page.getByRole("button", { name: "Place Order Now" });
+    await page.evaluate(() => {
+      const put = Storage.prototype.setItem;
+      Storage.prototype.setItem = function (name, value) {
+        if (this === localStorage && name.startsWith("zg-checkout:owner-a:attempt:")) {
+          Storage.prototype.setItem = put;
+          throw new DOMException("Synthetic storage failure", "QuotaExceededError");
+        }
+        return put.call(this, name, value);
+      };
+    });
+    await place.click();
+    await expect(page.getByText("This tab did not send an order.", { exact: false })).toBeVisible();
+    expect(posts).toBe(0);
+    await place.click();
+    await dispatched.promise;
+    await page.close();
+    const reopened = await context.newPage();
+    await fulfillStaticDependencies(reopened);
+    await reopened.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+    const check = reopened.getByRole("button", { name: "Check order status" });
+    await expect(check).toBeVisible();
+    await expect(reopened.getByRole("button", { name: "Retry this exact order" })).toHaveCount(0);
+    expect([posts, receipts]).toEqual([1, 0]);
+    await check.click();
+    await expect(reopened.getByText("No receipt is available yet.", { exact: false })).toBeVisible();
+    await reopened.screenshot({ path: info.outputPath("reopened-receipt-pending.png") });
+    await failCheckoutStorage(reopened, "fence");
+    committed = true;
+    await check.click();
+    await expect(reopened.getByRole("heading", { name: "Existing order found" })).toBeVisible();
+    await expect(reopened.getByText(/latest checkout changes were not placed/i)).toHaveCount(0);
+    await expect(reopened).toHaveURL(baseUrl + "/checkout");
+    await reopened.screenshot({ path: info.outputPath("reopened-order-found.png") });
+    await reopened.getByRole("button", { name: "View existing order" }).click();
+    await expect(reopened).toHaveURL(baseUrl + "/account/orders/" + IDS.order);
+    await expect(reopened.getByRole("heading", { name: "RECEIPT", exact: true })).toBeVisible();
+    expect(await reopened.evaluate(() => Object.keys(localStorage).some(k => k.startsWith("zg-checkout:owner-a:attempt:")))).toBe(true);
+    expect([posts, receipts]).toEqual([1, 2]);
+  });
+
+  for (const width of [320, 1440]) {
+    test(`receipt intent conflict: deliberate existing-order read at ${width}px`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      const order = detailOrderPayload("owner-a", "ZG-2026-0001");
+      const addresses = addressPayload();
+      addresses.data.addresses[0].addressLine = "24 Cairo Road";
+      const writes: string[] = [];
+      let receipts = 0, details = 0;
+      await page.route("**/api/backend/**", async route => {
+        const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+        const method = route.request().method();
+        if (method !== "GET") writes.push(method + " " + path);
+        if (path === "/user/me") return route.fulfill({ json: userPayload() });
+        if (path === "/user/addresses") return route.fulfill({ json: addresses });
+        if (path === "/cart" && method === "GET") return route.fulfill({ json: cartPayload({ generation: IDS.cart }) });
+        if (path === "/orders/quote") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+        if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (path === "/orders" && method === "POST") {
+          const body = route.request().postDataJSON();
+          expect(body.shippingAddress.addressLine).toBe("24 Cairo Road");
+          expect(body.cartGeneration).toBe(IDS.cart);
+          if (width === 1440) {
+            // Another tab received its matched POST success before this 409 arrived.
+            await page.evaluate(generation => {
+              const key = "zg-checkout:owner-a:fenced:" + generation;
+              localStorage.setItem(key, generation);
+              window.dispatchEvent(new StorageEvent("storage", { key, newValue: generation }));
+            }, IDS.cart);
+          }
+          return route.fulfill({ status: 409, json: { status: "fail", code: "CHECKOUT_INTENT_CONFLICT", message: "fixture diagnostic" } });
+        }
+        if (path === "/orders/checkout-receipt/" + IDS.cart) { receipts++; return route.fulfill({ json: receiptFor(IDS.cart) }); }
+        if (path === "/orders/" + IDS.order) { details++; return route.fulfill({ json: { status: "success", data: { order } } }); }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+      await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+      await advanceMobileCheckoutToReview(page);
+      const lines = () => page.evaluate(() => JSON.parse(localStorage.getItem("zogular-cart-storage")!).state.items);
+      const before = await lines();
+      expect(before).toHaveLength(1);
+      await page.getByRole("button", { name: "Place Order Now" }).click();
+      const notPlaced = page.getByText(/Your latest checkout changes were not placed/);
+      await expect(notPlaced).toBeVisible();
+      await page.getByRole("button", { name: "Check order status" }).click();
+      const view = page.getByRole("button", { name: "View existing order" });
+      await expect(view).toBeVisible();
+      await expect(notPlaced).toBeVisible();
+      await expect(page.getByRole("button", {name:"Retry this exact order"})).toHaveCount(0);
+      await expect(page).toHaveURL(baseUrl + "/checkout");
+      expect([receipts, details]).toEqual([1, 0]);
+      expect(await lines()).toEqual(before);
+      await page.screenshot({path:info.outputPath("existing-order.png"), animations:"disabled"});
+      await view.click();
+      await expect(page).toHaveURL(baseUrl + "/account/orders/" + IDS.order);
+      await expect(page.getByRole("heading", { name: "RECEIPT", exact: true })).toBeVisible();
+      await expect(page.getByText(/15 Great East Road/).first()).toBeVisible();
+      await expect(page.getByRole("region", { name:"Order totals" })).toContainText("K550");
+      await expect(page.getByText(/24 Cairo Road|fixture diagnostic/)).toHaveCount(0);
+      expect(writes.filter(write => write !== "POST /orders/quote")).toEqual(["POST /orders"]);
+      expect(await lines()).toEqual(before);
+    });
+  }
+
+  for (const scenario of ["create cleanup", "create fence", "exact retry", "changed cart"] as const) {
+    test(`checkout settlement storage failure: ${scenario}`, async ({ page }) => {
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      let posts = 0, receipts = 0;
+      await page.route("**/api/backend/**", async route => {
+        const path = new URL(route.request().url()).pathname.replace("/api/backend", "");
+        if (path === "/user/me") return route.fulfill({ json: userPayload() });
+        if (path === "/user/addresses") return route.fulfill({ json: addressPayload() });
+        if (path === "/cart") return route.fulfill({ json: cartPayload({
+          generation: posts && scenario === "changed cart" ? IDS.secondProduct : IDS.cart,
+        }) });
+        if (path === "/orders/quote") return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+        if (path === "/auth/csrf-token") return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (path === "/orders" && route.request().method() === "POST") {
+          posts++;
+          if ((scenario === "exact retry" || scenario === "changed cart") && posts === 1) return route.abort("failed");
+          return route.fulfill({ json: { status: "success", data: {
+            ...createdOrderPayload({ userId: "owner-a", status: "CONFIRMED" }).data, cartGeneration: IDS.cart,
+          } } });
+        }
+        if (path === "/orders/checkout-receipt/" + IDS.cart) { receipts++; return route.fulfill({ status: 404, json: {} }); }
+        if (path === "/orders/" + IDS.order) return route.fulfill({ json: {
+          status: "success", data: { order: detailOrderPayload("owner-a", "ZG-2026-0001") },
+        } });
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+      await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+      await advanceMobileCheckoutToReview(page);
+      await failCheckoutStorage(page, scenario === "create cleanup" ? "cleanup" : "fence");
+      await page.getByRole("button", { name: "Place Order Now" }).click();
+      if (scenario === "exact retry") {
+        await page.getByRole("button", { name: "Retry this exact order" }).click();
+      } else if (scenario === "changed cart") {
+        await page.getByRole("button", { name: "Check order status" }).click();
+        await page.getByRole("button", { name: "Review my updated cart" }).click();
+        await expect(page.getByText("Your updated cart could not be opened.", { exact: false })).toBeVisible();
+        await expect(page.getByRole("heading", { name: "Order outcome not confirmed" })).toBeVisible();
+        expect(new URL(page.url()).pathname).toBe("/checkout");
+        expect([posts, receipts]).toEqual([1, 4]);
+        return;
+      }
+      await expect(page).toHaveURL(new RegExp("/success\\?orderId=" + IDS.order + "$"));
+      await expect(page.getByRole("heading", { name: "Order confirmed by Zogular" })).toBeVisible();
+      expect([posts, receipts]).toEqual(scenario === "exact retry" ? [2, 1] : [1, 0]);
+      const records = await page.evaluate(key => ({
+        fence: localStorage.getItem("zg-checkout:owner-a:fenced:" + key),
+        attempts: Object.keys(localStorage).filter(k => k.startsWith("zg-checkout:owner-a:attempt:" + key + ":")).length,
+      }), IDS.cart);
+      expect(records).toEqual({ fence: scenario === "create cleanup" ? IDS.cart : null, attempts: 1 });
+    });
+  }
+
+  for (const [width, height] of [[320, 568], [390, 844], [1440, 900]]) {
+    test(`held checkout restores visible recovery on reload at ${width}px`, async ({ page }, info) => {
+      await page.setViewportSize({ width, height });
+      await page.addInitScript(() => localStorage.setItem("zogular_auth_user", JSON.stringify({
+        id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test",
+      })));
+      let posts = 0;
+      const checking = deferred<void>(), release = deferred<void>();
+      await page.route("**/api/backend/**", async route => {
+        const pathname = new URL(route.request().url()).pathname;
+        if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+        if (pathname.endsWith("/user/addresses")) return route.fulfill({ json: addressPayload() });
+        if (pathname.endsWith("/cart")) return route.fulfill({ json: cartPayload({ generation: IDS.cart }) });
+        if (pathname.endsWith("/orders/quote")) return route.fulfill({ json: quotePayload({ cartGeneration: IDS.cart }) });
+        if (pathname.endsWith("/auth/csrf-token")) return route.fulfill({ json: { data: { csrfToken: "fixture" } } });
+        if (pathname.endsWith("/orders") && route.request().method() === "POST") {
+          expect(route.request().postDataJSON().cartGeneration).toBe(IDS.cart);
+          posts++;
+          return route.abort("failed");
+        }
+        if (pathname.endsWith("/checkout-receipt/" + IDS.cart)) {
+          checking.resolve();
+          await release.promise;
+          return route.fulfill({ status: 404, json: {} });
+        }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+
+      const heading = page.getByRole("heading", { name: "Order outcome not confirmed" });
+      const check = page.getByRole("button", { name: "Check order status" });
+      await page.goto(baseUrl + "/checkout", { waitUntil: "networkidle" });
+      await advanceMobileCheckoutToReview(page);
+      const submit = page.getByRole("button", { name: "Place Order Now" });
+      const reviewOffset = await page.evaluate(() => {
+        window.scrollTo({ top: 120, behavior: "instant" });
+        return window.scrollY;
+      });
+      if (width < 768) expect(reviewOffset).toBeGreaterThan(0);
+      await submit.scrollIntoViewIfNeeded();
+      await submit.click();
+      await expect(heading).toBeVisible();
+      // Model a retained Review offset explicitly; neither measurement may auto-scroll a locator.
+      const offset = await page.evaluate(top => {
+        window.scrollTo({ top, behavior: "instant" });
+        return window.scrollY;
+      }, reviewOffset);
+      if (width < 768) expect(offset).toBeGreaterThan(0);
+      await page.reload({ waitUntil: "networkidle" });
+      await expect(check).toBeVisible();
+      const measure = async (target: typeof heading) => target.evaluate(el => {
+        const rect = el.getBoundingClientRect();
+        const headerBottom = document.querySelector("header")!.getBoundingClientRect().bottom;
+        const hit = document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2);
+        return { top: rect.top, bottom: rect.bottom, headerBottom, hit: el.contains(hit),
+          overflow: document.documentElement.scrollWidth - innerWidth, viewport: innerHeight, scroll: scrollY };
+      });
+      const geometry = { heading: await measure(heading), status: await measure(check) };
+      const evidence = info.outputPath("viewport.json");
+      await page.screenshot({ path: info.outputPath("held-viewport.png") });
+      await fs.promises.writeFile(evidence, JSON.stringify(geometry));
+      await info.attach("viewport", { path: evidence, contentType: "application/json" });
+      for (const box of Object.values(geometry)) {
+        expect(box.top).toBeGreaterThanOrEqual(box.headerBottom);
+        expect(box.bottom).toBeLessThanOrEqual(box.viewport);
+        expect(box.hit).toBe(true);
+        expect(box.overflow).toBeLessThanOrEqual(0);
+      }
+      try {
+        await check.click();
+        await checking.promise;
+        const support = page.getByRole("link", { name: "Contact support" });
+        await support.focus();
+        const before = await page.evaluate(() => {
+          window.scrollTo({ top: 35, behavior: "instant" });
+          return scrollY;
+        });
+        release.resolve();
+        await expect(page.getByText("No receipt is available yet.", { exact: false })).toBeVisible();
+        await expect(support).toBeFocused();
+        expect(await page.evaluate(() => scrollY)).toBe(before);
+        expect(posts).toBe(1);
+      } finally { release.resolve(); }
     });
   }
 

@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { appendNextPath } from "@/services/auth-intent";
 import type { CartItem } from "@/types/cart";
-import { formatCheckoutCurrency } from "@/features/checkout/lib/checkout-presentation";
+import { formatCheckoutCurrency, type QuoteRecovery } from "@/features/checkout/lib/checkout-presentation";
 import type { CheckoutStage } from "@/features/checkout/types/checkout.types";
 
 interface OrderSummaryProps {
@@ -16,7 +16,7 @@ interface OrderSummaryProps {
   deliveryFee?: number;
   total?: number;
   cashDue?: number;
-  quoteError: string | null;
+  quoteError: QuoteRecovery | null;
   isLoadingQuote: boolean;
   submitError: string | null;
   isGuest: boolean;
@@ -75,9 +75,9 @@ export function OrderSummary({
             <div className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm font-medium text-red-900">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-red-600" />
               <div>
-                <p role="alert">{quoteError}</p>
-                <Button type="button" variant="outline" className="mt-2 min-h-11" onClick={onRetryQuote}>
-                  Refresh order total
+                <p role="alert">{quoteError.message}</p>
+                <Button type="button" variant="outline" className="mt-2 min-h-11" disabled={isLoadingQuote} onClick={onRetryQuote}>
+                  {quoteError.action === "review-cart" ? "Review cart" : "Refresh order total"}
                 </Button>
               </div>
             </div>

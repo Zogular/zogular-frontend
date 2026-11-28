@@ -7,12 +7,12 @@ import {
   canSyncCartItem,
   CartContractError,
   clearBackendCart,
-  getBackendCart,
   removeBackendCartItem,
   updateBackendCartItem,
 } from "@/services/cart";
 import type { CartItem, CartItemIdentity } from "@/types/cart";
 import { isKnownStock } from "@/lib/normalizers/cart";
+import { checkoutGeneration, FRONTEND_FIRST, readCheckoutCart, type GenerationMode } from "@/services/checkout";
 
 export type { CartItem, CartItemIdentity } from "@/types/cart";
 
@@ -48,6 +48,8 @@ interface CartStore {
   decreaseQuantity: (identity: CartItemIdentity) => void;
   clearCart: () => void;
   clearConfirmedCart: (ownerId: string) => void;
+  prepareCartAdoption: (ownerId: string, expectedHold?: string) => ((items: CartItem[]) => boolean) | null;
+  refreshCartAfterReceipt: (ownerId: string) => Promise<void>;
   markCheckoutOutcomeUnknown: (ownerId: string) => void;
   resumeCheckoutAfterReview: (ownerId: string) => void;
   syncWithBackend: () => Promise<void>;
@@ -61,6 +63,114 @@ type OperationContext = {
 };
 
 const CART_STORAGE_KEY = "zogular-cart-storage";
+
+// Separate from the cart snapshot: a stale tab persisting its items must not
+// erase another tab's unresolved checkout. No request body is written here.
+const marker = (owner: string) => "zg-checkout:" + encodeURIComponent(owner) + ":";
+const changed = "zg-checkout-hold";
+export const CART_REVIEW_PENDING = "Your cart changes were kept. Open your cart and review them before checking out.";
+const isFenced = (prefix: string, key: string) => window.localStorage.getItem(prefix + "fenced:" + key) === key;
+export function subscribeCheckoutHold(fn: () => void) {
+  window.addEventListener("storage", fn);
+  window.addEventListener(changed, fn);
+  return () => { window.removeEventListener("storage", fn); window.removeEventListener(changed, fn); };
+}
+const notifyHold = () => window.dispatchEvent(new Event(changed));
+export function checkoutMode(owner: string): GenerationMode {
+  return typeof window !== "undefined" && window.localStorage.getItem(marker(owner) + "issued") !== null ? "required" : FRONTEND_FIRST;
+}
+export function observeGeneration(owner: string, key?: string) {
+  if (key) window.localStorage.setItem(marker(owner) + "issued", checkoutGeneration(key));
+  else if (checkoutMode(owner) === "required") throw new CartContractError("Cart generation missing.", "MALFORMED_ITEM");
+}
+export function heldGeneration(owner: string | null): string | null {
+  if (!owner || typeof window === "undefined") return null;
+  try {
+    const prefix = marker(owner);
+    const pending = window.sessionStorage.getItem(prefix + "sending");
+    const keys = pending === null ? [] : [checkoutGeneration(pending)];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const name = window.localStorage.key(i);
+      if (name?.startsWith(prefix + "hold:")) keys.push(checkoutGeneration(name.slice((prefix + "hold:").length)));
+      if (name?.startsWith(prefix + "attempt:")) {
+        const [key, attempt, ...rest] = name.slice((prefix + "attempt:").length).split(":");
+        checkoutGeneration(attempt);
+        if (rest.length || window.localStorage.getItem(name) !== key) return "unavailable";
+        keys.push(checkoutGeneration(key));
+      }
+    }
+    return keys.find(key => !isFenced(prefix, key)) ?? null;
+  } catch { return "unavailable"; }
+}
+
+export function beginGeneration(owner: string, key: string) {
+  const prefix = marker(owner);
+  checkoutGeneration(key);
+  if (heldGeneration(owner) || isFenced(prefix, key)) throw new Error("Checkout already pending");
+  // Local storage has no compare-and-set: two tabs can both pass the check.
+  // Separate keys let each definitive rejection retire only its own dispatch.
+  const attempt = crypto.randomUUID();
+  const name = prefix + "attempt:" + key + ":" + attempt;
+  window.localStorage.setItem(name, key);
+  if (window.localStorage.getItem(name) !== key || heldGeneration(owner) !== key) {
+    window.localStorage.removeItem(name);
+    throw new Error("Checkout attempt could not be recorded");
+  }
+  notifyHold();
+  return attempt;
+}
+
+// On upgrade a reloaded tab may have only the previous session-local record.
+// Copy before removal so a failed write never discards that evidence.
+export function preserveLegacySending(owner: string, key: string) {
+  const prefix = marker(owner);
+  if (window.sessionStorage.getItem(prefix + "sending") !== key || isFenced(prefix, key)) return;
+  window.localStorage.setItem(prefix + "hold:" + checkoutGeneration(key), key);
+  if (window.localStorage.getItem(prefix + "hold:" + key) !== key) throw new Error("Checkout hold could not be preserved");
+  window.sessionStorage.removeItem(prefix + "sending");
+}
+
+export function rejectGenerationAttempt(owner: string, key: string, attempt: string) {
+  window.localStorage.removeItem(marker(owner) + "attempt:" + checkoutGeneration(key) + ":" + checkoutGeneration(attempt));
+  notifyHold();
+}
+
+// Called only on a matching confirmed order/receipt or explicit fenced review.
+// Publish the fence before cleanup so a late writer cannot revive the hold.
+export function settleGeneration(owner: string, key: string) {
+  checkoutGeneration(key);
+  const prefix = marker(owner);
+  try {
+    window.localStorage.setItem(prefix + "fenced:" + key, key);
+    if (!isFenced(prefix, key)) return false;
+  } catch {
+    return false; // Retain every unresolved record when settlement cannot be published.
+  }
+  try {
+    const attempts = [];
+    for (let i = 0; i < window.localStorage.length; i++) {
+      const name = window.localStorage.key(i);
+      if (name?.startsWith(prefix + "attempt:" + key + ":")) attempts.push(name);
+    }
+    for (const name of attempts) window.localStorage.removeItem(name);
+    window.localStorage.removeItem(prefix + "hold:" + key);
+    if (window.sessionStorage.getItem(prefix + "sending") === key) window.sessionStorage.removeItem(prefix + "sending");
+  } catch {
+    // The verified fence, not successful garbage collection, settles these records.
+  }
+  notifyHold();
+  return true;
+}
+export function reviewChangedGeneration(owner: string, old: string, next: string) {
+  if (checkoutGeneration(next) === old || heldGeneration(owner) !== old) return false;
+  return settleGeneration(owner, old);
+}
+
+async function readCartItems(context: OperationContext) {
+  const snapshot = await readCheckoutCart(checkoutMode(context.userId), false);
+  if (isCurrentOperation(context)) observeGeneration(context.userId, snapshot.generation);
+  return snapshot.items;
+}
 
 let activeIdentityId: string | null = null;
 let operationGeneration = 0;
@@ -157,7 +267,7 @@ function isCurrentOperation(context: OperationContext): boolean {
   return (
     activeIdentityId === context.userId &&
     operationGeneration === context.generation &&
-    operationRevision === context.revision
+    operationRevision === context.revision && !heldGeneration(context.userId)
   );
 }
 
@@ -394,7 +504,7 @@ async function reconcileDesiredCart(
   if (!isCurrentOperation(context)) return;
 
   if (get().pendingAnonymousMerge.length) {
-    reconciledItems = await getBackendCart();
+    reconciledItems = await readCartItems(context);
     if (!isCurrentOperation(context)) return;
   }
 
@@ -411,7 +521,7 @@ async function handleOperationFailure(
 
   if (error instanceof ApiError && error.status === 409) {
     try {
-      const backendItems = await getBackendCart();
+      const backendItems = await readCartItems(context);
       if (!isCurrentOperation(context)) return;
       commitBackendItems(set, get, backendItems, context, "error", getSyncErrorMessage(error));
       return;
@@ -521,6 +631,7 @@ export const useCart = create<CartStore>()(
 
       addItem: (newItem) => {
         const userId = getResolvedOwnerId(get);
+        if (heldGeneration(userId)) return "Check your order status before changing your cart.";
         const state = get();
         const blocked = guestIncreaseBlock(state, newItem, newItem.quantity, newItem);
         // Refresh matching variants even when a lower observation rejects the requested quantity.
@@ -575,6 +686,7 @@ export const useCart = create<CartStore>()(
 
       removeItem: (identity) => {
         const userId = getResolvedOwnerId(get);
+        if (heldGeneration(userId)) return;
         const currentItems = get().items;
         const targetItem = currentItems.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
@@ -593,6 +705,7 @@ export const useCart = create<CartStore>()(
       increaseQuantity: (identity) => {
         if (guestIncreaseBlock(get(), identity)) return;
         const userId = getResolvedOwnerId(get);
+        if (heldGeneration(userId)) return;
         const targetItem = get().items.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
         const nextQuantity = targetItem.quantity + 1;
@@ -617,6 +730,7 @@ export const useCart = create<CartStore>()(
 
       decreaseQuantity: (identity) => {
         const userId = getResolvedOwnerId(get);
+        if (heldGeneration(userId)) return;
         const targetItem = get().items.find((item) => isSameCartLine(item, identity));
         if (!targetItem) return;
         if (targetItem.quantity <= 1) {
@@ -645,6 +759,7 @@ export const useCart = create<CartStore>()(
 
       clearCart: () => {
         const userId = getResolvedOwnerId(get);
+        if (userId && (heldGeneration(userId) || get().checkoutOutcomeOwnerId === userId)) return;
         if (userId) captureOperation(userId);
         set({
           ...buildCartState([]),
@@ -670,6 +785,42 @@ export const useCart = create<CartStore>()(
         });
       },
 
+      prepareCartAdoption: (ownerId, expectedHold) => {
+        const initial = get();
+        const context = captureSynchronization(ownerId); // observation, not a new write revision
+        const idle = () => get() === initial && activeIdentityId === ownerId && initial.ownerId === ownerId
+          && initial.hasHydrated && initial.identityResolved && initial.checkoutOutcomeOwnerId === null
+          && operationGeneration === context.generation && operationRevision === context.revision
+          && !initial.pendingClear && !initial.pendingDeletions.length && !initial.pendingAnonymousMerge.length
+          && !identityQueues.has(ownerId) && ![...activeSynchronizations.keys()].some(k => k.startsWith(ownerId + ":"))
+          && (initial.syncStatus === "idle" || (Boolean(expectedHold) && initial.syncStatus === "error"
+            && initial.syncError === "Check your orders before trying checkout again."));
+        if (!idle() || heldGeneration(ownerId) !== (expectedHold ?? null)) return null;
+        return items => {
+          if (!idle() || heldGeneration(ownerId)) return false;
+          set({ ...buildCartState(mergeBackendWithUnsyncableLocal(items, initial.items)), syncError: null, syncStatus: "idle" });
+          return true;
+        };
+      },
+      refreshCartAfterReceipt: async (ownerId) => {
+        if (getResolvedOwnerId(get) !== ownerId || heldGeneration(ownerId)) return;
+        const adopt = get().prepareCartAdoption(ownerId);
+        const epoch = operationGeneration;
+        const notePreserved = (message = CART_REVIEW_PENDING) => {
+          if (operationGeneration === epoch && getResolvedOwnerId(get) === ownerId && !heldGeneration(ownerId)
+            && get().syncStatus === "idle" && !identityQueues.has(ownerId)) {
+            set({ syncStatus: "error", syncError: message });
+          }
+        };
+        if (!adopt) { notePreserved(); return; }
+        try {
+          const snapshot = await readCheckoutCart("required");
+          if (!adopt(snapshot.items)) notePreserved();
+        } catch {
+          notePreserved("Your current cart was kept. Open your cart to check its latest contents.");
+        }
+      },
+
       markCheckoutOutcomeUnknown: (ownerId) => {
         if (!get().identityResolved || get().ownerId !== ownerId || activeIdentityId !== ownerId) return;
         captureOperation(ownerId);
@@ -688,7 +839,7 @@ export const useCart = create<CartStore>()(
       syncWithBackend: async () => {
         const userId = getResolvedOwnerId(get);
         if (!userId) return;
-        if (get().checkoutOutcomeOwnerId === userId) {
+        if (get().checkoutOutcomeOwnerId === userId || heldGeneration(userId)) {
           set({
             syncStatus: "error",
             syncError: "Check your orders before trying checkout again.",
@@ -707,7 +858,7 @@ export const useCart = create<CartStore>()(
         const synchronization = enqueueForIdentity(userId, async () => {
           try {
             if (!isCurrentOperation(context)) return;
-            const backendItems = await getBackendCart();
+            const backendItems = await readCartItems(context);
             if (!isCurrentOperation(context)) return;
             await reconcileDesiredCart(backendItems, context, set, get);
           } catch (error) {
