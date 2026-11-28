@@ -986,7 +986,7 @@ test.describe("guest stock route", () => {
   });
   for (const width of [320, 390, 1440]) {
     test(`guest stock route at ${width}px`, async ({ page, context }, info) => {
-      await page.setViewportSize({ width, height: width <= 390 ? 844 : 900 });
+      await page.setViewportSize({ width, height: width === 320 ? 568 : width === 390 ? 844 : 900 });
       await context.routeWebSocket("**/*", (ws) => ws.close());
       await context.route("**/*", (route) => {
         const request = route.request();
@@ -1060,15 +1060,48 @@ test.describe("guest stock route", () => {
       await plus.last().click();
       await expect(subtotal).toHaveText("K750");
       {
-        await page.getByRole("button", { name: "Open cart" }).click();
-        const drawer = page.getByRole("dialog");
+        const openCart = page.getByRole("button", { name: "Open cart", exact: true });
+        await openCart.press("Enter");
+        const drawer = page.getByRole("dialog", { name: /^Your Cart/ });
+        const closeCart = drawer.getByRole("button", { name: "Close cart", exact: true });
+        const checkout = drawer.getByRole("link", { name: "Proceed to checkout", exact: true });
+        const drawerSubtotal = drawer.getByTestId("cart-drawer-items-subtotal");
+        await expect(closeCart).toBeFocused();
+        await expect(drawer.getByText("Items subtotal", { exact: true })).toHaveCount(1);
+        await expect(drawer.getByText("Delivery is calculated at checkout, where you’ll see your final total.", { exact: true })).toBeVisible();
+        await expect(drawer.getByText("Total", { exact: true })).toHaveCount(0);
+        await expect(drawer.getByText(/Lusaka Area/)).toHaveCount(0);
+        await expect(drawerSubtotal).toHaveText("K750");
+        await expect(drawer.getByText("K750", { exact: true })).toHaveCount(1);
         await expect(drawer.getByRole("button", { name: "Increase Single listing quantity" })).toBeDisabled();
         const more = drawer.getByRole("button", { name: "Increase Counted listing quantity" });
-        await more.click();
+        await more.press("Enter");
         await expect(more).toBeDisabled();
+        await expect(drawerSubtotal).toHaveText("K1,000");
+        await expect(drawer.getByText("K1,000", { exact: true })).toHaveCount(1);
+        await expect(checkout).toHaveAttribute("href", "/checkout");
+        await checkout.focus();
+        await expect(checkout).toBeFocused();
+        const bounds = await drawer.boundingBox();
+        const viewport = page.viewportSize();
+        expect(bounds).not.toBeNull();
+        expect(viewport).not.toBeNull();
+        for (const control of [drawerSubtotal, checkout]) {
+          await expect(control).toBeInViewport({ ratio: 1 });
+          const box = await control.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, bounds!.x) - 1);
+          expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, bounds!.y) - 1);
+          expect(box!.x + box!.width).toBeLessThanOrEqual(Math.min(viewport!.width, bounds!.x + bounds!.width) + 1);
+          expect(box!.y + box!.height).toBeLessThanOrEqual(Math.min(viewport!.height, bounds!.y + bounds!.height) + 1);
+        }
+        await page.keyboard.press("Tab");
+        await expect(closeCart).toBeFocused();
         await verifyNote(drawer.getByRole("button", { name: "Increase Single listing quantity" }), "Only 1 available", "drawer-single");
         await photo("drawer");
-        await drawer.getByRole("button", { name: "Close cart" }).click();
+        await page.keyboard.press("Escape");
+        await expect(drawer).toBeHidden();
+        await expect(openCart).toBeFocused();
       }
       await page.reload();
       await expect(subtotal).toHaveText("K1,000");
