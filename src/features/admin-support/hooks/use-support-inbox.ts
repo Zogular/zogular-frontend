@@ -3,6 +3,7 @@
 import { useEffect, useReducer, useRef, useState } from "react";
 import {
   adminSupportApi,
+  isSupportReadAuthorizationFailure,
   type AdminSupportTicket,
   type AdminTicketCategory,
   type AdminTicketPriority,
@@ -10,7 +11,7 @@ import {
 } from "@/services/admin/support";
 
 // Owns the inbox read lifecycle separately from ticket detail and mutations.
-export function useSupportInbox(canViewSupport: boolean) {
+export function useSupportInbox(onAuthorizationDenied: () => void) {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
   const [queueFailed, setQueueFailed] = useState(false);
@@ -24,7 +25,6 @@ export function useSupportInbox(canViewSupport: boolean) {
   const [queueRevision, refreshQueue] = useReducer((revision: number) => revision + 1, 0);
 
   useEffect(() => {
-    if (!canViewSupport) return;
     const controller = new AbortController();
     const { signal } = controller;
     const loadTickets = async () => {
@@ -51,15 +51,20 @@ export function useSupportInbox(canViewSupport: boolean) {
         requestedPage.current = res.pagination.total === 0 ? 1 : res.pagination.page;
         setTickets(res.tickets);
         setPagination(res.pagination);
-      } catch {
-        if (!signal.aborted) setQueueFailed(true);
+      } catch (error) {
+        if (signal.aborted) return;
+        if (isSupportReadAuthorizationFailure(error)) {
+          onAuthorizationDenied();
+          return;
+        }
+        setQueueFailed(true);
       } finally {
         if (!signal.aborted) setLoading(false);
       }
     };
     void loadTickets();
     return () => controller.abort();
-  }, [canViewSupport, statusFilter, priorityFilter, categoryFilter, search, queueRevision]);
+  }, [onAuthorizationDenied, statusFilter, priorityFilter, categoryFilter, search, queueRevision]);
 
   const goToPage = (page: number) => {
     requestedPage.current = page;

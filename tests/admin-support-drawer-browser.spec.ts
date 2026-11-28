@@ -601,6 +601,7 @@ async function holdSupportResponse(
   ticket: FixtureTicket,
   operation: "detail" | "reply" | "status",
   json: object,
+  status = 200,
 ) {
   const method = { detail: "GET", reply: "POST", status: "PATCH" }[operation];
   const suffix = { detail: "", reply: "/messages", status: "/status" }[operation];
@@ -623,7 +624,7 @@ async function holdSupportResponse(
     resolveRequest(route.request());
     try {
       if (await responseReleased === "deliver") {
-        await route.fulfill({ json, headers: { [markerHeader]: marker } });
+        await route.fulfill({ status, json, headers: { [markerHeader]: marker } });
       } else {
         await route.abort("aborted");
       }
@@ -647,7 +648,7 @@ async function holdSupportResponse(
       release("deliver");
       const response = await request.response();
       if (!response) throw new Error(`No response for held Support fixture: ${marker}`);
-      expect(response.ok()).toBe(true);
+      expect(response.status()).toBe(status);
       expect(await response.headerValue(markerHeader)).toBe(marker);
       await response.finished();
       // Give the delivered fetch body and React update a render turn before checking absence.
@@ -837,6 +838,129 @@ function isInboxRead(request: Request) {
   const url = new URL(request.url());
   return request.method() === "GET" && url.origin === BROWSER_ORIGIN && url.pathname === supportInboxPath;
 }
+
+for (const denial of [403, 401] as const) {
+  test(`terminal inbox ${denial} clears the open ticket and ignores a late reply`, async ({ context }) => {
+    const { page, violations } = await setupPage(context);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const [first, second] = fixtureTickets;
+    const draftText = "Synthetic draft pending when inbox access ends.";
+    const lateReplyText = "Synthetic reply completion from the prior access.";
+    const diagnostic = "Synthetic restricted authority diagnostic";
+    const exchanges: number[] = [];
+    let denyInbox = false;
+
+    await page.route(`${BROWSER_ORIGIN}/api/backend/auth/refresh-token`, async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      exchanges.push(200);
+      // A successful refresh lets the actual API client replay the read once.
+      await route.fulfill({ status: 200, json: { status: "success" } });
+    });
+    await page.route((url) => url.origin === BROWSER_ORIGIN && url.pathname === supportInboxPath, async (route) => {
+      if (!denyInbox || !isInboxRead(route.request())) return route.fallback();
+      exchanges.push(denial);
+      await route.fulfill({ status: denial, json: { status: "fail", message: diagnostic } });
+    });
+
+    const priorStatus = await holdSupportResponse(page, first, "status", {
+      status: "success",
+      data: { ticket: { ...toSupportSummaryDto(first, true), status: "resolved" } },
+    });
+    const pendingReply = await holdSupportResponse(page, second, "reply", {
+      status: "success",
+      data: { message: {
+        id: "late-authority-reply",
+        senderType: "support",
+        senderName: "Fixture Admin",
+        body: lateReplyText,
+        createdAt: second.updatedAt,
+      } },
+    });
+
+    try {
+      await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+      await openDesktopTicket(page, first);
+      const sheet = page.getByRole("dialog");
+      await sheet.getByRole("button", { name: "Mark Resolved", exact: true }).click();
+      await priorStatus.request;
+      await page.keyboard.press("Escape");
+      await expect(sheet).toBeHidden();
+
+      await openDesktopTicket(page, second);
+      const draft = page.getByPlaceholder("Type your reply to the seller...");
+      await expect(sheet.getByText(second.seller.email, { exact: false })).toBeVisible();
+      await expect(sheet.getByText(second.messages[0].body, { exact: true })).toBeVisible();
+      await draft.fill(draftText);
+      await sheet.getByRole("button", { name: "Send Reply", exact: true }).click();
+      expect((await pendingReply.request).postDataJSON()).toEqual({ message: draftText });
+      await expect(draft).toHaveValue(draftText);
+
+      // A completed status change refreshes the inbox without closing the current drawer.
+      const expectedExchanges = denial === 401 ? [401, 200, 401] : [403];
+      let deniedReads = 0;
+      const terminal = page.waitForResponse((response) =>
+        isInboxRead(response.request()) &&
+        response.status() === denial &&
+        ++deniedReads === (denial === 401 ? 2 : 1));
+      denyInbox = true;
+      await priorStatus.deliver();
+      await (await terminal).finished();
+      expect(exchanges).toEqual(expectedExchanges);
+      const denialAlert = page.getByRole("alert").filter({
+        has: page.getByText("Support access could not be verified", { exact: true }),
+      });
+      await expect(denialAlert).toBeVisible();
+      const reload = denialAlert.getByRole("button", { name: "Reload Support", exact: true });
+      await expect(reload).toBeVisible();
+      await expect(reload).toBeEnabled();
+      await expect(sheet).toHaveCount(0);
+      await expect(draft).toHaveCount(0);
+      await expect(page.getByText(first.subject, { exact: true })).toHaveCount(0);
+      await expect(page.getByText(second.subject, { exact: true })).toHaveCount(0);
+      await expect(page.getByText(second.seller.email, { exact: false })).toHaveCount(0);
+      await expect(page.getByText(second.messages[0].body, { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Retry support inbox" })).toHaveCount(0);
+      await expect(page.getByText(diagnostic, { exact: true })).toHaveCount(0);
+
+      await pendingReply.deliver();
+      await expect(denialAlert).toBeVisible();
+      await expect(sheet).toHaveCount(0);
+      await expect(draft).toHaveCount(0);
+      await expect(page.getByText(lateReplyText, { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Reply sent.", { exact: true })).toHaveCount(0);
+      expect(exchanges).toEqual(expectedExchanges);
+      expect(violations).toEqual([]);
+    } finally {
+      await Promise.all([priorStatus.dispose(), pendingReply.dispose()]);
+    }
+  });
+}
+
+test("a terminal 401 from a previous ticket clears the current Support workspace", async ({ context }) => {
+  const { page, violations } = await setupPage(context);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const [first, second] = fixtureTickets;
+  await page.route(`${BROWSER_ORIGIN}/api/backend/auth/refresh-token`, (route) =>
+    route.fulfill({ status: 401, json: { status: "fail" } }));
+  const held = await holdSupportResponse(page, first, "detail", { status: "fail" }, 401);
+  const sheet = page.getByRole("dialog");
+
+  try {
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+    await openDesktopTicket(page, first);
+    await held.request;
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+    await openDesktopTicket(page, second);
+    await expect(sheet.getByText(second.messages[0].body, { exact: true })).toBeVisible();
+    await held.deliver();
+    await expect(page.getByRole("alert").getByText("Support access could not be verified", { exact: true })).toBeVisible();
+    await expect(sheet).toHaveCount(0);
+    expect(violations).toEqual([]);
+  } finally {
+    await held.dispose();
+  }
+});
 
 const contradictoryPages = {
   "contradictory page": { total: 11, pages: 2, results: 1 },

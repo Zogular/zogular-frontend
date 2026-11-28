@@ -1,6 +1,14 @@
 import { z } from "zod";
 import { ApiError, apiClient } from "@/services/api";
 
+export function isSupportReadAuthorizationFailure(error: unknown): boolean {
+  return error instanceof ApiError && (error.status === 401 || error.status === 403);
+}
+
+export function isSupportSessionDenied(error: unknown): boolean {
+  return error instanceof ApiError && error.status === 401;
+}
+
 const ticketStatus = z.enum(["open", "waiting-seller", "waiting-support", "resolved", "closed"]);
 const ticketPriority = z.enum(["low", "medium", "high", "urgent"]);
 const ticketCategory = z.enum(["order", "payout", "inventory", "tech", "account", "general"]);

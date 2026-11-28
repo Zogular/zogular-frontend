@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, TicketCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -18,12 +18,14 @@ import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
 import { useSupportInbox } from "@/features/admin-support/hooks/use-support-inbox";
 import {
   adminSupportApi,
+  isSupportReadAuthorizationFailure,
+  isSupportSessionDenied,
   type AdminSupportTicket,
   type AdminTicketCategory,
   type AdminTicketPriority,
   type AdminTicketStatus,
 } from "@/services/admin/support";
-import { adminIdentityHasPermission } from "@/services/admin/session";
+import { adminIdentityHasPermission, type AdminIdentity } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 const statusTone: Record<AdminTicketStatus, AdminTone> = {
@@ -47,6 +49,35 @@ interface TicketSelection {
 }
 
 export default function AdminSupportPage() {
+  const identity = useAdminIdentity();
+  if (!identity || !adminIdentityHasPermission(identity, "view_support_tickets")) {
+    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
+  }
+
+  // A new verified authority must not inherit another projection or draft.
+  const { id, claims } = identity;
+  const authority = JSON.stringify([id, claims.role, claims.issuedAt, [...new Set(claims.permissions)].sort()]);
+  return <SupportAccessBoundary key={authority} identity={identity} />;
+}
+
+function SupportAccessBoundary({ identity }: { identity: AdminIdentity }) {
+  const [denied, setDenied] = useState(false);
+  const denyAccess = useCallback(() => setDenied(true), []);
+  if (denied) {
+    return (
+      <div role="alert">
+        <AdminEmptyState title="Support access could not be verified" description="Reload Support to check your access again." />
+        <Button onClick={() => window.location.reload()} variant="outline">Reload Support</Button>
+      </div>
+    );
+  }
+  return <SupportWorkspace identity={identity} onAuthorizationDenied={denyAccess} />;
+}
+
+function SupportWorkspace({ identity, onAuthorizationDenied }: {
+  identity: AdminIdentity;
+  onAuthorizationDenied: () => void;
+}) {
   // Each opening owns its async work, including when the same ticket is reopened.
   const activeTicket = useRef<TicketSelection | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -57,16 +88,18 @@ export default function AdminSupportPage() {
   const [reply, setReply] = useState("");
   const [isMutating, setIsMutating] = useState(false);
 
-  const identity = useAdminIdentity();
-  const canViewSupport = identity ? adminIdentityHasPermission(identity, "view_support_tickets") : false;
-  const canReplySupport = identity ? adminIdentityHasPermission(identity, "reply_support_tickets") : false;
-  const canManageSupport = identity ? adminIdentityHasPermission(identity, "manage_support_tickets") : false;
+  const canReplySupport = adminIdentityHasPermission(identity, "reply_support_tickets");
+  const canManageSupport = adminIdentityHasPermission(identity, "manage_support_tickets");
 
   const {
     tickets, loading, queueFailed, pagination, goToPage, refreshQueue,
     search, statusFilter, priorityFilter, categoryFilter,
     setSearch, setStatusFilter, setPriorityFilter, setCategoryFilter,
-  } = useSupportInbox(canViewSupport);
+  } = useSupportInbox(onAuthorizationDenied);
+
+  useEffect(() => () => {
+    activeTicket.current = null;
+  }, []);
 
   const resetDrawer = (selection: TicketSelection | null) => {
     activeTicket.current = selection;
@@ -86,8 +119,14 @@ export default function AdminSupportPage() {
       if (activeTicket.current !== selection) return;
       if (ticket.id !== selection.id) throw new Error("Unexpected ticket in detail response.");
       setSelectedTicketDetail(ticket);
-    } catch {
-      if (activeTicket.current === selection) setDetailFailed(true);
+    } catch (error) {
+      const ownsDrawer = activeTicket.current === selection;
+      // A 401 applies to this authority even after the operator changes tickets.
+      if (isSupportSessionDenied(error) || (ownsDrawer && isSupportReadAuthorizationFailure(error))) {
+        onAuthorizationDenied();
+        return;
+      }
+      if (ownsDrawer) setDetailFailed(true);
     } finally {
       if (activeTicket.current === selection) setDetailLoading(false);
     }
@@ -152,10 +191,6 @@ export default function AdminSupportPage() {
       finishTicketMutation(selection);
     }
   };
-
-  if (!canViewSupport) {
-    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
-  }
 
   return (
     <div className="space-y-6">
