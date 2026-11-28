@@ -92,7 +92,7 @@ function makeFixtureTickets(): FixtureTicket[] {
           "very.long.unbroken.seller.operations.contact.address@zogular-lusaka-marketplace.co.zm",
         storeName:
           "Lusaka_Electronics_And_Solar_Distribution_Superstore_Limited_2026",
-        applicationStatus: "APPROVED_PROVISIONAL_VERIFICATION_PENDING_2026",
+        applicationStatus: "PROVISIONAL",
       },
       messages: [
         {
@@ -197,7 +197,6 @@ const manageSupportPermissions = [
 ];
 let currentPermissions = manageSupportPermissions;
 let fixtureInboxReads = 0;
-let replyForceStatus: number | null = null;
 
 // Match local dev's read DTO: contact fields are omitted, not blanked, without permission.
 function toSupportSummaryDto({ seller, ...ticket }: Omit<FixtureTicket, "messages">, canViewSensitive: boolean) {
@@ -254,7 +253,6 @@ test.beforeEach(() => {
   currentActorRole = "SUPER_ADMIN";
   currentPermissions = manageSupportPermissions;
   fixtureInboxReads = 0;
-  replyForceStatus = null;
 });
 
 test.beforeAll(async () => {
@@ -343,19 +341,6 @@ test.beforeAll(async () => {
       /^\/api\/v1\/admin\/support\/tickets\/([^/]+)\/messages$/,
     );
     if (messageMatch && req.method === "POST") {
-      if (replyForceStatus) {
-        const s = replyForceStatus;
-        replyForceStatus = null;
-        res.statusCode = s;
-        res.end(
-          JSON.stringify({
-            status: "error",
-            message: `Synthetic reply failure (${s})`,
-          }),
-        );
-        return;
-      }
-
       const id = decodeURIComponent(messageMatch[1]);
       const ticket = fixtureTickets.find((t) => t.id === id);
       if (!ticket) {
@@ -377,6 +362,7 @@ test.beforeAll(async () => {
       ticket.status = "waiting-seller";
       ticket.updatedAt = new Date().toISOString();
 
+      res.statusCode = 201;
       res.end(
         JSON.stringify({
           status: "success",
@@ -870,6 +856,8 @@ for (const denial of [403, 401] as const) {
       status: "success",
       data: { message: {
         id: "late-authority-reply",
+        ticketId: second.id,
+        senderUserId: "admin-fixture",
         senderType: "support",
         senderName: "Fixture Admin",
         body: lateReplyText,
@@ -1451,36 +1439,285 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
     expect(violations).toHaveLength(0);
   });
 
-  test("preserves a failed reply draft and sends it once on explicit retry", async ({
-    context,
-  }) => {
+  for (const scenario of ["committed-without-response", "unavailable", "invalid-receipt", "denied-check"] as const) {
+    test(`keeps an uncertain reply locked after ${scenario} and a conversation check`, async ({ context }, testInfo) => {
+      const { page, violations } = await setupPage(context);
+      const mobile = scenario === "committed-without-response";
+      await page.setViewportSize({ width: mobile ? 320 : 1280, height: 800 });
+      const [other, ticket] = fixtureTickets;
+      const open = (item: FixtureTicket) => mobile
+        ? page.locator("article").filter({ hasText: item.subject }).getByRole("button", { name: "Open", exact: true }).click()
+        : openDesktopTicket(page, item);
+      const replyUrl = `${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}/messages`;
+      const draftText = "Synthetic reply with an unconfirmed outcome.";
+      const posts: Request[] = [];
+      let release!: () => void;
+      const held = new Promise<void>((resolve) => { release = resolve; });
+      await page.route(replyUrl, async (route) => {
+        if (route.request().method() !== "POST") return route.fallback();
+        posts.push(route.request());
+        await held;
+        if (scenario === "committed-without-response") {
+          const recorded = await route.fetch({ maxRedirects: 0, maxRetries: 0 });
+          expect(recorded.ok()).toBe(true);
+          await recorded.dispose();
+          return route.abort("failed");
+        }
+        if (scenario === "invalid-receipt") {
+          return route.fulfill({ status: 201, json: { status: "success", data: { message: { id: "incomplete" } } } });
+        }
+        return route.fulfill({ status: 503, json: { status: "fail", message: "Synthetic private diagnostic" } });
+      });
+
+      try {
+        await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+        await open(ticket);
+        const sheet = page.getByRole("dialog");
+        const draft = sheet.getByPlaceholder("Type your reply to the seller...");
+        const send = sheet.getByRole("button", { name: "Send Reply" });
+        await draft.fill(draftText);
+        await send.click();
+        await expect.poll(() => posts.length).toBe(1);
+        await expect(draft).toBeDisabled();
+        await page.keyboard.press("Escape");
+        await expect(sheet).toBeHidden();
+
+        await open(other);
+        await expect(draft).toHaveValue("");
+        await page.keyboard.press("Escape");
+        await expect(sheet).toBeHidden();
+        await open(ticket);
+        await expect(draft).toHaveValue(draftText);
+        await expect(send).toBeDisabled();
+        release();
+
+        const uncertain = sheet.getByRole("alert");
+        await expect(uncertain).toContainText("whether your reply was sent");
+        await expect(uncertain).toContainText("only while this Support page is open");
+        await expect(sheet.getByText("Synthetic private diagnostic")).toHaveCount(0);
+        await expect(page.getByText("Reply sent.", { exact: true })).toHaveCount(0);
+        if (scenario === "denied-check") {
+          await page.route(`${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}`, (route) =>
+            route.request().method() === "GET"
+              ? route.fulfill({ status: 403, json: { status: "fail" } })
+              : route.fallback());
+        }
+        const checked = page.waitForResponse((response) =>
+          response.request().method() === "GET" &&
+          response.url() === `${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}`);
+        await sheet.getByRole("button", { name: "Check conversation" }).click();
+        if (scenario === "denied-check") {
+          expect((await checked).status()).toBe(403);
+          await expect(page.getByRole("alert").getByText("Support access could not be verified", { exact: true })).toBeVisible();
+          await expect(sheet).toHaveCount(0);
+          await expect(page.getByRole("row").filter({ hasText: ticket.subject })).toHaveCount(0);
+          expect(posts).toHaveLength(1);
+          expect(violations).toEqual([]);
+          return;
+        }
+        expect((await checked).ok()).toBe(true);
+        await expect(uncertain).toContainText("we still can’t confirm the earlier send");
+        await expect(sheet.locator("p").and(sheet.getByText(draftText, { exact: true }))).toHaveCount(
+          scenario === "committed-without-response" ? 1 : 0,
+        );
+        await expect(draft).toHaveValue(draftText);
+        await expect(send).toBeDisabled();
+        if (mobile) {
+          await uncertain.scrollIntoViewIfNeeded();
+          expect(await sheet.evaluate((element) => element.scrollWidth <= element.clientWidth)).toBe(true);
+          await page.screenshot({ path: testInfo.outputPath("uncertain-support-reply-320.png"), animations: "disabled" });
+        }
+        await sheet.getByRole("button", { name: "Dismiss draft" }).click();
+        await expect(draft).toHaveValue("");
+        await expect(send).toBeDisabled();
+        expect(posts.map((request) => request.postDataJSON())).toEqual([{ message: draftText }]);
+        expect(violations).toEqual([]);
+      } finally {
+        release();
+      }
+    });
+  }
+
+  test("does not follow a browser-side 307 on a Support reply", async ({ context }) => {
     const { page, violations } = await setupPage(context);
     await page.setViewportSize({ width: 1280, height: 800 });
-    const sheet = await openExtremeTicketDrawer(page, 1280);
-
-    replyForceStatus = 500;
-    const posts: Request[] = [];
+    const ticket = fixtureTickets[0];
+    const replyUrl = `${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}/messages`;
+    const destination = `${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}/redirect-probe`;
+    const posts: string[] = [];
+    const followed: string[] = [];
     page.on("request", (request) => {
-      if (request.method() === "POST" && request.url().endsWith("/messages")) posts.push(request);
+      if (request.method() === "POST") posts.push(request.url());
+      if (request.url() === destination) followed.push(request.method());
     });
-    const draft = "Draft reply that must not be lost on 500 error.";
-    const textarea = sheet.getByPlaceholder("Type your reply to the seller...");
-    await textarea.fill(draft);
-    await sheet.getByRole("button", { name: /Send Reply/i }).click();
+    // Both endpoints are browser-intercepted; this does not exercise upstream proxy redirects.
+    await page.route(destination, (route) => route.fulfill({ status: 500 }));
+    await page.route(replyUrl, (route) => route.request().method() === "POST"
+      ? route.fulfill({ status: 307, headers: { location: destination } })
+      : route.fallback());
 
-    await expect(page.getByText("Failed to send reply.")).toBeVisible();
-    await expect(textarea).toHaveValue(draft);
-    const send = sheet.getByRole("button", { name: /Send Reply/i });
-    await expect(send).toBeEnabled();
-    expect(posts).toHaveLength(1);
+    const sheet = await openExtremeTicketDrawer(page, 1280);
+    const draft = sheet.getByPlaceholder("Type your reply to the seller...");
+    const send = sheet.getByRole("button", { name: "Send Reply" });
+    await draft.fill("Synthetic reply subject to a redirect.");
     await send.click();
-    await expect(sheet.getByText(draft, { exact: true })).toHaveCount(1);
-    await expect(textarea).toHaveValue("");
-    expect(posts.map((request) => request.postDataJSON())).toEqual([{ message: draft }, { message: draft }]);
-    expect(violations).toHaveLength(0);
+    await expect(sheet.getByRole("alert")).toContainText("whether your reply was sent");
+    await expect(draft).toHaveValue("Synthetic reply subject to a redirect.");
+    await expect(send).toBeDisabled();
+    await expect(page.getByText("Reply sent.", { exact: true })).toHaveCount(0);
+    expect(posts).toEqual([replyUrl]);
+    expect(followed).toEqual([]);
+    expect(violations).toEqual([]);
   });
 
-  test("does not carry an unsent draft to another ticket or a reopened ticket", async ({ context }) => {
+  test("a restricted Support reader cannot display an unexpectedly expanded ticket", async ({ context }) => {
+    // Hold the role constant: the verified claims, not the role label, govern this projection.
+    currentPermissions = manageSupportPermissions.filter((permission) => permission !== "view_support_sensitive_fields");
+    const { page, violations } = await setupPage(context);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const ticket = fixtureTickets[1];
+    const contact = toSupportSummaryDto(ticket, true).seller;
+    const expanded = {
+      ...toSupportSummaryDto(ticket, true),
+      messages: ticket.messages.map((message) => toSupportMessageDto(message, ticket, true)),
+    };
+    let reads = 0;
+    await page.route(`${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}`, (route) => {
+      if (route.request().method() !== "GET" || ++reads !== 1) return route.fallback();
+      return route.fulfill({ status: 200, json: { status: "success", data: { ticket: expanded } } });
+    });
+
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+    await openDesktopTicket(page, ticket);
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByRole("alert")).toContainText("couldn't load this ticket");
+    const assertMasked = async () => {
+      for (const field of [contact.displayName!, contact.email!, ticket.messages[0].senderName, ticket.messages[0].body]) {
+        await expect(page.getByText(field, { exact: true })).toHaveCount(0);
+      }
+    };
+    await assertMasked();
+    await sheet.getByRole("button", { name: "Retry ticket details" }).click();
+    await expect(sheet.getByRole("heading", { name: ticket.subject, exact: true })).toBeVisible();
+    await expect(sheet.getByText(/Seller ·/)).toBeVisible();
+    await assertMasked();
+    expect(reads).toBe(2);
+    expect(violations).toEqual([]);
+  });
+
+  for (const canViewSensitive of [true, false]) {
+    test(`locks a reply with a valid receipt for the wrong ${canViewSensitive ? "masked" : "expanded"} projection`, async ({ context }) => {
+      if (!canViewSensitive) {
+        currentPermissions = manageSupportPermissions.filter((permission) => permission !== "view_support_sensitive_fields");
+      }
+      const { page, violations } = await setupPage(context);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const ticket = fixtureTickets[0];
+      const draftText = "Synthetic reply for the receipt projection check.";
+      const receipt = toSupportMessageDto({
+        id: "projection-mismatch-reply",
+        senderType: "support",
+        senderName: "Synthetic private receipt sender",
+        body: draftText,
+        createdAt: ticket.updatedAt,
+      }, ticket, !canViewSensitive);
+      const held = await holdSupportResponse(page, ticket, "reply", {
+        status: "success", data: { message: receipt },
+      }, 201);
+      try {
+        const sheet = await openExtremeTicketDrawer(page, 1280);
+        const draft = sheet.getByPlaceholder("Type your reply to the seller...");
+        const send = sheet.getByRole("button", { name: "Send Reply" });
+        await draft.fill(draftText);
+        await send.click();
+        await held.deliver();
+        await expect(sheet.getByRole("alert")).toContainText("whether your reply was sent");
+        await expect(draft).toHaveValue(draftText);
+        await expect(send).toBeDisabled();
+        await expect(sheet.locator("p").and(sheet.getByText(draftText, { exact: true }))).toHaveCount(0);
+        await expect(page.getByText("Synthetic private receipt sender", { exact: true })).toHaveCount(0);
+        await expect(page.getByText("Reply sent.", { exact: true })).toHaveCount(0);
+        expect(violations).toEqual([]);
+      } finally {
+        await held.dispose();
+      }
+    });
+  }
+
+  for (const status of [401, 403, 409] as const) {
+    test(`keeps the reply outcome distinct on HTTP ${status}`, async ({ context }) => {
+      const { page, violations } = await setupPage(context);
+      await page.setViewportSize({ width: 1280, height: 800 });
+      const ticket = fixtureTickets[0];
+      const failure = await holdSupportResponse(page, ticket, "reply", { status: "fail", message: "Synthetic private diagnostic" }, status);
+      const commands: string[] = [];
+      page.on("request", (request) => {
+        if (request.method() === "POST") commands.push(new URL(request.url()).pathname);
+      });
+      try {
+        const sheet = await openExtremeTicketDrawer(page, 1280);
+        const draft = sheet.getByPlaceholder("Type your reply to the seller...");
+        const send = sheet.getByRole("button", { name: "Send Reply" });
+        await draft.fill("Synthetic draft after a typed rejection.");
+        await send.click();
+        await failure.deliver();
+        if (status === 401) {
+          await expect(page.getByRole("alert").getByText("Support access could not be verified", { exact: true })).toBeVisible();
+          await expect(draft).toHaveCount(0);
+        } else {
+          await expect(sheet.getByRole("alert")).toContainText(status === 409 ? "ticket changed" : "send this reply");
+          await expect(draft).toHaveValue("Synthetic draft after a typed rejection.");
+          await expect(send).toBeDisabled();
+          if (status === 409) {
+            const detailUrl = `${BROWSER_ORIGIN}${supportInboxPath}/${ticket.id}`;
+            const validTicket = {
+              ...toSupportSummaryDto(ticket, true),
+              messages: ticket.messages.map((message) => toSupportMessageDto(message, ticket, true)),
+            };
+            const invalidTickets = [
+              { id: ticket.id, messages: [] },
+              { ...validTicket, messages: [{ id: "malformed-message" }] },
+              { ...validTicket, id: fixtureTickets[1].id },
+              { ...validTicket, messages: [{ ...validTicket.messages[0], ticketId: fixtureTickets[1].id }] },
+              {
+                ...toSupportSummaryDto(ticket, false),
+                messages: ticket.messages.map((message) => toSupportMessageDto(message, ticket, false)),
+              },
+              { ...validTicket, messages: ticket.messages.map((message) => toSupportMessageDto(message, ticket, false)) },
+            ];
+            let reads = 0;
+            await page.route(detailUrl, async (route) => {
+              const invalid = invalidTickets[reads++];
+              if (!invalid) return route.fallback();
+              await route.fulfill({ status: 200, json: { status: "success", data: { ticket: invalid } } });
+            });
+            const check = sheet.getByRole("button", { name: "Check conversation", exact: true });
+            for (let attempt = 1; attempt <= invalidTickets.length; attempt++) {
+              const response = page.waitForResponse((result) => result.url() === detailUrl && result.request().method() === "GET");
+              await check.click();
+              expect((await response).status()).toBe(200);
+              await expect(check).toBeEnabled();
+              await expect(sheet.getByRole("alert")).toContainText("We couldn’t check the conversation");
+              await expect(draft).toHaveValue("Synthetic draft after a typed rejection.");
+              await expect(send).toBeDisabled();
+              expect(reads).toBe(attempt);
+            }
+            await check.click();
+            await expect(send).toBeEnabled();
+            await expect(draft).toHaveValue("Synthetic draft after a typed rejection.");
+            expect(reads).toBe(invalidTickets.length + 1);
+          }
+        }
+        await expect(page.getByText("Synthetic private diagnostic", { exact: true })).toHaveCount(0);
+        expect(commands).toEqual([`${supportInboxPath}/${ticket.id}/messages`]);
+        expect(violations).toEqual([]);
+      } finally {
+        await failure.dispose();
+      }
+    });
+  }
+
+  test("keeps an unsent draft on its own ticket across drawer openings", async ({ context }) => {
     const { page, violations } = await setupPage(context);
     await page.setViewportSize({ width: 1280, height: 800 });
     const [first, second] = fixtureTickets;
@@ -1525,8 +1762,8 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
     await expect(sheet).toBeHidden();
     await openDesktopTicket(page, first);
     await expect(sheet.getByRole("heading", { name: first.subject })).toBeVisible();
-    await expect(draft).toHaveValue("");
-    await expect(send).toBeDisabled();
+    await expect(draft).toHaveValue("Unsent draft for the first seller only.");
+    await expect(send).toBeEnabled();
     expect(violations).toHaveLength(0);
   });
 
@@ -1539,7 +1776,11 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
       const staleSubject = "Obsolete ticket details";
       const held = await holdSupportResponse(page, first, "detail", {
         status: "success",
-        data: { ticket: { ...first, subject: staleSubject } },
+        data: { ticket: {
+          ...toSupportSummaryDto(first, true),
+          subject: staleSubject,
+          messages: first.messages.map((message) => toSupportMessageDto(message, first, true)),
+        } },
       });
       const sheet = page.getByRole("dialog");
 
@@ -1572,7 +1813,7 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
       const [first, second] = fixtureTickets;
       const firstReply = "Reply in flight for the first ticket.";
       const oldPayload = operation === "reply"
-        ? { message: { id: "late-message", senderType: "support", senderName: "Fixture Admin", body: firstReply, createdAt: first.updatedAt } }
+        ? { message: { id: "late-message", ticketId: first.id, senderUserId: "admin-fixture", senderType: "support", senderName: "Fixture Admin", body: firstReply, createdAt: first.updatedAt } }
         : { ticket: { ...first, status: "resolved" } };
       const held = await holdSupportResponse(page, first, operation, { status: "success", data: oldPayload });
       const current = await holdSupportResponse(page, second, "status", {

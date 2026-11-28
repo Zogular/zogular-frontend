@@ -16,6 +16,7 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
 import { useSupportInbox } from "@/features/admin-support/hooks/use-support-inbox";
+import { useSupportReplyOutcome } from "@/features/admin-support/hooks/use-support-reply-outcome";
 import {
   adminSupportApi,
   isSupportReadAuthorizationFailure,
@@ -42,6 +43,15 @@ const priorityTone: Record<AdminTicketPriority, AdminTone> = {
   "high": "amber",
   "urgent": "rose",
 };
+
+const replyNotices = {
+  invalid: "The reply was not accepted. Edit it before trying again.",
+  denied: "You couldn’t send this reply. Reload Support to check your access before trying again.",
+  missing: "This ticket is no longer available. Your reply was not sent.",
+  conflict: "The ticket changed before this reply was saved. Check the conversation before sending.",
+  uncertain: "We couldn’t confirm whether your reply was sent. Check the conversation before sending again.",
+  dismissed: "Draft dismissed. Sending another reply to this ticket is disabled for this visit.",
+} as const;
 
 interface TicketSelection {
   id: string;
@@ -85,11 +95,16 @@ function SupportWorkspace({ identity, onAuthorizationDenied }: {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailFailed, setDetailFailed] = useState(false);
 
-  const [reply, setReply] = useState("");
   const [isMutating, setIsMutating] = useState(false);
 
   const canReplySupport = adminIdentityHasPermission(identity, "reply_support_tickets");
   const canManageSupport = adminIdentityHasPermission(identity, "manage_support_tickets");
+  const canViewSensitiveFields = adminIdentityHasPermission(identity, "view_support_sensitive_fields");
+  const replies = useSupportReplyOutcome(identity.id, canViewSensitiveFields, onAuthorizationDenied);
+  const reply = replies.replyFor(selectedTicketId);
+  const replyBusy = reply.phase === "pending" || reply.check === "checking";
+  const canEditReply = reply.phase === "editing" || reply.phase === "invalid";
+  const canCheckConversation = reply.phase === "uncertain" || reply.phase === "conflict";
 
   const {
     tickets, loading, queueFailed, pagination, goToPage, refreshQueue,
@@ -107,7 +122,6 @@ function SupportWorkspace({ identity, onAuthorizationDenied }: {
     setSelectedTicketDetail(null);
     setDetailLoading(selection !== null);
     setDetailFailed(false);
-    setReply("");
     setIsMutating(false);
   };
 
@@ -115,9 +129,8 @@ function SupportWorkspace({ identity, onAuthorizationDenied }: {
     const selection = { id: ticketId, mutating: false };
     resetDrawer(selection);
     try {
-      const ticket = await adminSupportApi.getTicket(ticketId);
+      const ticket = await adminSupportApi.getTicket(ticketId, canViewSensitiveFields);
       if (activeTicket.current !== selection) return;
-      if (ticket.id !== selection.id) throw new Error("Unexpected ticket in detail response.");
       setSelectedTicketDetail(ticket);
     } catch (error) {
       const ownsDrawer = activeTicket.current === selection;
@@ -134,7 +147,7 @@ function SupportWorkspace({ identity, onAuthorizationDenied }: {
 
   const beginTicketMutation = () => {
     const selection = activeTicket.current;
-    if (!selection || selection.id !== selectedTicketDetail?.id || selection.mutating) return null;
+    if (!selection || selection.id !== selectedTicketDetail?.id || selection.mutating || replies.isBusy(selection.id)) return null;
     selection.mutating = true;
     setIsMutating(true);
     return selection;
@@ -165,31 +178,39 @@ function SupportWorkspace({ identity, onAuthorizationDenied }: {
     }
   };
 
-  const sendReply = async () => {
-    const draft = reply.trim();
-    if (!draft) return toast.error("Write a reply before sending.");
-    const selection = beginTicketMutation();
-    if (!selection) return;
-
-    try {
-      const message = await adminSupportApi.replyToTicket(selection.id, draft);
+  const sendReply = () => {
+    const selection = activeTicket.current;
+    if (!canReplySupport || !selection || selection.id !== selectedTicketDetail?.id || selection.mutating) return;
+    void replies.send(selection.id, (message) => {
       refreshQueue();
-      if (activeTicket.current !== selection) return;
+      if (activeTicket.current !== selection) {
+        // A reopened drawer may still have the thread snapshot from before this confirmed send.
+        if (activeTicket.current?.id === selection.id) void openTicket(selection.id);
+        return;
+      }
       setSelectedTicketDetail((current) => {
         if (current?.id !== selection.id) return current;
+        const messages = current.messages ?? [];
+        if (messages.some((existing) => existing.id === message.id)) return current;
         return {
           ...current,
-          status: 'waiting-seller',
-          messages: [...(current.messages || []), message]
+          status: "waiting-seller",
+          messages: [...messages, message],
         };
       });
-      setReply("");
       toast.success("Reply sent.");
-    } catch {
-      if (activeTicket.current === selection) toast.error("Failed to send reply.");
-    } finally {
-      finishTicketMutation(selection);
-    }
+    });
+  };
+
+  const checkConversation = () => {
+    const selection = activeTicket.current;
+    if (!selection || selection.id !== selectedTicketDetail?.id || selection.mutating) return;
+    const ownsDrawer = () => activeTicket.current === selection;
+    void replies.checkConversation(selection.id, (ticket) => {
+      if (!ownsDrawer()) return false;
+      setSelectedTicketDetail(ticket);
+      return true;
+    }, ownsDrawer);
   };
 
   return (
@@ -387,20 +408,41 @@ function SupportWorkspace({ identity, onAuthorizationDenied }: {
 
             <div className="min-w-0 rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
               <h3 className="text-sm font-black text-zinc-950">Reply</h3>
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport} className="mt-3 min-h-28 w-full min-w-0 rounded-2xl border-zinc-200 bg-white" />
-              <Button onClick={sendReply} disabled={!reply.trim() || isMutating || !canReplySupport} className="mt-3 w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700 sm:w-auto">
+              <Textarea value={reply.draft} onChange={(event) => replies.edit(selectedTicketDetail.id, event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport || !canEditReply} className="mt-3 min-h-28 w-full min-w-0 rounded-2xl border-zinc-200 bg-white" />
+              {reply.phase === "pending" ? <p role="status" className="mt-2 text-sm">Sending reply…</p> : null}
+              {reply.phase !== "editing" && reply.phase !== "pending" ? (
+                <div role="alert" className="mt-3 space-y-2 text-sm text-zinc-700">
+                  <p>{replyNotices[reply.phase]}</p>
+                  {reply.phase === "uncertain" ? <p>This draft and sending restriction last only while this Support page is open.</p> : null}
+                  {reply.check === "checked" ? <p>The conversation is up to date, but we still can’t confirm the earlier send.</p> : null}
+                  {reply.check === "failed" ? <p>We couldn’t check the conversation. Your draft is still here.</p> : null}
+                </div>
+              ) : null}
+              <Button onClick={sendReply} disabled={!reply.draft.trim() || isMutating || !canReplySupport || reply.phase !== "editing"} className="mt-3 w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700 sm:w-auto">
                 <Send className="mr-2 h-4 w-4 shrink-0" /> Send Reply
               </Button>
+              {canCheckConversation ? (
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button type="button" variant="outline" onClick={checkConversation} disabled={isMutating || replyBusy}>
+                    {reply.check === "checking" ? "Checking conversation…" : "Check conversation"}
+                  </Button>
+                  {reply.phase === "uncertain" && reply.check === "checked" ? (
+                    <Button type="button" variant="outline" onClick={() => replies.dismiss(selectedTicketDetail.id)}>
+                      Dismiss draft
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <Button disabled={isMutating || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl py-2 text-center leading-snug font-black sm:w-auto sm:flex-1">
+              <Button disabled={isMutating || replyBusy || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl py-2 text-center leading-snug font-black sm:w-auto sm:flex-1">
                 <MessageCircle className="mr-2 h-4 w-4 shrink-0" /> Mark Waiting Support
               </Button>
-              <Button disabled={isMutating || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-emerald-600 py-2 text-center leading-snug font-black text-white hover:bg-emerald-700 sm:w-auto sm:flex-1">
+              <Button disabled={isMutating || replyBusy || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-emerald-600 py-2 text-center leading-snug font-black text-white hover:bg-emerald-700 sm:w-auto sm:flex-1">
                 <TicketCheck className="mr-2 h-4 w-4 shrink-0" /> Mark Resolved
               </Button>
-              <Button disabled={isMutating || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-zinc-950 py-2 text-center leading-snug font-black text-white hover:bg-zinc-800 sm:w-auto sm:flex-1">
+              <Button disabled={isMutating || replyBusy || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-zinc-950 py-2 text-center leading-snug font-black text-white hover:bg-zinc-800 sm:w-auto sm:flex-1">
                 Close Ticket
               </Button>
             </div>
