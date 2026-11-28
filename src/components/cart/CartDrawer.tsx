@@ -252,7 +252,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
               <div className="mb-3 space-y-2">
                 <dl className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
                   <dt className="text-base font-bold text-zinc-900">Items subtotal</dt>
-                  <dd data-testid="cart-drawer-items-subtotal" className="min-w-0 wrap-anywhere text-right text-xl font-black text-[#FF6B00]">
+                  <dd data-testid="cart-drawer-items-subtotal" className="min-w-0 wrap-anywhere text-right text-xl font-black text-zinc-900">
                     {formatCurrency(displayTotalAmount)}
                   </dd>
                 </dl>
@@ -261,7 +261,7 @@ export function CartDrawer({ children }: CartDrawerProps) {
                 </p>
               </div>
 
-              <Button asChild className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#009E49] text-base font-bold text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d]">
+              <Button asChild className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00853d] text-base font-bold text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#007d3a]">
                 <Link href="/checkout" onClick={closeDrawer}>
                   Proceed to checkout
                   <ArrowRight className="h-4 w-4" />
