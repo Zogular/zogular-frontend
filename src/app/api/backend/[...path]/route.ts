@@ -153,9 +153,11 @@ function stripAuthCookies(cookieHeader: string): string {
 }
 
 function isSupportReplyPost(method: string, path: string[]): boolean {
+  if (method !== "POST" || path.length !== 5) return false;
   const [area, feature, resource, ticketId, action] = path;
-  return method === "POST" && path.length === 5 && area === "admin" &&
-    feature === "support" && resource === "tickets" && action === "messages" &&
+  // Express matches the fixed route segments case-insensitively; the ticket ID is opaque.
+  return /^admin$/i.test(area) && /^support$/i.test(feature) &&
+    /^tickets$/i.test(resource) && /^messages$/i.test(action) &&
     Boolean(ticketId && ticketId !== "." && ticketId !== ".." && !/[\\/]/.test(ticketId));
 }
 
