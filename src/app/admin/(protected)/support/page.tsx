@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useEffect, useReducer, useRef, useState } from "react";
 import { MessageCircle, Send, TicketCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -48,12 +48,13 @@ interface TicketSelection {
 export default function AdminSupportPage() {
   const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
   const [loading, setLoading] = useState(true);
-  const [requestError, setRequestError] = useState<string | null>(null);
+  const [queueFailed, setQueueFailed] = useState(false);
   const [search, setSearch] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<AdminTicketCategory | "all">("all");
   const [priorityFilter, setPriorityFilter] = useState<AdminTicketPriority | "all">("all");
   const [statusFilter, setStatusFilter] = useState<AdminTicketStatus | "all">("all");
-  const [page, setPage] = useState(1);
+  // The next read's target can change during recovery without scheduling a second effect.
+  const requestedPage = useRef(1);
   const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
   const [queueRevision, refreshQueue] = useReducer((revision: number) => revision + 1, 0);
 
@@ -72,30 +73,48 @@ export default function AdminSupportPage() {
   const canReplySupport = identity ? adminIdentityHasPermission(identity, "reply_support_tickets") : false;
   const canManageSupport = identity ? adminIdentityHasPermission(identity, "manage_support_tickets") : false;
 
-  const loadTickets = useCallback(async () => {
-    try {
+  useEffect(() => {
+    if (!canViewSupport) return;
+    const controller = new AbortController();
+    const { signal } = controller;
+    const loadTickets = async () => {
       setLoading(true);
-      setRequestError(null);
-      const res = await adminSupportApi.fetchTickets({
-        page,
+      setQueueFailed(false);
+      const page = requestedPage.current;
+      const filters = {
         limit: 10,
         status: statusFilter === "all" ? undefined : statusFilter,
         priority: priorityFilter === "all" ? undefined : priorityFilter,
         category: categoryFilter === "all" ? undefined : categoryFilter,
-        search: search.trim() || undefined
-      });
-      setTickets(res.tickets);
-      setPagination(res.pagination);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load support tickets.";
-      setRequestError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, priorityFilter, categoryFilter, search, page]);
+        search: search.trim() || undefined,
+      };
+      try {
+        let res = await adminSupportApi.fetchTickets({ ...filters, page }, signal);
+        if (signal.aborted) return;
+        if (res.tickets.length === 0 && res.pagination.pages > 0 && page > res.pagination.pages) {
+          requestedPage.current = res.pagination.pages;
+          res = await adminSupportApi.fetchTickets({ ...filters, page: res.pagination.pages }, signal);
+        }
+        if (signal.aborted) return;
+        // A second shrink or a count/read race must not present a nonempty queue as empty.
+        if (res.tickets.length === 0 && res.pagination.total > 0) throw new Error("Inconsistent support page.");
+        requestedPage.current = res.pagination.total === 0 ? 1 : res.pagination.page;
+        setTickets(res.tickets);
+        setPagination(res.pagination);
+      } catch {
+        if (!signal.aborted) setQueueFailed(true);
+      } finally {
+        if (!signal.aborted) setLoading(false);
+      }
+    };
+    void loadTickets();
+    return () => controller.abort();
+  }, [canViewSupport, statusFilter, priorityFilter, categoryFilter, search, queueRevision]);
 
-  useEffect(() => { void loadTickets(); }, [loadTickets, queueRevision]);
+  const goToPage = (page: number) => {
+    requestedPage.current = page;
+    refreshQueue();
+  };
 
   const resetDrawer = (selection: TicketSelection | null) => {
     activeTicket.current = selection;
@@ -194,9 +213,9 @@ export default function AdminSupportPage() {
       />
 
       <AdminToolbar>
-        <AdminSearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search tickets" className="flex-1" />
+        <AdminSearchField value={search} onChange={(v) => { setSearch(v); requestedPage.current = 1; }} placeholder="Search tickets" className="flex-1" />
         
-        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); requestedPage.current = 1; }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All statuses</option>
           <option value="open">Open</option>
           <option value="waiting-support">Waiting on Support</option>
@@ -205,7 +224,7 @@ export default function AdminSupportPage() {
           <option value="closed">Closed</option>
         </select>
         
-        <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value as AdminTicketCategory | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value as AdminTicketCategory | "all"); requestedPage.current = 1; }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All categories</option>
           <option value="order">Order</option>
           <option value="payout">Payout</option>
@@ -215,7 +234,7 @@ export default function AdminSupportPage() {
           <option value="general">General</option>
         </select>
         
-        <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value as AdminTicketPriority | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value as AdminTicketPriority | "all"); requestedPage.current = 1; }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All priorities</option>
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -225,10 +244,17 @@ export default function AdminSupportPage() {
       </AdminToolbar>
 
       <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
-        {requestError && !loading ? (
-          <div className="p-5"><AdminEmptyState title="Support inbox unavailable" description={requestError} /><div className="flex justify-center pb-4"><Button onClick={() => void loadTickets()} variant="outline" className="rounded-xl font-black">Retry support inbox</Button></div></div>
+        {queueFailed && !loading ? (
+          <div className="p-5">
+            <div role="alert">
+              <AdminEmptyState title="Support inbox unavailable" description="We couldn't load your tickets. Try again." />
+            </div>
+            <div className="flex justify-center pb-4">
+              <Button onClick={refreshQueue} variant="outline" className="rounded-xl font-black">Retry support inbox</Button>
+            </div>
+          </div>
         ) : null}
-        {!requestError ? (
+        {!queueFailed ? (
         <>
         <div className="space-y-3 p-3 lg:hidden">
           {loading ? (
@@ -293,7 +319,7 @@ export default function AdminSupportPage() {
         </div>
         </>
         ) : null}
-        {pagination.pages > 1 && (
+        {!loading && !queueFailed && pagination.pages > 1 && (
           <div className="flex items-center justify-between border-t border-zinc-100 px-5 py-3 bg-white/40">
             <span className="text-xs font-bold text-zinc-500">
               Page {pagination.page} of {pagination.pages} <span className="text-zinc-400">· {pagination.total} total</span>
@@ -304,7 +330,7 @@ export default function AdminSupportPage() {
                 size="sm"
                 className="h-8 rounded-lg font-bold text-xs"
                 disabled={pagination.page <= 1 || loading}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => goToPage(pagination.page - 1)}
               >
                 Previous
               </Button>
@@ -313,7 +339,7 @@ export default function AdminSupportPage() {
                 size="sm"
                 className="h-8 rounded-lg font-bold text-xs"
                 disabled={pagination.page >= pagination.pages || loading}
-                onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                onClick={() => goToPage(pagination.page + 1)}
               >
                 Next
               </Button>

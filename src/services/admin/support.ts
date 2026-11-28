@@ -1,8 +1,12 @@
-import { apiClient } from "@/services/api";
+import { z } from "zod";
+import { ApiError, apiClient } from "@/services/api";
 
-export type AdminTicketStatus = "open" | "waiting-seller" | "waiting-support" | "resolved" | "closed";
-export type AdminTicketPriority = "low" | "medium" | "high" | "urgent";
-export type AdminTicketCategory = "order" | "payout" | "inventory" | "tech" | "account" | "general";
+const ticketStatus = z.enum(["open", "waiting-seller", "waiting-support", "resolved", "closed"]);
+const ticketPriority = z.enum(["low", "medium", "high", "urgent"]);
+const ticketCategory = z.enum(["order", "payout", "inventory", "tech", "account", "general"]);
+export type AdminTicketStatus = z.infer<typeof ticketStatus>;
+export type AdminTicketPriority = z.infer<typeof ticketPriority>;
+export type AdminTicketCategory = z.infer<typeof ticketCategory>;
 
 export interface AdminSupportMessage {
   id: string;
@@ -15,8 +19,8 @@ export interface AdminSupportMessage {
 export interface AdminSellerContext {
   userId: string;
   vendorApplicationId: string;
-  displayName: string;
-  email: string;
+  displayName?: string;
+  email?: string;
   storeName: string | null;
   applicationStatus: string | null;
 }
@@ -54,8 +58,42 @@ export interface FetchTicketsResponse {
   tickets: AdminSupportTicket[];
 }
 
+const timestamp = z.iso.datetime();
+const counter = z.int().nonnegative();
+const ticketListResponse = z.object({
+  status: z.literal("success"),
+  results: counter,
+  pagination: z.object({ page: z.int().positive(), limit: z.int().positive(), total: counter, pages: counter }),
+  data: z.object({ tickets: z.array(z.object({
+    id: z.string().min(1),
+    subject: z.string(),
+    status: ticketStatus,
+    priority: ticketPriority,
+    category: ticketCategory,
+    createdAt: timestamp,
+    updatedAt: timestamp,
+    resolvedAt: timestamp.nullable(),
+    seller: z.object({
+      userId: z.string().min(1),
+      vendorApplicationId: z.string().min(1),
+      displayName: z.string().optional(),
+      email: z.string().optional(),
+      storeName: z.string().nullable(),
+      applicationStatus: z.string().nullable(),
+    }),
+  })) }),
+}).refine(({ results, pagination, data }) => {
+  const { page, limit, pages, total } = pagination;
+  if (results !== data.tickets.length || pages !== Math.ceil(total / limit)) {
+    return false;
+  }
+  // An empty out-of-range page can recover after the queue shrinks.
+  if (page > pages) return results === 0;
+  return results === Math.min(limit, total - (page - 1) * limit);
+});
+
 export const adminSupportApi = {
-  async fetchTickets(params: FetchTicketsParams = {}): Promise<FetchTicketsResponse> {
+  async fetchTickets(params: FetchTicketsParams = {}, signal?: AbortSignal): Promise<FetchTicketsResponse> {
     const searchParams = new URLSearchParams();
     if (params.page) searchParams.set("page", params.page.toString());
     if (params.limit) searchParams.set("limit", params.limit.toString());
@@ -64,19 +102,17 @@ export const adminSupportApi = {
     if (params.category) searchParams.set("category", params.category);
     if (params.search) searchParams.set("search", params.search);
 
-    const response = await apiClient<{
-      data: {
-        tickets: AdminSupportTicket[];
-      };
-      results: number;
-      pagination: FetchTicketsResponse["pagination"];
-    }>(`/admin/support/tickets?${searchParams.toString()}`);
-
-    return {
-      results: response.results || 0,
-      pagination: response.pagination || { page: 1, limit: 20, total: 0, pages: 1 },
-      tickets: Array.isArray(response.data?.tickets) ? response.data.tickets : [],
-    };
+    const response = await apiClient<unknown>(`/admin/support/tickets?${searchParams.toString()}`, { signal });
+    const parsed = ticketListResponse.safeParse(response);
+    if (
+      !parsed.success ||
+      (params.page !== undefined && parsed.data.pagination.page !== params.page) ||
+      (params.limit !== undefined && parsed.data.pagination.limit !== params.limit)
+    ) {
+      throw new ApiError("Support inbox could not be verified.", 502);
+    }
+    const { results, pagination, data } = parsed.data;
+    return { results, pagination, tickets: data.tickets };
   },
 
   async getTicket(id: string): Promise<AdminSupportTicket> {
