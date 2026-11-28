@@ -3,18 +3,18 @@
 import * as React from "react";
 import { use } from "react";
 import Link from "next/link";
-import { ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, XCircle, MessageCircle, Phone, LifeBuoy } from "lucide-react";
+import { ArrowLeft, MapPin, Printer, CheckCircle2, Clock, Truck, MessageCircle, Phone, LifeBuoy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
-import { Badge } from "@/components/ui/badge";
 import { AccountLoadErrorState } from "@/components/account/AccountLoadErrorState";
+import { BuyerOrderStatusBadge } from "@/components/account/BuyerOrderStatusBadge";
 import { getInvoiceById } from "@/services/orders";
-import type { Invoice } from "@/types/order";
+import type { FulfillmentOrderStatus, Invoice } from "@/types/order";
 import { SUPPORT_WHATSAPP_NUMBER, SUPPORT_CALL_NUMBER } from "@/config/support";
 import { useAuthSession } from "@/hooks/use-auth-session";
-import { orderHistoryHref, parseOrderFilter } from "@/features/buyer-orders/lib/order-return-state";
+import { isClosedOrderStatus, orderHistoryHref, parseOrderFilter } from "@/features/buyer-orders/lib/order-return-state";
 
-const STATUS_CONFIG = {
+const FULFILLMENT_STEPS = {
   processing: {
     label: "Processing",
     icon: Clock,
@@ -30,12 +30,9 @@ const STATUS_CONFIG = {
     icon: CheckCircle2,
     className: "bg-[#009E49]/10 text-[#009E49]",
   },
-  cancelled: {
-    label: "Cancelled",
-    icon: XCircle,
-    className: "bg-red-100 text-red-700",
-  },
-} as const;
+} satisfies Record<FulfillmentOrderStatus, { label: string; icon: typeof Clock; className: string }>;
+
+const FULFILLMENT_SEQUENCE: readonly FulfillmentOrderStatus[] = ["processing", "shipped", "delivered"];
 
 function formatCurrency(value: number) {
   return `K${value.toLocaleString()}`;
@@ -91,6 +88,7 @@ export default function InvoicePage({
 
   if (!invoice) return null;
 
+  const isClosed = isClosedOrderStatus(invoice.status);
   const whatsappLink = SUPPORT_WHATSAPP_NUMBER
     ? `https://wa.me/${SUPPORT_WHATSAPP_NUMBER.replace(/\D/g, "")}?text=${encodeURIComponent(`Hi Zogular, I need help with Order #${invoice.orderNumber || invoice.id}`)}`
     : null;
@@ -124,29 +122,20 @@ export default function InvoicePage({
             <h1 className="text-2xl font-black text-zinc-900">RECEIPT</h1>
             <p className="mt-1 text-sm font-bold text-zinc-700">#{invoice.orderNumber || invoice.id}</p>
             <p className="text-sm text-zinc-500">Issued: {invoice.date}</p>
-            
-            {(() => {
-              const config = STATUS_CONFIG[invoice.status];
-              const Icon = config.icon;
-              return (
-                <div className="mt-3 sm:flex sm:justify-end">
-                  <Badge className={`flex w-fit items-center gap-1.5 border-none px-3 py-1 text-xs shadow-none ${config.className}`}>
-                    <Icon className="h-3.5 w-3.5" />
-                    {config.label}
-                  </Badge>
-                </div>
-              );
-            })()}
+
+            <div className="mt-3 sm:flex sm:justify-end">
+              <BuyerOrderStatusBadge status={invoice.status} />
+            </div>
           </div>
         </div>
 
-        {invoice.status !== "cancelled" ? (
+        {!isClosed ? (
           <div className="mb-8 rounded-2xl bg-zinc-50 p-4 sm:p-6 print:hidden">
             <h3 className="mb-4 text-xs font-bold uppercase tracking-wider text-zinc-400">Order Tracker</h3>
             <div className="flex items-center justify-between">
-              {["processing", "shipped", "delivered"].map((step, index, arr) => {
+              {FULFILLMENT_SEQUENCE.map((step, index, arr) => {
                 const isActive = invoice.status === step || (invoice.status === "delivered" && index < 2) || (invoice.status === "shipped" && step === "processing");
-                const config = STATUS_CONFIG[step as keyof typeof STATUS_CONFIG];
+                const config = FULFILLMENT_STEPS[step];
                 const StepIcon = config.icon;
                 
                 return (
@@ -173,16 +162,15 @@ export default function InvoicePage({
             )}
           </div>
         ) : (
-          <div className="mb-8 rounded-2xl bg-red-50 p-4 sm:p-6 print:hidden">
-            <div className="flex items-start gap-3">
-              <XCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-500" />
-              <div>
-                <h3 className="text-sm font-bold text-red-900">Order Cancelled</h3>
-                <p className="mt-1 text-sm text-red-700">
-                  Refund status will appear here when a cancelled order has a recorded refund.
-                </p>
-              </div>
-            </div>
+          <div className="mb-8 rounded-2xl bg-zinc-50 p-4 sm:p-6">
+            <h3 className="text-sm font-bold text-zinc-900">
+              {invoice.status === "refunded" ? "Order marked refunded" : "Order cancelled"}
+            </h3>
+            <p className="mt-1 text-sm text-zinc-700">
+              {invoice.status === "refunded"
+                ? "This status does not confirm that funds have reached you."
+                : "This status does not confirm whether a refund was issued."}
+            </p>
           </div>
         )}
 
@@ -213,11 +201,13 @@ export default function InvoicePage({
             ) : (
               <div className="mt-3 rounded-lg border border-zinc-200 p-3 bg-zinc-50">
                 <p className="text-sm text-zinc-600">
-                  <span className="font-bold text-zinc-700">Payment:</span> {invoice.paymentMethod}
+                  <span className="font-bold text-zinc-700">{isClosed ? "Original payment method:" : "Payment:"}</span> {invoice.paymentMethod}
                 </p>
-                <p className="mt-1 text-xs text-zinc-500">
-                  Payment confirmation is handled during order processing.
-                </p>
+                {!isClosed && (
+                  <p className="mt-1 text-xs text-zinc-500">
+                    Payment confirmation is handled during order processing.
+                  </p>
+                )}
               </div>
             )}
           </div>
@@ -269,8 +259,13 @@ export default function InvoicePage({
                 <div>
                   <p className="text-sm font-bold text-zinc-900">Need order help?</p>
                   <p className="mt-1 text-xs font-medium leading-relaxed text-zinc-600">
-                    Share your order number with Zogular support for help with delivery, address changes, or payment questions.
+                    {isClosed
+                      ? "Share your order number with Zogular support if you have questions about this order."
+                      : "Share your order number with Zogular support for help with delivery, address changes, or payment questions."}
                   </p>
+                  <Link href="/help" className="mt-1 inline-flex min-h-11 items-center text-sm font-semibold text-zinc-900 underline underline-offset-4">
+                    Help &amp; Support
+                  </Link>
                 </div>
               </div>
             </div>
@@ -308,13 +303,13 @@ export default function InvoicePage({
                 <Separator className="bg-zinc-100" />
 
                 <div className="flex items-center justify-between gap-3 pt-1">
-                  <span className="font-bold text-zinc-900">Total</span>
+                  <span className="font-bold text-zinc-900">{isClosed ? "Order total" : "Total"}</span>
                   <span className="min-w-0 wrap-anywhere text-right text-2xl font-black text-[#009E49]">
                     {formatCurrency(invoice.total!)}
                   </span>
                 </div>
 
-                {typeof invoice.commitmentFeeAmount === "number" && typeof invoice.cashDueOnDelivery === "number" && (
+                {!isClosed && typeof invoice.commitmentFeeAmount === "number" && typeof invoice.cashDueOnDelivery === "number" && (
                   <div className="mt-3 space-y-2 rounded-xl bg-orange-50 p-3 text-sm print:bg-transparent print:p-0 print:border print:border-zinc-200">
                     <div className="flex justify-between gap-3 font-bold text-orange-900 print:text-zinc-900">
                       <span>Delivery Fee (Due Now)</span>

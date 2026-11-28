@@ -5,15 +5,15 @@ import { type BackendOrder, type BackendOrderStatus, type BackendOrderItem, getB
 
 const ORDER_PAGE_LIMIT = 20;
 const MAX_COMPLETE_ORDER_PAGES = 100;
-const BACKEND_ORDER_STATUSES = new Set<BackendOrderStatus>([
-  "PENDING",
-  "CONFIRMED",
-  "PROCESSING",
-  "SHIPPED",
-  "DELIVERED",
-  "CANCELLED",
-  "REFUNDED",
-]);
+const ORDER_STATUS_BY_BACKEND = {
+  PENDING: "processing",
+  CONFIRMED: "processing",
+  PROCESSING: "processing",
+  SHIPPED: "shipped",
+  DELIVERED: "delivered",
+  CANCELLED: "cancelled",
+  REFUNDED: "refunded",
+} satisfies Record<BackendOrderStatus, OrderStatus>;
 
 export class OrderContractError extends Error {
   constructor(message: string) {
@@ -23,24 +23,6 @@ export class OrderContractError extends Error {
 }
 
 export class OrderListContractError extends OrderContractError {}
-
-function mapBackendStatusToFrontend(status: BackendOrderStatus): OrderStatus {
-  switch (status) {
-    case "PENDING":
-    case "CONFIRMED":
-    case "PROCESSING":
-      return "processing";
-    case "SHIPPED":
-      return "shipped";
-    case "DELIVERED":
-      return "delivered";
-    case "CANCELLED":
-    case "REFUNDED":
-      return "cancelled";
-    default:
-      return "processing";
-  }
-}
 
 function isOrderLegacyIncomplete(order: BackendOrder): boolean {
   return !(
@@ -72,7 +54,7 @@ function mapOrderSummary(order: BackendOrder): OrderSummary {
       }),
       itemSubtotal: order.totalAmount ?? computedSubtotal,
       total: isLegacyIncomplete ? null : (order.grandTotalAmount ?? order.totalAmount ?? computedSubtotal),
-      status: mapBackendStatusToFrontend(order.status),
+      status: ORDER_STATUS_BY_BACKEND[order.status],
       estDelivery: estimate && Number.isFinite(estimate.getTime())
         ? estimate.toLocaleDateString("en-US", { month: "short", day: "numeric" })
         : null,
@@ -102,7 +84,8 @@ function assertBackendOrder(value: unknown): asserts value is BackendOrder {
     || !order.id
     || typeof order.createdAt !== "string"
     || Number.isNaN(Date.parse(order.createdAt))
-    || !BACKEND_ORDER_STATUSES.has(order.status as BackendOrderStatus)
+    || typeof order.status !== "string"
+    || !Object.hasOwn(ORDER_STATUS_BY_BACKEND, order.status)
     || !Array.isArray(order.items)
   ) {
     throw new OrderContractError("Order response is malformed.");
@@ -278,7 +261,7 @@ export async function getInvoiceById(id: string, verifiedUser?: AuthUser, signal
       month: "short",
       day: "numeric",
     }),
-    status: mapBackendStatusToFrontend(order.status),
+    status: ORDER_STATUS_BY_BACKEND[order.status],
     customer: {
       name: verifiedUser ? `${verifiedUser.firstName} ${verifiedUser.lastName}`.trim() : shippingName,
       email: verifiedUser?.email || "N/A",
