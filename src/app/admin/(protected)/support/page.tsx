@@ -62,6 +62,7 @@ export default function AdminSupportPage() {
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<AdminSupportTicket | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailFailed, setDetailFailed] = useState(false);
 
   const [reply, setReply] = useState("");
   const [isMutating, setIsMutating] = useState(false);
@@ -101,6 +102,7 @@ export default function AdminSupportPage() {
     setSelectedTicketId(selection?.id ?? null);
     setSelectedTicketDetail(null);
     setDetailLoading(selection !== null);
+    setDetailFailed(false);
     setReply("");
     setIsMutating(false);
   };
@@ -114,7 +116,7 @@ export default function AdminSupportPage() {
       if (ticket.id !== selection.id) throw new Error("Unexpected ticket in detail response.");
       setSelectedTicketDetail(ticket);
     } catch {
-      if (activeTicket.current === selection) toast.error("Failed to load ticket details.");
+      if (activeTicket.current === selection) setDetailFailed(true);
     } finally {
       if (activeTicket.current === selection) setDetailLoading(false);
     }
@@ -337,6 +339,15 @@ export default function AdminSupportPage() {
             </div>
             <div className="h-64 animate-pulse rounded-3xl bg-zinc-100" />
             <div className="h-32 animate-pulse rounded-3xl bg-zinc-100" />
+          </div>
+        ) : detailFailed && selectedTicketId ? (
+          <div className="min-w-0 space-y-3 py-6 text-center">
+            <p role="alert" className="text-sm font-semibold text-zinc-700">
+              We couldn&apos;t load this ticket.
+            </p>
+            <Button variant="outline" onClick={() => void openTicket(selectedTicketId)}>
+              Retry ticket details
+            </Button>
           </div>
         ) : selectedTicketDetail ? (
           <div className="min-w-0 space-y-6">
