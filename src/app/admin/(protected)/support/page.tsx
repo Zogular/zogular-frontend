@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { MessageCircle, Send, TicketCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -15,6 +15,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { useSupportInbox } from "@/features/admin-support/hooks/use-support-inbox";
 import {
   adminSupportApi,
   type AdminSupportTicket,
@@ -46,18 +47,6 @@ interface TicketSelection {
 }
 
 export default function AdminSupportPage() {
-  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [queueFailed, setQueueFailed] = useState(false);
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<AdminTicketCategory | "all">("all");
-  const [priorityFilter, setPriorityFilter] = useState<AdminTicketPriority | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<AdminTicketStatus | "all">("all");
-  // The next read's target can change during recovery without scheduling a second effect.
-  const requestedPage = useRef(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
-  const [queueRevision, refreshQueue] = useReducer((revision: number) => revision + 1, 0);
-
   // Each opening owns its async work, including when the same ticket is reopened.
   const activeTicket = useRef<TicketSelection | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -73,48 +62,11 @@ export default function AdminSupportPage() {
   const canReplySupport = identity ? adminIdentityHasPermission(identity, "reply_support_tickets") : false;
   const canManageSupport = identity ? adminIdentityHasPermission(identity, "manage_support_tickets") : false;
 
-  useEffect(() => {
-    if (!canViewSupport) return;
-    const controller = new AbortController();
-    const { signal } = controller;
-    const loadTickets = async () => {
-      setLoading(true);
-      setQueueFailed(false);
-      const page = requestedPage.current;
-      const filters = {
-        limit: 10,
-        status: statusFilter === "all" ? undefined : statusFilter,
-        priority: priorityFilter === "all" ? undefined : priorityFilter,
-        category: categoryFilter === "all" ? undefined : categoryFilter,
-        search: search.trim() || undefined,
-      };
-      try {
-        let res = await adminSupportApi.fetchTickets({ ...filters, page }, signal);
-        if (signal.aborted) return;
-        if (res.tickets.length === 0 && res.pagination.pages > 0 && page > res.pagination.pages) {
-          requestedPage.current = res.pagination.pages;
-          res = await adminSupportApi.fetchTickets({ ...filters, page: res.pagination.pages }, signal);
-        }
-        if (signal.aborted) return;
-        // A second shrink or a count/read race must not present a nonempty queue as empty.
-        if (res.tickets.length === 0 && res.pagination.total > 0) throw new Error("Inconsistent support page.");
-        requestedPage.current = res.pagination.total === 0 ? 1 : res.pagination.page;
-        setTickets(res.tickets);
-        setPagination(res.pagination);
-      } catch {
-        if (!signal.aborted) setQueueFailed(true);
-      } finally {
-        if (!signal.aborted) setLoading(false);
-      }
-    };
-    void loadTickets();
-    return () => controller.abort();
-  }, [canViewSupport, statusFilter, priorityFilter, categoryFilter, search, queueRevision]);
-
-  const goToPage = (page: number) => {
-    requestedPage.current = page;
-    refreshQueue();
-  };
+  const {
+    tickets, loading, queueFailed, pagination, goToPage, refreshQueue,
+    search, statusFilter, priorityFilter, categoryFilter,
+    setSearch, setStatusFilter, setPriorityFilter, setCategoryFilter,
+  } = useSupportInbox(canViewSupport);
 
   const resetDrawer = (selection: TicketSelection | null) => {
     activeTicket.current = selection;
@@ -213,9 +165,9 @@ export default function AdminSupportPage() {
       />
 
       <AdminToolbar>
-        <AdminSearchField value={search} onChange={(v) => { setSearch(v); requestedPage.current = 1; }} placeholder="Search tickets" className="flex-1" />
+        <AdminSearchField value={search} onChange={setSearch} placeholder="Search tickets" className="flex-1" />
         
-        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); requestedPage.current = 1; }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AdminTicketStatus | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All statuses</option>
           <option value="open">Open</option>
           <option value="waiting-support">Waiting on Support</option>
@@ -224,7 +176,7 @@ export default function AdminSupportPage() {
           <option value="closed">Closed</option>
         </select>
         
-        <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value as AdminTicketCategory | "all"); requestedPage.current = 1; }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as AdminTicketCategory | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All categories</option>
           <option value="order">Order</option>
           <option value="payout">Payout</option>
@@ -234,7 +186,7 @@ export default function AdminSupportPage() {
           <option value="general">General</option>
         </select>
         
-        <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value as AdminTicketPriority | "all"); requestedPage.current = 1; }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as AdminTicketPriority | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All priorities</option>
           <option value="low">Low</option>
           <option value="medium">Medium</option>
