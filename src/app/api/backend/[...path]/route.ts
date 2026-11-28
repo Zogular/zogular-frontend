@@ -152,13 +152,35 @@ function stripAuthCookies(cookieHeader: string): string {
     .trim();
 }
 
+function isOpaqueSegment(segment: string | undefined): boolean {
+  return Boolean(segment && segment !== "." && segment !== ".." && !/[\\/]/.test(segment));
+}
+
 function isSupportReplyPost(method: string, path: string[]): boolean {
   if (method !== "POST" || path.length !== 5) return false;
   const [area, feature, resource, ticketId, action] = path;
   // Express matches the fixed route segments case-insensitively; the ticket ID is opaque.
   return /^admin$/i.test(area) && /^support$/i.test(feature) &&
     /^tickets$/i.test(resource) && /^messages$/i.test(action) &&
-    Boolean(ticketId && ticketId !== "." && ticketId !== ".." && !/[\\/]/.test(ticketId));
+    isOpaqueSegment(ticketId);
+}
+
+function isListingRevisionWrite(method: string, path: string[]): boolean {
+  const [area, resource, productId, revisions, action, target, suffix] = path;
+  if (!/^products$/i.test(resource) || !/^listing-revisions$/i.test(revisions) || !isOpaqueSegment(productId)) {
+    return false;
+  }
+  if (/^admin$/i.test(area)) {
+    return method === "POST" && path.length === 6 && isOpaqueSegment(action) && /^decisions$/i.test(target);
+  }
+  if (!/^vendor$/i.test(area)) return false;
+  if (method === "PUT") {
+    return path.length === 7 && /^attempts$/i.test(action) && isOpaqueSegment(target) && /^settlement$/i.test(suffix);
+  }
+  if (method !== "POST") return false;
+  return path.length === 4
+    || (path.length === 5 && /^(attempts|remediate-category)$/i.test(action))
+    || (path.length === 6 && isOpaqueSegment(action) && /^withdraw$/i.test(target));
 }
 
 async function handler(request: Request, context: RouteContext) {
@@ -217,6 +239,8 @@ async function handler(request: Request, context: RouteContext) {
 
   const backendUrl = buildBackendUrl(path, requestUrl.search, isAdminBackendPath);
   const supportReply = isSupportReplyPost(method, path);
+  const listingRevisionWrite = isListingRevisionWrite(method, path);
+  const rejectRedirect = supportReply || listingRevisionWrite;
   let backendResponse: Response;
   try {
     backendResponse = await fetch(backendUrl, {
@@ -224,12 +248,14 @@ async function handler(request: Request, context: RouteContext) {
       headers,
       body,
       cache: "no-store",
-      ...(supportReply ? { redirect: "error" } : {}),
+      ...(rejectRedirect ? { redirect: "error" } : {}),
     });
   } catch (error) {
-    if (!supportReply) throw error;
+    if (!rejectRedirect) throw error;
     return NextResponse.json(
-      { status: "fail", message: "We could not confirm whether your reply was sent." },
+      { status: "fail", message: supportReply
+        ? "We could not confirm whether your reply was sent."
+        : "We could not confirm whether this listing revision action completed." },
       { status: 502 },
     );
   }

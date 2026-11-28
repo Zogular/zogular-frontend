@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
-import { GET as proxyGet, PATCH as proxyPatch, POST as proxyPost } from "../src/app/api/backend/[...path]/route";
+import { GET as proxyGet, PATCH as proxyPatch, POST as proxyPost, PUT as proxyPut } from "../src/app/api/backend/[...path]/route";
 import { login } from "../src/services/auth";
 import {
   apiClient,
@@ -334,6 +334,73 @@ test("proxy leaves redirect behavior unchanged outside the exact Support reply P
     expect(fetchMock.calls.map(({ method }) => method)).toEqual(scope.map(([method]) => method));
   } finally {
     fetchMock.restore();
+  }
+});
+
+const vendorRevisionPath = ["vendor", "products", "product-fixture", "listing-revisions"];
+const adminRevisionPath = ["admin", ...vendorRevisionPath.slice(1)];
+
+test("proxy configures listing revision writes without redirects and preserves upstream status and CSRF", async () => {
+  const scope = [
+    ["POST", vendorRevisionPath, proxyPost, 201],
+    ["POST", [...vendorRevisionPath, "attempts"], proxyPost, 201],
+    ["PUT", [...vendorRevisionPath, "attempts", "attempt-fixture", "settlement"], proxyPut, 200],
+    ["POST", [...vendorRevisionPath, "remediate-category"], proxyPost, 200],
+    ["POST", [...vendorRevisionPath, "revision-fixture", "withdraw"], proxyPost, 200],
+    ["POST", [...adminRevisionPath, "revision-fixture", "decisions"], proxyPost, 409],
+  ] as const;
+  for (const [method, segments, handler, status] of scope) {
+    const path = [...segments];
+    const fetchMock = installFetchMock((url, init) => {
+      expect(url.pathname).toBe("/api/v1/" + path.join("/"));
+      expect(init.redirect).toBe("error");
+      expect(new Headers(init.headers).get("X-CSRF-Token")).toBe("incoming-csrf");
+      return jsonResponse({ status: "fixture" }, status);
+    });
+    try {
+      const result = await handler(supportProxyRequest(method, path), { params: Promise.resolve({ path }) });
+      expect(result.status).toBe(status);
+      expect(await result.json()).toEqual({ status: "fixture" });
+      expect(fetchMock.calls.map(call => call.method)).toEqual([method]);
+    } finally {
+      fetchMock.restore();
+    }
+  }
+});
+
+test("proxy keeps a listing revision upstream failure uncertain and leaves unrelated behavior unchanged", async () => {
+  const failure = installFetchMock(() => { throw new TypeError("Fixture upstream diagnostic"); });
+  try {
+    const path = ["VeNdOr", "PrOdUcTs", "Product-Fixture", "LiStInG-ReViSiOnS", "AtTeMpTs"];
+    const result = await proxyPost(supportProxyRequest("POST", path), { params: Promise.resolve({ path }) });
+    expect(result.status).toBe(502);
+    expect(await result.json()).toEqual({
+      status: "fail", message: "We could not confirm whether this listing revision action completed.",
+    });
+    expect(failure.calls.map(({ redirect }) => redirect)).toEqual(["error"]);
+  } finally {
+    failure.restore();
+  }
+  const success = installFetchMock((_url, init) => {
+    expect(init.redirect).toBeUndefined();
+    return jsonResponse({ status: "success" });
+  });
+  try {
+    const scope = [
+      ["GET", [...vendorRevisionPath, "attempts"], proxyGet],
+      ["GET", [...adminRevisionPath, "revision-fixture"], proxyGet],
+      ["POST", ["admin", "content", "homepage-banners"], proxyPost],
+      ["POST", [...vendorRevisionPath, "unknown"], proxyPost],
+      ["PUT", [...vendorRevisionPath, "attempts", "attempt-fixture"], proxyPut],
+    ] as const;
+    for (const [method, segments, handler] of scope) {
+      const path = [...segments];
+      const response = await handler(supportProxyRequest(method, path), { params: Promise.resolve({ path }) });
+      expect(response.status).toBe(200);
+    }
+    expect(success.calls).toHaveLength(scope.length);
+  } finally {
+    success.restore();
   }
 });
 
