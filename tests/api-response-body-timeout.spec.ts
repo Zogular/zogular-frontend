@@ -10,6 +10,7 @@ interface Loopback {
   caller: AbortController;
   refresh: "slow" | "fast" | "rejected";
   refreshClosedEarly: boolean;
+  protectedMode?: "malformed-before-refresh" | "malformed-through-replay";
   ordersMode: "slow" | "csrf403" | "401" | "503" | "ok";
   quoteMode: "ok" | "csrf403-once";
   csrfTokenVersion: number;
@@ -36,7 +37,20 @@ const test = base.extend<{ loopback: Loopback }>({
         return void res.end(JSON.stringify({ csrfToken: `fixture-${fixture.csrfTokenVersion}` }));
       }
       if (req.url === "/fast") return void res.end('{"ok":true}');
+      if (req.url === "/malformed-success") return void res.end('{"ok":');
+      if (req.url === "/malformed-forbidden") {
+        res.statusCode = 403;
+        return void res.end('{"message":"Synthetic invalid CSRF diagnostic');
+      }
       if (req.url === "/protected") {
+        if (fixture.protectedMode && !sessionConfirmed) {
+          res.statusCode = 401;
+          return void res.end('{"message":"Synthetic restricted session diagnostic');
+        }
+        if (fixture.protectedMode === "malformed-through-replay") {
+          res.statusCode = 401;
+          return void res.end();
+        }
         res.statusCode = sessionConfirmed ? 200 : 401;
         return void res.end(sessionConfirmed ? '{"ok":true}' : '{"message":"Original protected rejection"}');
       }
@@ -171,6 +185,49 @@ test("a stalled refresh denial is bounded by the request deadline and preserves 
 test("fast complete JSON succeeds", async ({ loopback }) => {
   expect(await apiClient("/fast")).toEqual({ ok: true });
   expect(loopback.calls).toEqual(["GET /fast"]);
+});
+
+test("malformed initial 401 keeps the existing refresh and single successful replay", async ({ loopback }) => {
+  loopback.protectedMode = "malformed-before-refresh";
+  loopback.refresh = "fast";
+
+  expect(await apiClient("/protected")).toEqual({ ok: true });
+  expect(loopback.calls).toEqual([...refreshAttempt, "GET /protected"]);
+});
+
+test("an empty JSON 401 after replay stays terminal and exposes no diagnostics", async ({ loopback }) => {
+  loopback.protectedMode = "malformed-through-replay";
+  loopback.refresh = "fast";
+
+  await assert.rejects(apiClient("/protected"), error =>
+    error instanceof ApiError && error.status === 401 &&
+    error.message === "Please sign in again." && error.details === undefined);
+  expect(loopback.calls).toEqual([...refreshAttempt, "GET /protected"]);
+});
+
+for (const noAutoReplay of [false, true]) {
+  test(`malformed 401 on a mutation sends only one POST (noAutoReplay=${noAutoReplay})`, async ({ loopback }) => {
+    loopback.protectedMode = "malformed-before-refresh";
+    loopback.refresh = "fast";
+
+    await assert.rejects(apiClient("/protected", { method: "POST", csrf: true, noAutoReplay }), error =>
+      error instanceof ApiError && error.status === 401 &&
+      error.message === "Please sign in again." && error.details === undefined);
+    expect(loopback.calls).toEqual(["GET /auth/csrf-token", "POST /protected"]);
+  });
+}
+
+test("malformed 403 does not infer a CSRF failure or replay the mutation", async ({ loopback }) => {
+  await assert.rejects(apiClient("/malformed-forbidden", { method: "POST", csrf: true }), error =>
+    error instanceof ApiError && error.status === 403 &&
+    error.message === "You don't have access to this request." && error.details === undefined);
+  expect(loopback.calls).toEqual(["GET /auth/csrf-token", "POST /malformed-forbidden"]);
+});
+
+test("malformed successful JSON still fails instead of returning empty data", async ({ loopback }) => {
+  await assert.rejects(apiClient("/malformed-success"), error =>
+    error instanceof ApiError && error.status === 503);
+  expect(loopback.calls).toEqual(["GET /malformed-success"]);
 });
 
 for (const path of ["/slow", "/denied"]) {

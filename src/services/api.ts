@@ -355,20 +355,36 @@ export async function apiClient<T>(
       ) {
         throw new ApiError("Your session changed. Please sign in again.", 401);
       }
-      const { response, responseData } = await fetchWithTimeout(url, init, timeout, async (response) => ({
-        response,
-        responseData: await parseResponse(response),
-      }));
+      const { response, responseData, denialFallback } = await fetchWithTimeout(url, init, timeout, async (response) => {
+        try {
+          return { response, responseData: await parseResponse(response) };
+        } catch (error) {
+          // A malformed diagnostic does not invalidate an HTTP denial. Abort and body I/O errors still propagate.
+          if (
+            !(error instanceof SyntaxError) ||
+            !isJsonResponse(response.headers.get("content-type")) ||
+            (response.status !== 401 && response.status !== 403)
+          ) throw error;
+
+          return {
+            response,
+            responseData: undefined,
+            denialFallback: response.status === 401 ? "Please sign in again." : "You don't have access to this request.",
+          };
+        }
+      });
 
       if (response.ok) return responseData as T;
 
       const message = extractMessage(
         responseData,
-        `Backend returned ${response.status}`,
+        denialFallback ?? `Backend returned ${response.status}`,
       );
 
       if (
         response.status === 401 &&
+        // A malformed denial must not add a new automatic replay path for writes.
+        (!denialFallback || ["GET", "HEAD", "OPTIONS"].includes(getRequestMethod(options))) &&
         !noAutoReplay &&
         options.authMode !== "omit" &&
         !options.skipAuthRefresh &&

@@ -69,13 +69,13 @@ export function MobileBottomNavigation() {
 
   return (
     <>
-      <div aria-hidden="true" className="h-[calc(4rem+env(safe-area-inset-bottom))] md:hidden" data-testid="mobile-bottom-nav-clearance" />
+      <div aria-hidden="true" className="h-[var(--consumer-mobile-nav-clearance)] md:hidden" data-testid="mobile-bottom-nav-clearance" />
       <nav
         aria-label="Mobile navigation"
-        className="fixed inset-x-0 bottom-0 z-40 border-t border-white/70 bg-white/92 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_28px_rgba(15,23,42,0.10)] backdrop-blur-xl md:hidden"
+        className="consumer-mobile-bottom-nav fixed inset-x-0 bottom-0 z-40 border-t border-white/70 bg-white/92 pb-[env(safe-area-inset-bottom)] shadow-[0_-10px_28px_rgba(15,23,42,0.10)] backdrop-blur-xl md:hidden"
         data-testid="mobile-bottom-navigation"
       >
-        <div className={cn("mx-auto grid h-16 max-w-lg px-1", isLoggedIn ? "grid-cols-5" : "grid-cols-3")}>
+        <div className={cn("mx-auto grid h-[var(--consumer-mobile-nav-height)] max-w-lg px-1", isLoggedIn ? "grid-cols-5" : "grid-cols-3")}>
           {destinations.map(({ label, href, icon: Icon, active }) => {
             const isActive = active(pathname);
             return (

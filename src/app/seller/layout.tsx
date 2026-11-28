@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState, type ComponentType, type ReactNode } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type ComponentType, type ReactNode } from "react";
 import {
   Bell, CircleHelp, LayoutDashboard, LogOut, Package,
   Plus, Settings, ShoppingCart, Store, TrendingUp, Wallet, Boxes, PanelLeftClose, PanelLeftOpen, MoreHorizontal, X, FileCheck2,
@@ -15,8 +15,8 @@ import { SellerApplicationContext } from "@/components/seller/SellerApplicationC
 import { SellerStatusNotice } from "@/components/seller/SellerStatusNotice";
 import { SellerPageLoading } from "@/components/seller/SellerPageLoading";
 import { getSellerSafeErrorMessage } from "@/lib/seller-error";
-import { getCurrentUser, logout } from "@/services/auth";
-import { AUTH_SESSION_CHANGED_EVENT } from "@/services/auth-session";
+import { getCurrentUser, isLocalLogoutPending, logout } from "@/services/auth";
+import { getAuthSessionSnapshot, storeAuthSession, subscribeToAuthSession } from "@/services/auth-session";
 import { ApiError } from "@/services/api";
 import {
   getMyVendorApplication,
@@ -223,6 +223,14 @@ function getSellerDisplayRole(application: VendorApplication | null) {
 }
 
 export default function SellerLayout({ children }: { children: ReactNode }) {
+  const session = useSyncExternalStore(subscribeToAuthSession, getAuthSessionSnapshot, () => "");
+  const [hadSession, setHadSession] = useState(false);
+  if (session && !hadSession) setHadSession(true);
+  // A cold tab can recover HttpOnly cookies. Losing a known identity is a logout, not a cold tab.
+  return <SellerWorkspace key={session} session={session} signedOut={hadSession && !session}>{children}</SellerWorkspace>;
+}
+
+function SellerWorkspace({ children, session, signedOut }: { children: ReactNode; session: string; signedOut: boolean }) {
   const pathname = usePathname() || "";
   const router = useRouter();
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
@@ -258,29 +266,37 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           : { href: "/seller/status", label: "View status", icon: FileCheck2 };
   const PrimaryActionIcon = primaryAction.icon;
 
+  const generation = useRef<symbol | null>(null);
+  const activePath = useRef<string | null>(null);
+  useLayoutEffect(() => {
+    activePath.current = pathname;
+    return () => { activePath.current = null; generation.current = null; };
+  }, [pathname]);
+
   const refreshApplication = useCallback(async () => {
-    if (isAuthRoute) return; // auth pages handle their own auth
+    if (isAuthRoute || activePath.current !== pathname || getAuthSessionSnapshot() !== session) return;
+    const request = Symbol();
+    generation.current = request;
+    const current = () => request === generation.current && getAuthSessionSnapshot() === session;
+    const login = () => router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
+    if (signedOut || isLocalLogoutPending()) { login(); return; }
 
     try {
       setApplicationLoading(true);
       setApplicationError(null);
 
-      try {
-        await getCurrentUser();
-      } catch (error) {
-        if (error instanceof ApiError && error.status === 401) {
-          setApplication(null);
-          if (isAuthRoute) return;
-          router.replace(`/seller/login?next=${encodeURIComponent(pathname)}`);
-          return;
-        }
-        throw error;
-      }
+      const user = await getCurrentUser({ persist: false });
+      if (!current()) return;
+      storeAuthSession({ user });
+      if (!current()) return; // A recovered or updated identity starts its own scoped read.
 
       try {
         const nextApplication = await getMyVendorApplication();
+        if (!current()) return;
+        if (nextApplication.userId && nextApplication.userId !== user.id) throw new Error("Seller identity mismatch");
         setApplication(nextApplication);
       } catch (error) {
+        if (!current()) return;
         if (error instanceof ApiError && error.status === 404) {
           setApplication(null);
           return;
@@ -288,26 +304,25 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         throw error;
       }
     } catch (error) {
+      if (!current()) return;
+      setApplication(null);
+      if (error instanceof ApiError && error.status === 401) {
+        generation.current = null; // Keep the loading cover until the login navigation commits.
+        login();
+        return;
+      }
       setApplicationError(getSellerSafeErrorMessage(error, "workspace"));
     } finally {
-      setApplicationLoading(false);
+      if (current()) setApplicationLoading(false);
     }
-  }, [isAuthRoute, pathname, router]);
+  }, [isAuthRoute, pathname, router, session, signedOut]);
 
   useEffect(() => {
-    refreshApplication();
-
-    window.addEventListener(AUTH_SESSION_CHANGED_EVENT, refreshApplication);
-    window.addEventListener("storage", refreshApplication);
-
-    return () => {
-      window.removeEventListener(AUTH_SESSION_CHANGED_EVENT, refreshApplication);
-      window.removeEventListener("storage", refreshApplication);
-    };
+    void refreshApplication();
   }, [refreshApplication]);
 
   useEffect(() => {
-    if (applicationLoading) return;
+    if (applicationLoading || getAuthSessionSnapshot() !== session || activePath.current !== pathname) return;
     if (isAuthRoute) return; // auth pages manage their own session state
     if (applicationError) return;
 
@@ -352,7 +367,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
       router.replace("/seller");
       return;
     }
-  }, [application, applicationError, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, pathname, router]);
+  }, [application, applicationError, applicationLoading, isAuthRoute, isOnboardingRoute, isStatusRoute, isVerifyPhoneRoute, pathname, router, session]);
 
   const handleSidebarToggle = () => {
     setSidebarCollapsed((current) => {
@@ -364,7 +379,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
 
   const handleSignOut = async () => {
     await logout();
-    router.push("/seller/login");
+    if (!getAuthSessionSnapshot()) router.replace("/seller/login");
   };
 
   const contextValue = useMemo(
@@ -451,7 +466,7 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           ========================================= */}
       <header className="sticky top-0 z-40 flex h-[var(--seller-mobile-header-height)] shrink-0 items-center justify-between border-b border-[#143320] bg-[#0A1A10] px-4 pt-safe text-white shadow-sm md:hidden">
         <div className="flex items-center gap-3 min-w-0">
-          <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
+          <BrandLogo mode="icon" variant="dark" className="shrink-0" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">
             <h1 className="truncate text-sm font-black tracking-tight text-white">{sellerDisplayName}</h1>
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#009E49]">{pageTitle}</p>
@@ -459,12 +474,12 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link href={primaryAction.href}>
-            <Button aria-label={primaryAction.label} size="icon" className="h-8 w-8 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
+          <Button asChild size="icon" className="size-11 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
+            <Link href={primaryAction.href} aria-label={primaryAction.label}>
               <PrimaryActionIcon className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex h-8 w-8 items-center justify-center rounded-full text-[#80b898] transition-colors hover:bg-white/5 hover:text-white">
+            </Link>
+          </Button>
+          <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex size-11 items-center justify-center rounded-full text-[#80b898] transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-current">
             <Bell className="h-5 w-5" />
           </Link>
         </div>
@@ -572,16 +587,15 @@ export default function SellerLayout({ children }: { children: ReactNode }) {
           </div>
 
           <div className="flex shrink-0 items-center gap-2 xl:gap-4">
-            <Link href={primaryAction.href}>
-              <Button
-                aria-label={primaryAction.label}
-                title={primaryAction.label}
-                className="h-11 w-11 rounded-xl bg-[#009E49] p-0 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d] lg:w-auto lg:px-4 xl:px-5"
-              >
+            <Button
+              asChild
+              className="h-11 w-11 rounded-xl bg-[#009E49] p-0 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d] lg:w-auto lg:px-4 xl:px-5"
+            >
+              <Link href={primaryAction.href} aria-label={primaryAction.label} title={primaryAction.label}>
                 <PrimaryActionIcon className="h-4 w-4 lg:mr-2" />
                 <span className="hidden lg:inline">{primaryAction.label}</span>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
             <div className="hidden h-6 w-px bg-zinc-200 xl:block"></div>
 

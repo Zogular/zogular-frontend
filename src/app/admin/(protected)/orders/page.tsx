@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ClipboardList, Clock3, PackageCheck, ShieldAlert, Truck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -47,20 +47,28 @@ function getStatusLabel(status: AdminOrderStatus) {
   return toTitleCase(status.toLowerCase());
 }
 
-function getFulfillmentErrorMessage(error: unknown): string {
+type LockedFulfillment = {
+  nextStatus: AdminOrderStatus;
+  trackingNumber: string;
+  operationsNotes: string;
+  message: string;
+  refreshFailed?: boolean;
+};
+
+function getFulfillmentFailure(error: unknown) {
   const status = error instanceof ApiError ? error.status : undefined;
   switch (status) {
     case 400:
     case 422:
-      return "Check the status, courier reference and notes, then try again.";
+      return { message: "Check the status, courier reference and notes, then try again.", requiresRefresh: false };
     case 401:
-      return "Your session expired. Sign in again before updating the order.";
+      return { message: "Your session expired. Sign in again before updating the order.", requiresRefresh: false };
     case 403:
-      return "You don't have permission to update this order.";
+      return { message: "You don't have permission to update this order.", requiresRefresh: false };
     case 409:
-      return "The order may have changed. Reload this page and check its status before trying again.";
+      return { message: "The order may have changed. Reload the order and check its status before trying again.", requiresRefresh: true };
     default:
-      return "We couldn't confirm the update. Reload this page and check the order's status before trying again.";
+      return { message: "We couldn't confirm the update. Reload the order and check its status before trying again.", requiresRefresh: true };
   }
 }
 
@@ -73,12 +81,26 @@ function deliveryAreaLabel(address: AdminOrderRecord["delivery"]["shippingAddres
   return orderFieldLabel(address && [address.district, address.city].filter(Boolean).join(", "));
 }
 
+// Order number is the only search match we can verify without reimplementing server search.
+function matchesKnownQueue(order: AdminOrderRecord, status: AdminOrderStatus | "all", search: string) {
+  return (status === "all" || order.status === status)
+    && order.orderNumber.toLowerCase().includes(search.trim().toLowerCase());
+}
+
 export default function AdminOrdersPage() {
   const identity = useAdminIdentity();
-  const canViewOrders = identity ? adminIdentityHasPermission(identity, "view_all_orders") : false;
-  const canManageFulfillment = identity ? adminIdentityHasPermission(identity, "manage_order_fulfillment") : false;
+  if (!identity || !adminIdentityHasPermission(identity, "view_all_orders")) {
+    return <AdminEmptyState title="Access denied" description="You don't have permission to view the order queue." />;
+  }
 
+  // A change of principal, session or authority must discard private order state during render.
+  const identityKey = JSON.stringify([
+    identity.id, identity.claims.role, identity.claims.issuedAt, [...identity.claims.permissions].sort(),
+  ]);
+  return <AdminOrdersQueue key={identityKey} canManageFulfillment={adminIdentityHasPermission(identity, "manage_order_fulfillment")} />;
+}
 
+function AdminOrdersQueue({ canManageFulfillment }: { canManageFulfillment: boolean }) {
   const [orders, setOrders] = useState<AdminOrderRecord[]>([]);
   const [requestError, setRequestError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
@@ -88,12 +110,32 @@ export default function AdminOrdersPage() {
   const [pagination, setPagination] = useState({ page: 1, limit: PAGE_SIZE, total: 0, pages: 1 });
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [nextStatus, setNextStatus] = useState<AdminOrderStatus | "">("");
+  const [reviewedOrder, setReviewedOrder] = useState<Pick<AdminOrderRecord, "id" | "updatedAt"> | null>(null);
   const [trackingNumber, setTrackingNumber] = useState("");
   const [operationsNotes, setOperationsNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [mutationError, setMutationError] = useState<string | null>(null);
+  const [lockedOrders, setLockedOrders] = useState<ReadonlyMap<string, LockedFulfillment>>(() => new Map());
+  const [refreshingOrder, setRefreshingOrder] = useState(false);
+  const [refreshedDetail, setRefreshedDetail] = useState<AdminOrderRecord | null>(null);
+  const queryKey = JSON.stringify([page, search, statusFilter]);
+  const active = useRef(false);
+  const currentQuery = useRef(queryKey);
+  const queueRequest = useRef(0);
+  const confirmedOrders = useRef(new Map<string, AdminOrderRecord>());
+
+  useLayoutEffect(() => {
+    active.current = true;
+    return () => {
+      active.current = false;
+      queueRequest.current += 1;
+    };
+  }, []);
 
   const loadOrders = useCallback(async () => {
+    if (!active.current || currentQuery.current !== queryKey) return;
+    const request = ++queueRequest.current;
+    const isCurrent = () => active.current && request === queueRequest.current;
     try {
       setLoading(true);
       setRequestError(null);
@@ -106,59 +148,138 @@ export default function AdminOrdersPage() {
         sortOrder: "desc",
       });
 
-      setOrders(response.orders);
+      if (!isCurrent()) return;
+      // Do not display a row older than a fulfillment read or write already accepted here.
+      const currentOrders = response.orders.flatMap((order) => {
+        const confirmed = confirmedOrders.current.get(order.id);
+        if (!confirmed) return [order];
+        const version = Date.parse(order.updatedAt);
+        const confirmedVersion = Date.parse(confirmed.updatedAt);
+        if (version > confirmedVersion || (version === confirmedVersion && order.status === confirmed.status
+          && order.trackingNumber === confirmed.trackingNumber && order.notes === confirmed.notes)) {
+          confirmedOrders.current.set(order.id, order);
+          return [order];
+        }
+        return matchesKnownQueue(confirmed, statusFilter, search) ? [confirmed] : [];
+      });
+      setOrders(currentOrders);
       setPagination(response.pagination);
     } catch {
+      if (!isCurrent()) return;
       setOrders([]);
       setSelectedOrderId(null);
       setRequestError("We couldn't load the order queue. Try again in a moment.");
     } finally {
-      setLoading(false);
+      if (isCurrent()) setLoading(false);
     }
-  }, [page, search, statusFilter]);
+  }, [page, queryKey, search, statusFilter]);
 
-  useEffect(() => {
-    if (!canViewOrders) {
-      setLoading(false);
-      return;
-    }
-
+  useLayoutEffect(() => {
+    currentQuery.current = queryKey;
     void loadOrders();
-  }, [canViewOrders, loadOrders]);
+  }, [loadOrders, queryKey]);
 
   const selectedOrder = useMemo(
-    () => orders.find((order) => order.id === selectedOrderId) ?? null,
-    [orders, selectedOrderId],
+    () => orders.find((order) => order.id === selectedOrderId)
+      ?? (refreshedDetail?.id === selectedOrderId ? refreshedDetail : null),
+    [orders, selectedOrderId, refreshedDetail],
   );
   const selectedAddress = selectedOrder?.delivery.shippingAddress;
+  const lockedDraft = selectedOrder ? lockedOrders.get(selectedOrder.id) : undefined;
+  const allowedStatuses = selectedOrder ? NEXT_STATUSES[selectedOrder.status] ?? [] : [];
+  const fulfillmentDisabled = Boolean(lockedDraft) || submitting || refreshingOrder || loading;
+  const isReviewedVersion = Boolean(reviewedOrder && selectedOrder
+    && reviewedOrder.id === selectedOrder.id && reviewedOrder.updatedAt === selectedOrder.updatedAt);
 
   useEffect(() => {
     setNextStatus("");
+    setReviewedOrder(null);
     setTrackingNumber(selectedOrder?.trackingNumber ?? "");
     setOperationsNotes(selectedOrder?.notes ?? "");
     setMutationError(null);
   }, [selectedOrder]);
 
   const handleOrderMutation = async () => {
-    if (!selectedOrder || !nextStatus || !canManageFulfillment) return;
+    if (!selectedOrder || !nextStatus || !canManageFulfillment || fulfillmentDisabled
+      || !reviewedOrder || !isReviewedVersion || !allowedStatuses.includes(nextStatus)) return;
 
     try {
       setSubmitting(true);
       setMutationError(null);
       const updated = await adminOrdersApi.updateOrder(selectedOrder.id, {
         status: nextStatus,
+        expectedUpdatedAt: reviewedOrder.updatedAt,
         ...(trackingNumber.trim() ? { trackingNumber: trackingNumber.trim() } : {}),
         ...(operationsNotes.trim() ? { notes: operationsNotes.trim() } : {}),
       });
-      setOrders((current) => current.map((order) => order.id === updated.id ? updated : order));
+      if (!active.current) return;
+      confirmedOrders.current.set(updated.id, updated);
+      if (currentQuery.current === queryKey) {
+        setRefreshedDetail(updated);
+        setOrders((current) => current.map((order) => order.id === updated.id ? updated : order));
+      }
       toast.success(`Order moved to ${getStatusLabel(updated.status)}.`);
       await loadOrders();
     } catch (error) {
-      const message = getFulfillmentErrorMessage(error);
-      setMutationError(message);
-      toast.error(message);
+      if (!active.current) return;
+      const { message, requiresRefresh } = getFulfillmentFailure(error);
+      if (currentQuery.current === queryKey) setMutationError(message);
+      if (requiresRefresh) {
+        setLockedOrders((current) => new Map(current).set(selectedOrder.id, {
+          nextStatus, trackingNumber, operationsNotes, message,
+        }));
+      }
     } finally {
-      setSubmitting(false);
+      if (active.current) setSubmitting(false);
+    }
+  };
+
+  const reloadFulfillmentOrder = async () => {
+    if (!selectedOrder || !lockedDraft || refreshingOrder || loading || !canManageFulfillment) return;
+    const { id, orderNumber } = selectedOrder;
+    if (!confirmedOrders.current.has(id)) confirmedOrders.current.set(id, selectedOrder);
+    const keepDraftLocked = () => setLockedOrders((current) =>
+      new Map(current).set(id, { ...lockedDraft, refreshFailed: true }));
+    setRefreshingOrder(true);
+    try {
+      // Match the exact order even when it has moved out of the current status filter.
+      const { orders: refreshedOrders } = await adminOrdersApi.fetchOrders({ search: orderNumber });
+      if (!active.current || currentQuery.current !== queryKey) return;
+      const freshOrder = refreshedOrders.find((order) => order.id === id);
+      const version = freshOrder ? Date.parse(freshOrder.updatedAt) : NaN;
+      const latest = confirmedOrders.current.get(id) ?? selectedOrder;
+      if (!freshOrder || !(version >= Date.parse(latest.updatedAt))) {
+        keepDraftLocked();
+        return;
+      }
+
+      // Invalidate any pending queue snapshot before releasing this order's lock.
+      queueRequest.current += 1;
+      setLoading(false);
+      confirmedOrders.current.set(id, freshOrder);
+      setRefreshedDetail(freshOrder);
+      const staysInQueue = matchesKnownQueue(freshOrder, statusFilter, search);
+      setOrders((current) => current.flatMap((order) =>
+        order.id !== id ? [order] : staysInQueue ? [freshOrder] : []));
+      if (statusFilter !== "all" && freshOrder.status !== statusFilter && orders.some((order) => order.id === id)) {
+        setPagination((current) => {
+          const total = Math.max(0, current.total - 1);
+          return { ...current, total, pages: Math.max(1, Math.ceil(total / current.limit)) };
+        });
+      }
+      setNextStatus("");
+      setTrackingNumber(freshOrder.trackingNumber ?? "");
+      setOperationsNotes(freshOrder.notes ?? "");
+      setMutationError(null);
+      setLockedOrders((current) => {
+        const next = new Map(current);
+        next.delete(id);
+        return next;
+      });
+    } catch {
+      if (active.current && currentQuery.current === queryKey) keepDraftLocked();
+    } finally {
+      if (active.current) setRefreshingOrder(false);
     }
   };
 
@@ -170,15 +291,6 @@ export default function AdminOrdersPage() {
       delivered: orders.filter((order) => order.status === "DELIVERED").length,
     };
   }, [orders, pagination.total]);
-
-  if (!canViewOrders) {
-    return (
-      <AdminEmptyState
-        title="Access denied"
-        description="You don't have permission to view the order queue."
-      />
-    );
-  }
 
   return (
     <div className="space-y-6">
@@ -209,6 +321,7 @@ export default function AdminOrdersPage() {
           className="flex-1"
         />
         <select
+          aria-label="Filter by order status"
           value={statusFilter}
           onChange={(event) => {
             setStatusFilter(event.target.value as AdminOrderStatus | "all");
@@ -461,8 +574,9 @@ export default function AdminOrdersPage() {
         contained
         open={Boolean(selectedOrder)}
         onOpenChange={(open) => {
-          if (!open) {
+          if (!open && !submitting && !refreshingOrder) {
             setSelectedOrderId(null);
+            setRefreshedDetail(null);
           }
         }}
         title={selectedOrder?.orderNumber ?? "Order"}
@@ -564,12 +678,20 @@ export default function AdminOrdersPage() {
                   <label className="grid gap-1 text-xs font-bold text-zinc-700">
                     Next status
                     <select
-                      value={nextStatus}
-                      onChange={(event) => setNextStatus(event.target.value as AdminOrderStatus | "")}
+                      value={lockedDraft?.nextStatus ?? nextStatus}
+                      disabled={fulfillmentDisabled}
+                      onChange={(event) => {
+                        const status = event.target.value as AdminOrderStatus | "";
+                        setNextStatus(status);
+                        setReviewedOrder(status ? { id: selectedOrder.id, updatedAt: selectedOrder.updatedAt } : null);
+                      }}
                       className="h-11 min-w-0 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold"
                     >
                       <option value="">Select an allowed transition</option>
-                      {(NEXT_STATUSES[selectedOrder.status] ?? []).map((status) => (
+                      {lockedDraft && !allowedStatuses.includes(lockedDraft.nextStatus) ? (
+                        <option value={lockedDraft.nextStatus}>{getStatusLabel(lockedDraft.nextStatus)}</option>
+                      ) : null}
+                      {allowedStatuses.map((status) => (
                         <option key={status} value={status}>{getStatusLabel(status)}</option>
                       ))}
                     </select>
@@ -577,7 +699,8 @@ export default function AdminOrdersPage() {
                   <label className="grid gap-1 text-xs font-bold text-zinc-700">
                     External courier reference
                     <input
-                      value={trackingNumber}
+                      value={lockedDraft?.trackingNumber ?? trackingNumber}
+                      disabled={fulfillmentDisabled}
                       onChange={(event) => setTrackingNumber(event.target.value)}
                       maxLength={120}
                       placeholder="Manual courier or dispatch reference"
@@ -587,7 +710,8 @@ export default function AdminOrdersPage() {
                   <label className="grid gap-1 text-xs font-bold text-zinc-700">
                     Operations notes
                     <textarea
-                      value={operationsNotes}
+                      value={lockedDraft?.operationsNotes ?? operationsNotes}
+                      disabled={fulfillmentDisabled}
                       onChange={(event) => setOperationsNotes(event.target.value)}
                       maxLength={1000}
                       rows={3}
@@ -595,10 +719,19 @@ export default function AdminOrdersPage() {
                       className="min-w-0 rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm font-medium"
                     />
                   </label>
-                  {mutationError ? <p className="text-xs font-bold text-rose-700">{mutationError}</p> : null}
-                  {(NEXT_STATUSES[selectedOrder.status] ?? []).length > 0 ? (
+                  <div role="status" className="empty:sr-only text-xs font-bold text-rose-700">
+                    {refreshingOrder ? "Reloading order..." : lockedDraft?.refreshFailed
+                      ? "We couldn't reload this order. Your draft is still locked. Try reloading again."
+                      : lockedDraft?.message ?? mutationError}
+                  </div>
+                  {lockedDraft ? (
+                    <Button variant="outline" disabled={refreshingOrder || loading} onClick={() => void reloadFulfillmentOrder()}>
+                      Reload order
+                    </Button>
+                  ) : null}
+                  {lockedDraft || allowedStatuses.length > 0 ? (
                     <Button
-                      disabled={!nextStatus || submitting}
+                      disabled={!nextStatus || !isReviewedVersion || fulfillmentDisabled}
                       onClick={() => void handleOrderMutation()}
                       className="rounded-xl bg-zinc-950 font-black text-white"
                     >

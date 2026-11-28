@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, TicketCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -15,14 +15,18 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { useSupportInbox } from "@/features/admin-support/hooks/use-support-inbox";
+import { useSupportReplyOutcome } from "@/features/admin-support/hooks/use-support-reply-outcome";
 import {
   adminSupportApi,
+  isSupportReadAuthorizationFailure,
+  isSupportSessionDenied,
   type AdminSupportTicket,
   type AdminTicketCategory,
   type AdminTicketPriority,
   type AdminTicketStatus,
 } from "@/services/admin/support";
-import { adminIdentityHasPermission } from "@/services/admin/session";
+import { adminIdentityHasPermission, type AdminIdentity } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 const statusTone: Record<AdminTicketStatus, AdminTone> = {
@@ -40,68 +44,84 @@ const priorityTone: Record<AdminTicketPriority, AdminTone> = {
   "urgent": "rose",
 };
 
+const replyNotices = {
+  invalid: "The reply was not accepted. Edit it before trying again.",
+  denied: "You couldn’t send this reply. Reload Support to check your access before trying again.",
+  missing: "This ticket is no longer available. Your reply was not sent.",
+  conflict: "The ticket changed before this reply was saved. Check the conversation before sending.",
+  uncertain: "We couldn’t confirm whether your reply was sent. Check the conversation before sending again.",
+  dismissed: "Draft dismissed. Sending another reply to this ticket is disabled for this visit.",
+} as const;
+
 interface TicketSelection {
   id: string;
   mutating: boolean;
 }
 
 export default function AdminSupportPage() {
-  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<AdminTicketCategory | "all">("all");
-  const [priorityFilter, setPriorityFilter] = useState<AdminTicketPriority | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<AdminTicketStatus | "all">("all");
-  const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
-  const [queueRevision, refreshQueue] = useReducer((revision: number) => revision + 1, 0);
+  const identity = useAdminIdentity();
+  if (!identity || !adminIdentityHasPermission(identity, "view_support_tickets")) {
+    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
+  }
 
+  // A new verified authority must not inherit another projection or draft.
+  const { id, claims } = identity;
+  const authority = JSON.stringify([id, claims.role, claims.issuedAt, [...new Set(claims.permissions)].sort()]);
+  return <SupportAccessBoundary key={authority} identity={identity} />;
+}
+
+function SupportAccessBoundary({ identity }: { identity: AdminIdentity }) {
+  const [denied, setDenied] = useState(false);
+  const denyAccess = useCallback(() => setDenied(true), []);
+  if (denied) {
+    return (
+      <div role="alert">
+        <AdminEmptyState title="Support access could not be verified" description="Reload Support to check your access again." />
+        <Button onClick={() => window.location.reload()} variant="outline">Reload Support</Button>
+      </div>
+    );
+  }
+  return <SupportWorkspace identity={identity} onAuthorizationDenied={denyAccess} />;
+}
+
+function SupportWorkspace({ identity, onAuthorizationDenied }: {
+  identity: AdminIdentity;
+  onAuthorizationDenied: () => void;
+}) {
   // Each opening owns its async work, including when the same ticket is reopened.
   const activeTicket = useRef<TicketSelection | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
   const [selectedTicketDetail, setSelectedTicketDetail] = useState<AdminSupportTicket | null>(null);
   const [detailLoading, setDetailLoading] = useState(false);
+  const [detailFailed, setDetailFailed] = useState(false);
 
-  const [reply, setReply] = useState("");
   const [isMutating, setIsMutating] = useState(false);
 
-  const identity = useAdminIdentity();
-  const canViewSupport = identity ? adminIdentityHasPermission(identity, "view_support_tickets") : false;
-  const canReplySupport = identity ? adminIdentityHasPermission(identity, "reply_support_tickets") : false;
-  const canManageSupport = identity ? adminIdentityHasPermission(identity, "manage_support_tickets") : false;
+  const canReplySupport = adminIdentityHasPermission(identity, "reply_support_tickets");
+  const canManageSupport = adminIdentityHasPermission(identity, "manage_support_tickets");
+  const canViewSensitiveFields = adminIdentityHasPermission(identity, "view_support_sensitive_fields");
+  const replies = useSupportReplyOutcome(identity.id, canViewSensitiveFields, onAuthorizationDenied);
+  const reply = replies.replyFor(selectedTicketId);
+  const replyBusy = reply.phase === "pending" || reply.check === "checking";
+  const canEditReply = reply.phase === "editing" || reply.phase === "invalid";
+  const canCheckConversation = reply.phase === "uncertain" || reply.phase === "conflict";
 
-  const loadTickets = useCallback(async () => {
-    try {
-      setLoading(true);
-      setRequestError(null);
-      const res = await adminSupportApi.fetchTickets({
-        page,
-        limit: 10,
-        status: statusFilter === "all" ? undefined : statusFilter,
-        priority: priorityFilter === "all" ? undefined : priorityFilter,
-        category: categoryFilter === "all" ? undefined : categoryFilter,
-        search: search.trim() || undefined
-      });
-      setTickets(res.tickets);
-      setPagination(res.pagination);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load support tickets.";
-      setRequestError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, priorityFilter, categoryFilter, search, page]);
+  const {
+    tickets, loading, queueFailed, pagination, goToPage, refreshQueue,
+    search, statusFilter, priorityFilter, categoryFilter,
+    setSearch, setStatusFilter, setPriorityFilter, setCategoryFilter,
+  } = useSupportInbox(onAuthorizationDenied);
 
-  useEffect(() => { void loadTickets(); }, [loadTickets, queueRevision]);
+  useEffect(() => () => {
+    activeTicket.current = null;
+  }, []);
 
   const resetDrawer = (selection: TicketSelection | null) => {
     activeTicket.current = selection;
     setSelectedTicketId(selection?.id ?? null);
     setSelectedTicketDetail(null);
     setDetailLoading(selection !== null);
-    setReply("");
+    setDetailFailed(false);
     setIsMutating(false);
   };
 
@@ -109,12 +129,17 @@ export default function AdminSupportPage() {
     const selection = { id: ticketId, mutating: false };
     resetDrawer(selection);
     try {
-      const ticket = await adminSupportApi.getTicket(ticketId);
+      const ticket = await adminSupportApi.getTicket(ticketId, canViewSensitiveFields);
       if (activeTicket.current !== selection) return;
-      if (ticket.id !== selection.id) throw new Error("Unexpected ticket in detail response.");
       setSelectedTicketDetail(ticket);
-    } catch {
-      if (activeTicket.current === selection) toast.error("Failed to load ticket details.");
+    } catch (error) {
+      const ownsDrawer = activeTicket.current === selection;
+      // A 401 applies to this authority even after the operator changes tickets.
+      if (isSupportSessionDenied(error) || (ownsDrawer && isSupportReadAuthorizationFailure(error))) {
+        onAuthorizationDenied();
+        return;
+      }
+      if (ownsDrawer) setDetailFailed(true);
     } finally {
       if (activeTicket.current === selection) setDetailLoading(false);
     }
@@ -122,7 +147,7 @@ export default function AdminSupportPage() {
 
   const beginTicketMutation = () => {
     const selection = activeTicket.current;
-    if (!selection || selection.id !== selectedTicketDetail?.id || selection.mutating) return null;
+    if (!selection || selection.id !== selectedTicketDetail?.id || selection.mutating || replies.isBusy(selection.id)) return null;
     selection.mutating = true;
     setIsMutating(true);
     return selection;
@@ -153,36 +178,40 @@ export default function AdminSupportPage() {
     }
   };
 
-  const sendReply = async () => {
-    const draft = reply.trim();
-    if (!draft) return toast.error("Write a reply before sending.");
-    const selection = beginTicketMutation();
-    if (!selection) return;
-
-    try {
-      const message = await adminSupportApi.replyToTicket(selection.id, draft);
+  const sendReply = () => {
+    const selection = activeTicket.current;
+    if (!canReplySupport || !selection || selection.id !== selectedTicketDetail?.id || selection.mutating) return;
+    void replies.send(selection.id, (message) => {
       refreshQueue();
-      if (activeTicket.current !== selection) return;
+      if (activeTicket.current !== selection) {
+        // A reopened drawer may still have the thread snapshot from before this confirmed send.
+        if (activeTicket.current?.id === selection.id) void openTicket(selection.id);
+        return;
+      }
       setSelectedTicketDetail((current) => {
         if (current?.id !== selection.id) return current;
+        const messages = current.messages ?? [];
+        if (messages.some((existing) => existing.id === message.id)) return current;
         return {
           ...current,
-          status: 'waiting-seller',
-          messages: [...(current.messages || []), message]
+          status: "waiting-seller",
+          messages: [...messages, message],
         };
       });
-      setReply("");
       toast.success("Reply sent.");
-    } catch {
-      if (activeTicket.current === selection) toast.error("Failed to send reply.");
-    } finally {
-      finishTicketMutation(selection);
-    }
+    });
   };
 
-  if (!canViewSupport) {
-    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
-  }
+  const checkConversation = () => {
+    const selection = activeTicket.current;
+    if (!selection || selection.id !== selectedTicketDetail?.id || selection.mutating) return;
+    const ownsDrawer = () => activeTicket.current === selection;
+    void replies.checkConversation(selection.id, (ticket) => {
+      if (!ownsDrawer()) return false;
+      setSelectedTicketDetail(ticket);
+      return true;
+    }, ownsDrawer);
+  };
 
   return (
     <div className="space-y-6">
@@ -192,9 +221,9 @@ export default function AdminSupportPage() {
       />
 
       <AdminToolbar>
-        <AdminSearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search tickets" className="flex-1" />
+        <AdminSearchField value={search} onChange={setSearch} placeholder="Search tickets" className="flex-1" />
         
-        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AdminTicketStatus | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All statuses</option>
           <option value="open">Open</option>
           <option value="waiting-support">Waiting on Support</option>
@@ -203,7 +232,7 @@ export default function AdminSupportPage() {
           <option value="closed">Closed</option>
         </select>
         
-        <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value as AdminTicketCategory | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as AdminTicketCategory | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All categories</option>
           <option value="order">Order</option>
           <option value="payout">Payout</option>
@@ -213,7 +242,7 @@ export default function AdminSupportPage() {
           <option value="general">General</option>
         </select>
         
-        <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value as AdminTicketPriority | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as AdminTicketPriority | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All priorities</option>
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -223,10 +252,17 @@ export default function AdminSupportPage() {
       </AdminToolbar>
 
       <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
-        {requestError && !loading ? (
-          <div className="p-5"><AdminEmptyState title="Support inbox unavailable" description={requestError} /><div className="flex justify-center pb-4"><Button onClick={() => void loadTickets()} variant="outline" className="rounded-xl font-black">Retry support inbox</Button></div></div>
+        {queueFailed && !loading ? (
+          <div className="p-5">
+            <div role="alert">
+              <AdminEmptyState title="Support inbox unavailable" description="We couldn't load your tickets. Try again." />
+            </div>
+            <div className="flex justify-center pb-4">
+              <Button onClick={refreshQueue} variant="outline" className="rounded-xl font-black">Retry support inbox</Button>
+            </div>
+          </div>
         ) : null}
-        {!requestError ? (
+        {!queueFailed ? (
         <>
         <div className="space-y-3 p-3 lg:hidden">
           {loading ? (
@@ -291,7 +327,7 @@ export default function AdminSupportPage() {
         </div>
         </>
         ) : null}
-        {pagination.pages > 1 && (
+        {!loading && !queueFailed && pagination.pages > 1 && (
           <div className="flex items-center justify-between border-t border-zinc-100 px-5 py-3 bg-white/40">
             <span className="text-xs font-bold text-zinc-500">
               Page {pagination.page} of {pagination.pages} <span className="text-zinc-400">· {pagination.total} total</span>
@@ -302,7 +338,7 @@ export default function AdminSupportPage() {
                 size="sm"
                 className="h-8 rounded-lg font-bold text-xs"
                 disabled={pagination.page <= 1 || loading}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => goToPage(pagination.page - 1)}
               >
                 Previous
               </Button>
@@ -311,7 +347,7 @@ export default function AdminSupportPage() {
                 size="sm"
                 className="h-8 rounded-lg font-bold text-xs"
                 disabled={pagination.page >= pagination.pages || loading}
-                onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                onClick={() => goToPage(pagination.page + 1)}
               >
                 Next
               </Button>
@@ -338,6 +374,15 @@ export default function AdminSupportPage() {
             <div className="h-64 animate-pulse rounded-3xl bg-zinc-100" />
             <div className="h-32 animate-pulse rounded-3xl bg-zinc-100" />
           </div>
+        ) : detailFailed && selectedTicketId ? (
+          <div className="min-w-0 space-y-3 py-6 text-center">
+            <p role="alert" className="text-sm font-semibold text-zinc-700">
+              We couldn&apos;t load this ticket.
+            </p>
+            <Button variant="outline" onClick={() => void openTicket(selectedTicketId)}>
+              Retry ticket details
+            </Button>
+          </div>
         ) : selectedTicketDetail ? (
           <div className="min-w-0 space-y-6">
             <div className="grid gap-3 sm:grid-cols-2">
@@ -363,20 +408,41 @@ export default function AdminSupportPage() {
 
             <div className="min-w-0 rounded-3xl border border-zinc-100 bg-zinc-50 p-4">
               <h3 className="text-sm font-black text-zinc-950">Reply</h3>
-              <Textarea value={reply} onChange={(event) => setReply(event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport} className="mt-3 min-h-28 w-full min-w-0 rounded-2xl border-zinc-200 bg-white" />
-              <Button onClick={sendReply} disabled={!reply.trim() || isMutating || !canReplySupport} className="mt-3 w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700 sm:w-auto">
+              <Textarea value={reply.draft} onChange={(event) => replies.edit(selectedTicketDetail.id, event.target.value)} placeholder="Type your reply to the seller..." disabled={isMutating || !canReplySupport || !canEditReply} className="mt-3 min-h-28 w-full min-w-0 rounded-2xl border-zinc-200 bg-white" />
+              {reply.phase === "pending" ? <p role="status" className="mt-2 text-sm">Sending reply…</p> : null}
+              {reply.phase !== "editing" && reply.phase !== "pending" ? (
+                <div role="alert" className="mt-3 space-y-2 text-sm text-zinc-700">
+                  <p>{replyNotices[reply.phase]}</p>
+                  {reply.phase === "uncertain" ? <p>This draft and sending restriction last only while this Support page is open.</p> : null}
+                  {reply.check === "checked" ? <p>The conversation is up to date, but we still can’t confirm the earlier send.</p> : null}
+                  {reply.check === "failed" ? <p>We couldn’t check the conversation. Your draft is still here.</p> : null}
+                </div>
+              ) : null}
+              <Button onClick={sendReply} disabled={!reply.draft.trim() || isMutating || !canReplySupport || reply.phase !== "editing"} className="mt-3 w-full rounded-xl bg-emerald-600 font-black text-white hover:bg-emerald-700 sm:w-auto">
                 <Send className="mr-2 h-4 w-4 shrink-0" /> Send Reply
               </Button>
+              {canCheckConversation ? (
+                <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                  <Button type="button" variant="outline" onClick={checkConversation} disabled={isMutating || replyBusy}>
+                    {reply.check === "checking" ? "Checking conversation…" : "Check conversation"}
+                  </Button>
+                  {reply.phase === "uncertain" && reply.check === "checked" ? (
+                    <Button type="button" variant="outline" onClick={() => replies.dismiss(selectedTicketDetail.id)}>
+                      Dismiss draft
+                    </Button>
+                  ) : null}
+                </div>
+              ) : null}
             </div>
 
             <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:flex-wrap">
-              <Button disabled={isMutating || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl py-2 text-center leading-snug font-black sm:w-auto sm:flex-1">
+              <Button disabled={isMutating || replyBusy || selectedTicketDetail.status === "waiting-support" || !canManageSupport} variant="outline" onClick={() => updateStatus("waiting-support")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl py-2 text-center leading-snug font-black sm:w-auto sm:flex-1">
                 <MessageCircle className="mr-2 h-4 w-4 shrink-0" /> Mark Waiting Support
               </Button>
-              <Button disabled={isMutating || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-emerald-600 py-2 text-center leading-snug font-black text-white hover:bg-emerald-700 sm:w-auto sm:flex-1">
+              <Button disabled={isMutating || replyBusy || selectedTicketDetail.status === "resolved" || !canManageSupport} onClick={() => updateStatus("resolved")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-emerald-600 py-2 text-center leading-snug font-black text-white hover:bg-emerald-700 sm:w-auto sm:flex-1">
                 <TicketCheck className="mr-2 h-4 w-4 shrink-0" /> Mark Resolved
               </Button>
-              <Button disabled={isMutating || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-zinc-950 py-2 text-center leading-snug font-black text-white hover:bg-zinc-800 sm:w-auto sm:flex-1">
+              <Button disabled={isMutating || replyBusy || selectedTicketDetail.status === "closed" || !canManageSupport} onClick={() => updateStatus("closed")} className="h-auto min-h-10 w-full whitespace-normal rounded-xl bg-zinc-950 py-2 text-center leading-snug font-black text-white hover:bg-zinc-800 sm:w-auto sm:flex-1">
                 Close Ticket
               </Button>
             </div>

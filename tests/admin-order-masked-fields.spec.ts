@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type BrowserContext, type Response } from "@playwright/test";
 import { spawn, type ChildProcess } from "node:child_process";
 import { createServer, type Server } from "node:http";
 import { once } from "node:events";
@@ -8,8 +8,12 @@ const origin = "http://127.0.0.1:3238";
 const orderNumber = "ZG-FIXTURE-001";
 const rejectedNote = "Synthetic permission rejection";
 const unconfirmedNote = "Synthetic service interruption";
+const validationNote = "Synthetic validation rejection";
+const conflictNote = "Synthetic stale fulfillment attempt";
+const concurrentReference = "FIXTURE-CONCURRENT-HANDOFF";
 const internalDiagnostic = "Fixture internal fulfillment diagnostic";
 const timestamp = "2026-11-24T10:00:00.000Z";
+const concurrentTimestamp = "2026-11-24T10:05:00.000Z";
 const seller = { userId: "seller-fixture", storeName: null, applicationStatus: "APPROVED" };
 const totals = { itemSubtotal: 123_456_789.99, deliveryFeeAmount: 12_345_678.9,
   cashDueOnDelivery: 123_456_789.99, grandTotalAmount: 135_802_468.89 };
@@ -55,6 +59,17 @@ test.describe.configure({ mode: "default", timeout: 120_000 });
 
 let backend: Server;
 let next: ChildProcess | undefined;
+let conflictPatchCount = 0;
+let conflictReloadCount = 0;
+
+async function restrictToFixture(context: BrowserContext) {
+  await context.route("**/*", (route) => new URL(route.request().url()).origin === origin
+    ? route.continue() : route.abort());
+  // The installed Next dev runtime needs its local HMR socket during hydration.
+  const hmrUrl = `ws://${new URL(origin).host}/_next/hmr`;
+  await context.routeWebSocket("**/*", (socket) =>
+    socket.url().split("?")[0] === hmrUrl ? void socket.connectToServer() : socket.close());
+}
 
 test.beforeAll(async () => {
   // The server validates the synthetic admin token and returns the corresponding DTO shape.
@@ -77,19 +92,43 @@ test.beforeAll(async () => {
       } } }));
     } else if (request.method === "GET" && url.pathname === "/api/v1/admin/orders") {
       const search = url.searchParams.get("search");
+      if (privileged && conflictPatchCount > 0 && search === orderNumber && ++conflictReloadCount === 1) {
+        response.writeHead(503).end(JSON.stringify({ status: "fail", message: internalDiagnostic }));
+        return;
+      }
       if (search === "fixture-forbidden") {
         response.writeHead(403).end(JSON.stringify({ status: "fail", message: "Fixture access denied" }));
         return;
       }
       const order = privileged
-        ? search === "fixture-empty-note" ? { ...privilegedOrder, notes: null } : privilegedOrder
+        ? conflictPatchCount > 0 && search !== "ZG-FIXTURE"
+          ? { ...privilegedOrder, status: "SHIPPED", updatedAt: concurrentTimestamp, trackingNumber: concurrentReference }
+          : search === "fixture-empty-note" ? { ...privilegedOrder, notes: null } : privilegedOrder
         : maskedOrder;
-      response.end(JSON.stringify({ status: "success", data: { orders: [order] },
-        pagination: { total: 1, page: 1, limit: 12, pages: 1 } }));
+      const status = url.searchParams.get("status");
+      const orders = search === "fixture-missing" || (status && status !== order.status) ? [] : [order];
+      if (privileged && conflictPatchCount > 0 && search === orderNumber) {
+        orders.unshift({ ...order, id: "unrelated-order", orderNumber: "ZG-FIXTURE-001-OTHER" });
+      }
+      response.end(JSON.stringify({ status: "success", data: { orders },
+        pagination: { total: orders.length, page: 1, limit: 12, pages: 1 } }));
     } else if (privileged && request.method === "PATCH" && url.pathname === "/api/v1/admin/orders/order-fixture/status") {
       let body = "";
       for await (const chunk of request) body += String(chunk);
-      const input = JSON.parse(body) as { notes?: string };
+      const input = JSON.parse(body) as { notes?: string; expectedUpdatedAt?: string };
+      if (input.expectedUpdatedAt !== timestamp) {
+        response.writeHead(400).end(JSON.stringify({ status: "fail", message: "Missing reviewed version" }));
+        return;
+      }
+      if (input.notes === conflictNote) {
+        conflictPatchCount += 1;
+        response.writeHead(409).end(JSON.stringify({ status: "fail", message: internalDiagnostic }));
+        return;
+      }
+      if (input.notes === validationNote) {
+        response.writeHead(422).end(JSON.stringify({ status: "fail", message: internalDiagnostic }));
+        return;
+      }
       if (input.notes !== rejectedNote && input.notes !== unconfirmedNote) {
         response.writeHead(400).end(JSON.stringify({ status: "fail", message: "Unexpected fixture update" }));
         return;
@@ -121,6 +160,140 @@ test.beforeAll(async () => {
   }, { timeout: 60_000 }).toBe(true);
 });
 
+for (const width of [320, 1440]) {
+  test(`reloads server fulfillment state after one conflict at ${width}px`, async ({ page, context }, testInfo) => {
+    await restrictToFixture(context);
+    await context.addCookies([{ name: "zogular_admin_session", value: "orders-operations", url: origin }]);
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+    const queue = width === 1440 ? page.getByRole("table").filter({ visible: true }) : page;
+    const openOrder = queue.getByRole("button", { name: "Open order" });
+    const drawer = page.getByRole("dialog", { name: orderNumber });
+    const reference = drawer.getByLabel("External courier reference");
+    const apply = drawer.getByRole("button", { name: "Apply fulfillment update" });
+    const patchResponses: number[] = [];
+    const isStatusPatch = (result: Response) =>
+      result.request().method() === "PATCH" && new URL(result.url()).pathname.endsWith("/admin/orders/order-fixture/status");
+    page.on("response", (result) => {
+      if (isStatusPatch(result)) patchResponses.push(result.status());
+    });
+
+    try {
+      await page.goto(`${origin}/admin/orders`);
+      await expect(openOrder).toBeVisible({ timeout: 30_000 });
+      const statusFilter = page.getByRole("combobox", { name: "Filter by order status" });
+      if (width === 1440) {
+        const filtered = page.waitForResponse((result) => new URL(result.url()).searchParams.get("status") === "CONFIRMED");
+        await statusFilter.selectOption("CONFIRMED");
+        expect((await filtered).status()).toBe(200);
+      }
+      await openOrder.click();
+      await drawer.getByLabel("Next status").selectOption("PROCESSING");
+      await reference.fill("FIXTURE-STALE-DISPATCH");
+      await drawer.getByLabel("Operations notes").fill(conflictNote);
+      const rejection = page.waitForResponse(isStatusPatch);
+      await apply.click();
+      const response = await rejection;
+      expect(response.status()).toBe(409);
+      expect(await response.json()).toMatchObject({ message: internalDiagnostic });
+      const feedback = drawer.getByRole("status");
+      const reload = drawer.getByRole("button", { name: "Reload order" });
+      await expect(feedback).toHaveText("The order may have changed. Reload the order and check its status before trying again.");
+      await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+      await expect(page.getByText(internalDiagnostic)).toHaveCount(0);
+      await expect(page.getByText(/^Order moved to /)).toHaveCount(0);
+      await expect(drawer).toHaveAccessibleDescription("Fixture Buyer · Confirmed");
+      await expect(apply).toBeDisabled();
+      await expect(drawer.getByLabel("Next status")).toBeDisabled();
+      await expect(reference).toBeDisabled();
+      await expect(drawer.getByLabel("Operations notes")).toBeDisabled();
+      await reload.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("fulfillment-conflict.png"), animations: "disabled" });
+
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
+      await openOrder.click();
+      await expect(apply).toBeDisabled();
+      await expect(reference).toHaveValue("FIXTURE-STALE-DISPATCH");
+      await reload.click();
+      await expect(feedback).toHaveText("We couldn't reload this order. Your draft is still locked. Try reloading again.");
+      await expect(page.getByText(internalDiagnostic)).toHaveCount(0);
+      await expect(apply).toBeDisabled();
+      await expect(reference).toHaveValue("FIXTURE-STALE-DISPATCH");
+      await expect(drawer.getByLabel("Operations notes")).toHaveValue(conflictNote);
+      await reload.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("fulfillment-reload-failed.png"), animations: "disabled" });
+
+      await reload.click();
+      await expect(drawer).toHaveAccessibleDescription("Fixture Buyer · Shipped");
+      await expect(reference).toHaveValue(concurrentReference);
+      await expect(drawer.getByLabel("Next status")).toHaveValue("");
+      await expect(reference).toBeEnabled();
+      await expect(apply).toBeDisabled();
+      await expect(reload).toHaveCount(0);
+      await reference.scrollIntoViewIfNeeded();
+      await page.screenshot({ path: testInfo.outputPath("fulfillment-reloaded.png"), animations: "disabled" });
+      await drawer.getByLabel("Next status").selectOption("DELIVERED");
+      await expect(apply).toBeEnabled();
+      await page.keyboard.press("Escape");
+      await expect(drawer).toBeHidden();
+      if (width === 1440) {
+        await expect(statusFilter).toHaveValue("CONFIRMED");
+        await expect(queue.getByRole("button", { name: "Open order" })).toHaveCount(0);
+        await expect(page.getByText("ZG-FIXTURE-001-OTHER", { exact: true })).toHaveCount(0);
+      } else {
+        // A later queue request can still return a snapshot older than the explicit reload.
+        const stale = page.waitForResponse((result) => new URL(result.url()).searchParams.get("search") === "ZG-FIXTURE");
+        await page.getByPlaceholder("Search orders").fill("ZG-FIXTURE");
+        expect(await (await stale).json()).toMatchObject({ data: { orders: [{ status: "CONFIRMED" }] } });
+        await openOrder.click();
+        await expect(drawer).toHaveAccessibleDescription("Fixture Buyer · Shipped");
+        await expect(reference).toHaveValue(concurrentReference);
+      }
+      expect(patchResponses).toEqual([409]);
+      expect(conflictPatchCount).toBe(1);
+      expect(conflictReloadCount).toBe(2);
+    } finally {
+      conflictPatchCount = 0;
+      conflictReloadCount = 0;
+    }
+  });
+}
+
+test("ignores a delayed queue response after a newer search", async ({ page, context }) => {
+  await restrictToFixture(context);
+  await context.addCookies([{ name: "zogular_admin_session", value: "orders-operations", url: origin }]);
+  const oldSearchUrl = (url: URL) => url.origin === origin && url.pathname === "/api/backend/admin/orders"
+    && url.searchParams.get("search") === "ZG-FIXTURE";
+  const release = Promise.withResolvers<void>();
+  const captured = Promise.withResolvers<void>();
+  await page.route(oldSearchUrl, async (route) => {
+    const response = await route.fetch({ maxRedirects: 0, maxRetries: 0 });
+    captured.resolve();
+    await release.promise;
+    await route.fulfill({ response });
+  });
+
+  try {
+    await page.goto(`${origin}/admin/orders`);
+    await expect(page.getByRole("button", { name: "Open order" }).filter({ visible: true })).toBeVisible({ timeout: 30_000 });
+    const search = page.getByPlaceholder("Search orders");
+    await search.fill("ZG-FIXTURE");
+    await captured.promise;
+    await search.fill("fixture-missing");
+    const emptyQueue = page.getByText("No orders match this control-room view", { exact: true }).filter({ visible: true });
+    await expect(emptyQueue).toBeVisible();
+    const delayed = page.waitForResponse((response) => oldSearchUrl(new URL(response.url())));
+    release.resolve();
+    expect(await (await delayed).json()).toMatchObject({ data: { orders: [{ orderNumber }] } });
+    await page.evaluate(() => new Promise<void>((resolve) =>
+      requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+    await expect(emptyQueue).toBeVisible();
+    await expect(page.getByText(orderNumber, { exact: true })).toHaveCount(0);
+  } finally {
+    release.resolve();
+  }
+});
+
 test.afterAll(async () => {
   if (next?.exitCode === null && next.signalCode === null) {
     const exited = once(next, "exit");
@@ -134,12 +307,11 @@ test.afterAll(async () => {
 
 for (const [width, note, status, message] of [
   [320, rejectedNote, 403, "You don't have permission to update this order."],
-  [1440, unconfirmedNote, 503, "We couldn't confirm the update. Reload this page and check the order's status before trying again."],
+  [1440, unconfirmedNote, 503, "We couldn't confirm the update. Reload the order and check its status before trying again."],
+  [1440, validationNote, 422, "Check the status, courier reference and notes, then try again."],
 ] as const) {
   test(`shows safe fulfillment feedback after ${status} at ${width}px`, async ({ page, context }, testInfo) => {
-    await context.route("**/*", (route) => new URL(route.request().url()).origin === origin
-      ? route.continue() : route.abort());
-    await context.routeWebSocket("**/*", (socket) => socket.close());
+    await restrictToFixture(context);
     await context.addCookies([{ name: "zogular_admin_session", value: "orders-operations", url: origin }]);
     await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
     await page.goto(`${origin}/admin/orders`);
@@ -158,8 +330,16 @@ for (const [width, note, status, message] of [
     const response = await rejection;
     expect(response.status()).toBe(status);
     expect(await response.json()).toMatchObject({ message: internalDiagnostic });
-    await expect(drawer.getByText(message, { exact: true })).toBeVisible();
-    await expect(page.locator("[data-sonner-toast]").getByText(message, { exact: true })).toBeVisible();
+    await expect(drawer.getByRole("status")).toHaveText(message);
+    await expect(page.locator("[data-sonner-toast]")).toHaveCount(0);
+    const apply = drawer.getByRole("button", { name: "Apply fulfillment update" });
+    if (status === 503) {
+      await expect(apply).toBeDisabled();
+      await expect(drawer.getByRole("button", { name: "Reload order" })).toBeVisible();
+    } else {
+      await expect(apply).toBeEnabled();
+      await expect(drawer.getByRole("button", { name: "Reload order" })).toHaveCount(0);
+    }
     await expect(page.getByText(internalDiagnostic)).toHaveCount(0);
     await expect(nextStatus).toHaveValue("PROCESSING");
     await expect(reference).toHaveValue("DISPATCH-42");
@@ -173,9 +353,7 @@ for (const [width, columns] of [[320, 1], [390, 1], [768, 2], [1024, 2], [1440, 
     test(`${privileged ? "privileged" : "masked"} Order Queue and drawer at ${width}px`, async ({ page, context }, testInfo) => {
       const pageErrors: Error[] = [];
       page.on("pageerror", (error) => pageErrors.push(error));
-      await context.route("**/*", (route) => new URL(route.request().url()).origin === origin
-        ? route.continue() : route.abort());
-      await context.routeWebSocket("**/*", (socket) => socket.close());
+      await restrictToFixture(context);
       await context.addCookies([{ name: "zogular_admin_session",
         value: privileged ? "orders-operations" : "orders-tech", url: origin }]);
       await page.setViewportSize({ width, height: 900 });

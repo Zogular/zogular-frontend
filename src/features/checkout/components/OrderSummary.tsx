@@ -104,13 +104,9 @@ export function OrderSummary({
           </div>
           <div className="mt-2 flex items-center justify-between border-t border-dashed border-zinc-200 pt-3">
             <span className="text-sm font-bold text-zinc-700">Delivery Fee (Due Now)</span>
-            {isLoadingQuote ? (
-              <span className="text-lg font-black text-[#FF6B00]">...</span>
-            ) : deliveryFee !== undefined ? (
-              <span className="text-lg font-black text-[#FF6B00]">{formatCheckoutCurrency(deliveryFee)}</span>
-            ) : (
-              <span className="text-lg font-black text-zinc-400">Pending</span>
-            )}
+            <span data-testid="checkout-delivery-due-now" className="text-lg font-black text-zinc-900">
+              {isLoadingQuote ? "..." : deliveryFee === undefined ? "Pending" : formatCheckoutCurrency(deliveryFee)}
+            </span>
           </div>
           <div className="flex items-center justify-between">
             <span className="text-sm font-bold text-zinc-700">Cash Due on Delivery</span>
@@ -126,11 +122,11 @@ export function OrderSummary({
           {isGuest ? "Back to Sign In" : "Back to Payment"}
         </Button>
         {isGuest ? (
-          <Button asChild className="h-14 w-full rounded-xl bg-[#009E49] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d]">
+          <Button asChild className="h-14 w-full rounded-xl bg-[#00853d] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#007d3a]">
             <Link href={appendNextPath("/auth/login", "/checkout")}>Sign in to place order</Link>
           </Button>
         ) : (
-          <Button disabled={!canSubmit} className="h-14 w-full rounded-xl bg-[#009E49] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d] disabled:cursor-not-allowed disabled:opacity-60">
+          <Button disabled={!canSubmit} className="h-14 w-full rounded-xl bg-[#00853d] text-lg font-black text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#007d3a] disabled:cursor-not-allowed disabled:opacity-60">
             {submitting ? "Placing Order..." : "Place Order Now"}
           </Button>
         )}

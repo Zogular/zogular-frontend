@@ -1,4 +1,4 @@
-import { expect, test, type Page, type Request } from "@playwright/test";
+import { expect, test, type Locator, type Page, type Request } from "@playwright/test";
 import fs from "node:fs";
 import path from "node:path";
 import { createServer } from "node:http";
@@ -940,6 +940,54 @@ async function advanceMobileCheckoutToReview(page: Page) {
   if (await reviewOrder.isVisible()) await reviewOrder.click();
 }
 
+async function expectTextContrast(text: Locator) {
+  await expect(text).toBeVisible();
+  await expect.poll(() => text.evaluate((element) => {
+    const canvas = document.createElement("canvas");
+    canvas.width = canvas.height = 1;
+    const pixel = canvas.getContext("2d", { willReadFrequently: true });
+    if (!pixel) throw new Error("A browser color sample is required.");
+    const solidLayers: string[] = [];
+    const foreground = getComputedStyle(element).color;
+    let opacity = 1;
+    const paint = (color: string) => {
+      pixel.fillStyle = color;
+      pixel.fillRect(0, 0, 1, 1);
+    };
+    for (let node: Element | null = element; node; node = node.parentElement) {
+      const style = getComputedStyle(node);
+      if (style.backgroundImage !== "none") throw new Error("Contrast fixture expects solid CSS background layers.");
+      opacity *= Number(style.opacity);
+      solidLayers.push(style.backgroundColor);
+      pixel.clearRect(0, 0, 1, 1);
+      paint(style.backgroundColor);
+      if (pixel.getImageData(0, 0, 1, 1).data[3] === 255 || style.backdropFilter !== "none") break;
+    }
+    const luminance = () => {
+      const [red, green, blue] = pixel.getImageData(0, 0, 1, 1).data;
+      const linear = (channel: number) => {
+        const value = channel / 255;
+        return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+      };
+      return 0.2126 * linear(red) + 0.7152 * linear(green) + 0.0722 * linear(blue);
+    };
+    // A translucent drawer can sit over arbitrary content: bound its surface with both backdrop extremes.
+    const samples = ["#000", "#fff"].map((backdrop) => {
+      paint(backdrop);
+      for (const color of [...solidLayers].reverse()) paint(color);
+      const background = luminance();
+      pixel.globalAlpha = opacity;
+      paint(foreground);
+      pixel.globalAlpha = 1;
+      return { background, text: luminance() };
+    });
+    if ((samples[0].text - samples[0].background) * (samples[1].text - samples[1].background) <= 0) return 1;
+    return Math.min(...samples.map(({ background, text: foreground }) =>
+      (Math.max(background, foreground) + 0.05) / (Math.min(background, foreground) + 0.05),
+    ));
+  }), { message: "Visible text must contrast at least 4.5:1 against its rendered surface." }).toBeGreaterThanOrEqual(4.5);
+}
+
 function isProtectedCheckoutRequest(request: Request): boolean {
   const url = new URL(request.url());
   return url.pathname.endsWith("/user/addresses")
@@ -986,7 +1034,7 @@ test.describe("guest stock route", () => {
   });
   for (const width of [320, 390, 1440]) {
     test(`guest stock route at ${width}px`, async ({ page, context }, info) => {
-      await page.setViewportSize({ width, height: width <= 390 ? 844 : 900 });
+      await page.setViewportSize({ width, height: width === 320 ? 568 : width === 390 ? 844 : 900 });
       await context.routeWebSocket("**/*", (ws) => ws.close());
       await context.route("**/*", (route) => {
         const request = route.request();
@@ -1054,21 +1102,59 @@ test.describe("guest stock route", () => {
         }
       };
       await expect(subtotal).toHaveText("K500");
+      await expectTextContrast(subtotal);
+      await expectTextContrast(page.getByRole("link", { name: "Proceed to checkout", exact: true }));
       await expect(plus.first()).toBeDisabled();
       await verifyNote(plus.first(), "Only 1 available", "cart-single");
       await expect(plus.last()).not.toHaveAttribute("aria-describedby", /.+/);
       await plus.last().click();
       await expect(subtotal).toHaveText("K750");
       {
-        await page.getByRole("button", { name: "Open cart" }).click();
-        const drawer = page.getByRole("dialog");
+        const openCart = page.getByRole("button", { name: "Open cart", exact: true });
+        await openCart.press("Enter");
+        const drawer = page.getByRole("dialog", { name: /^Your Cart/ });
+        const closeCart = drawer.getByRole("button", { name: "Close cart", exact: true });
+        const checkout = drawer.getByRole("link", { name: "Proceed to checkout", exact: true });
+        const drawerSubtotal = drawer.getByTestId("cart-drawer-items-subtotal");
+        await expect(closeCart).toBeFocused();
+        await expect(drawer.getByText("Items subtotal", { exact: true })).toHaveCount(1);
+        await expect(drawer.getByText("Delivery is calculated at checkout, where you’ll see your final total.", { exact: true })).toBeVisible();
+        await expect(drawer.getByText("Total", { exact: true })).toHaveCount(0);
+        await expect(drawer.getByText(/Lusaka Area/)).toHaveCount(0);
+        await expect(drawerSubtotal).toHaveText("K750");
+        await expect(drawer.getByText("K750", { exact: true })).toHaveCount(1);
         await expect(drawer.getByRole("button", { name: "Increase Single listing quantity" })).toBeDisabled();
         const more = drawer.getByRole("button", { name: "Increase Counted listing quantity" });
-        await more.click();
+        await more.press("Enter");
         await expect(more).toBeDisabled();
+        await expect(drawerSubtotal).toHaveText("K1,000");
+        await expect(drawer.getByText("K1,000", { exact: true })).toHaveCount(1);
+        await expect(checkout).toHaveAttribute("href", "/checkout");
+        await page.mouse.move(0, 0);
+        await expectTextContrast(drawerSubtotal);
+        await expectTextContrast(checkout);
+        await checkout.focus();
+        await expect(checkout).toBeFocused();
+        const bounds = await drawer.boundingBox();
+        const viewport = page.viewportSize();
+        expect(bounds).not.toBeNull();
+        expect(viewport).not.toBeNull();
+        for (const control of [drawerSubtotal, checkout]) {
+          await expect(control).toBeInViewport({ ratio: 1 });
+          const box = await control.boundingBox();
+          expect(box).not.toBeNull();
+          expect(box!.x).toBeGreaterThanOrEqual(Math.max(0, bounds!.x) - 1);
+          expect(box!.y).toBeGreaterThanOrEqual(Math.max(0, bounds!.y) - 1);
+          expect(box!.x + box!.width).toBeLessThanOrEqual(Math.min(viewport!.width, bounds!.x + bounds!.width) + 1);
+          expect(box!.y + box!.height).toBeLessThanOrEqual(Math.min(viewport!.height, bounds!.y + bounds!.height) + 1);
+        }
+        await page.keyboard.press("Tab");
+        await expect(closeCart).toBeFocused();
         await verifyNote(drawer.getByRole("button", { name: "Increase Single listing quantity" }), "Only 1 available", "drawer-single");
         await photo("drawer");
-        await drawer.getByRole("button", { name: "Close cart" }).click();
+        await page.keyboard.press("Escape");
+        await expect(drawer).toBeHidden();
+        await expect(openCart).toBeFocused();
       }
       await page.reload();
       await expect(subtotal).toHaveText("K1,000");
@@ -1160,7 +1246,7 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
   test.skip(!baseUrl, "CONSUMER_CART_CHECKOUT_BASE_URL is required for fixture-based visual QA.");
   test.use({ serviceWorkers: "block" });
 
-  test.beforeEach(async ({ page }) => {
+    test.beforeEach(async ({ page }) => {
     // Test pages must never register a worker that could intercept checkout fixtures.
     await page.addInitScript(() => Reflect.deleteProperty(Navigator.prototype, "serviceWorker"));
     await fulfillStaticDependencies(page);
@@ -1249,13 +1335,22 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
         localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
       });
       const diagnostics = collectDiagnostics(page);
+      const inspectQuoteStates = viewport.width === 1440;
+      const releaseAddresses = deferred<void>();
+      const releaseQuote = deferred<void>();
       await page.route("**/api/backend/**", async (route) => {
         const request = route.request();
         const url = new URL(request.url());
         if (url.pathname.endsWith("/user/me")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(userPayload()) });
         if (url.pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(cartPayload()) });
-        if (url.pathname.endsWith("/user/addresses")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(addressPayload()) });
-        if (url.pathname.endsWith("/orders/quote")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotePayload()) });
+        if (url.pathname.endsWith("/user/addresses")) {
+          if (inspectQuoteStates) await releaseAddresses.promise;
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(addressPayload()) });
+        }
+        if (url.pathname.endsWith("/orders/quote")) {
+          if (inspectQuoteStates) await releaseQuote.promise;
+          return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(quotePayload()) });
+        }
         if (url.pathname.endsWith("/wishlist")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", results: 0, pagination: { total: 0, page: 1, limit: 100, pages: 0 }, data: { items: [] } }) });
         if (url.pathname.endsWith("/auth/csrf-token")) return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ data: { csrfToken: "fixture-csrf" } }) });
         return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ status: "success", data: { categories: [] } }) });
@@ -1271,8 +1366,21 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
       }
       await page.getByRole("link", { name: "Proceed to Checkout" }).focus();
       await expect(page.getByRole("link", { name: "Proceed to Checkout" })).toBeFocused();
-      await page.goto(`${baseUrl}/checkout`, { waitUntil: "networkidle" });
-      await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
+      const dueNow = page.getByTestId("checkout-delivery-due-now");
+      try {
+        await page.goto(`${baseUrl}/checkout`, { waitUntil: inspectQuoteStates ? "domcontentloaded" : "networkidle" });
+        await expect(page.getByRole("heading", { name: "Checkout" })).toBeVisible();
+        if (inspectQuoteStates) {
+          await expect(dueNow).toHaveText("Pending");
+          await expectTextContrast(dueNow);
+          releaseAddresses.resolve();
+          await expect(dueNow).toHaveText("...");
+          await expectTextContrast(dueNow);
+        }
+      } finally {
+        releaseAddresses.resolve();
+        releaseQuote.resolve();
+      }
       await advanceMobileCheckoutToReview(page);
       await expect.poll(async () => page.getByText("K550", { exact: true }).evaluateAll((elements) => (
         elements.filter((element) => {
@@ -1281,6 +1389,12 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
           return rectangle.width > 0 && rectangle.height > 0 && style.visibility !== "hidden";
         }).length
       ))).toBeGreaterThan(0);
+      await expect(dueNow).toHaveText("K50");
+      await expectTextContrast(dueNow);
+      const placeOrder = page.getByRole("button", { name: "Place Order Now", exact: true });
+      await expect(placeOrder).toBeEnabled();
+      await page.mouse.move(0, 0);
+      await expectTextContrast(placeOrder);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= document.documentElement.clientWidth)).toBe(true);
       expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
       await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/checkout-${viewport.name}.png`), fullPage: true });
@@ -1629,7 +1743,159 @@ test.describe("consumer cart and checkout production-route acceptance", () => {
     expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
   });
 
+  test("mounted mobile Review returns to focused address recovery after a same-owner refresh fails", async ({ page }) => {
+    test.skip(process.env.CHECKOUT_MOUNTED_ADDRESS_FIXTURE !== "1", "Requires the scratch-only mounted checkout fixture.");
+    if (!baseUrl || !/^http:\/\/127\.0\.0\.1:\d+$/.test(baseUrl)) throw new Error("Private loopback fixture required.");
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.addInitScript(() => {
+      localStorage.clear();
+      localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
+    });
+    const refreshStarted = Promise.withResolvers<void>();
+    const releaseFailure = Promise.withResolvers<void>();
+    let failRefresh = false;
+    let orderPosts = 0;
+    const diagnostics = collectDiagnostics(page, {
+      badResponses: [{ method: "GET", path: "/api/backend/user/addresses", status: 503 }],
+    });
+    await page.route("**/api/backend/**", async (route) => {
+      const request = route.request();
+      const pathname = new URL(request.url()).pathname;
+      if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+      if (pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ json: cartPayload() });
+      if (pathname.endsWith("/user/addresses")) {
+        if (!failRefresh) return route.fulfill({ json: addressPayload() });
+        refreshStarted.resolve();
+        await releaseFailure.promise;
+        return route.fulfill({ status: 503, json: { status: "fail", message: "fixture internal address failure" } });
+      }
+      if (pathname.endsWith("/orders/quote")) return route.fulfill({ json: quotePayload() });
+      if (pathname.endsWith("/auth/csrf-token")) return route.fulfill({ json: { data: { csrfToken: "fixture-review-recovery" } } });
+      if (pathname.endsWith("/orders") && request.method() === "POST") {
+        orderPosts++;
+        return route.fulfill({ status: 500, json: { status: "fail" } });
+      }
+      return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+    });
+
+    try {
+      await page.goto(`${baseUrl}/checkout-address-revalidation-fixture`);
+      await expect(page.getByRole("radio")).toBeChecked();
+      await advanceMobileCheckoutToReview(page);
+      const placeOrder = page.getByRole("button", { name: "Place Order Now" });
+      const checkoutProgress = page.getByRole("progressbar", { name: "Checkout Progress" });
+      await expect(placeOrder).toBeEnabled();
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "80");
+
+      failRefresh = true;
+      await page.getByRole("button", { name: "Simulate same-owner address refresh" }).click();
+      await refreshStarted.promise;
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "80");
+      await expect(placeOrder).toBeDisabled();
+      releaseFailure.resolve();
+
+      const heading = page.getByRole("heading", { name: /Delivery Address/ });
+      const section = page.locator("section").filter({ has: heading });
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "40");
+      await expect(section.getByRole("alert")).toHaveText("This service is temporarily unavailable. Please try again in a moment.");
+      await expect(heading).toBeFocused();
+      await expect(heading).toBeInViewport();
+      await expect(placeOrder).toBeHidden();
+      await page.screenshot({ path: path.resolve("output/playwright/consumer-cart-checkout-integrity/address-refresh-from-review-390x844.png") });
+
+      failRefresh = false;
+      await section.getByRole("button", { name: "Try again" }).press("Enter");
+      await expect(section.getByRole("radio")).toBeChecked();
+      await expect(section.getByRole("alert")).toHaveCount(0);
+      await advanceMobileCheckoutToReview(page);
+      await expect(placeOrder).toBeEnabled();
+      await expect(checkoutProgress).toHaveAttribute("aria-valuenow", "80");
+      expect(orderPosts).toBe(0);
+      expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+    } finally {
+      releaseFailure.resolve();
+    }
+  });
+
   for (const vp of [{ name: "390x844", width: 390, height: 844 }, { name: "1440x900", width: 1440, height: 900 }] as const) {
+    test(`address loading failure recovers without a stale submit alert or order write at ${vp.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: vp.width, height: vp.height });
+      await page.addInitScript(() => {
+        localStorage.clear();
+        localStorage.setItem("zogular_auth_user", JSON.stringify({ id: "owner-a", firstName: "Ada", lastName: "Buyer", email: "owner-a@example.test" }));
+      });
+      const releaseRetry = Promise.withResolvers<void>();
+      const retryStarted = Promise.withResolvers<void>();
+      const addressFailure = "This service is temporarily unavailable. Please try again in a moment.";
+      const privateDiagnostic = "fixture internal address failure";
+      let retryRequested = false;
+      let orderPosts = 0;
+      const diagnostics = collectDiagnostics(page, {
+        badResponses: [
+          { method: "GET", path: "/api/backend/user/addresses", status: 503 },
+          { method: "POST", path: "/api/backend/orders", status: 422 },
+        ],
+      });
+      await page.route("**/api/backend/**", async (route) => {
+        const request = route.request();
+        const pathname = new URL(request.url()).pathname;
+        if (pathname.endsWith("/user/me")) return route.fulfill({ json: userPayload() });
+        if (pathname.endsWith("/cart") && request.method() === "GET") return route.fulfill({ json: cartPayload() });
+        if (pathname.endsWith("/user/addresses")) {
+          if (!retryRequested) return route.fulfill({ status: 503, json: { status: "fail", message: privateDiagnostic } });
+          retryStarted.resolve();
+          await releaseRetry.promise;
+          return route.fulfill({ json: addressPayload() });
+        }
+        if (pathname.endsWith("/orders/quote")) return route.fulfill({ json: quotePayload() });
+        if (pathname.endsWith("/auth/csrf-token")) return route.fulfill({ json: { data: { csrfToken: "fixture-address-retry" } } });
+        if (pathname.endsWith("/orders") && request.method() === "POST") {
+          orderPosts++;
+          return route.fulfill({ status: 422, json: { status: "fail", message: "fixture internal order rejection" } });
+        }
+        return route.fulfill({ json: { status: "success", data: { categories: [] } } });
+      });
+
+      try {
+        await page.goto(`${baseUrl}/checkout`, { waitUntil: "networkidle" });
+        const heading = page.getByRole("heading", { name: /Delivery Address/ });
+        const section = page.locator("section").filter({ has: heading });
+        const placeOrder = page.getByRole("button", { name: "Place Order Now" });
+        await expect(section.getByRole("alert")).toHaveText(addressFailure);
+        await expect(page.getByText(addressFailure, { exact: true })).toHaveCount(1);
+        await expect(page.getByText(privateDiagnostic)).toHaveCount(0);
+        if (vp.width >= 768) await expect(placeOrder).toBeDisabled();
+        await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/address-failed-${vp.name}.png`) });
+
+        retryRequested = true;
+        await section.getByRole("button", { name: "Try again" }).press("Enter");
+        await retryStarted.promise;
+        await expect(heading).toBeFocused();
+        await expect(section.getByRole("status")).toHaveText("Loading delivery addresses...");
+        await expect(section.getByRole("button", { name: "Try again" })).toHaveCount(0);
+        if (vp.width >= 768) await expect(placeOrder).toBeDisabled();
+
+        releaseRetry.resolve();
+        await expect(section.getByRole("radio")).toBeChecked();
+        await expect(page.getByText(addressFailure, { exact: true })).toHaveCount(0);
+        await advanceMobileCheckoutToReview(page);
+        await expect(placeOrder).toBeEnabled();
+        await placeOrder.scrollIntoViewIfNeeded();
+        await page.screenshot({ path: path.resolve(`output/playwright/consumer-cart-checkout-integrity/address-recovered-${vp.name}.png`) });
+        expect(orderPosts).toBe(0);
+
+        // Only the deliberate submit reaches the synthetic order endpoint, which never creates an order.
+        await placeOrder.click();
+        await expect(page.getByText("Some cart details changed. Review your cart and try again.", { exact: true })).toBeVisible();
+        await expect(page.getByText("fixture internal order rejection")).toHaveCount(0);
+        await expect(page.getByText(addressFailure, { exact: true })).toHaveCount(0);
+        expect(orderPosts).toBe(1);
+        expect(diagnostics).toEqual({ consoleErrors: [], pageErrors: [], unexpectedFailedRequests: [], unexpectedBadResponses: [] });
+      } finally {
+        releaseRetry.resolve();
+      }
+    });
+
     test(`CSRF 403 on order creation performs 1 POST, shows safe retry copy, and succeeds on second deliberate click at ${vp.name}`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
       await page.addInitScript(() => {

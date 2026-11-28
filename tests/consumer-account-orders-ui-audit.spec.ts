@@ -57,6 +57,10 @@ const earlierOrders = Array.from({ length: fullListCount - 1 }, (_, index) => ({
   orderNumber: `ZMO-AUDIT-PRIOR-${index + 1}`,
 }));
 const detailPath = `${ordersPath}/${order.id}`;
+const terminalOrders = {
+  cancelled: { ...order, status: "CANCELLED" },
+  refunded: { ...earlierOrders[0], status: "REFUNDED" },
+} satisfies Record<string, BackendOrder>;
 
 const returnSearch = "A1-RETURN";
 const returnPath = `${ordersPath}?status=processing`;
@@ -82,6 +86,7 @@ type OrderFixture = {
   listReads: number;
   detailReads: number;
   paged?: PagedOrderFixture;
+  overviewOrders?: readonly BackendOrder[];
 };
 
 function pagedOrderResponse(fixture: PagedOrderFixture, page: number) {
@@ -118,6 +123,13 @@ const test = base.extend<{ orderFixture: OrderFixture }>({
           case `${proxyPrefix}/user/me`:
             return ok({ status: "success", data: { user: fixture.verifiedBuyer ?? buyer } });
           case `${proxyPrefix}/orders`:
+            if (fixture.overviewOrders && url.searchParams.get("page") === "1" && url.searchParams.get("limit") === "100") {
+              const orders = fixture.overviewOrders;
+              return ok({
+                status: "success", results: orders.length, data: { orders },
+                pagination: { total: orders.length, page: 1, limit: 100, pages: 1 },
+              });
+            }
             if (fixture.paged) {
               const requested = url.searchParams.get("page");
               if (!requested || !/^[1-5]$/.test(requested) ||
@@ -139,10 +151,14 @@ const test = base.extend<{ orderFixture: OrderFixture }>({
               pagination: { total: fixture.listCount, page: 1, limit: 20, pages: Number(fixture.listCount > 0) },
             });
           case `${proxyPrefix}/orders/${order.id}`:
+          case `${proxyPrefix}/orders/${terminalOrders.refunded.id}`: {
+            const detail = fixture.paged?.rows.find(({ id }) => url.pathname === `${proxyPrefix}/orders/${id}`);
+            if (!detail && url.pathname !== `${proxyPrefix}/orders/${order.id}`) break;
             fixture.detailReads += 1;
             return fixture.detailStatus === 200
-              ? ok({ status: "success", data: { order: fixture.paged?.rows.find(({ id }) => id === order.id) ?? order } })
+              ? ok({ status: "success", data: { order: detail ?? order } })
               : fail(fixture.detailStatus);
+          }
           case `${proxyPrefix}/user/addresses`:
             return ok({ status: "success", data: { addresses: [] } });
           case `${proxyPrefix}/wishlist`:
@@ -330,6 +346,101 @@ for (const viewport of viewports) {
       }
       expect(orderFixture.detailReads).toBeGreaterThan(0);
     });
+
+    if (viewport.width === 320 || viewport.width === 390 || viewport.width === 1440) {
+      test("terminal orders use distinct filters and return links without fulfillment or payment prompts", async ({ page, orderFixture }, testInfo) => {
+        orderFixture.paged = { rows: Object.values(terminalOrders), reads: [] };
+        await page.goto(ordersPath);
+        const history = page.getByRole("main").locator("[data-order-history-list]");
+        const back = page.getByRole("link", { name: "Back to Orders", exact: true });
+        const details = history.getByRole("link", { name: "View Order Details", exact: true });
+        await expect(details).toHaveCount(2);
+        await expect(history.getByText("Cancelled", { exact: true })).toBeVisible();
+        await expect(history.getByText("Refunded", { exact: true })).toBeVisible();
+        await expect(history.getByText(/Estimated delivery/)).toHaveCount(0);
+
+        for (const state of ["cancelled", "refunded"] as const) {
+          const record = terminalOrders[state];
+          const label = state === "cancelled" ? "Cancelled" : "Refunded";
+          const otherRecord = terminalOrders[state === "cancelled" ? "refunded" : "cancelled"];
+          const filter = page.getByRole("button", { name: label, exact: true });
+          const historyHref = `${ordersPath}?status=${state}`;
+          const detailHref = `${ordersPath}/${record.id}?status=${state}`;
+          await filter.click();
+          await expect(page).toHaveURL(historyHref);
+          await expect(filter).toHaveAttribute("aria-pressed", "true");
+          await expect(history.getByText(record.orderNumber, { exact: true })).toBeVisible();
+          await expect(history.getByText(otherRecord.orderNumber, { exact: true })).toHaveCount(0);
+          await expect(history.getByText(label, { exact: true })).toBeVisible();
+          await expect(details).toHaveAttribute("href", detailHref);
+          await auditPageLayout(page);
+          await details.click();
+          await expect(page).toHaveURL(detailHref);
+
+          const main = page.getByRole("main");
+          const totals = main.getByRole("region", { name: "Order totals", exact: true });
+          await expect(main.getByText(`#${record.orderNumber}`, { exact: true })).toBeVisible();
+          await expect(main.getByRole("heading", {
+            name: state === "refunded" ? "Order marked refunded" : "Order cancelled", exact: true,
+          })).toBeVisible();
+          await expect(main.getByText(state === "refunded"
+            ? "This status does not confirm that funds have reached you."
+            : "This status does not confirm whether a refund was issued.", { exact: true })).toBeVisible();
+          await expect(main.getByText(/order tracker|refund status will appear|due now|cash due on delivery|payment status is pending|payment confirmation is handled/i)).toHaveCount(0);
+          const unavailableAction = /refund|track|\bpay\b|order again/i;
+          await expect(main.getByRole("button", { name: unavailableAction })).toHaveCount(0);
+          await expect(main.getByRole("link", { name: unavailableAction })).toHaveCount(0);
+          await expect(main.getByRole("link", { name: "Help & Support", exact: true })).toHaveAttribute("href", "/help");
+          await expect(main.getByText("Original payment method:", { exact: true })).toBeVisible();
+          await expect(totals.getByText("Order total", { exact: true })).toBeVisible();
+          for (const total of ["K180", "K35", "K215"]) {
+            await expect(totals.getByText(total, { exact: true })).toBeVisible();
+          }
+          await auditPageLayout(page);
+          await capture(page, testInfo, state);
+          await expect(back).toHaveAttribute("href", historyHref);
+          await back.click();
+          await expect(page).toHaveURL(historyHref);
+          await expect(filter).toHaveAttribute("aria-pressed", "true");
+          await expect(history.getByText(record.orderNumber, { exact: true })).toBeVisible();
+          await expect(history.getByText(otherRecord.orderNumber, { exact: true })).toHaveCount(0);
+        }
+        expect(orderFixture.detailReads).toBeGreaterThanOrEqual(2);
+
+        const estimate = "2026-11-24T12:00:00Z";
+        const activeOrder = { ...earlierOrders[1], estimatedDelivery: estimate };
+        orderFixture.overviewOrders = [
+          ...Object.values(terminalOrders).map((record) => ({ ...record, estimatedDelivery: estimate })),
+          activeOrder,
+        ];
+        await page.goto("/account");
+        const overview = page.getByRole("main");
+        await expect(overview.getByRole("heading", { name: "Recent Orders", exact: true })).toBeVisible();
+        const recentOrder = (record: BackendOrder) => overview.getByRole("article").filter({
+          has: page.getByRole("heading", { name: record.orderNumber, exact: true }),
+        });
+        for (const state of ["cancelled", "refunded"] as const) {
+          const record = terminalOrders[state];
+          const card = recentOrder(record);
+          const issued = await page.evaluate((createdAt) => new Date(createdAt).toLocaleDateString("en-US", {
+            year: "numeric", month: "short", day: "numeric",
+          }), record.createdAt);
+          await expect(card.getByText(state === "cancelled" ? "Cancelled" : "Refunded", { exact: true })).toBeVisible();
+          await expect(card.getByText(issued, { exact: false })).toBeVisible();
+          await expect(card.getByText("K215", { exact: true })).toBeVisible();
+          await expect(card.getByText(/Estimated delivery/)).toHaveCount(0);
+          await expect(card.getByRole("link", { name: /track|refund|\bpay\b/i })).toHaveCount(0);
+          const detailLink = card.getByRole("link", { name: "View Order Details", exact: true });
+          await expect(detailLink).toHaveAttribute("href", `${ordersPath}/${record.id}`);
+          await auditAction(detailLink);
+          await expect.poll(() => detailLink.evaluate((link) => link.getBoundingClientRect().height)).toBeGreaterThanOrEqual(44);
+        }
+        await expect(recentOrder(activeOrder).getByText(/^Estimated delivery: (?!Not available)/)).toBeVisible();
+        await expect(recentOrder(activeOrder).getByRole("link", { name: "Track", exact: true }))
+          .toHaveAttribute("href", `${ordersPath}/${activeOrder.id}`);
+        await auditPageLayout(page);
+      });
+    }
   });
 }
 

@@ -9,7 +9,6 @@ import {
   Minus,
   Trash2,
   ArrowRight,
-  ShieldCheck,
   PackageOpen,
   AlertCircle,
   RefreshCw,
@@ -27,7 +26,6 @@ import {
   SheetFooter,
 } from "@/components/ui/sheet";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
 import { CHECK_PRODUCT_STOCK, guestIncreaseBlock, useCart, type CartItem } from "@/hooks/use-cart";
 
 type CartDrawerProps = {
@@ -183,7 +181,6 @@ export function CartDrawer({ children }: CartDrawerProps) {
   const displayItemCount = isReady ? itemCount : 0;
   const displayItems = isReady ? items : [];
   const displayTotalAmount = isReady ? totalAmount : 0;
-  const total = displayTotalAmount;
   const closeDrawer = () => setOpen(false);
 
   return (
@@ -252,44 +249,24 @@ export function CartDrawer({ children }: CartDrawerProps) {
             </ScrollArea>
 
             <SheetFooter className="shrink-0 flex flex-col border-t border-zinc-200/50 bg-white/60 px-6 pt-5 pb-[calc(1.25rem+env(safe-area-inset-bottom))] backdrop-blur-md">
-              <div className="mb-5 space-y-3">
-                <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
-                  <span>
-                    Subtotal ({displayItemCount} item{displayItemCount > 1 ? "s" : ""})
-                  </span>
-                  <span className="font-bold text-zinc-900">
+              <div className="mb-3 space-y-2">
+                <dl className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                  <dt className="text-base font-bold text-zinc-900">Items subtotal</dt>
+                  <dd data-testid="cart-drawer-items-subtotal" className="min-w-0 wrap-anywhere text-right text-xl font-black text-zinc-900">
                     {formatCurrency(displayTotalAmount)}
-                  </span>
-                </div>
-
-                <div className="flex items-center justify-between text-sm font-medium text-zinc-500">
-                  <span>Delivery (Lusaka Area)</span>
-                  <span className="font-bold text-zinc-500">
-                    Calculated at checkout
-                  </span>
-                </div>
-
-                <Separator className="bg-zinc-200" />
-
-                <div className="flex items-center justify-between">
-                  <span className="text-base font-bold text-zinc-900">Total</span>
-                  <span className="text-xl font-black text-[#FF6B00]">
-                    {formatCurrency(total)}
-                  </span>
-                </div>
+                  </dd>
+                </dl>
+                <p className="text-xs font-medium leading-relaxed text-zinc-600">
+                  Delivery is calculated at checkout, where you’ll see your final total.
+                </p>
               </div>
 
-              <Button asChild className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#009E49] text-base font-bold text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#00853d]">
+              <Button asChild className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#00853d] text-base font-bold text-white shadow-lg shadow-[#009E49]/20 transition-all hover:-translate-y-0.5 hover:bg-[#007d3a]">
                 <Link href="/checkout" onClick={closeDrawer}>
                   Proceed to checkout
                   <ArrowRight className="h-4 w-4" />
                 </Link>
               </Button>
-
-              <div className="mt-4 flex items-center justify-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-zinc-400">
-                <ShieldCheck className="h-3.5 w-3.5 text-[#009E49]" />
-                Totals confirmed at checkout
-              </div>
             </SheetFooter>
           </>
         ) : (

@@ -1,7 +1,7 @@
-import { spawn, type ChildProcess } from "node:child_process";
+import type { ChildProcess } from "node:child_process";
 import { once } from "node:events";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
-import { resolve } from "node:path";
+import { prepareApplication, dispose, vacancy } from "./helpers/access-fixture-launcher.cjs";
 import { expect, test, type BrowserContext, type Locator, type Page } from "@playwright/test";
 
 const host = "127.0.0.1";
@@ -9,7 +9,6 @@ const appPort = 3244;
 const apiPort = 5044;
 const appOrigin = `http://${host}:${appPort}`;
 const apiOrigin = `http://${host}:${apiPort}`;
-const repo = resolve(__dirname, "..");
 const csrfToken = "fixture-access-csrf";
 const reason = "Quarterly access review completed.";
 const actorId = "actor-fixture";
@@ -24,7 +23,6 @@ type CapturedMutation = { method: string; path: string; csrf: string | undefined
 
 let fixture: Server | undefined;
 let next: ChildProcess | undefined;
-let nextLogs = "";
 let access: ReturnType<typeof createFixtureState>;
 
 function createFixtureState() {
@@ -99,55 +97,53 @@ async function handleFixture(req: IncomingMessage, res: ServerResponse) {
 }
 
 // Only these two loopback services participate in interactive acceptance.
-test.use({ serviceWorkers: "block", channel: process.env.PLAYWRIGHT_CHANNEL ?? (process.platform === "win32" ? "msedge" : undefined) });
+// Build and serve the same fresh scratch with fixed fixture API settings.
+
+test.use({ serviceWorkers: "block", channel: "chrome" });
 test.describe.configure({ mode: "default", timeout: 60_000 });
 test.beforeAll(async () => {
+  test.setTimeout(360_000);
+  await vacancy(appPort);
+  await vacancy(apiPort);
+  const launch = prepareApplication();
+  await vacancy(appPort);
   access = createFixtureState();
   fixture = createServer((req, res) => {
     void handleFixture(req, res).catch(() => send(res, 500, { status: "error" }));
   });
-  fixture.listen(apiPort, host);
+  fixture.listen({ host, port: apiPort, exclusive: true });
   await once(fixture, "listening");
-  const apiUrl = `${apiOrigin}/api/v1`;
-  next = spawn(process.execPath, [resolve(repo, "node_modules/next/dist/bin/next"), "start",
-    "--hostname", host, "--port", String(appPort)], {
-    cwd: repo,
-    env: {
-      ...process.env,
-      ADMIN_API_URL: apiUrl,
-      INTERNAL_BACKEND_URL: apiUrl,
-      NEXT_PUBLIC_API_URL: apiUrl,
-      NEXT_PUBLIC_API_PROXY_URL: "/api/backend",
-      ADMIN_AUTH_SESSION_ENDPOINT: "/user/me",
-      NEXT_TELEMETRY_DISABLED: "1",
-    },
-    stdio: ["ignore", "pipe", "pipe"],
+  const child = launch();
+  next = child;
+  let failed = false;
+  let listening = false;
+  let tail = "";
+  child.once("error", () => { failed = true; });
+  child.once("exit", () => { failed = true; });
+  // In the pinned production CLI this banner is emitted inside server.on("listening").
+  child.stdout.setEncoding("utf8").on("data", (chunk: string) => {
+    if (!listening) {
+      const message = tail + chunk;
+      listening = /(?:^|\n)[^\r\n]{0,12}Ready in \d/.test(message);
+      tail = listening ? "" : message.slice(-64);
+    }
   });
-  for (const stream of [next.stdout, next.stderr]) {
-    stream?.on("data", (data: Buffer) => { nextLogs = (nextLogs + data.toString()).slice(-3000); });
-  }
   for (let attempt = 0; attempt < 60; attempt++) {
-    if (next.exitCode !== null) break;
-    const response = await fetch(`${appOrigin}/admin/login`, { signal: AbortSignal.timeout(500) }).catch(() => null);
-    if (response?.ok) return;
+    if (failed || child.exitCode !== null || child.signalCode !== null) break;
+    if (listening) {
+      const response = await fetch(`${appOrigin}/admin/login`, {
+        redirect: "error", signal: AbortSignal.timeout(1000),
+      }).catch(() => null);
+      const ok = response?.status === 200 && response.headers.get("content-type")?.startsWith("text/html");
+      await response?.body?.cancel();
+      if (ok && !failed && child.exitCode === null && child.signalCode === null) return;
+    }
     await new Promise((resolveAttempt) => setTimeout(resolveAttempt, 250));
   }
-  throw new Error(`Access application fixture did not start. Build the checkout with loopback API settings first.\n${nextLogs}`);
+  throw new Error("Owned Access server did not become ready on the fixture endpoint.");
 });
 
-test.afterAll(async () => {
-  if (next && next.exitCode === null && next.signalCode === null && next.pid) {
-    const exited = once(next, "exit");
-    next.kill();
-    await exited;
-  }
-  if (fixture?.listening) {
-    const closed = once(fixture, "close");
-    fixture.close();
-    fixture.closeAllConnections();
-    await closed;
-  }
-});
+test.afterAll(async () => { await dispose(next, fixture); });
 
 test.beforeEach(async ({ context }) => {
   access = createFixtureState();
@@ -266,6 +262,23 @@ for (const actor of [
     const sheet = await openAdmin(page);
     await expect(sheet.getByRole("button", { name: /revoke access|restore access/i })).toHaveCount(0);
     expect(access.mutations).toHaveLength(0);
+  });
+}
+
+for (const width of [320, 1440]) {
+  test(`outer layout denies direct Access navigation without manage_roles at ${width}px`, async ({ page }, testInfo) => {
+    access.permissions = defaultPermissions.filter((permission) => permission !== "manage_roles");
+    await page.setViewportSize({ width, height: width === 320 ? 568 : 900 });
+    await page.goto(`${appOrigin}/admin/access`);
+    await expect(page).toHaveURL(`${appOrigin}/admin/access`);
+    await expect(page.getByRole("heading", { name: "Page unavailable", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Access Control", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: targetName, exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /revoke access|restore access/i })).toHaveCount(0);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`access-layout-denied-${width}.png`), animations: "disabled" });
+    expect(access.reads).toBe(0);
+    expect(access.mutations).toEqual([]);
   });
 }
 

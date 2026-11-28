@@ -1,4 +1,6 @@
-export type OrderStatus = "processing" | "shipped" | "delivered" | "cancelled";
+export type FulfillmentOrderStatus = "processing" | "shipped" | "delivered";
+export type ClosedOrderStatus = "cancelled" | "refunded";
+export type OrderStatus = FulfillmentOrderStatus | ClosedOrderStatus;
 
 export interface OrderLineItem {
   name: string;
