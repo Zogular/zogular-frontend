@@ -923,6 +923,38 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
     expect(rwViolations).toHaveLength(0);
   });
 
+  test("keeps a failed detail read recoverable inside the drawer", async ({ context }, testInfo) => {
+    const { page, violations } = await setupPage(context);
+    await page.setViewportSize({ width: 320, height: 568 });
+    const ticket = fixtureTickets[0]!;
+    let reads = 0;
+    const detailUrl = new URL(`/api/backend/admin/support/tickets/${ticket.id}`, BROWSER_ORIGIN).href;
+    await page.route(detailUrl, async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      if (++reads !== 1) return route.fallback();
+      await route.fulfill({
+        status: 503,
+        json: { status: "fail", message: "synthetic private detail diagnostic" },
+      });
+    });
+
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`, { waitUntil: "networkidle" });
+    await page.locator("article").filter({ hasText: ticket.subject }).getByRole("button", { name: "Open" }).click();
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByRole("alert")).toHaveText("We couldn't load this ticket.");
+    await expect(sheet.getByText("synthetic private detail diagnostic")).toHaveCount(0);
+    await expect(sheet.getByText("Seller Context")).toHaveCount(0);
+    expect(reads).toBe(1);
+    const retry = sheet.getByRole("button", { name: "Retry ticket details" });
+    await expect(retry).toBeInViewport({ ratio: 1 });
+    await page.screenshot({ path: testInfo.outputPath("support-detail-unavailable-320.png"), animations: "disabled" });
+    await retry.click();
+    await expect(sheet.getByText("Seller Context")).toBeVisible();
+    await expect(retry).toHaveCount(0);
+    expect(reads).toBe(2);
+    expect(violations).toHaveLength(0);
+  });
+
   test("preserves a failed reply draft and sends it once on explicit retry", async ({
     context,
   }) => {
