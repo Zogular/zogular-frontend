@@ -466,7 +466,7 @@ function SellerWorkspace({ children, session, signedOut }: { children: ReactNode
           ========================================= */}
       <header className="sticky top-0 z-40 flex h-[var(--seller-mobile-header-height)] shrink-0 items-center justify-between border-b border-[#143320] bg-[#0A1A10] px-4 pt-safe text-white shadow-sm md:hidden">
         <div className="flex items-center gap-3 min-w-0">
-          <BrandLogo mode="icon" variant="dark" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
+          <BrandLogo mode="icon" variant="dark" className="shrink-0" imageClassName="h-9 w-9 rounded-lg shadow-[0_0_15px_rgba(0,158,73,0.4)]" />
           <div className="min-w-0">
             <h1 className="truncate text-sm font-black tracking-tight text-white">{sellerDisplayName}</h1>
             <p className="text-[10px] font-bold uppercase tracking-widest text-[#009E49]">{pageTitle}</p>
@@ -474,12 +474,12 @@ function SellerWorkspace({ children, session, signedOut }: { children: ReactNode
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
-          <Link href={primaryAction.href}>
-            <Button aria-label={primaryAction.label} size="icon" className="h-8 w-8 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
+          <Button asChild size="icon" className="size-11 rounded-full bg-[#009E49] text-white hover:bg-[#00853d] shadow-sm">
+            <Link href={primaryAction.href} aria-label={primaryAction.label}>
               <PrimaryActionIcon className="h-4 w-4" />
-            </Button>
-          </Link>
-          <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex h-8 w-8 items-center justify-center rounded-full text-[#80b898] transition-colors hover:bg-white/5 hover:text-white">
+            </Link>
+          </Button>
+          <Link href="/seller/notifications" aria-label="Open notifications" className="relative flex size-11 items-center justify-center rounded-full text-[#80b898] transition-colors hover:bg-white/5 hover:text-white focus-visible:outline-2 focus-visible:outline-current">
             <Bell className="h-5 w-5" />
           </Link>
         </div>
@@ -587,16 +587,15 @@ function SellerWorkspace({ children, session, signedOut }: { children: ReactNode
           </div>
 
           <div className="flex shrink-0 items-center gap-2 xl:gap-4">
-            <Link href={primaryAction.href}>
-              <Button
-                aria-label={primaryAction.label}
-                title={primaryAction.label}
-                className="h-11 w-11 rounded-xl bg-[#009E49] p-0 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d] lg:w-auto lg:px-4 xl:px-5"
-              >
+            <Button
+              asChild
+              className="h-11 w-11 rounded-xl bg-[#009E49] p-0 font-bold text-white shadow-[0_4px_15px_rgba(0,158,73,0.2)] transition-all hover:scale-105 hover:bg-[#00853d] lg:w-auto lg:px-4 xl:px-5"
+            >
+              <Link href={primaryAction.href} aria-label={primaryAction.label} title={primaryAction.label}>
                 <PrimaryActionIcon className="h-4 w-4 lg:mr-2" />
                 <span className="hidden lg:inline">{primaryAction.label}</span>
-              </Button>
-            </Link>
+              </Link>
+            </Button>
 
             <div className="hidden h-6 w-px bg-zinc-200 xl:block"></div>
 
