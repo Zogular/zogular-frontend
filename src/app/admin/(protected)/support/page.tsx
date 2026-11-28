@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCircle, Send, TicketCheck } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -15,14 +15,17 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { formatAdminDateTime, toTitleCase } from "@/lib/admin-format";
+import { useSupportInbox } from "@/features/admin-support/hooks/use-support-inbox";
 import {
   adminSupportApi,
+  isSupportReadAuthorizationFailure,
+  isSupportSessionDenied,
   type AdminSupportTicket,
   type AdminTicketCategory,
   type AdminTicketPriority,
   type AdminTicketStatus,
 } from "@/services/admin/support";
-import { adminIdentityHasPermission } from "@/services/admin/session";
+import { adminIdentityHasPermission, type AdminIdentity } from "@/services/admin/session";
 import { useAdminIdentity } from "@/components/admin/AdminShell";
 
 const statusTone: Record<AdminTicketStatus, AdminTone> = {
@@ -46,17 +49,35 @@ interface TicketSelection {
 }
 
 export default function AdminSupportPage() {
-  const [tickets, setTickets] = useState<AdminSupportTicket[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [requestError, setRequestError] = useState<string | null>(null);
-  const [search, setSearch] = useState("");
-  const [categoryFilter, setCategoryFilter] = useState<AdminTicketCategory | "all">("all");
-  const [priorityFilter, setPriorityFilter] = useState<AdminTicketPriority | "all">("all");
-  const [statusFilter, setStatusFilter] = useState<AdminTicketStatus | "all">("all");
-  const [page, setPage] = useState(1);
-  const [pagination, setPagination] = useState({ page: 1, limit: 10, total: 0, pages: 1 });
-  const [queueRevision, refreshQueue] = useReducer((revision: number) => revision + 1, 0);
+  const identity = useAdminIdentity();
+  if (!identity || !adminIdentityHasPermission(identity, "view_support_tickets")) {
+    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
+  }
 
+  // A new verified authority must not inherit another projection or draft.
+  const { id, claims } = identity;
+  const authority = JSON.stringify([id, claims.role, claims.issuedAt, [...new Set(claims.permissions)].sort()]);
+  return <SupportAccessBoundary key={authority} identity={identity} />;
+}
+
+function SupportAccessBoundary({ identity }: { identity: AdminIdentity }) {
+  const [denied, setDenied] = useState(false);
+  const denyAccess = useCallback(() => setDenied(true), []);
+  if (denied) {
+    return (
+      <div role="alert">
+        <AdminEmptyState title="Support access could not be verified" description="Reload Support to check your access again." />
+        <Button onClick={() => window.location.reload()} variant="outline">Reload Support</Button>
+      </div>
+    );
+  }
+  return <SupportWorkspace identity={identity} onAuthorizationDenied={denyAccess} />;
+}
+
+function SupportWorkspace({ identity, onAuthorizationDenied }: {
+  identity: AdminIdentity;
+  onAuthorizationDenied: () => void;
+}) {
   // Each opening owns its async work, including when the same ticket is reopened.
   const activeTicket = useRef<TicketSelection | null>(null);
   const [selectedTicketId, setSelectedTicketId] = useState<string | null>(null);
@@ -67,35 +88,18 @@ export default function AdminSupportPage() {
   const [reply, setReply] = useState("");
   const [isMutating, setIsMutating] = useState(false);
 
-  const identity = useAdminIdentity();
-  const canViewSupport = identity ? adminIdentityHasPermission(identity, "view_support_tickets") : false;
-  const canReplySupport = identity ? adminIdentityHasPermission(identity, "reply_support_tickets") : false;
-  const canManageSupport = identity ? adminIdentityHasPermission(identity, "manage_support_tickets") : false;
+  const canReplySupport = adminIdentityHasPermission(identity, "reply_support_tickets");
+  const canManageSupport = adminIdentityHasPermission(identity, "manage_support_tickets");
 
-  const loadTickets = useCallback(async () => {
-    try {
-      setLoading(true);
-      setRequestError(null);
-      const res = await adminSupportApi.fetchTickets({
-        page,
-        limit: 10,
-        status: statusFilter === "all" ? undefined : statusFilter,
-        priority: priorityFilter === "all" ? undefined : priorityFilter,
-        category: categoryFilter === "all" ? undefined : categoryFilter,
-        search: search.trim() || undefined
-      });
-      setTickets(res.tickets);
-      setPagination(res.pagination);
-    } catch (error) {
-      const message = error instanceof Error ? error.message : "Failed to load support tickets.";
-      setRequestError(message);
-      toast.error(message);
-    } finally {
-      setLoading(false);
-    }
-  }, [statusFilter, priorityFilter, categoryFilter, search, page]);
+  const {
+    tickets, loading, queueFailed, pagination, goToPage, refreshQueue,
+    search, statusFilter, priorityFilter, categoryFilter,
+    setSearch, setStatusFilter, setPriorityFilter, setCategoryFilter,
+  } = useSupportInbox(onAuthorizationDenied);
 
-  useEffect(() => { void loadTickets(); }, [loadTickets, queueRevision]);
+  useEffect(() => () => {
+    activeTicket.current = null;
+  }, []);
 
   const resetDrawer = (selection: TicketSelection | null) => {
     activeTicket.current = selection;
@@ -115,8 +119,14 @@ export default function AdminSupportPage() {
       if (activeTicket.current !== selection) return;
       if (ticket.id !== selection.id) throw new Error("Unexpected ticket in detail response.");
       setSelectedTicketDetail(ticket);
-    } catch {
-      if (activeTicket.current === selection) setDetailFailed(true);
+    } catch (error) {
+      const ownsDrawer = activeTicket.current === selection;
+      // A 401 applies to this authority even after the operator changes tickets.
+      if (isSupportSessionDenied(error) || (ownsDrawer && isSupportReadAuthorizationFailure(error))) {
+        onAuthorizationDenied();
+        return;
+      }
+      if (ownsDrawer) setDetailFailed(true);
     } finally {
       if (activeTicket.current === selection) setDetailLoading(false);
     }
@@ -182,10 +192,6 @@ export default function AdminSupportPage() {
     }
   };
 
-  if (!canViewSupport) {
-    return <AdminEmptyState title="Access denied" description="Your admin role cannot view support tickets." />;
-  }
-
   return (
     <div className="space-y-6">
       <AdminPageHeader
@@ -194,9 +200,9 @@ export default function AdminSupportPage() {
       />
 
       <AdminToolbar>
-        <AdminSearchField value={search} onChange={(v) => { setSearch(v); setPage(1); }} placeholder="Search tickets" className="flex-1" />
+        <AdminSearchField value={search} onChange={setSearch} placeholder="Search tickets" className="flex-1" />
         
-        <select value={statusFilter} onChange={(event) => { setStatusFilter(event.target.value as AdminTicketStatus | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value as AdminTicketStatus | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All statuses</option>
           <option value="open">Open</option>
           <option value="waiting-support">Waiting on Support</option>
@@ -205,7 +211,7 @@ export default function AdminSupportPage() {
           <option value="closed">Closed</option>
         </select>
         
-        <select value={categoryFilter} onChange={(event) => { setCategoryFilter(event.target.value as AdminTicketCategory | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value as AdminTicketCategory | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All categories</option>
           <option value="order">Order</option>
           <option value="payout">Payout</option>
@@ -215,7 +221,7 @@ export default function AdminSupportPage() {
           <option value="general">General</option>
         </select>
         
-        <select value={priorityFilter} onChange={(event) => { setPriorityFilter(event.target.value as AdminTicketPriority | "all"); setPage(1); }} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
+        <select value={priorityFilter} onChange={(event) => setPriorityFilter(event.target.value as AdminTicketPriority | "all")} className="h-11 rounded-xl border border-zinc-200 bg-white px-3 text-sm font-bold text-zinc-700 shadow-sm">
           <option value="all">All priorities</option>
           <option value="low">Low</option>
           <option value="medium">Medium</option>
@@ -225,10 +231,17 @@ export default function AdminSupportPage() {
       </AdminToolbar>
 
       <section className="overflow-hidden rounded-3xl border border-white/70 bg-white/80 shadow-xl shadow-zinc-900/5 backdrop-blur-xl">
-        {requestError && !loading ? (
-          <div className="p-5"><AdminEmptyState title="Support inbox unavailable" description={requestError} /><div className="flex justify-center pb-4"><Button onClick={() => void loadTickets()} variant="outline" className="rounded-xl font-black">Retry support inbox</Button></div></div>
+        {queueFailed && !loading ? (
+          <div className="p-5">
+            <div role="alert">
+              <AdminEmptyState title="Support inbox unavailable" description="We couldn't load your tickets. Try again." />
+            </div>
+            <div className="flex justify-center pb-4">
+              <Button onClick={refreshQueue} variant="outline" className="rounded-xl font-black">Retry support inbox</Button>
+            </div>
+          </div>
         ) : null}
-        {!requestError ? (
+        {!queueFailed ? (
         <>
         <div className="space-y-3 p-3 lg:hidden">
           {loading ? (
@@ -293,7 +306,7 @@ export default function AdminSupportPage() {
         </div>
         </>
         ) : null}
-        {pagination.pages > 1 && (
+        {!loading && !queueFailed && pagination.pages > 1 && (
           <div className="flex items-center justify-between border-t border-zinc-100 px-5 py-3 bg-white/40">
             <span className="text-xs font-bold text-zinc-500">
               Page {pagination.page} of {pagination.pages} <span className="text-zinc-400">· {pagination.total} total</span>
@@ -304,7 +317,7 @@ export default function AdminSupportPage() {
                 size="sm"
                 className="h-8 rounded-lg font-bold text-xs"
                 disabled={pagination.page <= 1 || loading}
-                onClick={() => setPage(p => Math.max(1, p - 1))}
+                onClick={() => goToPage(pagination.page - 1)}
               >
                 Previous
               </Button>
@@ -313,7 +326,7 @@ export default function AdminSupportPage() {
                 size="sm"
                 className="h-8 rounded-lg font-bold text-xs"
                 disabled={pagination.page >= pagination.pages || loading}
-                onClick={() => setPage(p => Math.min(pagination.pages, p + 1))}
+                onClick={() => goToPage(pagination.page + 1)}
               >
                 Next
               </Button>

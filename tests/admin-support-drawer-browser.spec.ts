@@ -62,7 +62,8 @@ interface FixtureTicket {
   seller: {
     userId: string;
     vendorApplicationId: string;
-    displayName: string;
+    firstName: string;
+    lastName: string;
     email: string;
     storeName: string | null;
     applicationStatus: string | null;
@@ -85,7 +86,8 @@ function makeFixtureTickets(): FixtureTicket[] {
       seller: {
         userId: "usr-seller-overflow-1",
         vendorApplicationId: "app-overflow-1",
-        displayName: "Chileshe_Mwamba_Lusaka_Operations_Lead_000000000000001",
+        firstName: "Chileshe_Mwamba_Lusaka_Operations_Lead_000000000000001",
+        lastName: "",
         email:
           "very.long.unbroken.seller.operations.contact.address@zogular-lusaka-marketplace.co.zm",
         storeName:
@@ -163,7 +165,8 @@ function makeFixtureTickets(): FixtureTicket[] {
       seller: {
         userId: "usr-seller-2",
         vendorApplicationId: "app-2",
-        displayName: "Mwamba Mutale",
+        firstName: "Mwamba",
+        lastName: "Mutale",
         email: "mwamba.seller@example.zm",
         storeName: "Kabulonga Tech Hub",
         applicationStatus: "APPROVED",
@@ -185,13 +188,44 @@ let backendFixture: Server | null = null;
 let nextServer: ChildProcess | null = null;
 let fixtureTickets: FixtureTicket[] = makeFixtureTickets();
 let currentActorRole: "SUPER_ADMIN" | "EXECUTIVE" = "SUPER_ADMIN";
-let currentPermissions: string[] = [
+const manageSupportPermissions = [
   "access_admin_panel",
   "view_support_tickets",
+  "view_support_sensitive_fields",
   "reply_support_tickets",
   "manage_support_tickets",
 ];
+let currentPermissions = manageSupportPermissions;
+let fixtureInboxReads = 0;
 let replyForceStatus: number | null = null;
+
+// Match local dev's read DTO: contact fields are omitted, not blanked, without permission.
+function toSupportSummaryDto({ seller, ...ticket }: Omit<FixtureTicket, "messages">, canViewSensitive: boolean) {
+  const { firstName, lastName, email, ...sellerFields } = seller;
+  return {
+    id: ticket.id,
+    subject: ticket.subject,
+    status: ticket.status,
+    priority: ticket.priority,
+    category: ticket.category,
+    createdAt: ticket.createdAt,
+    updatedAt: ticket.updatedAt,
+    resolvedAt: ticket.resolvedAt,
+    seller: {
+      ...sellerFields,
+      ...(canViewSensitive ? { displayName: `${firstName} ${lastName}`.trim(), email } : {}),
+    },
+  };
+}
+
+function toSupportMessageDto({ body, senderName, ...message }: FixtureMessage, ticket: FixtureTicket, canViewSensitive: boolean) {
+  return {
+    ...message,
+    ticketId: ticket.id,
+    senderUserId: message.senderType === "seller" ? ticket.seller.userId : message.senderType === "support" ? "admin-fixture" : null,
+    ...(canViewSensitive ? { body, senderName } : {}),
+  };
+}
 
 async function waitForServer(url: string) {
   for (let attempt = 0; attempt < 80; attempt += 1) {
@@ -218,12 +252,8 @@ function readBody(req: http.IncomingMessage): Promise<string> {
 test.beforeEach(() => {
   fixtureTickets = makeFixtureTickets();
   currentActorRole = "SUPER_ADMIN";
-  currentPermissions = [
-    "access_admin_panel",
-    "view_support_tickets",
-    "reply_support_tickets",
-    "manage_support_tickets",
-  ];
+  currentPermissions = manageSupportPermissions;
+  fixtureInboxReads = 0;
   replyForceStatus = null;
 });
 
@@ -261,8 +291,19 @@ test.beforeAll(async () => {
       return;
     }
 
-    if (url.pathname === "/api/v1/admin/support/tickets" && req.method === "GET") {
-      const search = url.searchParams.get("search")?.toLowerCase() || "";
+    const isSupportList = url.pathname === "/api/v1/admin/support/tickets";
+    const detailMatch = url.pathname.match(/^\/api\/v1\/admin\/support\/tickets\/([^/]+)$/);
+    const canViewSensitive = currentPermissions.includes("view_support_sensitive_fields");
+    if (isSupportList && req.method === "GET") fixtureInboxReads += 1;
+    if (req.method === "GET" && (isSupportList || detailMatch) &&
+        (!currentPermissions.includes("access_admin_panel") || !currentPermissions.includes("view_support_tickets"))) {
+      res.statusCode = 403;
+      res.end(JSON.stringify({ status: "fail", message: "Forbidden" }));
+      return;
+    }
+
+    if (isSupportList && req.method === "GET") {
+      const search = url.searchParams.get("search")?.trim().toLowerCase() || "";
       const status = url.searchParams.get("status");
       const priority = url.searchParams.get("priority");
       const category = url.searchParams.get("category");
@@ -271,28 +312,28 @@ test.beforeAll(async () => {
         if (status && t.status !== status) return false;
         if (priority && t.priority !== priority) return false;
         if (category && t.category !== category) return false;
-        if (search) {
-          return (
-            t.subject.toLowerCase().includes(search) ||
-            t.seller.displayName.toLowerCase().includes(search) ||
-            t.seller.email.toLowerCase().includes(search) ||
-            (t.seller.storeName || "").toLowerCase().includes(search)
-          );
-        }
-        return true;
+        if (!search) return true;
+        const searchable = [t.subject, t.seller.storeName ?? ""];
+        if (canViewSensitive) searchable.push(t.seller.firstName, t.seller.lastName, t.seller.email);
+        return searchable.some((value) => value.toLowerCase().includes(search));
       });
 
       const page = Number(url.searchParams.get("page") ?? 1);
-      const limit = Number(url.searchParams.get("limit") ?? 10);
+      const limit = Number(url.searchParams.get("limit") ?? 20);
       const total = filtered.length;
-      const pages = Math.max(1, Math.ceil(total / limit));
+      const pages = Math.ceil(total / limit);
+      const offset = (page - 1) * limit;
+      const tickets = filtered
+        .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt))
+        .slice(offset, offset + limit)
+        .map((ticket) => toSupportSummaryDto(ticket, canViewSensitive));
 
       res.end(
         JSON.stringify({
           status: "success",
-          results: total,
+          results: tickets.length,
           pagination: { page, limit, total, pages },
-          data: { tickets: filtered },
+          data: { tickets },
         }),
       );
       return;
@@ -339,7 +380,7 @@ test.beforeAll(async () => {
       res.end(
         JSON.stringify({
           status: "success",
-          data: { message: newMsg },
+          data: { message: toSupportMessageDto(newMsg, ticket, canViewSensitive) },
         }),
       );
       return;
@@ -367,15 +408,12 @@ test.beforeAll(async () => {
       res.end(
         JSON.stringify({
           status: "success",
-          data: { ticket },
+          data: { ticket: toSupportSummaryDto(ticket, canViewSensitive) },
         }),
       );
       return;
     }
 
-    const detailMatch = url.pathname.match(
-      /^\/api\/v1\/admin\/support\/tickets\/([^/]+)$/,
-    );
     if (detailMatch && req.method === "GET") {
       const id = decodeURIComponent(detailMatch[1]);
       const ticket = fixtureTickets.find((t) => t.id === id);
@@ -387,7 +425,10 @@ test.beforeAll(async () => {
       res.end(
         JSON.stringify({
           status: "success",
-          data: { ticket },
+          data: { ticket: {
+            ...toSupportSummaryDto(ticket, canViewSensitive),
+            messages: ticket.messages.map((message) => toSupportMessageDto(message, ticket, canViewSensitive)),
+          } },
         }),
       );
       return;
@@ -560,6 +601,7 @@ async function holdSupportResponse(
   ticket: FixtureTicket,
   operation: "detail" | "reply" | "status",
   json: object,
+  status = 200,
 ) {
   const method = { detail: "GET", reply: "POST", status: "PATCH" }[operation];
   const suffix = { detail: "", reply: "/messages", status: "/status" }[operation];
@@ -582,7 +624,7 @@ async function holdSupportResponse(
     resolveRequest(route.request());
     try {
       if (await responseReleased === "deliver") {
-        await route.fulfill({ json, headers: { [markerHeader]: marker } });
+        await route.fulfill({ status, json, headers: { [markerHeader]: marker } });
       } else {
         await route.abort("aborted");
       }
@@ -606,7 +648,7 @@ async function holdSupportResponse(
       release("deliver");
       const response = await request.response();
       if (!response) throw new Error(`No response for held Support fixture: ${marker}`);
-      expect(response.ok()).toBe(true);
+      expect(response.status()).toBe(status);
       expect(await response.headerValue(markerHeader)).toBe(marker);
       await response.finished();
       // Give the delivered fetch body and React update a render turn before checking absence.
@@ -693,6 +735,465 @@ test("VIS-05 support search placeholder fits and filters at 320x568", async ({ c
   expect((await response).status()).toBe(200);
   await expect(matched).toBeVisible();
   await expect(unmatched).toHaveCount(0);
+  expect(violations).toEqual([]);
+});
+
+test("a superseded inbox search cannot replace the current results", async ({ context }) => {
+  const { page, violations } = await setupPage(context);
+  await page.setViewportSize({ width: 390, height: 600 });
+  const search = page.getByPlaceholder("Search tickets", { exact: true });
+  const olderTerm = "PAYOUT_RECONCILIATION";
+  const [older, newer] = fixtureTickets;
+  let captured: Request | undefined;
+  let release!: () => void;
+  const held = new Promise<void>((resolve) => { release = resolve; });
+  await page.route((url) =>
+    url.origin === BROWSER_ORIGIN && url.pathname === "/api/backend/admin/support/tickets" &&
+    url.searchParams.get("search") === olderTerm, async (route) => {
+    captured = route.request();
+    await held;
+    if (!captured.failure()) await route.fallback();
+  });
+
+  try {
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+    const olderRow = page.locator("article").filter({ hasText: older.subject });
+    const newerRow = page.locator("article").filter({ hasText: newer.subject });
+    await expect(olderRow).toBeVisible();
+    await search.fill(olderTerm);
+    await expect.poll(() => Boolean(captured)).toBe(true);
+    await search.fill("Inventory sync");
+    await expect(newerRow).toBeVisible();
+    await expect.poll(() => captured?.failure()?.errorText).toContain("ERR_ABORTED");
+    await expect(olderRow).toHaveCount(0);
+    await expect(page.getByText("Support inbox unavailable")).toHaveCount(0);
+    expect(violations).toEqual([]);
+  } finally {
+    release();
+  }
+});
+
+test("a failed inbox request shows safe copy and retries the same search", async ({ context }, testInfo) => {
+  const { page, violations } = await setupPage(context);
+  await page.setViewportSize({ width: 320, height: 568 });
+  const term = "Inventory sync";
+  let reads = 0;
+  await page.route((url) =>
+    url.origin === BROWSER_ORIGIN && url.pathname === "/api/backend/admin/support/tickets" &&
+    url.searchParams.get("search") === term, async (route) => {
+    if (++reads !== 1) return route.fallback();
+    await route.fulfill({ status: 503, json: { status: "fail", message: "synthetic restricted inbox diagnostic" } });
+  });
+  await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+  await expect(page.locator("article").filter({ hasText: fixtureTickets[0].subject })).toBeVisible();
+  const search = page.getByPlaceholder("Search tickets", { exact: true });
+  await search.fill(term);
+  const retry = page.getByRole("button", { name: "Retry support inbox" });
+  await expect(page.getByRole("alert").filter({ hasText: "Support inbox unavailable" })).toContainText("We couldn't load your tickets.");
+  await expect(page.getByText("synthetic restricted inbox diagnostic")).toHaveCount(0);
+  await expect(page.locator("article")).toHaveCount(0);
+  expect(reads).toBe(1);
+  await retry.scrollIntoViewIfNeeded();
+  await expect(retry).toBeInViewport({ ratio: 1 });
+  await page.screenshot({ path: testInfo.outputPath("support-inbox-unavailable-320.png"), animations: "disabled" });
+  await retry.click();
+  await expect(page.locator("article").filter({ hasText: fixtureTickets[1].subject })).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  await expect(search).toHaveValue(term);
+  expect(reads).toBe(2);
+  expect(violations).toEqual([]);
+});
+
+test("a malformed inbox response is not a verified empty queue", async ({ context }) => {
+  const { page, violations } = await setupPage(context);
+  await page.setViewportSize({ width: 390, height: 600 });
+  const term = "no synthetic matches";
+  let reads = 0;
+  await page.route((url) =>
+    url.origin === BROWSER_ORIGIN && url.pathname === "/api/backend/admin/support/tickets" &&
+    url.searchParams.get("search") === term, async (route) => {
+    if (++reads !== 1) return route.fallback();
+    await route.fulfill({ json: {
+      status: "success", results: 0, pagination: { page: 1, limit: 10, total: 0, pages: 0 },
+      data: { tickets: null },
+    } });
+  });
+  await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+  await expect(page.locator("article").filter({ hasText: fixtureTickets[0].subject })).toBeVisible();
+  await page.getByPlaceholder("Search tickets", { exact: true }).fill(term);
+  const empty = page.locator("main").getByText("No support tickets match this view").filter({ visible: true });
+  const retry = page.getByRole("button", { name: "Retry support inbox" });
+  await expect(retry).toBeVisible();
+  await expect(empty).toHaveCount(0);
+  await retry.click();
+  await expect(empty).toBeVisible();
+  await expect(retry).toHaveCount(0);
+  expect(reads).toBe(2);
+  expect(violations).toEqual([]);
+});
+
+const supportInboxPath = "/api/backend/admin/support/tickets";
+
+function isInboxRead(request: Request) {
+  const url = new URL(request.url());
+  return request.method() === "GET" && url.origin === BROWSER_ORIGIN && url.pathname === supportInboxPath;
+}
+
+for (const denial of [403, 401] as const) {
+  test(`terminal inbox ${denial} clears the open ticket and ignores a late reply`, async ({ context }) => {
+    const { page, violations } = await setupPage(context);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const [first, second] = fixtureTickets;
+    const draftText = "Synthetic draft pending when inbox access ends.";
+    const lateReplyText = "Synthetic reply completion from the prior access.";
+    const diagnostic = "Synthetic restricted authority diagnostic";
+    const exchanges: number[] = [];
+    let denyInbox = false;
+
+    await page.route(`${BROWSER_ORIGIN}/api/backend/auth/refresh-token`, async (route) => {
+      if (route.request().method() !== "POST") return route.fallback();
+      exchanges.push(200);
+      // A successful refresh lets the actual API client replay the read once.
+      await route.fulfill({ status: 200, json: { status: "success" } });
+    });
+    await page.route((url) => url.origin === BROWSER_ORIGIN && url.pathname === supportInboxPath, async (route) => {
+      if (!denyInbox || !isInboxRead(route.request())) return route.fallback();
+      exchanges.push(denial);
+      await route.fulfill({ status: denial, json: { status: "fail", message: diagnostic } });
+    });
+
+    const priorStatus = await holdSupportResponse(page, first, "status", {
+      status: "success",
+      data: { ticket: { ...toSupportSummaryDto(first, true), status: "resolved" } },
+    });
+    const pendingReply = await holdSupportResponse(page, second, "reply", {
+      status: "success",
+      data: { message: {
+        id: "late-authority-reply",
+        senderType: "support",
+        senderName: "Fixture Admin",
+        body: lateReplyText,
+        createdAt: second.updatedAt,
+      } },
+    });
+
+    try {
+      await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+      await openDesktopTicket(page, first);
+      const sheet = page.getByRole("dialog");
+      await sheet.getByRole("button", { name: "Mark Resolved", exact: true }).click();
+      await priorStatus.request;
+      await page.keyboard.press("Escape");
+      await expect(sheet).toBeHidden();
+
+      await openDesktopTicket(page, second);
+      const draft = page.getByPlaceholder("Type your reply to the seller...");
+      await expect(sheet.getByText(second.seller.email, { exact: false })).toBeVisible();
+      await expect(sheet.getByText(second.messages[0].body, { exact: true })).toBeVisible();
+      await draft.fill(draftText);
+      await sheet.getByRole("button", { name: "Send Reply", exact: true }).click();
+      expect((await pendingReply.request).postDataJSON()).toEqual({ message: draftText });
+      await expect(draft).toHaveValue(draftText);
+
+      // A completed status change refreshes the inbox without closing the current drawer.
+      const expectedExchanges = denial === 401 ? [401, 200, 401] : [403];
+      let deniedReads = 0;
+      const terminal = page.waitForResponse((response) =>
+        isInboxRead(response.request()) &&
+        response.status() === denial &&
+        ++deniedReads === (denial === 401 ? 2 : 1));
+      denyInbox = true;
+      await priorStatus.deliver();
+      await (await terminal).finished();
+      expect(exchanges).toEqual(expectedExchanges);
+      const denialAlert = page.getByRole("alert").filter({
+        has: page.getByText("Support access could not be verified", { exact: true }),
+      });
+      await expect(denialAlert).toBeVisible();
+      const reload = denialAlert.getByRole("button", { name: "Reload Support", exact: true });
+      await expect(reload).toBeVisible();
+      await expect(reload).toBeEnabled();
+      await expect(sheet).toHaveCount(0);
+      await expect(draft).toHaveCount(0);
+      await expect(page.getByText(first.subject, { exact: true })).toHaveCount(0);
+      await expect(page.getByText(second.subject, { exact: true })).toHaveCount(0);
+      await expect(page.getByText(second.seller.email, { exact: false })).toHaveCount(0);
+      await expect(page.getByText(second.messages[0].body, { exact: true })).toHaveCount(0);
+      await expect(page.getByRole("button", { name: "Retry support inbox" })).toHaveCount(0);
+      await expect(page.getByText(diagnostic, { exact: true })).toHaveCount(0);
+
+      await pendingReply.deliver();
+      await expect(denialAlert).toBeVisible();
+      await expect(sheet).toHaveCount(0);
+      await expect(draft).toHaveCount(0);
+      await expect(page.getByText(lateReplyText, { exact: true })).toHaveCount(0);
+      await expect(page.getByText("Reply sent.", { exact: true })).toHaveCount(0);
+      expect(exchanges).toEqual(expectedExchanges);
+      expect(violations).toEqual([]);
+    } finally {
+      await Promise.all([priorStatus.dispose(), pendingReply.dispose()]);
+    }
+  });
+}
+
+test("a terminal 401 from a previous ticket clears the current Support workspace", async ({ context }) => {
+  const { page, violations } = await setupPage(context);
+  await page.setViewportSize({ width: 1280, height: 800 });
+  const [first, second] = fixtureTickets;
+  await page.route(`${BROWSER_ORIGIN}/api/backend/auth/refresh-token`, (route) =>
+    route.fulfill({ status: 401, json: { status: "fail" } }));
+  const held = await holdSupportResponse(page, first, "detail", { status: "fail" }, 401);
+  const sheet = page.getByRole("dialog");
+
+  try {
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+    await openDesktopTicket(page, first);
+    await held.request;
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+    await openDesktopTicket(page, second);
+    await expect(sheet.getByText(second.messages[0].body, { exact: true })).toBeVisible();
+    await held.deliver();
+    await expect(page.getByRole("alert").getByText("Support access could not be verified", { exact: true })).toBeVisible();
+    await expect(sheet).toHaveCount(0);
+    expect(violations).toEqual([]);
+  } finally {
+    await held.dispose();
+  }
+});
+
+const contradictoryPages = {
+  "contradictory page": { total: 11, pages: 2, results: 1 },
+  "contradictory zero total": { total: 0, pages: 0, results: 1 },
+  "overfilled last page": { total: 21, pages: 3, results: 2 },
+  "short interior page": { total: 31, pages: 4, results: 1 },
+} as const;
+
+for (const outcome of ["recovered page", "second shrink", "empty queue", ...Object.keys(contradictoryPages)] as const) {
+  test(`retries the failed inbox page before resolving a ${outcome}`, async ({ context }) => {
+    const { page, violations } = await setupPage(context);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const term = "Inventory pagination";
+    const template = fixtureTickets[1];
+    const seeded = Array.from({ length: 21 }, (_, index) => ({
+      ...template,
+      id: `pagination-${index + 1}`,
+      subject: `${term} ${index + 1}`,
+      updatedAt: new Date(Date.parse(template.updatedAt) - index * 1000).toISOString(),
+    }));
+    fixtureTickets = seeded;
+    const contradictory = contradictoryPages[outcome as keyof typeof contradictoryPages];
+    const reads: number[] = [];
+    let failedPage = false;
+    const isFilteredRead = (request: Request) => isInboxRead(request) &&
+      new URL(request.url()).searchParams.get("search") === term;
+
+    await page.route((url) => url.origin === BROWSER_ORIGIN && url.pathname === supportInboxPath, async (route) => {
+      if (!isFilteredRead(route.request())) return route.fallback();
+      const params = new URL(route.request().url()).searchParams;
+      const requested = Number(params.get("page"));
+      reads.push(requested);
+      expect(Object.fromEntries(params)).toEqual({
+        page: String(requested), limit: "10", status: "open", priority: "medium", category: "inventory", search: term,
+      });
+      if (requested === 3 && !failedPage) {
+        failedPage = true;
+        fixtureTickets = outcome === "empty queue" ? [] : seeded.slice(0, 11);
+        if (contradictory) {
+          const { total, pages, results } = contradictory;
+          await route.fulfill({
+            json: {
+              status: "success",
+              results,
+              pagination: { page: 3, limit: 10, total, pages },
+              data: { tickets: seeded.slice(21 - results).map((ticket) => toSupportSummaryDto(ticket, true)) },
+            },
+          });
+          return;
+        }
+        await route.fulfill({ status: 503, json: { status: "fail" } });
+        return;
+      }
+      if (outcome === "second shrink" && requested === 2 && reads.at(-2) === 3) {
+        fixtureTickets = seeded.slice(0, 10);
+      }
+      await route.fallback();
+    });
+
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+    const next = page.getByRole("button", { name: "Next", exact: true });
+    const previous = page.getByRole("button", { name: "Previous", exact: true });
+    const retry = page.getByRole("button", { name: "Retry support inbox" });
+    const empty = page.getByText("No support tickets match this view").filter({ visible: true });
+    await expect(page.getByText("Page 1 of 3")).toBeVisible();
+    await page.locator("select").filter({ has: page.locator('option[value="open"]') }).selectOption("open");
+    await page.locator("select").filter({ has: page.locator('option[value="medium"]') }).selectOption("medium");
+    await page.locator("select").filter({ has: page.locator('option[value="inventory"]') }).selectOption("inventory");
+    const initial = page.waitForResponse((response) => isFilteredRead(response.request()));
+    await page.getByPlaceholder("Search tickets", { exact: true }).fill(term);
+    expect((await initial).ok()).toBe(true);
+    await expect(page.getByText("Page 1 of 3")).toBeVisible();
+    await next.click();
+    await expect(page.getByText("Page 2 of 3")).toBeVisible();
+    await expect(page.getByRole("row")).toHaveCount(11); // Header plus ten tickets.
+    await expect(page.getByRole("row").filter({ hasText: seeded[10].subject })).toBeVisible();
+    await next.click();
+    await expect(page.getByRole("alert").filter({ hasText: "Support inbox unavailable" })).toBeVisible();
+    await expect(retry).toBeVisible();
+    await expect(empty).toHaveCount(0);
+    if (contradictory) {
+      await expect(page.getByText(seeded[20].subject, { exact: true })).toHaveCount(0);
+      await expect(next).toHaveCount(0);
+    }
+    expect(reads).toEqual([1, 2, 3]);
+
+    const retriedPage = page.waitForResponse((response) => isFilteredRead(response.request()) &&
+      new URL(response.url()).searchParams.get("page") === "3");
+    const recoveredPage = outcome === "empty queue" ? undefined : page.waitForResponse((response) => isFilteredRead(response.request()) &&
+      new URL(response.url()).searchParams.get("page") === "2");
+    await retry.click();
+    const retryPayload = await (await retriedPage).json();
+    if (!recoveredPage) {
+      expect(retryPayload).toMatchObject({
+        results: 0, pagination: { page: 3, limit: 10, total: 0, pages: 0 }, data: { tickets: [] },
+      });
+      await expect(empty).toBeVisible();
+      await expect(retry).toHaveCount(0);
+      await expect(next).toHaveCount(0);
+      expect(reads).toEqual([1, 2, 3, 3]);
+      expect(violations).toEqual([]);
+      return;
+    }
+    expect(retryPayload).toMatchObject({
+      results: 0, pagination: { page: 3, limit: 10, total: 11, pages: 2 }, data: { tickets: [] },
+    });
+
+    const recoveryPayload = await (await recoveredPage).json();
+    if (outcome === "second shrink") {
+      expect(recoveryPayload).toMatchObject({
+        results: 0, pagination: { page: 2, total: 10, pages: 1 }, data: { tickets: [] },
+      });
+      await expect(retry).toBeVisible();
+      await expect(empty).toHaveCount(0);
+      expect(reads).toEqual([1, 2, 3, 3, 2]);
+      await retry.click();
+      await expect(page.getByRole("row").filter({ has: page.getByText(seeded[0].subject, { exact: true }) })).toBeVisible();
+      await expect(retry).toHaveCount(0);
+      expect(reads).toEqual([1, 2, 3, 3, 2, 2, 1]);
+    } else {
+      expect(recoveryPayload).toMatchObject({
+        results: 1, pagination: { page: 2, total: 11, pages: 2 }, data: { tickets: [{ id: seeded[10].id }] },
+      });
+      await expect(page.getByText("Page 2 of 2")).toBeVisible();
+      await expect(page.getByRole("row")).toHaveCount(2);
+      await expect(page.getByRole("row").filter({ hasText: seeded[10].subject })).toBeVisible();
+      await expect(next).toBeDisabled();
+      expect(reads).toEqual([1, 2, 3, 3, 2]);
+      await previous.click();
+      await expect(page.getByText("Page 1 of 2")).toBeVisible();
+      expect(reads).toEqual([1, 2, 3, 3, 2, 1]);
+    }
+    await expect(empty).toHaveCount(0);
+    expect(violations).toEqual([]);
+  });
+}
+
+for (const canViewSensitive of [true, false]) {
+  test(`inbox, drawer and contact search match the ${canViewSensitive ? "authorized" : "masked"} actor`, async ({ context }) => {
+    if (!canViewSensitive) {
+      currentActorRole = "EXECUTIVE";
+      currentPermissions = ["access_admin_panel", "view_support_tickets"];
+    }
+    const { page, violations } = await setupPage(context);
+    await page.setViewportSize({ width: 1280, height: 800 });
+    const ticket = fixtureTickets[1];
+    const { subject, seller, messages: [message] } = ticket;
+    const displayName = `${seller.firstName} ${seller.lastName}`;
+    const sellerDto = {
+      userId: seller.userId,
+      vendorApplicationId: seller.vendorApplicationId,
+      storeName: seller.storeName,
+      applicationStatus: seller.applicationStatus,
+      ...(canViewSensitive ? { displayName, email: seller.email } : {}),
+    };
+    const initial = page.waitForResponse((response) => isInboxRead(response.request()));
+    await page.goto(`${BROWSER_ORIGIN}/admin/support`);
+    const payload = await (await initial).json();
+    const { tickets } = payload.data;
+    expect(payload).toMatchObject({ status: "success", results: 2, pagination: { page: 1, limit: 10, total: 2, pages: 1 } });
+    expect(tickets[1].seller).toEqual(sellerDto);
+    expect(tickets[1]).not.toHaveProperty("messages");
+    const row = page.getByRole("row").filter({ hasText: subject });
+    await expect(row.getByText(seller.storeName!)).toBeVisible();
+    if (canViewSensitive) {
+      await expect(row.getByText(displayName, { exact: true })).toBeVisible();
+    } else {
+      for (const privateText of [displayName, seller.email, message.body]) {
+        await expect(page.getByText(privateText)).toHaveCount(0);
+      }
+    }
+
+    const detailPath = `${supportInboxPath}/${ticket.id}`;
+    const detail = page.waitForResponse((response) => response.request().method() === "GET" &&
+      new URL(response.url()).pathname === detailPath);
+    await openDesktopTicket(page, ticket);
+    const detailPayload = await (await detail).json();
+    expect(detailPayload.data.ticket.seller).toEqual(sellerDto);
+    expect(detailPayload.data.ticket.messages).toEqual([{
+      id: message.id,
+      ticketId: ticket.id,
+      senderType: message.senderType,
+      senderUserId: seller.userId,
+      createdAt: message.createdAt,
+      ...(canViewSensitive ? { senderName: message.senderName, body: message.body } : {}),
+    }]);
+    const sheet = page.getByRole("dialog");
+    await expect(sheet.getByRole("heading", { name: subject, exact: true })).toBeVisible();
+    await expect(sheet.getByText(/Seller ·/)).toBeVisible();
+    for (const privateText of [seller.email, message.senderName, message.body]) {
+      if (canViewSensitive) {
+        await expect(sheet.getByText(privateText).first()).toBeVisible();
+      } else {
+        await expect(sheet.getByText(privateText)).toHaveCount(0);
+      }
+    }
+    await page.keyboard.press("Escape");
+    await expect(sheet).toBeHidden();
+
+    const search = page.getByPlaceholder("Search tickets", { exact: true });
+    for (const term of [seller.email, seller.lastName]) {
+      const searched = page.waitForResponse((response) => isInboxRead(response.request()) &&
+        new URL(response.url()).searchParams.get("search") === term);
+      await search.fill(term);
+      expect(await (await searched).json()).toMatchObject(canViewSensitive
+        ? { results: 1, pagination: { total: 1, pages: 1 }, data: { tickets: [{ subject }] } }
+        : { results: 0, pagination: { total: 0, pages: 0 }, data: { tickets: [] } });
+      if (canViewSensitive) {
+        await expect(row).toBeVisible();
+      } else {
+        await expect(page.getByText("No support tickets match this view").filter({ visible: true })).toBeVisible();
+        await expect(row).toHaveCount(0);
+      }
+    }
+    await expect(page.getByText("Support inbox unavailable")).toHaveCount(0);
+    expect(violations).toEqual([]);
+  });
+}
+
+test("an actor without view_support_tickets issues zero inbox reads", async ({ context }) => {
+  currentActorRole = "EXECUTIVE";
+  // Synthetic claims exercise the missing permission independently of the role label.
+  currentPermissions = ["access_admin_panel"];
+  const { page, violations } = await setupPage(context);
+  const reads: Request[] = [];
+  page.on("request", (request) => {
+    if (isInboxRead(request)) reads.push(request);
+  });
+  await page.goto(`${BROWSER_ORIGIN}/admin/support`, { waitUntil: "networkidle" });
+  await expect(page.getByRole("heading", { name: "Page unavailable" })).toBeVisible();
+  await expect(page.getByPlaceholder("Search tickets", { exact: true })).toHaveCount(0);
+  expect(reads).toEqual([]);
+  expect(fixtureInboxReads).toBe(0);
   expect(violations).toEqual([]);
 });
 
@@ -896,12 +1397,7 @@ test.describe("F8-S1 Support Drawer Containment & Workflows", () => {
 
     // 2. Manage actor can send reply and update status
     currentActorRole = "SUPER_ADMIN";
-    currentPermissions = [
-      "access_admin_panel",
-      "view_support_tickets",
-      "reply_support_tickets",
-      "manage_support_tickets",
-    ];
+    currentPermissions = manageSupportPermissions;
 
     const { page: rwPage, violations: rwViolations } = await setupPage(context);
     await rwPage.setViewportSize({ width: 1280, height: 800 });
